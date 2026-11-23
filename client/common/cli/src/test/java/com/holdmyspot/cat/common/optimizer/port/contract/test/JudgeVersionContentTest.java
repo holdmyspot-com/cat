@@ -15,7 +15,7 @@ public final class JudgeVersionContentTest
 {
 	private static final TrialProfile ROLE = new TrialProfile("judge-model", "high");
 	private static final JudgeProfile JUDGE = new JudgeProfile(ROLE, "Judge the trial.", "The reply is brief.",
-		"Pass only if every rubric item holds.", "{\"type\":\"object\"}");
+		"Pass only if every rubric item holds.", "{\"type\":\"object\"}", "Judge the replies.");
 	private static final String SECTION = "Effects directory: <effects>\n\nNo tool calls\n";
 
 	/**
@@ -36,17 +36,19 @@ public final class JudgeVersionContentTest
 		return new Object[][]
 			{
 				{"model", new JudgeProfile(new TrialProfile("other-model", "high"), JUDGE.prompt(), JUDGE.rubric(),
-					JUDGE.decisionRule(), JUDGE.resultSchema()), SECTION},
+					JUDGE.decisionRule(), JUDGE.resultSchema(), JUDGE.responsePrompt()), SECTION},
 				{"effort", new JudgeProfile(new TrialProfile("judge-model", "low"), JUDGE.prompt(), JUDGE.rubric(),
-					JUDGE.decisionRule(), JUDGE.resultSchema()), SECTION},
+					JUDGE.decisionRule(), JUDGE.resultSchema(), JUDGE.responsePrompt()), SECTION},
 				{"prompt", new JudgeProfile(ROLE, "Judge the reply.", JUDGE.rubric(), JUDGE.decisionRule(),
-					JUDGE.resultSchema()), SECTION},
+					JUDGE.resultSchema(), JUDGE.responsePrompt()), SECTION},
 				{"rubric", new JudgeProfile(ROLE, JUDGE.prompt(), "The reply is polite.", JUDGE.decisionRule(),
-					JUDGE.resultSchema()), SECTION},
+					JUDGE.resultSchema(), JUDGE.responsePrompt()), SECTION},
 				{"decisionRule", new JudgeProfile(ROLE, JUDGE.prompt(), JUDGE.rubric(), "Pass if any rubric item holds.",
-					JUDGE.resultSchema()), SECTION},
+					JUDGE.resultSchema(), JUDGE.responsePrompt()), SECTION},
 				{"resultSchema", new JudgeProfile(ROLE, JUDGE.prompt(), JUDGE.rubric(), JUDGE.decisionRule(),
-					"{\"type\":\"array\"}"), SECTION},
+					"{\"type\":\"array\"}", JUDGE.responsePrompt()), SECTION},
+				{"responsePrompt", new JudgeProfile(ROLE, JUDGE.prompt(), JUDGE.rubric(), JUDGE.decisionRule(),
+					JUDGE.resultSchema(), "Judge the answers."), SECTION},
 				{"evidenceSection", JUDGE, SECTION + "File changes\n"}
 			};
 	}

@@ -114,6 +114,30 @@ public final class ContractCheckTest
 	}
 
 	/**
+	 * Verifies that {@code contract check} refuses a judged assertion that declares no evidence scope, naming its
+	 * scenario, the assertion and the key.
+	 *
+	 * @throws IOException if a file cannot be read or written
+	 */
+	@Test
+	public void refusesJudgedAssertionWithoutScope() throws IOException
+	{
+		// Requirement: R-C27
+		// Requirement: R-L19
+		Path project = directories.add(Files.createTempDirectory("contract-check-"));
+		Path contextFile = ContractToolSessions.write(json, contractAuthor, PROFILES,
+			ContractToolSessions.derivation(json, proposal ->
+				((ObjectNode) proposal.get("tests").get(0).get("assertions").get(0)).putNull("evidence_scope")),
+			project);
+
+		Report report = ContractToolSessions.check(json, contextFile);
+
+		requireThat(report.exitCode(), "exitCode").isEqualTo(1);
+		requireThat(report.output(), "output").contains("`contract check` found 1 problem(s):").
+			contains("formatting/scenario.md").contains("uses_requested_tone").contains("evidence_scope");
+	}
+
+	/**
 	 * Verifies that {@code contract check} refuses a prompt test's directory that starts at a root, including one that
 	 * names the draft directory's prompt test through its root alone.
 	 *

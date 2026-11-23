@@ -35,6 +35,7 @@ final class ScenarioParser
 	private static final String ON_TOOL_FAILURE = "on_tool_failure";
 	private static final String DESCRIPTION = "description";
 	private static final String JUDGE_REASON = "judge_reason";
+	private static final String EVIDENCE_SCOPE = "evidence_scope";
 	private static final String TIME_LIMIT_SECONDS = "time_limit_seconds";
 	/**
 	 * Matches a positive whole number of seconds without leading zeros.
@@ -629,15 +630,16 @@ final class ScenarioParser
 	 * @param end     the index of the line after its last line
 	 * @return the assertion
 	 * @throws ScenarioFormatException if the assertion holds prose or an undefined key, lacks its {@code kind} or
-	 *                                 {@code description}, has an {@code on_tool_failure} without a {@code tool}, or
-	 *                                 holds an invalid value
+	 *                                 {@code description}, has an {@code on_tool_failure} without a {@code tool}, has
+	 *                                 an {@code evidence_scope} that its tool decides or that is {@code response} for
+	 *                                 a tool that examines more than the replies, or holds an invalid value
 	 */
 	private Assertion assertion(String id, int heading, int end) throws ScenarioFormatException
 	{
 		List<Pair> pairs = pairs(heading + 1, end, "the assertion " + id + " holds only key-value pairs, such as " +
 			"- **kind**: effect");
-		requireKeys(pairs, Set.of(KIND, TOOL, ON_TOOL_FAILURE, DESCRIPTION, JUDGE_REASON),
-			"kind, tool, on_tool_failure, description and judge_reason when the judge decides it");
+		requireKeys(pairs, Set.of(KIND, TOOL, ON_TOOL_FAILURE, DESCRIPTION, JUDGE_REASON, EVIDENCE_SCOPE),
+			"kind, tool, on_tool_failure, description, and evidence_scope and judge_reason when the judge decides it");
 
 		Pair kindPair = find(pairs, KIND);
 		if (kindPair == null)
@@ -682,7 +684,45 @@ final class ScenarioParser
 		String judgeReason = null;
 		if (reason != null)
 			judgeReason = reason.value();
-		return new Assertion(id, kind, tool, onToolFailure, description.value(), judgeReason);
+		EvidenceScope evidenceScope = evidenceScope(find(pairs, EVIDENCE_SCOPE), id, tool, onToolFailure);
+		return new Assertion(id, kind, tool, onToolFailure, description.value(), judgeReason, evidenceScope);
+	}
+
+	/**
+	 * Parses an assertion's {@code evidence_scope}.
+	 *
+	 * @param pair          the {@code evidence_scope} pair, or {@code null} if the assertion has none
+	 * @param id            the assertion's identifier
+	 * @param tool          the assertion's built-in tool, or {@code null} if the judge decides it
+	 * @param onToolFailure what a failure of {@code tool} means
+	 * @return the scope, or {@code null} if the assertion declares none
+	 * @throws ScenarioFormatException if the assertion's tool decides it, the value is neither {@code response} nor
+	 *                                 {@code actions}, or it is {@code response} for a tool that examines more than
+	 *                                 the replies
+	 */
+	private EvidenceScope evidenceScope(Pair pair, String id, String tool, OnToolFailure onToolFailure)
+		throws ScenarioFormatException
+	{
+		if (pair == null)
+			return null;
+		if (tool != null && onToolFailure != OnToolFailure.JUDGE)
+		{
+			throw error(pair.line(), "the assertion " + id + " is decided by its tool, so no judge reads evidence " +
+				"for it and it has no evidence_scope; remove the key");
+		}
+		EvidenceScope scope = switch (pair.value())
+		{
+			case "response" -> EvidenceScope.RESPONSE;
+			case "actions" -> EvidenceScope.ACTIONS;
+			default -> throw error(pair.line(), "the evidence_scope " + pair.value() + " must be response or actions");
+		};
+		if (scope == EvidenceScope.RESPONSE && tool != null && !BuiltInTool.parse(tool).examinesOnlyReplies())
+		{
+			String name = tool.split(" ", 2)[0];
+			throw error(pair.line(), "the evidence_scope response reads only the replies, but the tool " + name +
+				" examines more than the replies; use actions");
+		}
+		return scope;
 	}
 
 	/**

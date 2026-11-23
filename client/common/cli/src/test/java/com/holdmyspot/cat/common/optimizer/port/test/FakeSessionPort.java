@@ -58,7 +58,7 @@ public class FakeSessionPort implements SessionPort
 	/**
 	 * The judge version that every fake port reports.
 	 */
-	public static final int JUDGE_VERSION = 5;
+	public static final int JUDGE_VERSION = 6;
 	/**
 	 * The directories that a port reports as holding its runs unless the test supplies its own: a results folder and a
 	 * held-out results folder, as a real port has, which do not exist.

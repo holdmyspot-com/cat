@@ -3,7 +3,6 @@ package com.holdmyspot.cat.common.optimizer.execution;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
-import com.holdmyspot.cat.common.optimizer.contract.BuiltInToolResult;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
 import com.holdmyspot.cat.common.optimizer.contract.JudgeProfile;
 import com.holdmyspot.cat.common.optimizer.contract.JudgedAssertion;
@@ -17,9 +16,10 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * The verdicts that a campaign's judges made, each stored under the key of its judged assertion's evidence. A trial
- * whose evidence has a stored verdict takes it in place of a judge session, and the first verdict stored under a key
- * is final. The records belong to one campaign and are never found by another.
+ * The verdicts that a campaign's judges made of assertions of the response scope, each stored under the key of its
+ * judged assertion and the replies that it read. A trial whose replies have a stored verdict takes it in place of a
+ * judge session, and the first verdict stored under a key is final. The records belong to one campaign and are never
+ * found by another.
  * <p>
  * <b>Thread Safety:</b> This class is as thread-safe as its store.
  */
@@ -52,23 +52,21 @@ public final class VerdictRecords
 	}
 
 	/**
-	 * Returns the keys of the judged assertions of a trial.
+	 * Returns the keys of the judged assertions of a trial of the response scope. An actions assertion's verdict is
+	 * never looked up or recorded, so it needs no key.
 	 *
-	 * @param judge           the profile of the judge that decides the assertions
-	 * @param testCase        the trial's test case
-	 * @param assertions      the assertions that the judge decides
-	 * @param trial           the trial session's result
-	 * @param evidenceSection the rendered trial evidence; empty when the template does not name it
-	 * @param results         the results of the test's built-in tools
-	 * @return the key of each assertion, in order, or empty if the evidence that the template names cannot be read
-	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException          if the evidence cannot be read
+	 * @param judge      the profile of the judge that decides the assertions
+	 * @param testCase   the trial's test case
+	 * @param assertions the assertions of the response scope that the judge decides
+	 * @param trial      the trial session's result
+	 * @return the key of each assertion, in order
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if the judge has no response prompt
 	 */
-	public Optional<List<VerdictKey>> keys(JudgeProfile judge, DrawnTestCase testCase,
-		List<JudgedAssertion> assertions, SessionResult.Completed trial, String evidenceSection,
-		List<BuiltInToolResult> results) throws IOException
+	public List<VerdictKey> keys(JudgeProfile judge, DrawnTestCase testCase, List<JudgedAssertion> assertions,
+		SessionResult.Completed trial)
 	{
-		return VerdictKey.of(harness, judgeVersion, judge, testCase, assertions, trial, evidenceSection, results);
+		return VerdictKey.of(harness, judgeVersion, judge, testCase, assertions, trial);
 	}
 
 	/**

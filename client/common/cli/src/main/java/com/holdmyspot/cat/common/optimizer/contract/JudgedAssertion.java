@@ -129,6 +129,20 @@ public record JudgedAssertion(Assertion assertion, Requirement requirement)
 	}
 
 	/**
+	 * Returns what the assertion's judge reads.
+	 *
+	 * @return the assertion's declared scope, or {@link EvidenceScope#ACTIONS} if it declares none: an assertion of a
+	 *   contract that predates the declaration, or {@value TestCase#EXPECTED_OUTCOME}, whose outcome can be a file's
+	 *   state
+	 */
+	public EvidenceScope scope()
+	{
+		if (assertion.evidenceScope() == null)
+			return EvidenceScope.ACTIONS;
+		return assertion.evidenceScope();
+	}
+
+	/**
 	 * Returns the behaviors through which a trial can fail the assertion, besides
 	 * {@value Requirement#OTHER_BEHAVIOR}.
 	 *

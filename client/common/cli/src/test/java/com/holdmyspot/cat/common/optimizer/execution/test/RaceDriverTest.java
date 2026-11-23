@@ -178,7 +178,7 @@ public final class RaceDriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = racingHarness(cleanup.add(Files.createTempDirectory("race-driver")),
-				DriverTest.withoutFileNames(ContractFixtures.contract()));
+				ContractFixtures.responseOnly(ContractFixtures.contract()));
 			Set<TrialKey> started = ConcurrentHashMap.newKeySet();
 			harness.trials(request ->
 			{

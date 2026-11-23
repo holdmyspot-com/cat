@@ -227,7 +227,16 @@ public final class DraftFixtures
 				appendPair(text, "on_tool_failure", "judge");
 			appendPair(text, "description", assertion.path("statement").asString());
 			if (tool == null || tool.isNull() || assertion.path("on_tool_failure").asString().equals("judge"))
+			{
+				// A judged assertion without the property is judged as actions; a null scope leaves the key out, as a
+				// scenario recorded before the key existed does
+				JsonNode scope = assertion.get("evidence_scope");
+				if (scope == null)
+					appendPair(text, "evidence_scope", "actions");
+				else if (scope.isString())
+					appendPair(text, "evidence_scope", scope.asString());
 				appendPair(text, "judge_reason", assertion.path("judge_reason").asString(FIXTURE_JUDGE_REASON));
+			}
 		}
 		JsonNode expectedOutcomeTool = test.get("expected_outcome_tool");
 		if (expectedOutcomeTool != null || !test.has("expected_outcome_judge_reason"))

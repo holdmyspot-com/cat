@@ -14,6 +14,7 @@ import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
 import com.holdmyspot.cat.common.optimizer.contract.BuiltInToolResult;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
+import com.holdmyspot.cat.common.optimizer.contract.EvidenceScope;
 import com.holdmyspot.cat.common.optimizer.contract.ExpectedOutcomeTool;
 import com.holdmyspot.cat.common.optimizer.contract.JudgeProfile;
 import com.holdmyspot.cat.common.optimizer.contract.JudgedAssertion;
@@ -355,7 +356,7 @@ public final class GuardPilotTest
 	public void pilotTakesAndWritesRecords() throws IOException, InterruptedException
 	{
 		// Requirement: R-L10
-		Contract contract = DriverTest.withoutFileNames(TierFixtures.tieredContract());
+		Contract contract = ContractFixtures.responseOnly(TierFixtures.tieredContract());
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-records"));
@@ -382,6 +383,57 @@ public final class GuardPilotTest
 			requireThat(records.isEmpty(), "records").isFalse();
 			for (VerdictRecord record : records.values())
 				requireThat(record.trial(), "recordTrial").startsWith("pilot trial ");
+		}
+	}
+
+	/**
+	 * A pilot trial whose test has judged assertions of both scopes is judged in one session per scope, and only the
+	 * {@code response} verdicts are recorded and reused: trials whose test case and reply repeat share one
+	 * {@code response} session, while each trial has its own {@code actions} session.
+	 *
+	 * @throws IOException          if the test directory cannot be used
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void pilotGroupsAssertionsByScope() throws IOException, InterruptedException
+	{
+		// Requirement: R-L19
+		Contract contract = ContractFixtures.withEvidenceScope(TierFixtures.tieredContract(), EvidenceScope.RESPONSE);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-scopes"));
+			SessionScript sessions = new SessionScript(directory, _ -> "pass");
+			InMemoryCampaignStore store = new InMemoryCampaignStore();
+			Map<String, PilotResult> pilots = pilot(sessions, workspace(directory), 4, verdicts(store)).run(contract,
+				List.of(), control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(1));
+
+			long trials = 0;
+			long distinct = 0;
+			for (PromptTest test : contract.tests())
+			{
+				List<PilotTrial> pilotTrials = pilots.get(test.id()).trials();
+				trials += pilotTrials.size();
+				distinct += pilotTrials.stream().map(PilotTrial::values).distinct().count();
+				for (PilotTrial trial : pilotTrials)
+					requireThat(trial.assertions().containsValue(false), "failed").isFalse();
+			}
+			requireThat(distinct, "distinctTestCases").isLessThan(trials);
+			List<SessionRequest> judges = sessions.requests(SessionRole.JUDGE);
+			List<SessionRequest> response = judges.stream().filter(request -> request.readOnly().isEmpty()).toList();
+			List<SessionRequest> actions = judges.stream().filter(request -> !request.readOnly().isEmpty()).toList();
+			requireThat((long) actions.size(), "actionsSessions").isEqualTo(trials);
+			requireThat((long) response.size(), "responseSessions").isEqualTo(distinct);
+			for (SessionRequest request : response)
+			{
+				String turn = request.turns().getFirst();
+				requireThat(turn, "responseTurn").startsWith("# Reply Judgment");
+				String decided = turn.substring(turn.indexOf("### Assertions to decide"), turn.indexOf("### Replies"));
+				requireThat(decided, "responseAssertions").doesNotContain("\"" + TestCase.EXPECTED_OUTCOME + "\"");
+			}
+			Map<VerdictKey, VerdictRecord> records = store.verdicts(CAMPAIGN);
+			requireThat(records.isEmpty(), "records").isFalse();
+			for (VerdictRecord record : records.values())
+				requireThat(record.verdict().assertion(), "recordedAssertion").isNotEqualTo(TestCase.EXPECTED_OUTCOME);
 		}
 	}
 
@@ -2745,8 +2797,14 @@ public final class GuardPilotTest
 		 */
 		private final Object lock = new Object();
 		private final List<SessionResult.Completed> trials = new ArrayList<>();
-		private final Map<Path, String> trialReplies = new HashMap<>();
-		private final Map<Path, List<JudgedAssertion>> judged = new HashMap<>();
+		/**
+		 * The trial reply that each judge request shows, by the request's turn.
+		 */
+		private final Map<String, String> trialReplies = new HashMap<>();
+		/**
+		 * The assertions that each judge request decides, by the request's turn.
+		 */
+		private final Map<String, List<JudgedAssertion>> judged = new HashMap<>();
 		private final List<String> judgedReplies = new ArrayList<>();
 		private final JudgePrompt judgePrompt;
 		private final Map<SessionRole, Deque<SessionResult>> rejections = new EnumMap<>(SessionRole.class);
@@ -2818,12 +2876,14 @@ public final class GuardPilotTest
 					SessionResult.Completed evidence, List<JudgedAssertion> assertions, List<BuiltInToolResult> results,
 					String evidenceSection)
 				{
+					SessionRequest request = judgePrompt.request(profile, testCase, evidence, assertions, results,
+						evidenceSection);
 					synchronized (lock)
 					{
-						judged.put(evidence.effects(), assertions);
-						trialReplies.put(evidence.effects(), evidence.responses().getFirst().getFirst());
+						judged.put(request.turns().getFirst(), assertions);
+						trialReplies.put(request.turns().getFirst(), evidence.responses().getFirst().getFirst());
 					}
-					return judgePrompt.request(profile, testCase, evidence, assertions, results, evidenceSection);
+					return request;
 				}
 
 				@Override
@@ -3009,13 +3069,13 @@ public final class GuardPilotTest
 		 */
 		private String judgeReply(SessionRequest request)
 		{
-			Path evidence = request.readOnly().getFirst();
+			String turn = request.turns().getFirst();
 			String trialReply;
 			List<JudgedAssertion> decided;
 			synchronized (lock)
 			{
-				trialReply = trialReplies.get(evidence);
-				decided = judged.get(evidence);
+				trialReply = trialReplies.get(turn);
+				decided = judged.get(turn);
 				judgedReplies.add(trialReply);
 			}
 			if (trialReply.equals("invalid"))

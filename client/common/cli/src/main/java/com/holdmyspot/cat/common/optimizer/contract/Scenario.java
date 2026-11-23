@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.optimizer.contract;
 
+import com.holdmyspot.cat.common.optimizer.report.EnumNames;
+
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import java.util.HashSet;
@@ -236,6 +238,8 @@ public record Scenario(List<VariableDeclaration> variables, List<String> turns,
 			if (assertion.onToolFailure() == OnToolFailure.JUDGE)
 				appendPair(text, "on_tool_failure", "judge");
 			appendPair(text, "description", assertion.statement());
+			if (assertion.evidenceScope() != null)
+				appendPair(text, "evidence_scope", EnumNames.lowerCase(assertion.evidenceScope()));
 			if (assertion.judgeReason() != null)
 				appendPair(text, "judge_reason", assertion.judgeReason());
 		}

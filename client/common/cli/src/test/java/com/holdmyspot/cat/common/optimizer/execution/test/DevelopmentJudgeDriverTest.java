@@ -26,10 +26,11 @@ import com.holdmyspot.cat.common.optimizer.campaign.test.Builder;
 import com.holdmyspot.cat.common.optimizer.contract.Assertion;
 import com.holdmyspot.cat.common.optimizer.contract.Cell;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
-import com.holdmyspot.cat.common.optimizer.contract.JudgeProfile;
+import com.holdmyspot.cat.common.optimizer.contract.EvidenceScope;
 import com.holdmyspot.cat.common.optimizer.contract.NearMisses;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.ProposalSchema;
+import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
 import com.holdmyspot.cat.common.optimizer.execution.Driver;
@@ -38,12 +39,14 @@ import com.holdmyspot.cat.common.optimizer.inventory.InventoryScanner;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
+import com.holdmyspot.cat.common.optimizer.report.EnumNames;
 import com.holdmyspot.cat.common.optimizer.statistics.DecisionBoundaries;
 import com.holdmyspot.cat.common.optimizer.statistics.PairTally;
 import com.holdmyspot.cat.common.optimizer.statistics.PairedComparison;
 import com.holdmyspot.cat.common.optimizer.store.DevelopmentJudgeRecords;
 import com.holdmyspot.cat.common.optimizer.store.FileCampaignStore;
 import com.holdmyspot.cat.common.optimizer.store.JudgeRecordingStore;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import java.io.IOException;
@@ -64,6 +67,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -774,7 +778,7 @@ public final class DevelopmentJudgeDriverTest
 	public void hitAddsNoShadowedTrial() throws IOException
 	{
 		// Requirement: R-L10
-		Contract contract = withoutFileNames(ContractFixtures.withNearMisses(ContractFixtures.contract()));
+		Contract contract = ContractFixtures.withNearMisses(ContractFixtures.responseOnly(ContractFixtures.contract()));
 		DevelopmentJudge shadowing = shadowingAt(contract, 290, 0, List.of(), 0, 0);
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -836,7 +840,7 @@ public final class DevelopmentJudgeDriverTest
 	public void hitAddsNoSpotCheck() throws IOException
 	{
 		// Requirement: R-L10
-		Contract contract = withoutFileNames(ContractFixtures.withNearMisses(ContractFixtures.contract()));
+		Contract contract = ContractFixtures.withNearMisses(ContractFixtures.responseOnly(ContractFixtures.contract()));
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("spot-check-hits")),
@@ -861,20 +865,174 @@ public final class DevelopmentJudgeDriverTest
 	}
 
 	/**
-	 * Returns a contract whose judge template names neither the transcript nor the effects directory, so that the
-	 * verdicts of trials with the same replies and activity are stored under one key.
+	 * A candidate shadows each scope's session with that scope's prompt, and a trial counts once however many of its
+	 * sessions were shadowed: a trial whose {@code response} verdicts came from the records adds its {@code actions}
+	 * comparison and nothing for the {@code response} scope.
 	 *
-	 * @param contract the contract
-	 * @return the contract
+	 * @throws IOException if the test directory cannot be used
 	 */
-	private static Contract withoutFileNames(Contract contract)
+	@Test
+	public void shadowsEachScopeWithItsPrompt() throws IOException
 	{
-		JudgeProfile judge = contract.judge();
-		JudgeProfile withoutFiles = new JudgeProfile(judge.profile(), judge.prompt().
-			replace("{{effects}}", "(not offered)").replace("{{transcript}}", "(not offered)"), judge.rubric(),
-			judge.decisionRule(), judge.resultSchema());
-		return new Contract(contract.requirements(), contract.tests(), contract.profiles(), withoutFiles,
-			contract.limitations(), contract.minimumPassRate(), contract.salt());
+		// Requirement: R-L19
+		// Requirement: R-L10
+		Contract contract = ContractFixtures.withNearMisses(ContractFixtures.withEvidenceScope(
+			ContractFixtures.contract(), EvidenceScope.RESPONSE));
+		// Enough shadowed trials that development shadowing pays off, and too few for the run to qualify the candidate
+		int shadowedBefore = 275;
+		DevelopmentJudge shadowing = shadowingAt(contract, shadowedBefore, 0, List.of(), 0, 0);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("shadowing-scopes")),
+				developing(contract).judge(TEST, shadowing).judge("plain_list", frozenOnly()).
+					judge("safety", frozenOnly()).window(8).build());
+			harness.candidateJudges(List.of(CHEAP));
+			Fixture fixture = new Fixture(harness);
+			fixture.judges(_ -> Verdict.PASS, (_, _) -> Verdict.PASS);
+			int before = harness.campaign().development().count(TEST).outcomes();
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, state -> state.development().count(TEST).outcomes() >= before + 12);
+				harness.settle(driver);
+			}
+			DevelopmentJudge judge = harness.campaign().judges().get(TEST);
+			int frozenActions = fixture.scoped(TEST, frozen(contract), EvidenceScope.ACTIONS).size();
+			int frozenResponse = fixture.scoped(TEST, frozen(contract), EvidenceScope.RESPONSE).size();
+			int candidateActions = fixture.scoped(TEST, CHEAP, EvidenceScope.ACTIONS).size();
+			int candidateResponse = fixture.scoped(TEST, CHEAP, EvidenceScope.RESPONSE).size();
+			requireThat(frozenResponse, "frozenResponse").isPositive().isLessThan(frozenActions);
+			requireThat(candidateResponse, "candidateResponse").isEqualTo(frozenResponse);
+			requireThat(candidateActions, "candidateActions").isEqualTo(frozenActions);
+			requireThat(judge.shadowed(), "shadowed").isEqualTo(shadowedBefore + candidateActions);
+			for (Fixture.Use use : fixture.scoped(TEST, null, null))
+			{
+				String title = switch (use.scope())
+				{
+					case RESPONSE -> "# Reply Judgment";
+					case ACTIONS -> "# Trial Judgment";
+				};
+				requireThat(use.title(), "title").withContext(use, "use").isEqualTo(title);
+			}
+		}
+	}
+
+	/**
+	 * A trial whose candidate disagrees with the frozen judge in one of its two sessions disagrees once, whichever
+	 * session it is.
+	 *
+	 * @param scope the scope of the one session in which the candidate disagrees
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test(dataProvider = "scopes")
+	public void eitherSessionDisagrees(EvidenceScope scope) throws IOException
+	{
+		// Requirement: R-L19
+		Contract contract = ContractFixtures.withNearMisses(ContractFixtures.withEvidenceScope(
+			ContractFixtures.contract(), EvidenceScope.RESPONSE));
+		// Enough shadowed trials that development shadowing pays off, and too few for the run to qualify the candidate
+		int shadowedBefore = 275;
+		DevelopmentJudge shadowing = shadowingAt(contract, shadowedBefore, 0, List.of(), 0, 0);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("shadowing-either")),
+				developing(contract).judge(TEST, shadowing).judge("plain_list", frozenOnly()).
+					judge("safety", frozenOnly()).window(8).build());
+			harness.candidateJudges(List.of(CHEAP));
+			Fixture fixture = new Fixture(harness);
+			AtomicBoolean disagreed = new AtomicBoolean();
+			fixture.judges(use ->
+			{
+				if (use.profile().equals(CHEAP) && use.scope() == scope && disagreed.compareAndSet(false, true))
+					return Verdict.FAIL;
+				return Verdict.PASS;
+			}, (_, _) -> Verdict.PASS);
+			int before = harness.campaign().development().count(TEST).outcomes();
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, state -> state.development().count(TEST).outcomes() >= before + 12);
+				harness.settle(driver);
+			}
+			DevelopmentJudge judge = harness.campaign().judges().get(TEST);
+			requireThat(disagreed.get(), "disagreed").isTrue();
+			requireThat(judge.strict(), "strict").isEqualTo(1);
+			requireThat(judge.lenient(), "lenient").isEqualTo(0);
+			requireThat(judge.shadowed(), "shadowed").
+				isEqualTo(shadowedBefore + fixture.scoped(TEST, CHEAP, EvidenceScope.ACTIONS).size());
+		}
+	}
+
+	/**
+	 * Returns the evidence scopes.
+	 *
+	 * @return the scopes
+	 */
+	@DataProvider
+	public static Object[][] scopes()
+	{
+		return new Object[][]{{EvidenceScope.RESPONSE}, {EvidenceScope.ACTIONS}};
+	}
+
+	/**
+	 * Verifies that the near misses of a {@code response} assertion are labeled with the response prompt and read no
+	 * file, while those of an {@code actions} assertion are labeled with the judge prompt.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void nearMissUsesItsScopePrompt() throws IOException
+	{
+		// Requirement: R-L19
+		Contract contract = ContractFixtures.withNearMisses(ContractFixtures.withEvidenceScope(
+			ContractFixtures.contract(), EvidenceScope.RESPONSE));
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("near-miss-scopes")),
+				developing(contract).build());
+			harness.candidateJudges(List.of(CHEAP));
+			Fixture fixture = new Fixture(harness);
+			fixture.judges(_ -> Verdict.PASS, (_, satisfying) ->
+			{
+				if (satisfying)
+					return Verdict.PASS;
+				return Verdict.FAIL;
+			});
+			try (Driver driver = harness.open())
+			{
+				Campaign campaign = harness.runUntil(driver, state ->
+				{
+					for (String test : TESTS)
+					{
+						DevelopmentJudge judge = state.judges().get(test);
+						if (judge == null || judge.stage() != Stage.SHADOWING)
+							return false;
+					}
+					return true;
+				});
+				for (PromptTest test : contract.tests())
+					requireThat(campaign.judges().get(test.id()).labels(), "labels").isEqualTo(labels(test));
+			}
+			Set<String> decided = new HashSet<>();
+			for (SessionRequest request : fixture.nearMissRequests)
+			{
+				JsonNode assertions = harness.decidedAssertions(request);
+				requireThat(assertions.size(), "assertions").isEqualTo(1);
+				String id = assertions.get(0).get("id").asString();
+				decided.add(id);
+				String turn = request.turns().getFirst();
+				if (id.equals(TestCase.EXPECTED_OUTCOME))
+				{
+					requireThat(turn, "actionsTurn").startsWith("# Trial Judgment");
+					requireThat(request.readOnly(), "actionsReadOnly").isNotEmpty();
+				}
+				else
+				{
+					requireThat(turn, "responseTurn").startsWith("# Reply Judgment");
+					requireThat(request.readOnly(), "responseReadOnly").isEmpty();
+				}
+			}
+			requireThat(decided, "decided").contains(TestCase.EXPECTED_OUTCOME);
+			requireThat(decided.size(), "decided.size()").isGreaterThan(1);
+		}
 	}
 
 	/**
@@ -993,8 +1151,11 @@ public final class DevelopmentJudgeDriverTest
 		 * @param test the test of the judged trial, or {@code null} for a near-miss reply
 		 * @param purpose the purpose of the judged trial, or {@code null} for a near-miss reply
 		 * @param profile the profile of the judge session
+		 * @param scope the scope of the assertions that the session decides: {@code response} when it may read no
+		 *   file
+		 * @param title the first line of the session's prompt
 		 */
-		private record Use(String test, Purpose purpose, TrialProfile profile)
+		private record Use(String test, Purpose purpose, TrialProfile profile, EvidenceScope scope, String title)
 		{
 		}
 
@@ -1002,9 +1163,11 @@ public final class DevelopmentJudgeDriverTest
 		private final Map<Path, Use> trials = new ConcurrentHashMap<>();
 		private final List<Use> uses = new CopyOnWriteArrayList<>();
 		private final List<Path> nearMissEvidence = new CopyOnWriteArrayList<>();
+		private final List<SessionRequest> nearMissRequests = new CopyOnWriteArrayList<>();
 
 		/**
-		 * Scripts the trial sessions to pass.
+		 * Scripts the trial sessions to pass, each replying with its purpose, so that a judge session that reads no
+		 * file still shows what it judged.
 		 *
 		 * @param harness the ports of the driver
 		 */
@@ -1013,11 +1176,43 @@ public final class DevelopmentJudgeDriverTest
 			this.harness = harness;
 			harness.trials(request ->
 			{
-				SessionResult.Completed result = harness.passed();
 				LogicalTrial trial = runningTrial(harness, request);
-				trials.put(result.effects(), new Use(trial.testCase().testId(), trial.key().purpose(), null));
+				SessionResult.Completed result = harness.completed(reply(trial.key().purpose()), DriverHarness.MODEL);
+				trials.put(result.effects(), new Use(trial.testCase().testId(), trial.key().purpose(), null, null,
+					null));
 				return result;
 			});
+		}
+
+		/**
+		 * Returns the reply of a passing trial.
+		 *
+		 * @param purpose the trial's purpose
+		 * @return the reply
+		 */
+		private static String reply(Purpose purpose)
+		{
+			return "pass in a " + EnumNames.lowerCase(purpose) + " trial";
+		}
+
+		/**
+		 * Returns the trial that a judge request shows when it may read no file.
+		 *
+		 * @param turn the request's turn
+		 * @return the test and purpose of the trial
+		 * @throws AssertionError if the turn shows no trial of a known purpose
+		 */
+		private static Use replyTrial(String turn)
+		{
+			int start = turn.indexOf("\n\n{", turn.indexOf("The test case, as JSON:")) + 2;
+			int end = turn.indexOf("\n\nThe trial agent's reply", start);
+			String test = JSON.readTree(turn.substring(start, end)).get("test").asString();
+			for (Purpose purpose : Purpose.values())
+			{
+				if (turn.contains("\"" + reply(purpose) + "\""))
+					return new Use(test, purpose, null, null, null);
+			}
+			throw new AssertionError("The judge request shows no trial: " + turn);
 		}
 
 		/**
@@ -1032,19 +1227,32 @@ public final class DevelopmentJudgeDriverTest
 		{
 			harness.judges(request ->
 			{
-				Use trial = trials.get(request.readOnly().getFirst());
+				String turn = request.turns().getFirst();
+				String title = turn.lines().findFirst().orElse("");
+				EvidenceScope scope;
+				if (request.readOnly().isEmpty())
+					scope = EvidenceScope.RESPONSE;
+				else
+					scope = EvidenceScope.ACTIONS;
+				boolean satisfying = turn.contains(ContractFixtures.SATISFYING_REPLY);
+				Use trial;
+				if (satisfying || turn.contains(ContractFixtures.FAILING_REPLY))
+					trial = null;
+				else if (scope == EvidenceScope.RESPONSE)
+					trial = replyTrial(turn);
+				else
+					trial = trials.get(request.readOnly().getFirst());
 				if (trial == null)
 				{
-					String turn = request.turns().getFirst();
-					boolean satisfying = turn.contains(ContractFixtures.SATISFYING_REPLY);
 					if (!satisfying && !turn.contains(ContractFixtures.FAILING_REPLY))
 						throw new AssertionError("Neither a trial nor a near miss: " + request.readOnly());
-					uses.add(new Use(null, null, request.profile()));
+					uses.add(new Use(null, null, request.profile(), scope, title));
 					nearMissEvidence.addAll(request.readOnly());
+					nearMissRequests.add(request);
 					Verdict verdict = onNearMiss.apply(request.profile(), satisfying);
 					return harness.judged(request, verdict, "The near miss was labeled.");
 				}
-				Use use = new Use(trial.test(), trial.purpose(), request.profile());
+				Use use = new Use(trial.test(), trial.purpose(), request.profile(), scope, title);
 				uses.add(use);
 				Verdict verdict = onTrial.apply(use);
 				if (verdict == null)
@@ -1092,6 +1300,20 @@ public final class DevelopmentJudgeDriverTest
 				}
 			}
 			return matches;
+		}
+
+		/**
+		 * Returns the judge sessions of development trials of a test that decide one scope, under a profile.
+		 *
+		 * @param test    the test
+		 * @param profile the profile, or {@code null} for every profile
+		 * @param scope   the scope, or {@code null} for every scope
+		 * @return the sessions, in the order they ran
+		 */
+		private List<Use> scoped(String test, TrialProfile profile, EvidenceScope scope)
+		{
+			return uses(test, Purpose.DEVELOPMENT, profile).stream().
+				filter(use -> scope == null || use.scope() == scope).toList();
 		}
 
 		/**

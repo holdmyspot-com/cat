@@ -19,3 +19,5 @@
 15 7cc7de0174954d0cbacea3b5694166ebe59d2903418bbc206628433cf4d9d8ca
 # Trial evidence records Codex child launches as spawn_agent calls.
 16 906f70ee96f25e457c7a3deb192e6d030ab462b95319f3426e638fc7ab864207
+# Judged assertions of the response scope are judged from the replies alone, with the response prompt.
+17 08d2b579856de0c8bea729cf2eae43bae8722552476dc83f251fed04ce554388

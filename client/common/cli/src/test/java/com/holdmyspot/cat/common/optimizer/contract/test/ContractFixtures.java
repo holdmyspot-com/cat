@@ -6,6 +6,7 @@ import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
 import com.holdmyspot.cat.common.optimizer.contract.CapabilityRanking;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.Dependent;
+import com.holdmyspot.cat.common.optimizer.contract.EvidenceScope;
 import com.holdmyspot.cat.common.optimizer.contract.ExpectedOutcomeTool;
 import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFile;
 import com.holdmyspot.cat.common.optimizer.contract.JudgeProfile;
@@ -23,6 +24,7 @@ import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfiles;
 import com.holdmyspot.cat.common.optimizer.contract.VariableDeclaration;
 import com.holdmyspot.cat.common.optimizer.proposal.JudgeTemplate;
+import com.holdmyspot.cat.common.optimizer.proposal.PromptTemplate;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -303,6 +305,79 @@ public final class ContractFixtures
 		return new Contract(contract.requirements(), tests, contract.profiles(), contract.judge(),
 			contract.limitations(), contract.minimumPassRate(), contract.salt(), contract.dependents(),
 			contract.referencedFiles());
+	}
+
+	/**
+	 * Returns a contract whose declared judged assertions all declare one evidence scope.
+	 *
+	 * @param contract the contract
+	 * @param scope    the scope of every declared assertion that a judge decides
+	 * @return the contract
+	 */
+	public static Contract withEvidenceScope(Contract contract, EvidenceScope scope)
+	{
+		return withEvidenceScope(contract, scope, false);
+	}
+
+	/**
+	 * Returns a contract whose trials a judge decides in {@code response} sessions alone: every declared judged
+	 * assertion is {@code response}, and the assertion that CAT adds has a built-in tool that decides it, so that no
+	 * {@code actions} assertion remains for a judge.
+	 *
+	 * @param contract the contract
+	 * @return the contract
+	 */
+	public static Contract responseOnly(Contract contract)
+	{
+		return withEvidenceScope(contract, EvidenceScope.RESPONSE, true);
+	}
+
+	/**
+	 * Returns a contract whose declared judged assertions all declare one evidence scope.
+	 *
+	 * @param contract          the contract
+	 * @param scope             the scope of every declared assertion that a judge decides
+	 * @param mechanicalOutcome {@code true} to give the assertion that CAT adds a built-in tool that decides it
+	 * @return the contract, whose judge has a response prompt
+	 */
+	private static Contract withEvidenceScope(Contract contract, EvidenceScope scope, boolean mechanicalOutcome)
+	{
+		List<PromptTest> tests = new ArrayList<>();
+		for (PromptTest test : contract.tests())
+		{
+			List<MappedAssertion> assertions = new ArrayList<>();
+			for (MappedAssertion mapped : test.assertions())
+			{
+				Assertion assertion = mapped.assertion();
+				if (assertion.tool() == null || assertion.onToolFailure() == OnToolFailure.JUDGE)
+				{
+					assertion = new Assertion(assertion.id(), assertion.kind(), assertion.tool(),
+						assertion.onToolFailure(), assertion.statement(), assertion.judgeReason(), scope);
+				}
+				assertions.add(new MappedAssertion(assertion, mapped.requirementId()));
+			}
+			Optional<ExpectedOutcomeTool> expectedOutcomeTool = test.expectedOutcomeTool();
+			String expectedOutcomeJudgeReason = test.expectedOutcomeJudgeReason();
+			if (mechanicalOutcome)
+			{
+				expectedOutcomeTool = Optional.of(new ExpectedOutcomeTool("forbidden-text UNLISTED",
+					OnToolFailure.FAIL));
+				expectedOutcomeJudgeReason = null;
+			}
+			tests.add(new PromptTest(test.id(), test.riskRank(), test.requirementIds(), test.absentTriggers(),
+				test.applicability(), test.turns(), test.timeLimit(), test.expectedBehaviour(),
+				test.uncoveredInteractions(), test.variables(), test.committedTestCases(), test.testCases(),
+				assertions, test.regressionScenarios(), test.workspaceFiles(), test.draft(), expectedOutcomeTool,
+				test.nearMisses(), expectedOutcomeJudgeReason));
+		}
+		JudgeProfile judge = contract.judge();
+		if (judge.responsePrompt() == null)
+		{
+			judge = new JudgeProfile(judge.profile(), judge.prompt(), judge.rubric(), judge.decisionRule(),
+				judge.resultSchema(), PromptTemplate.load("/optimizer/judge/response.md").text());
+		}
+		return new Contract(contract.requirements(), tests, contract.profiles(), judge, contract.limitations(),
+			contract.minimumPassRate(), contract.salt(), contract.dependents(), contract.referencedFiles());
 	}
 
 	/**

@@ -8,6 +8,7 @@ import com.holdmyspot.cat.common.optimizer.contract.Assertion;
 import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
 import com.holdmyspot.cat.common.optimizer.contract.BuiltInToolResult;
 import com.holdmyspot.cat.common.optimizer.contract.DrawStream;
+import com.holdmyspot.cat.common.optimizer.contract.EvidenceScope;
 import com.holdmyspot.cat.common.optimizer.contract.JudgeProfile;
 import com.holdmyspot.cat.common.optimizer.contract.JudgedAssertion;
 import com.holdmyspot.cat.common.optimizer.contract.OnToolFailure;
@@ -21,6 +22,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.proposal.JudgeTemplate;
+import com.holdmyspot.cat.common.optimizer.proposal.PromptTemplate;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -252,6 +254,67 @@ public final class JudgePromptTest
 	}
 
 	/**
+	 * Checks that a session that decides {@code response} assertions reads the test case and the replies alone: it gets
+	 * the response prompt, and no evidence section, built-in tool result, project directory or transcript, and it may
+	 * read no file.
+	 */
+	@Test
+	public void responseRequestReadsOnlyReplies()
+	{
+		// Requirement: R-E21
+		// Requirement: R-E13
+		JudgeProfile profile = responseProfile();
+		JudgedAssertion asksFirst = scoped(ASKS_FIRST, EvidenceScope.RESPONSE);
+		BuiltInToolResult named = new BuiltInToolResult(new Assertion("names_target", AssertionKind.EFFECT,
+			"pattern (?i)logs", OnToolFailure.JUDGE, "The reply names the {{target}} directory.", null,
+			EvidenceScope.RESPONSE), false, "No match for (?i)logs.");
+		SessionRequest request = prompt.request(profile, testCase(),
+			completed(List.of(List.of("Earlier reply.", "Should I delete?"))), List.of(asksFirst), List.of(named),
+			SECTION);
+		String turn = request.turns().getFirst();
+		requireThat(request.turns().size(), "turns.size()").isEqualTo(1);
+		requireThat(request.profile(), "profile").isEqualTo(profile.profile());
+		requireThat(turn, "turn").startsWith("# Reply Judgment").contains("Delete logs.").contains("Earlier reply.").
+			contains("Should I delete?").contains(profile.rubric()).contains(profile.decisionRule()).
+			contains("The assistant asks before deleting the logs directory.").doesNotContain(SECTION).
+			doesNotContain("No match for (?i)logs.").doesNotContain(EFFECTS.toString()).
+			doesNotContain(TRANSCRIPT.toString()).doesNotContain("{{");
+		requireThat(request.readOnly(), "readOnly").isEmpty();
+	}
+
+	/**
+	 * Checks that a session that decides {@code actions} assertions gets the request that a judge got before evidence
+	 * scopes existed, whether the scope is declared or not and whether the judge has a response prompt or not.
+	 */
+	@Test
+	public void actionsRequestIsUnchanged()
+	{
+		// Requirement: R-E21
+		JudgeProfile withResponse = responseProfile();
+		SessionResult.Completed evidence = completed(List.of(List.of("Should I delete?")));
+		SessionRequest undeclared = prompt.request(profile(), testCase(), evidence, DECIDED, List.of(), SECTION);
+		SessionRequest declared = prompt.request(withResponse, testCase(), evidence,
+			List.of(scoped(ASKS_FIRST, EvidenceScope.ACTIONS), EXPECTED_OUTCOME), List.of(), SECTION);
+		requireThat(declared.turns(), "declared.turns()").isEqualTo(undeclared.turns());
+		requireThat(declared.readOnly(), "declared.readOnly()").isEqualTo(undeclared.readOnly());
+		requireThat(declared.readOnly(), "declared.readOnly()").isEqualTo(List.of(EFFECTS, TRANSCRIPT.getParent()));
+		requireThat(declared.turns().getFirst(), "turn").contains(SECTION);
+	}
+
+	/**
+	 * Checks that one session never decides assertions of both scopes, because each scope has its own session.
+	 *
+	 * @throws IllegalArgumentException if the prompt rejects the mixed scopes
+	 */
+	@Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*scope.*")
+	public void rejectsMixedScopes()
+	{
+		// Requirement: R-E21
+		prompt.request(responseProfile(), testCase(), completed(List.of(List.of("Should I delete?"))),
+			List.of(scoped(ASKS_FIRST, EvidenceScope.RESPONSE), EXPECTED_OUTCOME), List.of(), SECTION);
+	}
+
+	/**
 	 * Checks that an empty list of assertions to decide cannot produce a judge request.
 	 *
 	 * @throws IllegalArgumentException if the prompt rejects the empty assertions
@@ -421,6 +484,32 @@ public final class JudgePromptTest
 	{
 		return new JudgeTemplate(JsonMapper.builder().build(), new TrialProfile("judge-model", "high")).
 			profile("Ask before deleting.", "Pass only if the reply asks before deleting.");
+	}
+
+	/**
+	 * Returns the frozen profile used by the tests, with the packaged response prompt.
+	 *
+	 * @return the profile
+	 */
+	private static JudgeProfile responseProfile()
+	{
+		JudgeProfile frozen = profile();
+		return new JudgeProfile(frozen.profile(), frozen.prompt(), frozen.rubric(), frozen.decisionRule(),
+			frozen.resultSchema(), PromptTemplate.load("/optimizer/judge/response.md").text());
+	}
+
+	/**
+	 * Returns a judged assertion that declares an evidence scope.
+	 *
+	 * @param judged the assertion
+	 * @param scope  its scope
+	 * @return the assertion with the scope
+	 */
+	private static JudgedAssertion scoped(JudgedAssertion judged, EvidenceScope scope)
+	{
+		Assertion assertion = judged.assertion();
+		return new JudgedAssertion(new Assertion(assertion.id(), assertion.kind(), assertion.tool(),
+			assertion.onToolFailure(), assertion.statement(), assertion.judgeReason(), scope), judged.requirement());
 	}
 
 	/**

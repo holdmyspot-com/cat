@@ -15,6 +15,7 @@ import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.DrawStream;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
+import com.holdmyspot.cat.common.optimizer.contract.EvidenceScope;
 import com.holdmyspot.cat.common.optimizer.contract.Generator;
 import com.holdmyspot.cat.common.optimizer.contract.JudgedAssertion;
 import com.holdmyspot.cat.common.optimizer.contract.Part;
@@ -54,6 +55,8 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
+import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -1259,14 +1262,16 @@ public final class GuardPilot
 	 * @param results the results of the trial's built-in tools
 	 * @param section the rendered trial evidence, or empty if the judge template does not name it
 	 * @param attempt the number of this judge attempt, starting at 1
-	 * @param assertions every judged assertion of the trial, in order
-	 * @param keys the key of each of {@code assertions} by its identifier, or empty if the evidence that the judge's
-	 *   template names cannot be read
+	 * @param assertions every judged assertion of the trial of the session's evidence scope, in order
+	 * @param keys the key of each of {@code assertions} by its identifier, or empty for assertions of the
+	 *   {@code actions} scope, whose verdicts are never recorded
 	 * @param stored the stored verdicts of the other assertions, by assertion identifier
+	 * @param scopes the verdicts of the trial's evidence scopes, which every scope's session shares
 	 */
 	private record JudgeJob(Pilot pilot, int position, DrawnTestCase testCase, SessionResult.Completed trial,
 		List<JudgedAssertion> judged, List<BuiltInToolResult> results, String section, int attempt,
-		List<JudgedAssertion> assertions, Map<String, VerdictKey> keys, Map<String, VerdictRecord> stored)
+		List<JudgedAssertion> assertions, Map<String, VerdictKey> keys, Map<String, VerdictRecord> stored,
+		PilotScopes scopes)
 		implements Job
 	{
 		/**
@@ -1277,7 +1282,17 @@ public final class GuardPilot
 		JudgeJob retry()
 		{
 			return new JudgeJob(pilot, position, testCase, trial, judged, results, section, attempt + 1, assertions,
-				keys, stored);
+				keys, stored, scopes);
+		}
+
+		/**
+		 * Returns the evidence scope of the assertions that the session decides.
+		 *
+		 * @return the scope
+		 */
+		EvidenceScope scope()
+		{
+			return assertions.getFirst().scope();
 		}
 
 		/**
@@ -1292,6 +1307,76 @@ public final class GuardPilot
 			if (evaluator == null)
 				return name;
 			return name + ", evaluator " + EnumNames.lowerCase(evaluator);
+		}
+	}
+
+	/**
+	 * The verdicts of a control trial's evidence scopes, each of which its own judge session decides. The trial is
+	 * decided once every scope is.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is not thread-safe. The pilot's thread is its only user.
+	 */
+	private static final class PilotScopes
+	{
+		private final List<JudgedAssertion> assertions;
+		private final Set<EvidenceScope> scopes = EnumSet.noneOf(EvidenceScope.class);
+		private final Map<EvidenceScope, Judgment> decided = new EnumMap<>(EvidenceScope.class);
+		private boolean abandoned;
+
+		/**
+		 * Creates the verdicts of a trial whose scopes are not decided yet.
+		 *
+		 * @param assertions every judged assertion of the trial, in order
+		 */
+		PilotScopes(List<JudgedAssertion> assertions)
+		{
+			this.assertions = List.copyOf(assertions);
+			for (JudgedAssertion assertion : assertions)
+				scopes.add(assertion.scope());
+		}
+
+		/**
+		 * Returns every judged assertion of the trial.
+		 *
+		 * @return the assertions, in order
+		 */
+		List<JudgedAssertion> assertions()
+		{
+			return assertions;
+		}
+
+		/**
+		 * Records the verdict of one scope.
+		 *
+		 * @param scope    the scope
+		 * @param judgment the verdict of the scope's assertions
+		 * @return the trial's verdict once every scope is decided, the {@code response} scope's first, or empty
+		 */
+		Optional<Judgment> decide(EvidenceScope scope, Judgment judgment)
+		{
+			decided.put(scope, judgment);
+			if (!decided.keySet().equals(scopes))
+				return Optional.empty();
+			return Optional.of(TrialJudgments.merged(List.copyOf(decided.values())));
+		}
+
+		/**
+		 * Drops the trial's verdicts because a scope's judge could not decide it, so that the trial runs again and the
+		 * other scopes' sessions are ignored.
+		 */
+		void abandon()
+		{
+			abandoned = true;
+		}
+
+		/**
+		 * Indicates whether a scope's judge failure dropped the trial's verdicts.
+		 *
+		 * @return {@code true} if they are abandoned
+		 */
+		boolean isAbandoned()
+		{
+			return abandoned;
 		}
 	}
 
@@ -1739,6 +1824,9 @@ public final class GuardPilot
 				}
 				else if (job instanceof JudgeJob judging)
 				{
+					// The trial runs again after another scope's judge failed, so its verdicts are not needed
+					if (judging.scopes().isAbandoned())
+						continue;
 					// A session that ran since the judge was queued may have stored the verdicts that it needs
 					Optional<JudgeJob> rest = withStoredVerdicts(judging);
 					if (rest.isEmpty())
@@ -1834,7 +1922,8 @@ public final class GuardPilot
 				Job job = candidates.next();
 				boolean startable = switch (job)
 				{
-					case JudgeJob judging -> !waitsForRunningJudge(judging);
+					// An abandoned judge is dropped at once instead of waiting for a running session
+					case JudgeJob judging -> judging.scopes().isAbandoned() || !waitsForRunningJudge(judging);
 					case TrialJob trial -> slice == null || isAdmitted(trial);
 				};
 				if (startable)
@@ -1959,25 +2048,30 @@ public final class GuardPilot
 					deleteProjects(completed);
 				return;
 			}
-			Optional<List<VerdictKey>> keys;
-			try
+			// Each evidence scope is judged in its own session, the response scope first
+			PilotScopes scopes = new PilotScopes(judged);
+			Map<EvidenceScope, List<JudgedAssertion>> byScope = new EnumMap<>(EvidenceScope.class);
+			for (JudgedAssertion assertion : judged)
+				byScope.computeIfAbsent(assertion.scope(), _ -> new ArrayList<>()).add(assertion);
+			List<JudgeJob> jobs = new ArrayList<>();
+			for (Map.Entry<EvidenceScope, List<JudgedAssertion>> entry : byScope.entrySet())
 			{
-				keys = verdicts.keys(contract.judge(), testCase, judged, completed, section, results);
+				List<JudgedAssertion> assertions = List.copyOf(entry.getValue());
+				Map<String, VerdictKey> byId = new LinkedHashMap<>();
+				if (entry.getKey() == EvidenceScope.RESPONSE)
+				{
+					List<VerdictKey> keys = verdicts.keys(contract.judge(), testCase, assertions, completed);
+					for (int i = 0; i < assertions.size(); ++i)
+						byId.put(assertions.get(i).assertion().id(), keys.get(i));
+				}
+				JudgeJob judging = new JudgeJob(pilot, trial.position(), testCase, completed, assertions, results,
+					section, 1, assertions, Collections.unmodifiableMap(byId), Map.of(), scopes);
+				Optional<JudgeJob> rest = withStoredVerdicts(judging);
+				if (rest.isPresent())
+					jobs.add(rest.get());
 			}
-			catch (IOException e)
-			{
-				infrastructureFailed(trial, "The trial's evidence could not be read: " + Driver.describe(e));
-				return;
-			}
-			Map<String, VerdictKey> byId = new LinkedHashMap<>();
-			if (keys.isPresent())
-			{
-				for (int i = 0; i < judged.size(); ++i)
-					byId.put(judged.get(i).assertion().id(), keys.get().get(i));
-			}
-			JudgeJob judging = new JudgeJob(pilot, trial.position(), testCase, completed, judged, results, section, 1,
-				judged, Collections.unmodifiableMap(byId), Map.of());
-			withStoredVerdicts(judging).ifPresent(queue::addFirst);
+			for (JudgeJob job : jobs.reversed())
+				queue.addFirst(job);
 		}
 
 		/**
@@ -2010,7 +2104,7 @@ public final class GuardPilot
 			}
 			return Optional.of(new JudgeJob(judging.pilot(), judging.position(), judging.testCase(), judging.trial(),
 				List.copyOf(missing), judging.results(), judging.section(), judging.attempt(), judging.assertions(),
-				judging.keys(), Map.copyOf(stored)));
+				judging.keys(), Map.copyOf(stored), judging.scopes()));
 		}
 
 		/**
@@ -2052,6 +2146,9 @@ public final class GuardPilot
 		 */
 		private void judgeEnded(JudgeJob judging, SessionResult result, Throwable failure) throws IOException
 		{
+			// The trial runs again after another scope's judge failed, so this session's verdicts are not needed
+			if (judging.scopes().isAbandoned())
+				return;
 			switch (result)
 			{
 				case null -> sessionFailed(judging, "The judge session failed: " + Driver.describe(failure));
@@ -2101,21 +2198,26 @@ public final class GuardPilot
 		}
 
 		/**
-		 * Records a trial that its judge decided. A trial that passes every assertion has its effects and its copy of
-		 * the initial project deleted; a trial that fails one keeps them as the evidence of its failure.
+		 * Records the verdict of one evidence scope of a trial, and records the trial once every scope is decided. A
+		 * trial that passes every assertion has its effects and its copy of the initial project deleted; a trial that
+		 * fails one keeps them as the evidence of its failure.
 		 *
 		 * @param judging the judged trial
-		 * @param judgment the judge's verdict
+		 * @param scopeJudgment the judge's verdict of the scope's assertions
 		 */
-		private void decided(JudgeJob judging, Judgment judgment)
+		private void decided(JudgeJob judging, Judgment scopeJudgment)
 		{
+			Optional<Judgment> trialJudgment = judging.scopes().decide(judging.scope(), scopeJudgment);
+			if (trialJudgment.isEmpty())
+				return;
+			Judgment judgment = trialJudgment.get();
 			Set<String> failed = new HashSet<>();
 			for (FailedAssertion failure : judgment.failures())
 				failed.add(failure.assertionId());
 			Map<String, Boolean> assertions = new LinkedHashMap<>();
 			for (BuiltInToolResult result : judging.results())
 				assertions.put(result.assertion().id(), result.passed());
-			for (JudgedAssertion assertion : judging.assertions())
+			for (JudgedAssertion assertion : judging.scopes().assertions())
 			{
 				String id = assertion.assertion().id();
 				assertions.put(id, !failed.contains(id));
@@ -2168,8 +2270,12 @@ public final class GuardPilot
 			{
 				case TrialJob trial -> infrastructureFailed(trial, reason);
 				case JudgeJob judging when judging.attempt() < Driver.JUDGE_ATTEMPTS -> queue.addFirst(judging.retry());
-				case JudgeJob judging -> infrastructureFailed(judging, "The judge failed " + Driver.JUDGE_ATTEMPTS +
-					" times. Last failure: " + reason);
+				case JudgeJob judging ->
+				{
+					judging.scopes().abandon();
+					infrastructureFailed(judging, "The judge failed " + Driver.JUDGE_ATTEMPTS + " times. Last " +
+						"failure: " + reason);
+				}
 			}
 		}
 

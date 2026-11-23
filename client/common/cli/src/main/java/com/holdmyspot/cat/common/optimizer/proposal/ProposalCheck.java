@@ -1354,11 +1354,20 @@ public final class ProposalCheck
 						scenarioFile + " to one requirement.");
 					continue;
 				}
-				if (requireJudgeReasons && (assertion.tool() == null || assertion.onToolFailure() == OnToolFailure.JUDGE) &&
-					assertion.judgeReason() == null)
+				boolean judged = assertion.tool() == null || assertion.onToolFailure() == OnToolFailure.JUDGE;
+				if (requireJudgeReasons && judged && assertion.judgeReason() == null)
 				{
 					problems.add(scenarioFile + ": assertion `" + id + "` is judged but has no judge_reason; add one " +
 						"sentence explaining why no built-in tool decides it");
+					continue;
+				}
+				// A recorded scenario that predates the key parses, but every judged assertion that a proposal holds
+				// declares what its judge reads
+				if (judged && assertion.evidenceScope() == null)
+				{
+					problems.add(scenarioFile + ": assertion `" + id + "` is judged but has no evidence_scope; add " +
+						"- **evidence_scope**: response if it is about what the agent says, or actions if it is about " +
+						"what the agent does, needs both or is unclear");
 					continue;
 				}
 				ObjectNode full = assertions.addObject();
@@ -1368,9 +1377,10 @@ public final class ProposalCheck
 				full.put("tool", assertion.tool());
 				full.put("on_tool_failure", EnumNames.lowerCase(assertion.onToolFailure()));
 				full.put("statement", assertion.statement());
-				if ((assertion.tool() == null || assertion.onToolFailure() == OnToolFailure.JUDGE) &&
-					assertion.judgeReason() != null)
+				if (judged && assertion.judgeReason() != null)
 					full.put("judge_reason", assertion.judgeReason());
+				if (judged)
+					full.put("evidence_scope", EnumNames.lowerCase(assertion.evidenceScope()));
 				full.put("requirement_id", items.get(k).get("requirement_id").asString());
 			}
 			for (String id : declared.keySet())

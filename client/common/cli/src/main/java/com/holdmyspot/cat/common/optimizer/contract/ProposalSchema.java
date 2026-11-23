@@ -518,6 +518,9 @@ public final class ProposalSchema
 	{
 		write(judge.profile(), node);
 		node.put("prompt", judge.prompt());
+		// A contract confirmed before replies were judged on their own keeps the identity that it had
+		if (judge.responsePrompt() != null)
+			node.put("response_prompt", judge.responsePrompt());
 		node.put("rubric", judge.rubric());
 		node.put("decision_rule", judge.decisionRule());
 		node.set("result_schema", json.readTree(judge.resultSchema()));
@@ -744,6 +747,9 @@ public final class ProposalSchema
 			if ((assertion.tool() == null || assertion.onToolFailure() == OnToolFailure.JUDGE) &&
 				assertion.judgeReason() != null)
 				assertionNode.put("judge_reason", assertion.judgeReason());
+			// An assertion that declares no scope keeps the identity that its contract had before scopes existed
+			if (assertion.evidenceScope() != null)
+				assertionNode.put("evidence_scope", EnumNames.lowerCase(assertion.evidenceScope()));
 			assertionNode.put("requirement_id", mapped.requirementId());
 		}
 		// A test whose judge decides the assertion that CAT adds keeps the identity that it had before the property existed
@@ -855,7 +861,7 @@ public final class ProposalSchema
 			JsonNode judgeNode = root.get("judge");
 			JudgeProfile judge = attempt("$.judge", () -> new JudgeProfile(sessionProfile(judgeNode),
 				text(judgeNode, "prompt"), text(judgeNode, "rubric"), text(judgeNode, "decision_rule"),
-				judgeNode.get("result_schema").toString()));
+				judgeNode.get("result_schema").toString(), optionalText(judgeNode, "response_prompt")));
 			List<Dependent> dependents = List.of();
 			JsonNode dependentsNode = root.get(DEPENDENTS);
 			if (dependentsNode != null && !dependentsNode.isNull())
@@ -1170,8 +1176,22 @@ public final class ProposalSchema
 			return attempt(location, () -> new MappedAssertion(new Assertion(text(node, "id"),
 				EnumNames.parse(text(node, "kind"), AssertionKind.class), optionalText(node, "tool"),
 				EnumNames.parse(text(node, "on_tool_failure"), OnToolFailure.class), text(node, "statement"),
-				optionalText(node, "judge_reason")),
+				optionalText(node, "judge_reason"), evidenceScope(node)),
 				text(node, "requirement_id")));
+		}
+
+		/**
+		 * Returns the evidence scope that an assertion declares.
+		 *
+		 * @param node the assertion
+		 * @return the scope, or {@code null} if the assertion declares none
+		 */
+		private EvidenceScope evidenceScope(JsonNode node)
+		{
+			String scope = optionalText(node, "evidence_scope");
+			if (scope == null)
+				return null;
+			return EnumNames.parse(scope, EvidenceScope.class);
 		}
 
 		/**

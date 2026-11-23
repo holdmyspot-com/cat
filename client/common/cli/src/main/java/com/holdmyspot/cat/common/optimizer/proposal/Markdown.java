@@ -14,6 +14,7 @@ import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.Dependent;
 import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
+import com.holdmyspot.cat.common.optimizer.contract.EvidenceScope;
 import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFile;
 import com.holdmyspot.cat.common.optimizer.contract.JudgeProfile;
 import com.holdmyspot.cat.common.optimizer.contract.MappedAssertion;
@@ -642,7 +643,12 @@ public final class Markdown
 			Assertion assertion = mapped.assertion();
 			if (assertion.tool() == null || assertion.onToolFailure() == OnToolFailure.JUDGE)
 			{
-				text.append("  - `").append(assertion.id()).append("`: ");
+				// An assertion of a contract that predates the scope is judged as actions
+				EvidenceScope scope = assertion.evidenceScope();
+				if (scope == null)
+					scope = EvidenceScope.ACTIONS;
+				text.append("  - `").append(assertion.id()).append("` (evidence scope `").
+					append(EnumNames.lowerCase(scope)).append("`): ");
 				if (assertion.judgeReason() == null)
 					text.append("No built-in tool can decide this assertion.");
 				else
@@ -653,7 +659,9 @@ public final class Markdown
 		}
 		if (expectedOutcome.tool() == null || expectedOutcome.onToolFailure() == OnToolFailure.JUDGE)
 		{
-			text.append("  - `expected_outcome`: ");
+			// The outcome can be a file's state, so its judge reads what the agent did
+			text.append("  - `expected_outcome` (evidence scope `").append(EnumNames.lowerCase(EvidenceScope.ACTIONS)).
+				append("`): ");
 			if (test.expectedOutcomeJudgeReason() == null)
 				text.append("No built-in tool decides the expected outcome for this test.");
 			else

@@ -7,9 +7,9 @@ import com.holdmyspot.cat.common.optimizer.contract.JudgeProfile;
 /**
  * The content that a harness's judge version stands for, in the form whose hash a judge version registry records.
  * <p>
- * The content holds every field of the judge profile and the evidence section that the harness renders for fixed
- * harness events. Each value is preceded by its name and length, so that no change can move text from one field to
- * another without changing the content.
+ * The content holds every field of the judge profile, including the response prompt when the profile has one, and the
+ * evidence section that the harness renders for fixed harness events. Each value is preceded by its name and length,
+ * so that no change can move text from one field to another without changing the content.
  */
 public final class JudgeVersionContent
 {
@@ -39,6 +39,8 @@ public final class JudgeVersionContent
 		append(content, "rubric", judge.rubric());
 		append(content, "decision_rule", judge.decisionRule());
 		append(content, "result_schema", judge.resultSchema());
+		if (judge.responsePrompt() != null)
+			append(content, "response_prompt", judge.responsePrompt());
 		append(content, "evidence_section", evidenceSection);
 		return content.toString();
 	}

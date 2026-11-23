@@ -82,10 +82,10 @@ public final class ClaudeSessions extends RunnerSessions
 	private static final String SESSION_ENVIRONMENT_RELEASE = "1.0";
 	/**
 	 * The version of the judge that Claude sessions run. Increment it in every release that changes the judge's role
-	 * profile, prompt, rubric, decision rule or result schema, or the evidence a judge receives for the same harness
+	 * profile, prompts, rubric, decision rule or result schema, or the evidence a judge receives for the same harness
 	 * events, and register the new version with the hash of the judge profile and the rendered evidence section.
 	 */
-	private static final int JUDGE_VERSION = 14;
+	private static final int JUDGE_VERSION = 15;
 	/**
 	 * The managed settings files that an administrator installs on Linux and on macOS.
 	 */

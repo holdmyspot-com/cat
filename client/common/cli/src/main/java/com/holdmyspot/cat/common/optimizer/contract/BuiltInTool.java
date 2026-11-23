@@ -115,6 +115,17 @@ public sealed interface BuiltInTool
 	}
 
 	/**
+	 * Indicates whether the tool examines only the trial's replies, so that a judge that reads only the replies holds
+	 * everything that the tool observes.
+	 *
+	 * @return {@code true} for a tool that examines reply text
+	 */
+	default boolean examinesOnlyReplies()
+	{
+		return false;
+	}
+
+	/**
 	 * Indicates whether the tool needs the exit status of commands, which some harnesses do not report.
 	 *
 	 * @return {@code true} if it does
@@ -187,6 +198,12 @@ public sealed interface BuiltInTool
 		}
 
 		@Override
+		public boolean examinesOnlyReplies()
+		{
+			return true;
+		}
+
+		@Override
 		public String behavior()
 		{
 			return "reply_not_exact";
@@ -240,6 +257,12 @@ public sealed interface BuiltInTool
 		public String name()
 		{
 			return "forbidden-text";
+		}
+
+		@Override
+		public boolean examinesOnlyReplies()
+		{
+			return true;
 		}
 
 		@Override
@@ -300,6 +323,12 @@ public sealed interface BuiltInTool
 		public String name()
 		{
 			return "pattern";
+		}
+
+		@Override
+		public boolean examinesOnlyReplies()
+		{
+			return true;
 		}
 
 		@Override
@@ -372,6 +401,12 @@ public sealed interface BuiltInTool
 		public String name()
 		{
 			return "count";
+		}
+
+		@Override
+		public boolean examinesOnlyReplies()
+		{
+			return true;
 		}
 
 		@Override

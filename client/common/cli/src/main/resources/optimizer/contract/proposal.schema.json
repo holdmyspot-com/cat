@@ -29,6 +29,7 @@
 				"on_tool_failure": {"description": "fail if a failure of tool fails the trial; judge if the judge then decides the assertion from its statement, with the tool's result as evidence. fail when tool is null.", "type": "string", "pattern": "^(fail|judge)$"},
 				"statement": {"description": "What the assertion requires, in words that the judge can decide from the trial's record when tool is null or on_tool_failure is judge. It may contain {{name}} placeholders.", "type": "string", "pattern": "\\S"},
 				"judge_reason": {"description": "One sentence explaining why no built-in tool decides it. Required for a new assertion without a tool or with on_tool_failure judge; absent for legacy assertions and assertions decided entirely by a tool.", "type": "string", "pattern": "\\S"},
+				"evidence_scope": {"description": "What the judge of the assertion reads: response if the assertion is about what the agent says, so its judge reads only the test case and the replies; actions if it is about what the agent does, or needs both, or its scope is unclear. Required for a new assertion without a tool or with on_tool_failure judge; absent for assertions decided entirely by a tool. A legacy assertion without it is judged as actions. response only for an assertion without a tool or whose tool examines only the replies.", "type": "string", "pattern": "^(response|actions)$"},
 				"requirement_id": {"description": "The requirement whose compliance the assertion shows. The test must check it.", "type": "string", "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$"}
 			}
 		},
@@ -266,6 +267,7 @@
 				"model": {"description": "The role profile's model.", "type": "string", "pattern": "^[^\\s/]*$"},
 				"effort": {"description": "The role profile's reasoning effort; `none` selects no reasoning, and an empty effort loads as `none`.", "type": "string", "pattern": "^[^\\s/]*$"},
 				"prompt": {"type": "string", "pattern": "\\S"},
+				"response_prompt": {"description": "The instructions of a session that judges only the replies. Absent for a contract confirmed before replies were judged on their own.", "type": "string", "pattern": "\\S"},
 				"rubric": {"description": "What the judge checks, in a trial's text, file effects and tool effects, for each assertion that no built-in tool decides, including expected_outcome unless the test gives it a tool.", "type": "string", "pattern": "\\S"},
 				"decision_rule": {"description": "How the judge turns its findings into a pass or a failure of each assertion that it decides. The judge cannot override a built-in tool that decided its assertion.", "type": "string", "pattern": "\\S"},
 				"result_schema": {"description": "The JSON schema that a judge result must satisfy.", "type": "object"}

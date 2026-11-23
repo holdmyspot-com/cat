@@ -9,6 +9,7 @@ import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
 import com.holdmyspot.cat.common.optimizer.contract.Cell;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.Dependent;
+import com.holdmyspot.cat.common.optimizer.contract.EvidenceScope;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.contract.ExpectedOutcomeTool;
 import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFile;
@@ -159,6 +160,42 @@ public final class ProposalSchemaTest
 		ProposalSchema schema = schema();
 		requireThat(ContractIdentity.of(schema, loaded), "identity").
 			isNotEqualTo(ContractIdentity.of(schema, ContractFixtures.contract()));
+	}
+
+	/**
+	 * Verifies that each judged assertion's evidence scope and the judge's response prompt survive writing the contract
+	 * and reading it back and are part of the contract's identity, that an assertion without a scope writes no property
+	 * for it, and that a value other than {@code response} or {@code actions} is rejected at the assertion's location.
+	 *
+	 * @throws InvalidProposalException if the stored contract is rejected
+	 */
+	@Test
+	public void evidenceScopesAreStored() throws InvalidProposalException
+	{
+		// Requirement: R-L19
+		Contract plain = ContractFixtures.contract();
+		ObjectNode plainStored = (ObjectNode) json.readTree(schema().toJson(plain));
+		requireThat(plainStored.get("tests").get(0).get("assertions").get(0).has("evidence_scope"), "withoutScope").
+			isFalse();
+
+		Contract scoped = ContractFixtures.withEvidenceScope(plain, EvidenceScope.RESPONSE);
+		ObjectNode stored = (ObjectNode) json.readTree(schema().toJson(scoped));
+		requireThat(stored.get("tests").get(0).get("assertions").get(0).path("evidence_scope").asString(),
+			"storedScope").isEqualTo("response");
+		requireThat(stored.get("judge").path("response_prompt").asString(), "storedResponsePrompt").
+			isEqualTo(scoped.judge().responsePrompt());
+
+		Contract loaded = schema().parse(json.writeValueAsString(stored));
+		requireThat(loaded.tests(), "tests").isEqualTo(scoped.tests());
+		requireThat(loaded.judge(), "judge").isEqualTo(scoped.judge());
+		ProposalSchema schema = schema();
+		requireThat(ContractIdentity.of(schema, loaded), "identity").
+			isNotEqualTo(ContractIdentity.of(schema, ContractFixtures.withEvidenceScope(plain,
+				EvidenceScope.ACTIONS)));
+
+		((ObjectNode) stored.get("tests").get(0).get("assertions").get(0)).put("evidence_scope", "both");
+		requireThat(String.join(" | ", rejection(json.writeValueAsString(stored)).problems()), "invalidScope").
+			contains("$.tests[0].assertions[0]").contains("evidence_scope");
 	}
 
 	/**

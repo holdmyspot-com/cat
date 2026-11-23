@@ -13,7 +13,8 @@ import tools.jackson.databind.node.ObjectNode;
 
 /**
  * The fields of every judge profile that CAT supplies: the model and effort used by contract author, judge and prompt
- * author sessions (the role profile), the judge prompt and the result schema.
+ * author sessions (the role profile), the judge prompt, the prompt of sessions that judge only replies and the result
+ * schema.
  * <p>
  * The contract author proposes only the rubric and the decision rule. CAT adds its own fields before it validates the
  * proposal, so a prompt system cannot choose how it is judged, and confirmation freezes the complete profile in the
@@ -26,12 +27,15 @@ public final class JudgeTemplate
 	/**
 	 * The names of the {@code judge} properties that CAT supplies.
 	 */
-	static final List<String> OWNED_FIELDS = List.of("model", "effort", "prompt", "result_schema");
+	static final List<String> OWNED_FIELDS = List.of("model", "effort", "prompt", "response_prompt",
+		"result_schema");
 	private static final String PROMPT_RESOURCE = "/optimizer/judge/judge.md";
+	private static final String RESPONSE_PROMPT_RESOURCE = "/optimizer/judge/response.md";
 	private static final String SCHEMA_RESOURCE = "/optimizer/judge/verdict.schema.json";
 	private final JsonMapper json;
 	private final TrialProfile role;
 	private final String prompt;
+	private final String responsePrompt;
 	private final String resultSchema;
 
 	/**
@@ -41,7 +45,7 @@ public final class JudgeTemplate
 	 * @param role the harness's role profile, which the contract author, judge and prompt author sessions run under
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code role} does not name both a model and an effort
-	 * @throws UncheckedIOException if the packaged judge prompt or result schema cannot be read
+	 * @throws UncheckedIOException if a packaged judge prompt or the result schema cannot be read
 	 */
 	public JudgeTemplate(JsonMapper json, TrialProfile role)
 	{
@@ -51,6 +55,7 @@ public final class JudgeTemplate
 		this.json = json;
 		this.role = role;
 		this.prompt = PromptTemplate.readResource(PROMPT_RESOURCE);
+		this.responsePrompt = PromptTemplate.readResource(RESPONSE_PROMPT_RESOURCE);
 		// The compact form is the form that a parsed contract holds, so a profile equals the confirmed one
 		this.resultSchema = json.readTree(PromptTemplate.readResource(SCHEMA_RESOURCE)).toString();
 	}
@@ -68,7 +73,7 @@ public final class JudgeTemplate
 	{
 		requireThat(rubric, "rubric").isNotBlank();
 		requireThat(decisionRule, "decisionRule").isNotBlank();
-		return new JudgeProfile(role, prompt, rubric, decisionRule, resultSchema);
+		return new JudgeProfile(role, prompt, rubric, decisionRule, resultSchema, responsePrompt);
 	}
 
 	/**
@@ -91,6 +96,7 @@ public final class JudgeTemplate
 		judge.put("model", role.model());
 		judge.put("effort", role.effort());
 		judge.put("prompt", prompt);
+		judge.put("response_prompt", responsePrompt);
 		judge.set("result_schema", json.readTree(resultSchema));
 	}
 }

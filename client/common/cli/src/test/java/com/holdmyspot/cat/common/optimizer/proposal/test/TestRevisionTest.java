@@ -230,6 +230,34 @@ public final class TestRevisionTest
 	}
 
 	/**
+	 * Verifies that the contract author's brief and the test revision's brief state both evidence scopes, the
+	 * {@code actions} fallback for an assertion that needs both or whose scope is unclear, and the duty to split an
+	 * assertion about an action between a built-in tool and a narrow judged assertion.
+	 *
+	 * @throws IOException              if a file cannot be read or written
+	 * @throws InvalidProposalException if the confirmed proposal is refused
+	 */
+	@Test
+	public void briefsStateEvidenceScopes() throws IOException, InvalidProposalException
+	{
+		// Requirement: R-L19
+		// Requirement: R-L20
+		String contractAuthorBrief = contractAuthor.request(ContractToolSessions.PROMPT_SYSTEM, PROFILES, List.of(),
+			List.of(), ContractFixtures.SALT).turns().getFirst();
+		String revisionBrief = protocol.request(ContractToolSessions.PROMPT_SYSTEM, examination()).turns().getFirst();
+		for (String brief : List.of(contractAuthorBrief, revisionBrief))
+		{
+			requireThat(brief, "brief").contains("- `evidence_scope`").
+				contains("`response`: the assertion is about what the agent says").
+				contains("`actions`: the assertion is about what the agent does").
+				contains("An assertion that needs both, or whose scope is unclear, is `actions`.").
+				contains("a built-in tool decides whether the action happened").
+				contains("a narrow judged assertion decides only the part that needs meaning").
+				contains("names that part");
+		}
+	}
+
+	/**
 	 * Verifies that {@code contract check} reports, in a test revision session, the problems that CAT reports when
 	 * the session ends for a corrected test that proves other requirements and repeats a confirmed test case.
 	 *
@@ -329,6 +357,33 @@ public final class TestRevisionTest
 		requireThat(problems.getFirst(), "problem").contains(FORMATTING + "/values.json: the boundary class " +
 			"`sarcastic_tone` has a single case").doesNotContain("development").doesNotContain("held-out").
 			doesNotContain(" part");
+		requireThat(report.output(), "output").isEqualTo(problemReport(problems));
+		requireThat(report.exitCode(), "exitCode").isEqualTo(1);
+	}
+
+	/**
+	 * Verifies that a corrected test with a judged assertion that declares no evidence scope is refused both when the
+	 * session ends and by {@code contract check}, with the same problem, which names the scenario, the assertion and
+	 * the key.
+	 *
+	 * @throws IOException              if a file cannot be read or written
+	 * @throws InvalidProposalException if the confirmed proposal is refused
+	 */
+	@Test
+	public void refusesRevisedAssertionWithoutScope() throws IOException, InvalidProposalException
+	{
+		// Requirement: R-C26
+		// Requirement: R-L19
+		Examination examined = examination();
+		Path project = revisionProject(examined, revisedFormatting(test ->
+			((ObjectNode) test.get("assertions").get(0)).putNull("evidence_scope")));
+
+		Report report = ContractToolSessions.check(json, contextFile(project));
+
+		List<String> problems = sessionEndProblems(project, examined);
+		requireThat(problems, "problems").size().isEqualTo(1);
+		requireThat(problems.getFirst(), "problem").contains(FORMATTING + "/scenario.md").
+			contains("uses_requested_tone").contains("evidence_scope");
 		requireThat(report.output(), "output").isEqualTo(problemReport(problems));
 		requireThat(report.exitCode(), "exitCode").isEqualTo(1);
 	}

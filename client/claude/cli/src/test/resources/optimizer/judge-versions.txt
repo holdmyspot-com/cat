@@ -16,3 +16,5 @@
 13 a3032a4e24d1b345475629f43f88b10f5e718c2ae38ecb7e3186538ff892d5c2
 # Served judges now receive paths to the broker's evidence copies.
 14 a3032a4e24d1b345475629f43f88b10f5e718c2ae38ecb7e3186538ff892d5c2
+# Judged assertions of the response scope are judged from the replies alone, with the response prompt.
+15 515d1d6b7edb3fb482dd998a8f418d1b73bfcc8db810c84f9ec99cf0ad09cb3b

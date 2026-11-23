@@ -23,6 +23,7 @@ import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
+import com.holdmyspot.cat.common.optimizer.contract.EvidenceScope;
 import com.holdmyspot.cat.common.optimizer.contract.ExpectedOutcomeTool;
 import com.holdmyspot.cat.common.optimizer.contract.NearMisses;
 import com.holdmyspot.cat.common.optimizer.contract.OnToolFailure;
@@ -339,9 +340,13 @@ public final class ProposalTest
 			for (com.holdmyspot.cat.common.optimizer.contract.MappedAssertion mapped : test.assertions())
 			{
 				Assertion assertion = mapped.assertion();
+				// The scenario of a judged assertion declares the actions scope
+				EvidenceScope scope = null;
+				if (assertion.tool() == null || assertion.onToolFailure() == OnToolFailure.JUDGE)
+					scope = EvidenceScope.ACTIONS;
 				assertions.add(new com.holdmyspot.cat.common.optimizer.contract.MappedAssertion(new Assertion(
 					assertion.id(), assertion.kind(), assertion.tool(), assertion.onToolFailure(), assertion.statement(),
-					FIXTURE_JUDGE_REASON), mapped.requirementId()));
+					FIXTURE_JUDGE_REASON, scope), mapped.requirementId()));
 			}
 			tests.add(new PromptTest(test.id(), test.riskRank(), test.requirementIds(), test.absentTriggers(),
 				test.applicability(), test.turns(), test.timeLimit(), test.expectedBehaviour(),
@@ -3287,6 +3292,88 @@ public final class ProposalTest
 			built-in tool `count turn=1 "(?m)^- \\\\S" 3 3` decides it when it passes; when it fails, the judge \
 			decides it.
 			""");
+	}
+
+	/**
+	 * Verifies that the proposal shows each judged assertion's evidence scope under "Judged assertions", and that the
+	 * assertion that CAT adds is judged as {@code actions}.
+	 *
+	 * @throws InvalidProposalException if the fixture is rejected
+	 */
+	@Test
+	public void showsEvidenceScopes() throws InvalidProposalException
+	{
+		// Requirement: R-L19
+		ObjectNode derivation = (ObjectNode) json.readTree(fixture("derivation-with-checks.json"));
+		for (JsonNode test : derivation.get("tests"))
+		{
+			for (JsonNode assertion : test.get("assertions"))
+			{
+				ObjectNode item = (ObjectNode) assertion;
+				switch (assertion.get("id").asString())
+				{
+					case "keeps_requested_tone" -> item.put("evidence_scope", "response").
+						put("judge_reason", "Whether a tone is kept needs meaning.");
+					case "lists_three_items" -> item.put("on_tool_failure", "judge").
+						put("evidence_scope", "response").
+						put("judge_reason", "A count misses items written in another list style.");
+					case "asks_before_deleting" -> item.put("evidence_scope", "actions").
+						put("judge_reason", "Whether the question came before the deletion needs the tool activity.");
+					default ->
+					{
+					}
+				}
+			}
+		}
+
+		String text = rendered(json.writeValueAsString(derivation));
+
+		requireThat(text, "text").contains("- Judged assertions:\n" +
+			"  - `keeps_requested_tone` (evidence scope `response`): Whether a tone is kept needs meaning.\n" +
+			"  - `lists_three_items` (evidence scope `response`): A count misses items written in another list " +
+			"style.\n" +
+			"  - `expected_outcome` (evidence scope `actions`): ").contains("- Judged assertions:\n" +
+			"  - `asks_before_deleting` (evidence scope `actions`): Whether the question came before the deletion " +
+			"needs the tool activity.\n" +
+			"  - `expected_outcome` (evidence scope `actions`): ");
+	}
+
+	/**
+	 * Verifies that the proposal shows the evidence scope that the contract author adds to a recorded scenario, which
+	 * predates the key, as an edit of the recorded file that changes no other line.
+	 *
+	 * @throws IOException              if a file cannot be written
+	 * @throws InvalidProposalException if a proposal is rejected
+	 */
+	@Test
+	public void showsAddedEvidenceScopeAsEdit() throws IOException, InvalidProposalException
+	{
+		// Requirement: R-L19
+		// Requirement: R-C26
+		ObjectNode derivation = (ObjectNode) json.readTree(fixture("derivation.json"));
+		ObjectNode formatting = (ObjectNode) derivation.get("tests").get(0);
+		ObjectNode assertion = (ObjectNode) formatting.get("assertions").get(0);
+		assertion.putNull("evidence_scope");
+		String recorded = DraftFixtures.scenario(formatting);
+		requireThat(recorded, "recorded").doesNotContain("evidence_scope");
+		assertion.put("evidence_scope", "response");
+		String citation = ".cat/tests/CLAUDE/formatting/scenario.md";
+		formatting.putArray("regression_scenarios").add(citation);
+		Path project = recordedProject(recorded);
+		RegressionScenarios scenarios = RegressionScenarios.read(json, project, project);
+
+		ContractAuthorProtocol author = contractAuthor(scenarios);
+		DerivedProposal edited = author.proposal(recordedSession(author, project,
+			json.writeValueAsString(derivation)), project, PROFILES, SALT);
+		String text = render(edited);
+
+		int start = text.indexOf("    --- a/" + citation + "\n");
+		requireThat(start, "start").isNotNegative();
+		int end = text.indexOf("\n    ```\n", start);
+		List<String> changed = text.substring(start, end).lines().
+			filter(line -> line.startsWith("    +") || line.startsWith("    -")).
+			filter(line -> !line.startsWith("    +++") && !line.startsWith("    ---")).toList();
+		requireThat(changed, "changed").isEqualTo(List.of("    +- **evidence_scope**: response"));
 	}
 
 	/**

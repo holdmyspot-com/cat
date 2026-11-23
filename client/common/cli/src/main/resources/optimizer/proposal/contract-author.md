@@ -65,6 +65,9 @@
 	sentence explaining why no built-in tool decides it; CAT shows these under `Judged assertions` so the user can see
 	where judge sessions are spent. Choose `on_tool_failure: judge`
 	when a failed check may reject a valid outcome, and `fail` when its pass condition is the assertion.
+- Give each assertion that the judge decides its `evidence_scope`, as Prompt tests below describes, including each
+	such assertion of a recorded scenario that lacks it. Where a requirement is about what the agent does, let a
+	built-in tool decide whether the action happened and a judged assertion only the part that needs meaning.
 - Learn what CAT accepts, and how it stages, runs and records trials, from this prompt, the output schema and the
 	problems that `contract check` prints. Do not read the source code of CAT's optimizer for it, even when the project
 	holds that code.

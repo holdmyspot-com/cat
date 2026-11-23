@@ -18,9 +18,12 @@ import java.util.Optional;
  *                      {@code null}
  * @param statement     what the assertion requires
  * @param judgeReason   why no built-in tool decides it, or {@code null} for a legacy assertion or one with a tool
+ * @param evidenceScope what the judge of the assertion reads, or {@code null} if the assertion declares none: a
+ *                      mechanical assertion, or a judged one of a contract that predates the declaration, which the
+ *                      judge decides as {@link EvidenceScope#ACTIONS}
  */
 public record Assertion(String id, AssertionKind kind, String tool, OnToolFailure onToolFailure, String statement,
-	String judgeReason)
+	String judgeReason, EvidenceScope evidenceScope)
 {
 	/**
 	 * What the assertion that CAT adds to every prompt test requires.
@@ -38,12 +41,16 @@ public record Assertion(String id, AssertionKind kind, String tool, OnToolFailur
 	 * @param onToolFailure what a failure of {@code tool} means; {@link OnToolFailure#FAIL} when {@code tool} is
 	 *                      {@code null}
 	 * @param statement     what the assertion requires
+	 * @param judgeReason   why no built-in tool decides it, or {@code null} for a legacy assertion or one with a tool
+	 * @param evidenceScope what the judge of the assertion reads, or {@code null} if the assertion declares none
 	 * @throws NullPointerException     if {@code id}, {@code kind}, {@code onToolFailure} or {@code statement} are
 	 *                                  null
 	 * @throws IllegalArgumentException if {@code id} is not lowercase words joined by underscores, {@code tool} does
 	 *                                  not name a built-in tool with arguments that suit it, {@code onToolFailure} is
-	 *                                  {@link OnToolFailure#JUDGE} without a {@code tool}, or {@code statement} is
-	 *                                  blank
+	 *                                  {@link OnToolFailure#JUDGE} without a {@code tool}, {@code statement} is
+	 *                                  blank, a mechanical assertion has a judge reason or an evidence scope, or the
+	 *                                  scope is {@link EvidenceScope#RESPONSE} for a tool that examines more than the
+	 *                                  replies
 	 */
 	public Assertion
 	{
@@ -60,6 +67,36 @@ public record Assertion(String id, AssertionKind kind, String tool, OnToolFailur
 		requireThat(statement, "statement").isNotBlank();
 		if (tool != null && onToolFailure != OnToolFailure.JUDGE && judgeReason != null)
 			throw new IllegalArgumentException("The assertion '" + id + "' has a tool and needs no judge reason");
+		if (evidenceScope != null)
+		{
+			if (tool != null && onToolFailure != OnToolFailure.JUDGE)
+			{
+				throw new IllegalArgumentException("The assertion '" + id + "' is decided by its tool, so no judge " +
+					"reads evidence for it and it has no evidence scope");
+			}
+			if (evidenceScope == EvidenceScope.RESPONSE && tool != null &&
+				!BuiltInTool.parse(tool).examinesOnlyReplies())
+			{
+				throw new IllegalArgumentException("The assertion '" + id + "' has the evidence scope response, but " +
+					"its tool examines more than the replies");
+			}
+		}
+	}
+
+	/**
+	 * Creates an assertion without an evidence scope.
+	 *
+	 * @param id the assertion's identifier
+	 * @param kind whether it requires an effect or guards against a harm
+	 * @param tool the built-in tool, or {@code null} when the judge decides it
+	 * @param onToolFailure what a tool failure means
+	 * @param statement what the assertion requires
+	 * @param judgeReason why no built-in tool decides it, or {@code null} for a legacy assertion or one with a tool
+	 */
+	public Assertion(String id, AssertionKind kind, String tool, OnToolFailure onToolFailure, String statement,
+		String judgeReason)
+	{
+		this(id, kind, tool, onToolFailure, statement, judgeReason, null);
 	}
 
 	/**

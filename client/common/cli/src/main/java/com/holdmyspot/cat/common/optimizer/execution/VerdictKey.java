@@ -4,30 +4,21 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
-import com.holdmyspot.cat.common.optimizer.contract.Assertion;
-import com.holdmyspot.cat.common.optimizer.contract.BuiltInToolResult;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
+import com.holdmyspot.cat.common.optimizer.contract.EvidenceScope;
 import com.holdmyspot.cat.common.optimizer.contract.JudgeProfile;
 import com.holdmyspot.cat.common.optimizer.contract.JudgedAssertion;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.Requirement;
 import com.holdmyspot.cat.common.optimizer.contract.TestValue;
-import com.holdmyspot.cat.common.optimizer.evidence.EvidenceSection;
-import com.holdmyspot.cat.common.optimizer.inventory.InventoryScanner;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.report.EnumNames;
 
 import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.LinkOption;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
 import java.util.TreeMap;
 
 /**
@@ -35,20 +26,18 @@ import java.util.TreeMap;
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  *
- * @param digest the digest of the test case, the assertion, the judge's identity and the evidence that the judge
- *               reads
+ * @param digest the digest of the test case, the assertion with its scope, the judge's identity and the replies that
+ *               the judge reads
  */
 public record VerdictKey(Sha256 digest)
 {
-	private static final String FORMAT = "cat-verdict-key-v1";
-	private static final String TRANSCRIPT = "{{transcript}}";
-	private static final String EFFECTS = "{{effects}}";
+	private static final String FORMAT = "cat-verdict-key-v2";
 
 	/**
 	 * Creates a key.
 	 *
-	 * @param digest the digest of the test case, the assertion, the judge's identity and the evidence that the judge
-	 *               reads
+	 * @param digest the digest of the test case, the assertion with its scope, the judge's identity and the replies
+	 *               that the judge reads
 	 * @throws NullPointerException if {@code digest} is null
 	 */
 	public VerdictKey
@@ -57,39 +46,34 @@ public record VerdictKey(Sha256 digest)
 	}
 
 	/**
-	 * Returns the key of each judged assertion of a trial.
+	 * Returns the key of each judged assertion of a trial. Only the verdicts of the {@link EvidenceScope#RESPONSE}
+	 * scope are stored under their keys, because their judge reads only the test case and the replies, which repeat
+	 * across trials of one test case.
 	 *
-	 * @param harness         the harness that runs the judge
-	 * @param judgeVersion    the version of the harness's judge
-	 * @param judge           the profile of the judge that decides the assertions
-	 * @param testCase        the trial's test case
-	 * @param assertions      the assertions that the judge decides
-	 * @param trial           the trial session's result
-	 * @param evidenceSection the rendered trial evidence; empty when the template does not name it
-	 * @param results         the results of the test's built-in tools
-	 * @return the key of each assertion, in order, or empty if the template names a transcript or an effects directory
-	 *   that cannot be read
-	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException          if the evidence cannot be read
+	 * @param harness      the harness that runs the judge
+	 * @param judgeVersion the version of the harness's judge
+	 * @param judge        the profile of the judge that decides the assertions
+	 * @param testCase     the trial's test case
+	 * @param assertions   the assertions that the judge decides
+	 * @param trial        the trial session's result
+	 * @return the key of each assertion, in order
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if the judge has no response prompt
 	 */
-	public static Optional<List<VerdictKey>> of(Harness harness, int judgeVersion, JudgeProfile judge,
-		DrawnTestCase testCase, List<JudgedAssertion> assertions, SessionResult.Completed trial,
-		String evidenceSection, List<BuiltInToolResult> results) throws IOException
+	public static List<VerdictKey> of(Harness harness, int judgeVersion, JudgeProfile judge,
+		DrawnTestCase testCase, List<JudgedAssertion> assertions, SessionResult.Completed trial)
 	{
 		requireThat(harness, "harness").isNotNull();
 		requireThat(judge, "judge").isNotNull();
 		requireThat(testCase, "testCase").isNotNull();
 		requireThat(assertions, "assertions").isNotNull();
 		requireThat(trial, "trial").isNotNull();
-		requireThat(evidenceSection, "evidenceSection").isNotNull();
-		requireThat(results, "results").isNotNull();
 		Map<String, String> textByName = PromptTest.textByName(testCase.testCase());
 		Encoder shared = new Encoder();
 		shared.text(FORMAT);
 		writeTestCase(shared, testCase);
 		writeJudge(shared, harness, judgeVersion, judge);
-		if (!writeEvidence(shared, judge, trial, evidenceSection, results, textByName))
-			return Optional.empty();
+		writeReplies(shared, trial);
 		byte[] common = shared.bytes();
 		List<VerdictKey> keys = new ArrayList<>(assertions.size());
 		for (JudgedAssertion assertion : assertions)
@@ -99,7 +83,7 @@ public record VerdictKey(Sha256 digest)
 			writeAssertion(encoder, assertion, textByName);
 			keys.add(new VerdictKey(Sha256.of(encoder.bytes())));
 		}
-		return Optional.of(List.copyOf(keys));
+		return List.copyOf(keys);
 	}
 
 	/**
@@ -138,38 +122,33 @@ public record VerdictKey(Sha256 digest)
 	}
 
 	/**
-	 * Adds the judge's identity: its harness, model, effort and version, and the digests of its prompt template,
+	 * Adds the judge's identity: its harness, model, effort and version, and the digests of its response prompt,
 	 * rubric, decision rule and result schema.
 	 *
 	 * @param encoder      the encoder
 	 * @param harness      the harness that runs the judge
 	 * @param judgeVersion the version of the harness's judge
 	 * @param judge        the judge's profile
+	 * @throws IllegalArgumentException if the judge has no response prompt
 	 */
 	private static void writeJudge(Encoder encoder, Harness harness, int judgeVersion, JudgeProfile judge)
 	{
 		encoder.text(EnumNames.lowerCase(harness)).text(judge.profile().model()).text(judge.profile().effort()).
 			count(judgeVersion);
-		for (String text : List.of(judge.prompt(), judge.rubric(), judge.decisionRule(), judge.resultSchema()))
+		for (String text : List.of(judge.prompt(EvidenceScope.RESPONSE), judge.rubric(), judge.decisionRule(),
+			judge.resultSchema()))
+		{
 			encoder.text(Sha256.of(text.getBytes(UTF_8)).hex());
+		}
 	}
 
 	/**
-	 * Adds the evidence that the judge reads: the trial's replies, its evidence section without the heading that names
-	 * its directories, the built-in tool results, and the bytes of the transcript and of the effects directory when
-	 * the template names them.
+	 * Adds the trial's replies: each turn's assistant messages, in order.
 	 *
-	 * @param encoder         the encoder
-	 * @param judge           the judge's profile
-	 * @param trial           the trial session's result
-	 * @param evidenceSection the rendered trial evidence
-	 * @param results         the results of the test's built-in tools
-	 * @param textByName      the test case's text of each value, by name
-	 * @return {@code false} if the template names a transcript or an effects directory that cannot be read
-	 * @throws IOException if the evidence cannot be read
+	 * @param encoder the encoder
+	 * @param trial   the trial session's result
 	 */
-	private static boolean writeEvidence(Encoder encoder, JudgeProfile judge, SessionResult.Completed trial,
-		String evidenceSection, List<BuiltInToolResult> results, Map<String, String> textByName) throws IOException
+	private static void writeReplies(Encoder encoder, SessionResult.Completed trial)
 	{
 		encoder.count(trial.responses().size());
 		for (List<String> turn : trial.responses())
@@ -178,51 +157,11 @@ public record VerdictKey(Sha256 digest)
 			for (String message : turn)
 				encoder.text(message);
 		}
-		encoder.text(EvidenceSection.withoutPaths(evidenceSection, trial.transcript(), trial.effects()));
-		encoder.count(results.size());
-		for (BuiltInToolResult result : results)
-		{
-			Assertion assertion = result.assertion();
-			encoder.text(assertion.id()).text(assertion.statement(textByName)).optional(assertion.tool()).
-				text(EnumNames.lowerCase(assertion.onToolFailure())).text(Boolean.toString(result.passed())).
-				text(result.observed());
-		}
-		if (judge.prompt().contains(TRANSCRIPT))
-		{
-			Optional<Sha256> transcript = identity(trial.transcript());
-			if (transcript.isEmpty())
-				return false;
-			encoder.text("transcript").text(transcript.get().hex());
-		}
-		if (judge.prompt().contains(EFFECTS))
-		{
-			if (!Files.isDirectory(trial.effects(), LinkOption.NOFOLLOW_LINKS))
-				return false;
-			encoder.text("effects").text(InventoryScanner.scan(trial.effects(), Set.of()).identity().hex());
-		}
-		return true;
 	}
 
 	/**
-	 * Returns the identity of a transcript: the digest of a regular file's bytes, or the identity of a directory's
-	 * files.
-	 *
-	 * @param transcript the transcript
-	 * @return the identity, or empty if the transcript is neither a regular file nor a directory
-	 * @throws IOException if the transcript cannot be read
-	 */
-	private static Optional<Sha256> identity(Path transcript) throws IOException
-	{
-		if (Files.isRegularFile(transcript, LinkOption.NOFOLLOW_LINKS))
-			return Optional.of(Sha256.of(Files.readAllBytes(transcript)));
-		if (Files.isDirectory(transcript, LinkOption.NOFOLLOW_LINKS))
-			return Optional.of(InventoryScanner.scan(transcript, Set.of()).identity());
-		return Optional.empty();
-	}
-
-	/**
-	 * Adds one judged assertion: its identifier, its statement with the test case's values, its requirement and the
-	 * failure behaviors that it admits.
+	 * Adds one judged assertion: its identifier, its statement with the test case's values, its scope, its requirement
+	 * and the failure behaviors that it admits.
 	 *
 	 * @param encoder    the encoder
 	 * @param assertion  the assertion
@@ -230,7 +169,8 @@ public record VerdictKey(Sha256 digest)
 	 */
 	private static void writeAssertion(Encoder encoder, JudgedAssertion assertion, Map<String, String> textByName)
 	{
-		encoder.text(assertion.assertion().id()).text(assertion.assertion().statement(textByName));
+		encoder.text(assertion.assertion().id()).text(assertion.assertion().statement(textByName)).
+			text(EnumNames.lowerCase(assertion.scope()));
 		Requirement requirement = assertion.requirement();
 		if (requirement == null)
 			encoder.absent();
@@ -269,19 +209,6 @@ public record VerdictKey(Sha256 digest)
 			length(encoded.length);
 			bytes.writeBytes(encoded);
 			return this;
-		}
-
-		/**
-		 * Adds a text that may be absent.
-		 *
-		 * @param text the text, or {@code null}
-		 * @return this encoder
-		 */
-		Encoder optional(String text)
-		{
-			if (text == null)
-				return absent();
-			return text(text);
 		}
 
 		/**

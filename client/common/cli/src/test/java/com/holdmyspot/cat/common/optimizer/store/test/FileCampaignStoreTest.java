@@ -27,6 +27,9 @@ import com.holdmyspot.cat.common.optimizer.campaign.TrialAttemptFailure;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialInputs;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
+import com.holdmyspot.cat.common.optimizer.contract.EvidenceScope;
+import com.holdmyspot.cat.common.optimizer.contract.JudgedAssertion;
+import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfiles;
@@ -104,6 +107,7 @@ import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -479,6 +483,74 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 					List.of(MeasurementCondition.MODEL, MeasurementCondition.PROVIDER)),
 				new PendingDecision.UnownedChange("CLAUDE.md changed outside CAT")));
 		}
+	}
+
+	/**
+	 * Verifies that a stored contract keeps each judged assertion's evidence scope and the judge's response prompt, and
+	 * that a contract stored before either existed loads without a response prompt and with every judged assertion
+	 * judged as {@code actions}.
+	 *
+	 * @throws IOException if the fixture cannot be stored or loaded
+	 */
+	@Test
+	public void storesEvidenceScopes() throws IOException
+	{
+		// Requirement: R-L19
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path campaigns = cleanup.add(Files.createTempDirectory("evidence-scope"));
+			Contract contract = ContractFixtures.withEvidenceScope(ContractFixtures.contract(), EvidenceScope.RESPONSE);
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
+			store.replaceSnapshot(new Builder().header(header(ID)).confirmed(contract, 1).build());
+
+			Contract loaded = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).readSnapshot(ID).
+				orElseThrow().contract();
+			requireThat(loaded.judge().responsePrompt(), "responsePrompt").
+				isEqualTo(contract.judge().responsePrompt());
+			requireThat(scopes(loaded), "scopes").isNotEmpty().containsAll(List.of(EvidenceScope.RESPONSE)).
+				isEqualTo(scopes(contract));
+
+			Path file = heldOutDirectory(campaigns).resolve("campaign.json");
+			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(file, UTF_8));
+			ObjectNode stored = (ObjectNode) root.get("lineages").get(0).get("contract");
+			requireThat(((ObjectNode) stored.get("judge")).remove("response_prompt"), "storedResponsePrompt").
+				isNotNull();
+			int removed = 0;
+			for (JsonNode test : stored.get("tests"))
+			{
+				for (JsonNode assertion : test.get("assertions"))
+				{
+					if (((ObjectNode) assertion).remove("evidence_scope") != null)
+						++removed;
+				}
+			}
+			requireThat(removed, "removedScopes").isEqualTo(scopes(contract).size());
+			Files.writeString(file, JSON.writeValueAsString(root), UTF_8);
+
+			Contract legacy = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).readSnapshot(ID).
+				orElseThrow().contract();
+			requireThat(legacy.judge().responsePrompt(), "legacyResponsePrompt").isNull();
+			for (PromptTest test : legacy.tests())
+			{
+				for (JudgedAssertion judged : JudgedAssertion.ofJudgeable(test, legacy.requirements()))
+				{
+					requireThat(judged.assertion().evidenceScope(), "declaredScope").isNull();
+					requireThat(judged.scope(), "scope").isEqualTo(EvidenceScope.ACTIONS);
+				}
+			}
+		}
+	}
+
+	/**
+	 * Returns the evidence scopes that a contract's declared assertions declare.
+	 *
+	 * @param contract the contract
+	 * @return the declared scopes, in test and assertion order
+	 */
+	private static List<EvidenceScope> scopes(Contract contract)
+	{
+		return contract.tests().stream().flatMap(test -> test.assertions().stream()).
+			map(mapped -> mapped.assertion().evidenceScope()).filter(Objects::nonNull).toList();
 	}
 
 	/**

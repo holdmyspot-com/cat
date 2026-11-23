@@ -705,14 +705,24 @@ public final class DriverHarness
 	/**
 	 * Returns the scripted judgment associated with the trial's read-only effects directory. Trial text does not
 	 * determine this verdict; {@link #completed(String, String, String)} scripts a pass and {@link #failed()}
-	 * scripts a failure.
+	 * scripts a failure. A session that reads no file sees only the replies, so it fails exactly the trials whose
+	 * reply is that of {@link #failed()}.
 	 *
 	 * @param request the judge session's request
 	 * @return the result
 	 */
 	public SessionResult.Completed scriptedJudgment(SessionRequest request)
 	{
-		Verdict verdict = judgments.get(request.readOnly().getFirst());
+		Verdict verdict;
+		if (request.readOnly().isEmpty())
+		{
+			if (replies(request).equals(List.of(List.of("fail"))))
+				verdict = Verdict.FAIL;
+			else
+				verdict = Verdict.PASS;
+		}
+		else
+			verdict = judgments.get(request.readOnly().getFirst());
 		if (verdict == null)
 			throw new AssertionError("No judgment scripted for trial evidence: " + request.readOnly());
 		String rationale = switch (verdict)
@@ -764,6 +774,28 @@ public final class DriverHarness
 	{
 		JsonNode assertion = decidedAssertions(request).get(0);
 		return new FailedAssertion(assertion.get("id").asString(), assertion.get("behaviors").get(0).asString());
+	}
+
+	/**
+	 * Returns the replies that a judge request shows.
+	 *
+	 * @param request the judge session's request
+	 * @return each turn's assistant messages
+	 */
+	public List<List<String>> replies(SessionRequest request)
+	{
+		String turn = request.turns().getFirst();
+		int start = turn.indexOf('[', turn.indexOf("The trial agent's reply"));
+		int end = turn.indexOf("\n\n", start);
+		List<List<String>> replies = new ArrayList<>();
+		for (JsonNode messages : json.readTree(turn.substring(start, end)))
+		{
+			List<String> texts = new ArrayList<>();
+			for (JsonNode message : messages)
+				texts.add(message.asString());
+			replies.add(texts);
+		}
+		return replies;
 	}
 
 	/**

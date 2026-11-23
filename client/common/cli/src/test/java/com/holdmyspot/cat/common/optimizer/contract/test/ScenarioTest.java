@@ -4,9 +4,12 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.optimizer.contract.Assertion;
 import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
+import com.holdmyspot.cat.common.optimizer.contract.EvidenceScope;
 import com.holdmyspot.cat.common.optimizer.contract.ExpectedBehavior;
 import com.holdmyspot.cat.common.optimizer.contract.ExpectedOutcomeTool;
+import com.holdmyspot.cat.common.optimizer.contract.JudgedAssertion;
 import com.holdmyspot.cat.common.optimizer.contract.OnToolFailure;
+import com.holdmyspot.cat.common.optimizer.contract.Requirement;
 import com.holdmyspot.cat.common.optimizer.contract.Scenario;
 import com.holdmyspot.cat.common.optimizer.contract.ScenarioFormatException;
 import com.holdmyspot.cat.common.optimizer.contract.VariableDeclaration;
@@ -989,5 +992,113 @@ public final class ScenarioTest
 			List.of("Summarize `docs/{{notes}}`."),
 			List.of(new Assertion("summary_given", AssertionKind.EFFECT, null, "The reply summarizes the notes."))).
 			render();
+	}
+
+	/**
+	 * Verifies that {@code evidence_scope} parses as either value on an assertion without a tool and on one whose tool
+	 * leaves a failure to the judge, and that the scenario renders it and parses back.
+	 *
+	 * @throws ScenarioFormatException if the scenario is refused
+	 */
+	@Test
+	public void parsesEvidenceScope() throws ScenarioFormatException
+	{
+		// Requirement: R-L19
+		Scenario scenario = Scenario.parse(VARIABLES + TURN + """
+			## Assertions
+
+			### summary_correct
+
+			- **kind**: effect
+			- **description**: The reply's summary of the notes is correct.
+			- **evidence_scope**: response
+			- **judge_reason**: Correctness needs meaning.
+
+			### brief_sufficient
+
+			- **kind**: effect
+			- **description**: The brief that the agent gave its child agent was sufficient.
+			- **evidence_scope**: actions
+			- **judge_reason**: Sufficiency needs meaning.
+
+			### component_named
+
+			- **kind**: effect
+			- **tool**: `pattern "(?i)session store"`
+			- **on_tool_failure**: judge
+			- **description**: The reply names the session store in any wording.
+			- **evidence_scope**: response
+			- **judge_reason**: The wording can be correct without matching this exact phrase.
+
+			### notes_tool
+
+			- **kind**: effect
+			- **tool**: `tool-used Read`
+			- **on_tool_failure**: judge
+			- **description**: The agent opens the notes in any way.
+			- **evidence_scope**: actions
+			- **judge_reason**: The agent may open them with another tool.
+			""");
+		requireThat(scenario.assertions(), "assertions").isEqualTo(List.of(
+			new Assertion("summary_correct", AssertionKind.EFFECT, null, OnToolFailure.FAIL,
+				"The reply's summary of the notes is correct.", "Correctness needs meaning.", EvidenceScope.RESPONSE),
+			new Assertion("brief_sufficient", AssertionKind.EFFECT, null, OnToolFailure.FAIL,
+				"The brief that the agent gave its child agent was sufficient.", "Sufficiency needs meaning.",
+				EvidenceScope.ACTIONS),
+			new Assertion("component_named", AssertionKind.EFFECT, "pattern \"(?i)session store\"",
+				OnToolFailure.JUDGE, "The reply names the session store in any wording.",
+				"The wording can be correct without matching this exact phrase.", EvidenceScope.RESPONSE),
+			new Assertion("notes_tool", AssertionKind.EFFECT, "tool-used Read", OnToolFailure.JUDGE,
+				"The agent opens the notes in any way.", "The agent may open them with another tool.",
+				EvidenceScope.ACTIONS)));
+		String rendered = scenario.render();
+		requireThat(rendered, "rendered").contains("- **evidence_scope**: response\n").
+			contains("- **evidence_scope**: actions\n");
+		requireThat(Scenario.parse(rendered), "parsed").isEqualTo(scenario);
+	}
+
+	/**
+	 * Verifies that a recorded scenario without {@code evidence_scope} parses, and that each of its judged assertions
+	 * is judged as {@code actions}, while a declared scope is kept.
+	 *
+	 * @throws ScenarioFormatException if the scenario is refused
+	 */
+	@Test
+	public void readsScenarioWithoutEvidenceScope() throws ScenarioFormatException
+	{
+		// Requirement: R-L19
+		Scenario recorded = Scenario.parse(VARIABLES + TURN + ASSERTIONS);
+		Requirement requirement = new Requirement("summaries", "Summaries are correct.", "CLAUDE.md", null,
+			List.of("wrong_summary"));
+		Assertion undeclared = recorded.assertions().getFirst();
+		requireThat(undeclared.evidenceScope(), "declared").isNull();
+		requireThat(new JudgedAssertion(undeclared, requirement).scope(), "undeclared").
+			isEqualTo(EvidenceScope.ACTIONS);
+		requireThat(recorded.render(), "rendered").doesNotContain("evidence_scope");
+
+		Scenario declared = Scenario.parse(VARIABLES + TURN + ASSERTIONS + "- **evidence_scope**: response\n");
+		requireThat(new JudgedAssertion(declared.assertions().getFirst(), requirement).scope(), "declared").
+			isEqualTo(EvidenceScope.RESPONSE);
+	}
+
+	/**
+	 * Verifies that {@code evidence_scope} is refused at its line on an assertion that its tool decides, with a value
+	 * other than {@code response} or {@code actions}, and as {@code response} on an assertion whose tool examines more
+	 * than the replies.
+	 */
+	@Test
+	public void refusesMisplacedEvidenceScope()
+	{
+		// Requirement: R-L19
+		String heading = VARIABLES + TURN + "## Assertions\n\n### summary_given\n\n- **kind**: effect\n";
+		String description = "- **description**: The reply summarizes the notes.\n";
+		requireThat(refusal(heading + "- **tool**: `pattern notes`\n" + description +
+			"- **evidence_scope**: response\n"), "mechanical").startsWith("Line 14:").
+			contains("has no evidence_scope");
+		requireThat(refusal(heading + description + "- **evidence_scope**: both\n"), "unknownValue").
+			startsWith("Line 13:").contains("both").contains("response or actions");
+		requireThat(refusal(heading + "- **tool**: `tool-used Read`\n- **on_tool_failure**: judge\n" + description +
+			"- **evidence_scope**: response\n"), "notReplyTool").startsWith("Line 15:").contains("tool-used").
+			contains("replies");
 	}
 }

@@ -152,25 +152,39 @@ sealed interface InFlight
 	 * @param concurrency the number of trial sessions running immediately after the trial's session started
 	 * @param judge the judge that decides the assertions
 	 * @param seat the judge's part in the trial's verdict
-	 * @param group the frozen judge and the candidates that all judge the trial, or {@code null} if one judge decides
-	 * @param recording the stored verdicts that the session's verdicts join, or {@code null} if the trial's evidence has
-	 *   no keys
+	 * @param group the frozen judge and the candidates that all judge the scope's assertions, or {@code null} if one
+	 *   judge decides
+	 * @param recording the stored verdicts that the session's verdicts join, or {@code null} if the assertions are of
+	 *   the {@code actions} scope, whose verdicts are never recorded
+	 * @param trial the judging of every evidence scope of the trial, which completes the trial
 	 */
 	record Judging(TrialKey key, DrawnTestCase testCase, SessionResult.Completed evidence,
 		String evidenceSection, List<JudgedAssertion> assertions, List<BuiltInToolResult> results, int attempt,
-		int concurrency, JudgeProfile judge, Seat seat, ShadowGroup group, Recording recording)
+		int concurrency, JudgeProfile judge, Seat seat, ShadowGroup group, Recording recording,
+		TrialJudgments trial)
 	{
 		/**
-		 * The stored verdicts of a judged trial and the trials that wait for its judge session.
+		 * The stored verdicts of a judged trial's {@code response} assertions and the trials that wait for its judge
+		 * session.
 		 *
-		 * @param judged every assertion of the trial that a judge decides, in the order of its test
+		 * @param judged every {@code response} assertion of the trial, in the order of its test
 		 * @param keys the key of each assertion that the session decides, by assertion identifier
 		 * @param stored the stored verdicts that the trial took for its other assertions, by assertion identifier
-		 * @param waiters the trials whose evidence has a key that the session decides, which wait for its verdicts;
+		 * @param waiters the trials whose replies have a key that the session decides, which wait for its verdicts;
 		 *   every attempt of the session shares the list
 		 */
 		record Recording(List<JudgedAssertion> judged, Map<String, VerdictKey> keys,
-			Map<String, VerdictRecord> stored, List<Pending> waiters)
+			Map<String, VerdictRecord> stored, List<Waiter> waiters)
+		{
+		}
+
+		/**
+		 * A trial's {@code response} assertions that wait for another trial's judge session to record their verdicts.
+		 *
+		 * @param trial the judging of the waiting trial
+		 * @param assertions the trial's {@code response} assertions
+		 */
+		record Waiter(TrialJudgments trial, List<JudgedAssertion> assertions)
 		{
 		}
 
@@ -206,7 +220,7 @@ sealed interface InFlight
 		Judging retry()
 		{
 			return new Judging(key, testCase, evidence, evidenceSection, assertions, results, attempt + 1,
-				concurrency, judge, seat, group, recording);
+				concurrency, judge, seat, group, recording, trial);
 		}
 	}
 

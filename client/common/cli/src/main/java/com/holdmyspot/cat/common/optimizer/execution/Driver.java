@@ -59,6 +59,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
 import com.holdmyspot.cat.common.optimizer.contract.BuiltInToolResult;
 import com.holdmyspot.cat.common.optimizer.contract.Cell;
 import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
+import com.holdmyspot.cat.common.optimizer.contract.EvidenceScope;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.contract.JudgeProfile;
 import com.holdmyspot.cat.common.optimizer.contract.JudgedAssertion;
@@ -1103,10 +1104,8 @@ public final class Driver implements AutoCloseable
 	 * trial, or if it is one and the development trials that the test is expected to run before the next
 	 * certification attempt can bring the candidate to qualification.
 	 * <p>
-	 * The deciding judge's stored verdicts of the trial's evidence replace its session: a trial whose assertions all
-	 * have one completes with them, and no candidate judges it. A trial whose missing verdicts a queued or running
-	 * session of another trial decides waits for that session and then looks again. Otherwise the deciding judge
-	 * decides the missing assertions, alone if any assertion has a stored verdict.
+	 * The trial's judged assertions are grouped by evidence scope, and each scope is judged on its own by the judges
+	 * chosen for the trial, the {@code response} scope first.
 	 *
 	 * @param pending the completed trial
 	 * @param now the current time
@@ -1121,7 +1120,8 @@ public final class Driver implements AutoCloseable
 			pending.key().purpose() == Purpose.RACE;
 		JudgeProfile decider = frozen;
 		Judging.Seat seat = Judging.Seat.FROZEN_ALONE;
-		ShadowGroup group = null;
+		List<TrialProfile> candidates = List.of();
+		boolean spotCheck = false;
 		if (state != null)
 		{
 			Optional<ExaminedJudge> qualified = state.qualified();
@@ -1131,7 +1131,8 @@ public final class Driver implements AutoCloseable
 				{
 					if (context.random().nextInt(SPOT_CHECK_ONE_IN) == 0)
 					{
-						group = new ShadowGroup(frozen.profile(), List.of(qualified.get().profile()), true, false);
+						candidates = List.of(qualified.get().profile());
+						spotCheck = true;
 						seat = Judging.Seat.FROZEN_OF_GROUP;
 					}
 					else
@@ -1152,26 +1153,56 @@ public final class Driver implements AutoCloseable
 				}
 				if (!shadowing.isEmpty())
 				{
-					group = new ShadowGroup(frozen.profile(), shadowing, false, !development);
+					candidates = shadowing;
 					seat = Judging.Seat.FROZEN_OF_GROUP;
 				}
 			}
 		}
-		List<JudgedAssertion> judged = pending.assertions();
-		Optional<Map<String, VerdictKey>> keys = keys(decider, pending, judged);
-		if (keys.isEmpty())
+		TrialJudgments trial = new TrialJudgments(pending, decider, seat, candidates, spotCheck, !development);
+		for (Map.Entry<EvidenceScope, List<JudgedAssertion>> scope : trial.byScope().entrySet())
 		{
-			queueSessions(pending, judged, decider, seat, group, null);
+			if (trial.isAbandoned())
+				return;
+			queueScope(trial, scope.getKey(), scope.getValue(), now);
+		}
+	}
+
+	/**
+	 * Queues the judge sessions of one evidence scope of a completed trial.
+	 * <p>
+	 * An {@code actions} scope's verdicts are never looked up or recorded, so its judges always run. For a
+	 * {@code response} scope, the deciding judge's stored verdicts of the trial's replies replace its session: a scope
+	 * whose assertions all have one is decided with them, and no candidate judges it. A scope whose missing verdicts a
+	 * queued or running session of another trial decides waits for that session and then looks again. Otherwise the
+	 * deciding judge decides the missing assertions, alone if any assertion has a stored verdict.
+	 *
+	 * @param trial the judging of the trial
+	 * @param scope the scope
+	 * @param assertions the trial's assertions of the scope, in the order of its test
+	 * @param now the current time
+	 * @throws IOException if the evidence, the store or the worktree cannot be read or written
+	 */
+	private void queueScope(TrialJudgments trial, EvidenceScope scope, List<JudgedAssertion> assertions,
+		Instant now) throws IOException
+	{
+		Pending pending = trial.pending();
+		JudgeProfile decider = trial.decider();
+		Judging.Seat seat = trial.seat();
+		ShadowGroup group = trial.newGroup(campaign.contract().judge().profile());
+		if (scope == EvidenceScope.ACTIONS)
+		{
+			queueSessions(trial, assertions, decider, seat, group, null);
 			return;
 		}
+		Map<String, VerdictKey> keys = keys(decider, pending, assertions);
 		VerdictRecords verdicts = verdicts();
 		Map<String, VerdictRecord> stored = new HashMap<>();
 		Map<String, VerdictKey> missingKeys = new LinkedHashMap<>();
 		List<JudgedAssertion> missing = new ArrayList<>();
-		for (JudgedAssertion assertion : judged)
+		for (JudgedAssertion assertion : assertions)
 		{
 			String id = assertion.assertion().id();
-			VerdictKey key = keys.get().get(id);
+			VerdictKey key = keys.get(id);
 			Optional<VerdictRecord> found = verdicts.find(key);
 			if (found.isPresent())
 				stored.put(id, found.get());
@@ -1190,43 +1221,45 @@ public final class Driver implements AutoCloseable
 		{
 			// Every assertion has a stored verdict, so no judge session runs and no candidate is compared
 			Judging hit = new Judging(pending.key(), pending.testCase(), pending.evidence(), pending.evidenceSection(),
-				judged, pending.results(), 1, pending.concurrency(), decider, alone, null,
-				new Judging.Recording(judged, Map.of(), stored, new ArrayList<>()));
+				assertions, pending.results(), 1, pending.concurrency(), decider, alone, null,
+				new Judging.Recording(assertions, Map.of(), stored, new ArrayList<>()), trial);
 			judged(hit, merged(hit, stored), decider.profile(), List.of(), now);
 			return;
 		}
 		Optional<Judging> running = judgingOf(missingKeys.values());
 		if (running.isPresent())
 		{
-			running.get().recording().waiters().add(pending);
+			running.get().recording().waiters().add(new Judging.Waiter(trial, assertions));
 			return;
 		}
 		if (!stored.isEmpty())
 		{
-			// A candidate is compared only with a frozen verdict of the whole trial
+			// A candidate is compared only with a frozen verdict of the whole scope
 			group = null;
 			seat = alone;
 		}
-		queueSessions(pending, missing, decider, seat, group, new Judging.Recording(judged, missingKeys, stored,
+		queueSessions(trial, missing, decider, seat, group, new Judging.Recording(assertions, missingKeys, stored,
 			new ArrayList<>()));
 	}
 
 	/**
-	 * Queues the judge sessions of a trial: the deciding judge's, and those of the group's candidates.
+	 * Queues the judge sessions of one evidence scope of a trial: the deciding judge's, and those of the group's
+	 * candidates.
 	 *
-	 * @param pending the completed trial
-	 * @param assertions the assertions that the sessions decide
+	 * @param trial the judging of the trial
+	 * @param assertions the assertions that the sessions decide, all of one scope
 	 * @param decider the judge whose verdict counts
 	 * @param seat the deciding judge's part in the trial's verdict
-	 * @param group the frozen judge and the candidates that all judge the trial, or {@code null} if one judge decides
-	 * @param recording the deciding judge's stored verdicts, or {@code null} if the trial's evidence has no keys
-	 * @throws IOException if the evidence cannot be read
+	 * @param group the frozen judge and the candidates that all judge the scope, or {@code null} if one judge decides
+	 * @param recording the deciding judge's stored verdicts, or {@code null} if the assertions are of the
+	 *   {@code actions} scope
 	 */
-	private void queueSessions(Pending pending, List<JudgedAssertion> assertions, JudgeProfile decider,
-		Judging.Seat seat, ShadowGroup group, Judging.Recording recording) throws IOException
+	private void queueSessions(TrialJudgments trial, List<JudgedAssertion> assertions, JudgeProfile decider,
+		Judging.Seat seat, ShadowGroup group, Judging.Recording recording)
 	{
+		Pending pending = trial.pending();
 		judgingQueue.add(new Judging(pending.key(), pending.testCase(), pending.evidence(), pending.evidenceSection(),
-			assertions, pending.results(), 1, pending.concurrency(), decider, seat, group, recording));
+			assertions, pending.results(), 1, pending.concurrency(), decider, seat, group, recording, trial));
 		if (group == null)
 			return;
 		JudgeProfile frozen = campaign.contract().judge();
@@ -1235,7 +1268,7 @@ public final class Driver implements AutoCloseable
 			JudgeProfile judge = withProfile(frozen, candidate);
 			judgingQueue.add(new Judging(pending.key(), pending.testCase(), pending.evidence(),
 				pending.evidenceSection(), assertions, pending.results(), 1, pending.concurrency(), judge,
-				Judging.Seat.CANDIDATE_OF_GROUP, group, newRecording(judge, pending, assertions)));
+				Judging.Seat.CANDIDATE_OF_GROUP, group, newRecording(judge, pending, assertions), trial));
 		}
 	}
 
@@ -1244,38 +1277,31 @@ public final class Driver implements AutoCloseable
 	 *
 	 * @param judge the judge
 	 * @param pending the completed trial
-	 * @param assertions the assertions that the session decides
-	 * @return the record, or {@code null} if the trial's evidence has no keys
-	 * @throws IOException if the evidence cannot be read
+	 * @param assertions the assertions that the session decides, all of one scope
+	 * @return the record, or {@code null} if the assertions are of the {@code actions} scope
 	 */
 	private Judging.Recording newRecording(JudgeProfile judge, Pending pending, List<JudgedAssertion> assertions)
-		throws IOException
 	{
-		Optional<Map<String, VerdictKey>> keys = keys(judge, pending, assertions);
-		return keys.map(byId -> new Judging.Recording(assertions, byId, Map.of(), new ArrayList<>())).orElse(null);
+		if (assertions.getFirst().scope() != EvidenceScope.RESPONSE)
+			return null;
+		return new Judging.Recording(assertions, keys(judge, pending, assertions), Map.of(), new ArrayList<>());
 	}
 
 	/**
-	 * Returns the keys of a trial's judged assertions under a judge.
+	 * Returns the keys of a trial's {@code response} assertions under a judge.
 	 *
 	 * @param judge the judge
 	 * @param pending the completed trial
-	 * @param assertions the assertions
-	 * @return the key of each assertion by its identifier, or empty if the evidence that the judge's template names
-	 *   cannot be read
-	 * @throws IOException if the evidence cannot be read
+	 * @param assertions the assertions, all of the {@code response} scope
+	 * @return the key of each assertion by its identifier
 	 */
-	private Optional<Map<String, VerdictKey>> keys(JudgeProfile judge, Pending pending,
-		List<JudgedAssertion> assertions) throws IOException
+	private Map<String, VerdictKey> keys(JudgeProfile judge, Pending pending, List<JudgedAssertion> assertions)
 	{
-		Optional<List<VerdictKey>> keys = verdicts().keys(judge, pending.testCase(), assertions, pending.evidence(),
-			pending.evidenceSection(), pending.results());
-		if (keys.isEmpty())
-			return Optional.empty();
+		List<VerdictKey> keys = verdicts().keys(judge, pending.testCase(), assertions, pending.evidence());
 		Map<String, VerdictKey> byId = new LinkedHashMap<>();
 		for (int i = 0; i < assertions.size(); ++i)
-			byId.put(assertions.get(i).assertion().id(), keys.get().get(i));
-		return Optional.of(byId);
+			byId.put(assertions.get(i).assertion().id(), keys.get(i));
+		return byId;
 	}
 
 	/**
@@ -1381,12 +1407,12 @@ public final class Driver implements AutoCloseable
 		Judging.Recording recording = judging.recording();
 		if (recording == null || recording.waiters().isEmpty())
 			return;
-		List<Pending> waiters = List.copyOf(recording.waiters());
+		List<Judging.Waiter> waiters = List.copyOf(recording.waiters());
 		recording.waiters().clear();
-		for (Pending waiter : waiters)
+		for (Judging.Waiter waiter : waiters)
 		{
-			if (findRunningTrial(waiter.key()).isPresent())
-				queueJudging(waiter, now);
+			if (findRunningTrial(waiter.trial().pending().key()).isPresent() && !waiter.trial().isAbandoned())
+				queueScope(waiter.trial(), EvidenceScope.RESPONSE, waiter.assertions(), now);
 		}
 	}
 
@@ -1420,8 +1446,7 @@ public final class Driver implements AutoCloseable
 	 */
 	private static JudgeProfile withProfile(JudgeProfile frozen, TrialProfile profile)
 	{
-		return new JudgeProfile(profile, frozen.prompt(), frozen.rubric(), frozen.decisionRule(),
-			frozen.resultSchema());
+		return frozen.withProfile(profile);
 	}
 
 	/**
@@ -1581,15 +1606,15 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Indicates whether the frozen judge failed to judge the trial that a judge session belongs to, so that the trial
-	 * reruns and the session's result is ignored.
+	 * Indicates whether the frozen judge failed to judge the trial that a judge session belongs to, in the session's
+	 * scope or another, so that the trial reruns and the session's result is ignored.
 	 *
 	 * @param judging the judged trial
-	 * @return {@code true} if the session's pair was abandoned
+	 * @return {@code true} if the session's group or the trial's judging was abandoned
 	 */
 	private static boolean isAbandoned(Judging judging)
 	{
-		return judging.group() != null && judging.group().isAbandoned();
+		return (judging.group() != null && judging.group().isAbandoned()) || judging.trial().isAbandoned();
 	}
 
 	/**
@@ -1637,18 +1662,38 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
+	 * Consumes the verdict of one evidence scope of a trial, and completes the trial once every scope is decided.
+	 *
+	 * @param judging the judged trial
+	 * @param judgment the verdict of the scope's assertions
+	 * @param judge the profile of the judge whose verdict counts
+	 * @param shadows the comparisons of candidate judges with the frozen judge on the scope, empty if none judged it
+	 * @param now the current time
+	 * @throws IOException if the store or the worktree cannot be read or written
+	 */
+	private void judged(Judging judging, Judgment judgment, TrialProfile judge, List<ShadowResult> shadows,
+		Instant now) throws IOException
+	{
+		TrialJudgments trial = judging.trial();
+		if (!trial.decide(judging.assertions().getFirst().scope(), judgment, judge, shadows))
+			return;
+		judgedTrial(judging, trial.judgment(), trial.judge(campaign.contract().judge().profile()), trial.shadows(),
+			now);
+	}
+
+	/**
 	 * Completes a judged trial, or queues the triage of a failed development trial. A trial whose built-in tool failed
 	 * under {@code on_tool_failure: fail} fails whatever the judge decided, with the tool's assertion among its
 	 * failures and the judge's own failures after it.
 	 *
-	 * @param judging the judged trial
-	 * @param judgment the judge's verdict and rationale
+	 * @param judging one of the trial's judged scopes
+	 * @param judgment the verdict and rationale of every scope
 	 * @param judge the profile of the judge whose verdict counts
 	 * @param shadows the comparisons of candidate judges with the frozen judge, empty if none judged the trial
 	 * @param now the current time
 	 * @throws IOException if the store or the worktree cannot be read or written
 	 */
-	private void judged(Judging judging, Judgment judgment, TrialProfile judge, List<ShadowResult> shadows,
+	private void judgedTrial(Judging judging, Judgment judgment, TrialProfile judge, List<ShadowResult> shadows,
 		Instant now) throws IOException
 	{
 		List<BuiltInToolResult> failedTools = failedTools(judging.results());
@@ -1708,11 +1753,15 @@ public final class Driver implements AutoCloseable
 		switch (judging.seat())
 		{
 			case FROZEN_ALONE ->
+			{
+				judging.trial().abandon();
 				fail(judging.key(), TrialAttemptFailure.INFRASTRUCTURE, "The judge failed " + JUDGE_ATTEMPTS + " times. Last " +
 					"failure: " + reason, now);
+			}
 			case FROZEN_OF_GROUP ->
 			{
 				judging.group().abandon();
+				judging.trial().abandon();
 				fail(judging.key(), TrialAttemptFailure.INFRASTRUCTURE, "The judge failed " + JUDGE_ATTEMPTS + " times. Last " +
 					"failure: " + reason, now);
 			}
@@ -1727,17 +1776,16 @@ public final class Driver implements AutoCloseable
 				ShadowGroup group = new ShadowGroup(frozen.profile(), List.of(judging.judge().profile()), true,
 					false);
 				group.recordUnusable(judging.judge().profile());
-				// The frozen judge decides the whole trial, including the assertions whose candidate verdicts were stored
+				// The frozen judge decides the whole scope, including the assertions whose candidate verdicts were stored
 				List<JudgedAssertion> judged;
 				if (judging.recording() == null)
 					judged = judging.assertions();
 				else
 					judged = judging.recording().judged();
-				Pending pending = new Pending(judging.key(), judging.testCase(), judging.evidence(),
-					judging.evidenceSection(), judged, judging.results(), judging.concurrency());
 				judgingQueue.add(new Judging(judging.key(), judging.testCase(), judging.evidence(),
 					judging.evidenceSection(), judged, judging.results(), 1, judging.concurrency(), frozen,
-					Judging.Seat.FROZEN_OF_GROUP, group, newRecording(frozen, pending, judged)));
+					Judging.Seat.FROZEN_OF_GROUP, group, newRecording(frozen, judging.trial().pending(), judged),
+					judging.trial()));
 			}
 		}
 		// The trials that waited for the failed session look again, and run their own
@@ -3565,7 +3613,7 @@ public final class Driver implements AutoCloseable
 	{
 		if (judging.recording() == null)
 			return List.of();
-		return judging.recording().waiters().stream().map(Pending::key).toList();
+		return judging.recording().waiters().stream().map(waiter -> waiter.trial().pending().key()).toList();
 	}
 
 	/**

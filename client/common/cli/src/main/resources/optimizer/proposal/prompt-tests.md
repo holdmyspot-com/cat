@@ -196,6 +196,24 @@ a trial whose tools decide every assertion needs no judge session. Every other a
 - `description`: what the assertion requires, in words that the judge can decide from the trial's record.
 - `judge_reason`, when the judge decides any part of an assertion (no `tool`, or `on_tool_failure: judge`): one
 	sentence explaining why no built-in tool can decide the whole assertion.
+- `evidence_scope`, when the judge decides any part of an assertion (no `tool`, or `on_tool_failure: judge`): what its
+	judge reads, set from the obligation that the assertion's requirement places on the agent:
+	- `response`: the assertion is about what the agent says, such as the time that a reply states or whether an
+		explanation in it is correct. Its judge reads the test case and the trial's replies and nothing else: no built-in
+		tool result, no project file and no transcript. Give `response` only to an assertion without a `tool` or whose
+		tool examines replies: `exact-text`, `forbidden-text`, `pattern` or `count`.
+	- `actions`: the assertion is about what the agent does, such as whether a brief that it gave a child agent was
+		sufficient. Its judge reads the replies too, and the built-in tool results, the trial's project after the trial
+		and its transcript.
+
+	An assertion that needs both, or whose scope is unclear, is `actions`. Leave the pair out when a tool decides the
+	assertion under `fail`. The judge of `expected_outcome` reads what an `actions` judge reads.
+
+Where a requirement is about what the agent does, split its assertions wherever you can:
+a built-in tool decides whether the action happened, from the files that the trial left, its tool calls and their
+inputs, or a command's exit status, and a narrow judged assertion decides only the part that needs meaning, such as
+whether a brief that the agent gave a child agent was sufficient. That judged assertion's description states only that
+part, and its `judge_reason` names that part.
 
 `tool` names one of CAT's built-in tools, never a tool of the agent under test: `tool-used Read` is CAT's built-in tool
 that passes when the agent called its Read tool. The description may still describe the agent's tools, such as "the

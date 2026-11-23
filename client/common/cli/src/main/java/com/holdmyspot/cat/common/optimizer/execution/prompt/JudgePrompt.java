@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.execution.prompt;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.optimizer.contract.BuiltInToolResult;
+import com.holdmyspot.cat.common.optimizer.contract.EvidenceScope;
 import com.holdmyspot.cat.common.optimizer.contract.JudgeProfile;
 import com.holdmyspot.cat.common.optimizer.contract.JudgedAssertion;
 import com.holdmyspot.cat.common.optimizer.contract.Part;
@@ -16,6 +17,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.proposal.JsonResponse;
+import com.holdmyspot.cat.common.optimizer.proposal.PromptTemplate;
 import com.holdmyspot.cat.common.optimizer.report.EnumNames;
 
 import java.nio.file.Path;
@@ -72,8 +74,13 @@ public final class JudgePrompt implements JudgeProtocol
 	 * trial activity and file changes. Each assertion's statement has the test case's values in place of its
 	 * placeholders. The effects directory is readable. A template that names the effects or transcript placeholders
 	 * receives those paths, and naming the transcript grants read-only access to its directory.
+	 * <p>
+	 * Assertions of the {@link EvidenceScope#RESPONSE} scope are instead decided from the profile's response prompt,
+	 * which receives the rubric, the decision rule, the assertions, the test case, the replies and the result schema,
+	 * and no evidence section, built-in tool result or path; the session may read no file.
 	 *
-	 * @throws IllegalArgumentException if {@code assertions} is empty
+	 * @throws IllegalArgumentException if {@code assertions} is empty or holds assertions of both scopes, or the
+	 *                                  assertions are of the response scope and the profile has no response prompt
 	 */
 	@Override
 	public SessionRequest request(JudgeProfile profile, DrawnTestCase testCase, SessionResult.Completed evidence,
@@ -85,6 +92,16 @@ public final class JudgePrompt implements JudgeProtocol
 		requireThat(assertions, "assertions").isNotEmpty();
 		requireThat(results, "results").isNotNull();
 		requireThat(evidenceSection, "evidenceSection").isNotNull();
+		EvidenceScope scope = assertions.getFirst().scope();
+		for (JudgedAssertion judged : assertions)
+		{
+			if (judged.scope() != scope)
+			{
+				throw new IllegalArgumentException("One judge session decides the assertions of one evidence scope, " +
+					"but '" + assertions.getFirst().assertion().id() + "' is " + EnumNames.lowerCase(scope) + " and '" +
+					judged.assertion().id() + "' is " + EnumNames.lowerCase(judged.scope()) + ".");
+			}
+		}
 		ArrayNode responseArray = json.createArrayNode();
 		for (List<String> turn : evidence.responses())
 		{
@@ -120,6 +137,20 @@ public final class JudgePrompt implements JudgeProtocol
 				put("on_tool_failure", EnumNames.lowerCase(result.assertion().onToolFailure())).
 				put("passed", result.passed()).
 				put("observed", result.observed());
+		}
+		if (scope == EvidenceScope.RESPONSE)
+		{
+			String template = profile.prompt(EvidenceScope.RESPONSE);
+			Map<String, String> values = new HashMap<>(Map.of(
+				"rubric", profile.rubric(),
+				"decision_rule", profile.decisionRule(),
+				"assertions", pretty(assertionArray),
+				"test_case", pretty(TestCaseJson.encode(json, testCase)),
+				"responses", pretty(responseArray),
+				"result_schema", pretty(json.readTree(profile.resultSchema()))));
+			values.keySet().removeIf(name -> !template.contains("{{" + name + "}}"));
+			return new SessionRequest(SessionRole.JUDGE, Part.HELD_OUT, judgeDirectory,
+				List.of(new PromptTemplate(template).fill(values)), List.of(), TIME_LIMIT, profile.profile());
 		}
 		Path originalTranscript = evidence.transcript();
 		Path originalEffects = evidence.effects();

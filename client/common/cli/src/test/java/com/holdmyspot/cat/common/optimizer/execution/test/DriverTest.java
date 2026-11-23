@@ -77,6 +77,7 @@ import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
 import com.holdmyspot.cat.common.optimizer.contract.Dependent;
 import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
 import com.holdmyspot.cat.common.optimizer.contract.ExpectedOutcomeTool;
+import com.holdmyspot.cat.common.optimizer.contract.EvidenceScope;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.Cell;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfiles;
@@ -8278,7 +8279,7 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
-				developing(withoutFileNames(ContractFixtures.contract())).window(8).build());
+				developing(ContractFixtures.responseOnly(ContractFixtures.contract())).window(8).build());
 			Repeats repeats = new Repeats(harness);
 			int before = developmentOutcomes(harness.campaign());
 			try (Driver driver = harness.open())
@@ -8313,7 +8314,7 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
-				developing(withoutFileNames(ContractFixtures.contract())).window(16).build());
+				developing(ContractFixtures.responseOnly(ContractFixtures.contract())).window(16).build());
 			Repeats repeats = new Repeats(harness);
 			try (Driver driver = harness.open())
 			{
@@ -8332,12 +8333,15 @@ public final class DriverTest
 				requireThat(firstEnded.size(), "distinctCases").isLessThan(trials.size());
 				harness.runUntil(driver, () -> started.stream().allMatch(key ->
 					recordedOutcome(harness, key).isPresent()));
-				for (SessionRequest judge : judgeRequests(harness))
+				Map<Path, TrialKey> keysByEffects = keysByEffects(harness, started);
+				for (VerdictRecord record : harness.store().verdicts(DriverHarness.CAMPAIGN).values())
 				{
-					Path effects = judge.readOnly().getFirst();
-					String identity = repeats.identity(effects);
+					String identity = repeats.identityOfTrial(record.trial());
 					if (firstEnded.containsKey(identity))
-						requireThat(effects, "judgedTrial").isEqualTo(firstEnded.get(identity));
+					{
+						requireThat(record.trial(), "judgedTrial").
+							isEqualTo(Repeats.trialName(keysByEffects.get(firstEnded.get(identity))));
+					}
 				}
 				for (String identity : firstEnded.keySet())
 					requireThat(repeats.sessionsByCase().get(identity), "sessions").isEqualTo(1);
@@ -8374,56 +8378,62 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
-				developing(withoutFileNames(ContractFixtures.contract())).window(16).build());
+				developing(ContractFixtures.responseOnly(ContractFixtures.contract())).window(16).build());
 			Repeats repeats = new Repeats(harness);
 			Set<String> failing = ConcurrentHashMap.newKeySet();
 			repeats.failFirst(failing, Driver.JUDGE_ATTEMPTS);
 			try (Driver driver = harness.open())
 			{
 				driver.step();
-				Map<String, List<Path>> byCase = new LinkedHashMap<>();
-				for (FakeSession trial : new ArrayList<>(harness.runningTrials()))
+				Map<String, List<String>> byCase = new LinkedHashMap<>();
+				for (LogicalTrial trial : harness.campaign().trials())
 				{
-					harness.end(trial);
-					Path effects = repeats.lastResult().effects();
-					byCase.computeIfAbsent(repeats.identity(effects), _ -> new ArrayList<>()).add(effects);
+					if (trial.state() == TrialState.RUNNING)
+					{
+						byCase.computeIfAbsent(Repeats.identityOf(trial), _ -> new ArrayList<>()).
+							add(Repeats.trialName(trial.key()));
+					}
 				}
+				for (FakeSession trial : new ArrayList<>(harness.runningTrials()))
+					harness.end(trial);
 				String repeated = byCase.entrySet().stream().filter(entry -> entry.getValue().size() >= 2).
 					map(Map.Entry::getKey).findFirst().orElseThrow();
 				failing.add(repeated);
-				harness.runUntil(driver, () -> judgedTrials(harness, repeats, repeated).size() >
-					Driver.JUDGE_ATTEMPTS &&
+				harness.runUntil(driver, () -> repeats.sessions(repeated) > Driver.JUDGE_ATTEMPTS &&
 					repeats.outcomes(harness, repeated).size() >= byCase.get(repeated).size() - 1);
 
-				// The sessions that failed stored nothing, so the waiting trial found no verdict and ran its own session
-				List<Path> judged = judgedTrials(harness, repeats, repeated);
-				Path first = judged.getFirst();
-				Path second = judged.get(Driver.JUDGE_ATTEMPTS);
-				List<Path> expected = new ArrayList<>(Collections.nCopies(Driver.JUDGE_ATTEMPTS, first));
-				expected.add(second);
-				requireThat(judged, "judgedTrials").isEqualTo(expected);
-				requireThat(second, "second").isNotEqualTo(first);
-				requireThat(byCase.get(repeated), "waitingTrials").contains(second);
+				// The sessions that failed stored nothing, so a waiting trial found no verdict and ran its own session
+				requireThat(repeats.sessions(repeated), "sessions").isEqualTo(Driver.JUDGE_ATTEMPTS + 1);
+				Set<String> recordTrials = new HashSet<>();
+				for (VerdictRecord record : harness.store().verdicts(DriverHarness.CAMPAIGN).values())
+				{
+					if (repeated.equals(repeats.identityOfTrial(record.trial())))
+					{
+						recordTrials.add(record.trial());
+						requireThat(record.verdict().rationale(), "stored").isEqualTo("The first answer.");
+					}
+				}
+				requireThat(recordTrials.size(), "recordTrials").isEqualTo(1);
+				requireThat(byCase.get(repeated), "waitingTrials").containsAll(recordTrials);
 				for (CampaignEvent.Complete outcome : repeats.outcomes(harness, repeated))
 					requireThat(outcome.verdict(), "verdict").isEqualTo(Verdict.PASS);
-				requireThat(harness.store().verdicts(DriverHarness.CAMPAIGN).values().stream().
-					anyMatch(record -> record.verdict().rationale().equals("The first answer.")), "stored").isTrue();
 			}
 		}
 	}
 
 	/**
-	 * Returns the trials of one test case that judge sessions judged.
+	 * Returns the trial that each recorded trial outcome belongs to, by the effects directory of its session.
 	 *
 	 * @param harness the harness
-	 * @param repeats the trials
-	 * @param identity the test case's identity
-	 * @return the effects directory of each judged trial, in the order its session started
+	 * @param keys    the trials, each of which has a recorded outcome
+	 * @return the trials by effects directory
 	 */
-	private static List<Path> judgedTrials(DriverHarness harness, Repeats repeats, String identity)
+	private static Map<Path, TrialKey> keysByEffects(DriverHarness harness, List<TrialKey> keys)
 	{
-		return judgeRequests(harness).stream().map(request -> request.readOnly().getFirst()).
-			filter(effects -> identity.equals(repeats.identity(effects))).toList();
+		Map<Path, TrialKey> byEffects = new HashMap<>();
+		for (TrialKey key : keys)
+			byEffects.put(recordedOutcome(harness, key).orElseThrow().files().effects(), key);
+		return byEffects;
 	}
 
 	/**
@@ -8450,7 +8460,7 @@ public final class DriverTest
 		// Requirement: R-L10
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Campaign campaign = developing(withoutFileNames(ContractFixtures.contract())).window(8).build();
+			Campaign campaign = developing(ContractFixtures.responseOnly(ContractFixtures.contract())).window(8).build();
 			DriverHarness earlier = new DriverHarness(cleanup.add(Files.createTempDirectory("earlier")), campaign);
 			Repeats earlierRepeats = new Repeats(earlier);
 			int before = developmentOutcomes(campaign);
@@ -8487,7 +8497,7 @@ public final class DriverTest
 	public void everyPurposeTakesAndWritesRecords(Purpose purpose) throws IOException
 	{
 		// Requirement: R-L10
-		Contract contract = withoutFileNames(ContractFixtures.contract());
+		Contract contract = ContractFixtures.responseOnly(ContractFixtures.contract());
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = switch (purpose)
@@ -8531,8 +8541,8 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
-				new Builder().confirmed(withoutFileNames(ContractFixtures.contract()), 1).working(1).readyBaseline().
-					build());
+				new Builder().confirmed(ContractFixtures.responseOnly(ContractFixtures.contract()), 1).working(1).
+					readyBaseline().build());
 			Set<TrialKey> started = ConcurrentHashMap.newKeySet();
 			harness.trials(request ->
 			{
@@ -8575,7 +8585,7 @@ public final class DriverTest
 	public void developmentNeverFindsHeldOutRecord() throws IOException
 	{
 		// Requirement: R-L10
-		Contract contract = withoutFileNames(ContractFixtures.contract());
+		Contract contract = ContractFixtures.responseOnly(ContractFixtures.contract());
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Builder start = new Builder().confirmed(contract, 1).working(1).readyBaseline();
@@ -8586,7 +8596,8 @@ public final class DriverTest
 			Repeats attemptRepeats = new Repeats(attempt);
 			try (Driver driver = attempt.open())
 			{
-				attempt.runUntil(driver, () -> attempt.store().verdicts(DriverHarness.CAMPAIGN).size() >= 10);
+				// Trials with equal replies share their records, so a few distinct test cases make them all
+				attempt.runUntil(driver, () -> attempt.store().verdicts(DriverHarness.CAMPAIGN).size() >= 2);
 			}
 			Map<VerdictKey, VerdictRecord> heldOut = attempt.store().verdicts(DriverHarness.CAMPAIGN);
 
@@ -8612,20 +8623,184 @@ public final class DriverTest
 	}
 
 	/**
-	 * Returns a contract whose judge template names neither the transcript nor the effects directory, so that the
-	 * verdicts of trials with the same replies and activity are stored under one key.
+	 * A trial whose test has judged assertions of both scopes is judged in two sessions, one per scope: the
+	 * {@code response} session decides only the {@code response} assertions from the response prompt and reads no
+	 * file, and the {@code actions} session decides only the {@code actions} assertions and reads the trial's project.
 	 *
-	 * @param contract the contract
-	 * @return the contract
+	 * @throws IOException if the test directory cannot be used
 	 */
-	static Contract withoutFileNames(Contract contract)
+	@Test
+	public void judgesEachScopeInItsOwnSession() throws IOException
 	{
-		JudgeProfile judge = contract.judge();
-		JudgeProfile withoutFiles = new JudgeProfile(judge.profile(), judge.prompt().
-			replace("{{effects}}", "(not offered)").replace("{{transcript}}", "(not offered)"), judge.rubric(),
-			judge.decisionRule(), judge.resultSchema());
-		return new Contract(contract.requirements(), contract.tests(), contract.profiles(), withoutFiles,
-			contract.limitations(), contract.minimumPassRate(), contract.salt());
+		// Requirement: R-L19
+		Contract contract = ContractFixtures.withEvidenceScope(ContractFixtures.contract(), EvidenceScope.RESPONSE);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+				developing(contract).window(8).build());
+			Map<Path, String> replies = new ConcurrentHashMap<>();
+			Map<Path, String> tests = new ConcurrentHashMap<>();
+			AtomicInteger trialCount = new AtomicInteger();
+			harness.trials(request ->
+			{
+				LogicalTrial trial = runningTrial(harness, request);
+				String reply = "pass number " + trialCount.incrementAndGet();
+				SessionResult.Completed result = harness.completed(reply, DriverHarness.MODEL);
+				replies.put(result.effects(), reply);
+				tests.put(result.effects(), trial.testCase().testId());
+				return result;
+			});
+			harness.judges(request -> harness.judged(request, Verdict.PASS, "The scope holds."));
+			int before = developmentOutcomes(harness.campaign());
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, state -> developmentOutcomes(state) >= before + 6);
+				harness.settle(driver);
+			}
+			List<SessionRequest> judges = judgeRequests(harness);
+			List<SessionRequest> actions = judges.stream().filter(request -> !request.readOnly().isEmpty()).toList();
+			List<SessionRequest> response = judges.stream().filter(request -> request.readOnly().isEmpty()).toList();
+			requireThat(actions.isEmpty(), "noActionsSession").isFalse();
+			requireThat(response.size(), "responseSessions").isEqualTo(actions.size());
+			for (SessionRequest request : actions)
+			{
+				requireThat(ids(harness, request), "actionsAssertions").isEqualTo(List.of(TestCase.EXPECTED_OUTCOME));
+				requireThat(request.turns().getFirst(), "actionsTurn").startsWith("# Trial Judgment");
+			}
+			for (SessionRequest request : response)
+			{
+				requireThat(request.turns().getFirst(), "responseTurn").startsWith("# Reply Judgment");
+				requireThat(ids(harness, request), "responseAssertions").doesNotContain(TestCase.EXPECTED_OUTCOME);
+			}
+			for (SessionRequest request : actions)
+			{
+				Path effects = request.readOnly().getFirst();
+				String reply = replies.get(effects);
+				long responseSessions = response.stream().filter(other ->
+					other.turns().getFirst().contains("\"" + reply + "\"")).count();
+				requireThat(responseSessions, "responseSessionsOfTrial").withContext(reply, "reply").isEqualTo(1L);
+				long actionsSessions = actions.stream().filter(other -> other.readOnly().getFirst().equals(effects)).
+					count();
+				requireThat(actionsSessions, "actionsSessionsOfTrial").withContext(reply, "reply").isEqualTo(1L);
+				PromptTest test = contract.findTest(tests.get(effects)).orElseThrow();
+				SessionRequest replyRequest = response.stream().filter(other ->
+					other.turns().getFirst().contains("\"" + reply + "\"")).findFirst().orElseThrow();
+				requireThat(ids(harness, replyRequest), "responseAssertionsOfTrial").isEqualTo(test.assertions().
+					stream().map(mapped -> mapped.assertion().id()).toList());
+			}
+		}
+	}
+
+	/**
+	 * Trials of one test case whose replies are identical but whose projects and transcripts differ share one
+	 * {@code response} session, whose verdicts the store records, and each start their own {@code actions} session,
+	 * at once and without waiting for another trial's, whose verdicts the store never records.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void equalRepliesShareOnlyTheResponseSession() throws IOException
+	{
+		// Requirement: R-L19
+		// Requirement: R-L10
+		Contract contract = ContractFixtures.withEvidenceScope(ContractFixtures.contract(), EvidenceScope.RESPONSE);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+				developing(contract).window(16).build());
+			Map<Path, String> identities = new ConcurrentHashMap<>();
+			harness.trials(request ->
+			{
+				LogicalTrial trial = runningTrial(harness, request);
+				SessionResult.Completed result = harness.passed();
+				identities.put(result.effects(), Repeats.identityOf(trial));
+				return result;
+			});
+			harness.judges(request -> harness.judged(request, Verdict.PASS, "The scope holds."));
+			Map<String, Integer> trialsByCase = new HashMap<>();
+			try (Driver driver = harness.open())
+			{
+				driver.step();
+				List<TrialKey> started = runningKeys(harness);
+				List<FakeSession> trials = new ArrayList<>(harness.runningTrials());
+				for (FakeSession trial : trials)
+					harness.end(trial);
+				for (String identity : identities.values())
+					trialsByCase.merge(identity, 1, Integer::sum);
+				requireThat(trialsByCase.size(), "distinctCases").isLessThan(trials.size());
+				driver.step();
+
+				// The judge sessions fill the sessions that the trials ran in, and no two of them judge one test case's
+				// replies, while one trial's actions session never waits for another's
+				int runningJudges = 0;
+				Map<String, Integer> runningActions = new HashMap<>();
+				Map<String, Integer> runningResponse = new HashMap<>();
+				for (FakeSession session : harness.running())
+				{
+					SessionRequest request = session.request();
+					if (request.role() != SessionRole.JUDGE)
+						continue;
+					++runningJudges;
+					if (request.readOnly().isEmpty())
+						runningResponse.merge(Repeats.identityOf(request), 1, Integer::sum);
+					else
+						runningActions.merge(identities.get(request.readOnly().getFirst()), 1, Integer::sum);
+				}
+				requireThat(runningJudges, "runningJudges").isEqualTo(trials.size());
+				for (Map.Entry<String, Integer> entry : runningResponse.entrySet())
+					requireThat(entry.getValue(), "runningResponse").withContext(entry.getKey(), "case").isEqualTo(1);
+				requireThat(runningActions.keySet().stream().anyMatch(identity -> runningActions.get(identity) > 1),
+					"actionsOfOneCaseAtOnce").isTrue();
+
+				harness.runUntil(driver, () -> started.stream().allMatch(key ->
+					recordedOutcome(harness, key).isPresent()));
+				for (TrialKey key : started)
+				{
+					requireThat(recordedOutcome(harness, key).orElseThrow().verdict(), "verdict").
+						isEqualTo(Verdict.PASS);
+				}
+			}
+			Map<String, Integer> responseSessions = new HashMap<>();
+			Map<String, Integer> actionsSessions = new HashMap<>();
+			for (SessionRequest request : judgeRequests(harness))
+			{
+				if (request.readOnly().isEmpty())
+					responseSessions.merge(Repeats.identityOf(request), 1, Integer::sum);
+				else
+					actionsSessions.merge(identities.get(request.readOnly().getFirst()), 1, Integer::sum);
+			}
+			for (Map.Entry<String, Integer> entry : actionsSessions.entrySet())
+			{
+				requireThat(responseSessions.get(entry.getKey()), "responseSessions").
+					withContext(entry.getValue(), "actionsSessions").isEqualTo(1);
+			}
+			for (Map.Entry<String, Integer> entry : trialsByCase.entrySet())
+			{
+				requireThat(actionsSessions.getOrDefault(entry.getKey(), 0), "actionsSessions").
+					withContext(entry.getKey(), "case").isGreaterThanOrEqualTo(entry.getValue());
+			}
+			Map<VerdictKey, VerdictRecord> records = harness.store().verdicts(DriverHarness.CAMPAIGN);
+			requireThat(records.isEmpty(), "records").isFalse();
+			for (VerdictRecord record : records.values())
+			{
+				requireThat(record.verdict().assertion(), "recordedAssertion").isNotEqualTo(TestCase.EXPECTED_OUTCOME);
+			}
+		}
+	}
+
+	/**
+	 * Returns the identifiers of the assertions that a judge request asks the judge to decide.
+	 *
+	 * @param harness the harness
+	 * @param request the request
+	 * @return the identifiers, in request order
+	 */
+	private static List<String> ids(DriverHarness harness, SessionRequest request)
+	{
+		List<String> ids = new ArrayList<>();
+		for (JsonNode assertion : harness.decidedAssertions(request))
+			ids.add(assertion.get("id").asString());
+		return ids;
 	}
 
 	/**
@@ -8634,6 +8809,7 @@ public final class DriverTest
 	 */
 	private static final class Repeats
 	{
+		private static final JsonMapper JSON = JsonMapper.builder().build();
 		private final Map<Path, String> identities = new ConcurrentHashMap<>();
 		private final Map<TrialKey, LogicalTrial> started = new ConcurrentHashMap<>();
 		private final Map<String, Integer> sessions = new ConcurrentHashMap<>();
@@ -8668,7 +8844,7 @@ public final class DriverTest
 			});
 			harness.judges(request ->
 			{
-				String identity = identity(request.readOnly().getFirst());
+				String identity = identityOf(request);
 				int count = sessions.merge(identity, 1, Integer::sum);
 				if (failing.contains(identity) && invalid.merge(identity, 1, Integer::sum) <= failures)
 					return harness.judged("{}");
@@ -8741,6 +8917,22 @@ public final class DriverTest
 		}
 
 		/**
+		 * Returns the test case of a trial that a verdict record names.
+		 *
+		 * @param trialName the name of the trial in the record
+		 * @return the test's identifier and the test case, or {@code null} if no such trial ran
+		 */
+		String identityOfTrial(String trialName)
+		{
+			for (LogicalTrial trial : started.values())
+			{
+				if (trialName(trial.key()).equals(trialName))
+					return identityOf(trial);
+			}
+			return null;
+		}
+
+		/**
 		 * Returns the number of judge sessions of each test case.
 		 *
 		 * @return the sessions by test case
@@ -8748,6 +8940,29 @@ public final class DriverTest
 		Map<String, Integer> sessionsByCase()
 		{
 			return Map.copyOf(sessions);
+		}
+
+		/**
+		 * Returns the number of judge sessions of one test case.
+		 *
+		 * @param identity the test case's identity
+		 * @return the number of sessions
+		 */
+		int sessions(String identity)
+		{
+			return sessions.getOrDefault(identity, 0);
+		}
+
+		/**
+		 * Returns the name under which a verdict record names a trial.
+		 *
+		 * @param key the trial's key
+		 * @return the name
+		 */
+		static String trialName(TrialKey key)
+		{
+			return EnumNames.lowerCase(key.purpose()) + " trial " + key.sequence() + " of cell " + key.cell() +
+				", series " + key.series();
 		}
 
 		/**
@@ -8768,7 +8983,39 @@ public final class DriverTest
 		 */
 		static String identityOf(LogicalTrial trial)
 		{
-			return trial.testCase().testId() + "\n" + trial.testCase().testCase();
+			return identity(trial.testCase().testId(), trial.testCase().turns(),
+				trial.testCase().testCase().expectedOutcome());
+		}
+
+		/**
+		 * Returns the identity of the test case that a judge request shows.
+		 *
+		 * @param request the judge session's request
+		 * @return the test and the test case
+		 */
+		static String identityOf(SessionRequest request)
+		{
+			String turn = request.turns().getFirst();
+			int start = turn.indexOf("\n\n{", turn.indexOf("The test case, as JSON:")) + 2;
+			int end = turn.indexOf("\n\nThe trial agent's reply", start);
+			JsonNode testCase = JSON.readTree(turn.substring(start, end));
+			List<String> turns = new ArrayList<>();
+			for (JsonNode text : testCase.get("turns"))
+				turns.add(text.asString());
+			return identity(testCase.get("test").asString(), turns, testCase.get("expected_outcome").asString());
+		}
+
+		/**
+		 * Returns the identity of a test case.
+		 *
+		 * @param test            the test's identifier
+		 * @param turns           the turns that its trials receive
+		 * @param expectedOutcome its expected outcome
+		 * @return the identity
+		 */
+		private static String identity(String test, List<String> turns, String expectedOutcome)
+		{
+			return test + "\n" + String.join("\n", turns) + "\n" + expectedOutcome;
 		}
 
 		/**
