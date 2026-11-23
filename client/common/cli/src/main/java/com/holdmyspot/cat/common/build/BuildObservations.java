@@ -4,11 +4,13 @@ import com.holdmyspot.cat.common.runner.launcher.ProcessIdentity;
 import oshi.software.os.OSProcess;
 import oshi.spi.SystemInfoProvider;
 import oshi.util.FileUtil;
+import oshi.util.GlobalConfig;
 import oshi.spi.SystemInfoFactory;
 import oshi.hardware.CentralProcessor;
 import oshi.software.os.OperatingSystem;
 import oshi.hardware.HardwareAbstractionLayer;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -28,6 +30,8 @@ import java.util.stream.Stream;
  */
 public final class BuildObservations
 {
+	private static final String DEFAULT_SYSFS = "/sys";
+	private static final Object OSHI_CONFIGURATION_LOCK = new Object();
 	private final Path procRoot;
 	private final Metrics metrics;
 	private final IdentityLookup identities;
@@ -69,9 +73,30 @@ public final class BuildObservations
 	 * Creates the system metric provider for composing resource and process observations.
 	 *
 	 * @return fresh OSHI metrics using the native-free system provider
+	 * @throws UncheckedIOException if the default sysfs path is absent and the fallback directory cannot be created
 	 */
 	public static Metrics systemMetrics()
 	{
+		synchronized (OSHI_CONFIGURATION_LOCK)
+		{
+			String sysfs = GlobalConfig.get(GlobalConfig.OSHI_UTIL_SYS_PATH, DEFAULT_SYSFS);
+			boolean defaultSysfsMissing = DEFAULT_SYSFS.equals(sysfs) && Files.notExists(Path.of(sysfs));
+			if (defaultSysfsMissing)
+			{
+				// OSHI requires the root to exist before it can fall back to procfs for CPU topology.
+				try
+				{
+					Path emptySysfs = Files.createTempDirectory("cat-oshi-sysfs-");
+					emptySysfs.toFile().deleteOnExit();
+					GlobalConfig.set(GlobalConfig.OSHI_UTIL_SYS_PATH, emptySysfs.toString());
+				}
+				catch (IOException exception)
+				{
+					throw new UncheckedIOException("Cannot prepare OSHI fallback for missing " + sysfs, exception);
+				}
+			}
+		}
+
 		return new SystemMetrics(SystemInfoFactory.create());
 	}
 
