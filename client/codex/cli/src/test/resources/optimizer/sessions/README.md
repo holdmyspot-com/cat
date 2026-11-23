@@ -2,6 +2,8 @@
 
 Each JSONL resource contains every line of its selected source file, in order. No lines or fields are dropped, reordered or merged. Substitutions are applied consistently throughout each stream, including recorded text. E1 source SHA-256 values identify native event-file bytes before substitutions.
 
+The separate `../codex-hooks.jsonl` resource contains the two SessionStart notifications from turn 9 of the Codex 0.171.0 owner session in `wi146-integrated-runtime-Izw3OV/recovery-fixture`. The full source is under the retained fixture's `.cat/sessions/01a1fa89-2f6b-7a00-9ee4-d8de89a9e380/slots/d1/codex/s-1/artifacts/turn-9.events`. Its SHA-256 is `df0e3b3561b2b93d946864bd22124b95d7725bd706cf1bfedd050cd517b63351`. Turn 1 reports the CLI version for the same native thread. The fixture keeps the complete notification lines with the staging path, thread ID, and turn ID replaced. The tests use these two events to exercise hook-source attribution.
+
 The refreshed trial, judge and prompt-author streams come from completed sessions in the installed Codex `1.0` plugin's E1 optimizer campaign. The source capture root is `/home/gili/cat/worktrees/v1.0/.cat/sessions/01a1e6ba-c063-78b0-9d33-7420983dae1e/slots/d1/codex/s-1/project/.cat/sessions/01a1ea74-1c11-7751-9ef0-e02d19116f71/campaign-records/20261117T170252Z-007bf4/slice-039-runs`. E1 source paths in the table are relative to this root; retained original paths are relative to the legacy root below unless absolute. Each selected native Codex CLI session completed with exit status 0 and exactly one completed turn. Selection is the lexicographically first completed eligible run for each role. The retained campaign contains 710 trial sessions, 935 judge sessions, 3 prompt-author sessions and 2 contract-author sessions; each session has one completed turn. Native `thread/started` events report codex-cli `0.160.0`.
 
 | Resource | Source path | Capture date | codex-cli version | Lines | Raw source SHA-256 |
@@ -49,3 +51,90 @@ Existing recordings keep their established substitutions:
 Connection-local JSON-RPC response IDs retain their recorded values. All other recorded event fields and values remain unchanged apart from the substitutions above.
 
 The interrupt check replays the complete interrupted-turn recording.
+
+## Two-turn trial
+
+The shared adapter contract replays the two completed turns of one replacement trial from the installed Codex
+0.171.0 recovery rehearsal on CAT `1.0+bb4060268f76f`. The recovery receipt is `verified-trial-replay.json` under
+session `01a1f722-8002-7742-8a1f-0d65e844b167/temp/wi146-q7-in-progress-tTWMC8/`. Both files come from the same
+broker response, `responses/ae820858-1b64-4127-b60e-878c6b332c9e/results-copy/artifacts/`.
+
+| Resource | Lines | Raw source SHA-256 |
+| --- | ---: | --- |
+| [two-turn-trial-turn-1.jsonl](two-turn-trial-turn-1.jsonl) | 28 | e2068f5ab850a23771406bb72fc4d9e0ab8049130952604ace3ae490ed28ba81 |
+| [two-turn-trial-turn-2.jsonl](two-turn-trial-turn-2.jsonl) | 21 | a6dfce5b80b421193dee09ba4fab7bd9aba521780681f980a8c1f5f8c7f99e6f |
+
+The recording replaces the trial's thread ID, other UUIDs and host path prefixes consistently across both turns.
+The separate contract-author case continues to use the original deriver pair.
+
+## Triage and approach ranking
+
+Both streams retain every event from one completed Codex CLI 0.171.0 turn. The role is established by the
+matching broker reply and its `impact` or `approaches` result. The replay uses each role's own stream.
+
+| Resource | Retained fixture and child session | Lines | Raw source SHA-256 |
+| --- | --- | ---: | --- |
+| [triage-turn-1.jsonl](triage-turn-1.jsonl) | `t6-codex-VaHbsa`, `01a203f2-676d-7e22-9bc3-70250892db79` | 83 | `56377ef84a2ec8a00e83c023245c81e4197a3b9001ac3d0f6b73af42187f0dc8` |
+| [approach-ranker-turn-1.jsonl](approach-ranker-turn-1.jsonl) | `e7-external-warning-WWdHnP`, `01a1ffe8-144f-7a03-977a-6342bdc997f5` | 559 | `76ffaea5af7fd6cf810bd8237bdce37f982521443637074a8ee3c5f70c86ba3e` |
+
+Each source is the child session's `artifacts/turn-1.events` under the fixture's `optimizer-nested-sessions`.
+Substitutions replace the fixture and home path prefixes, the root thread ID, and other UUIDs consistently.
+
+## Two-turn optimizer roles
+
+Four sessions captured on 2026-11-22 used Codex CLI 0.171.0 with the requested profile
+`gpt-6-luna/low`. Each role acknowledged case number 308 on its first turn and returned exactly
+`308` on its second turn. The capture's matching broker replies and native event-file hashes are
+recorded in the goal session's temp directory under
+`t3-role-capture-mxpI3v/served-codex/verified-roles.json`.
+
+| Role | First turn (28 lines) | Second turn (13 lines) |
+| --- | --- | --- |
+| Judge | [two-turn-judge-turn-1.jsonl](two-turn-judge-turn-1.jsonl) | [two-turn-judge-turn-2.jsonl](two-turn-judge-turn-2.jsonl) |
+| Triage | [two-turn-triage-turn-1.jsonl](two-turn-triage-turn-1.jsonl) | [two-turn-triage-turn-2.jsonl](two-turn-triage-turn-2.jsonl) |
+| Approach ranker | [two-turn-approach-ranker-turn-1.jsonl](two-turn-approach-ranker-turn-1.jsonl) | [two-turn-approach-ranker-turn-2.jsonl](two-turn-approach-ranker-turn-2.jsonl) |
+| Prompt author | [two-turn-prompt-author-turn-1.jsonl](two-turn-prompt-author-turn-1.jsonl) | [two-turn-prompt-author-turn-2.jsonl](two-turn-prompt-author-turn-2.jsonl) |
+
+The replay checks the adapter's ordered replies and transcript for each pair. Both turns use
+consistent replacements for the root thread and native UUIDs. The capture slot and user paths
+become `/recorded/t3` and `/recorded/user`. The remote-control notification uses placeholders for the
+workstation name and installation ID. The prompt author's two first-turn user-message events
+preserve the case-number prompt and replace the appended rule text and source inventory with a
+redaction marker. Each file retains the native event order, JSON structure, response IDs, and
+completed agent replies.
+
+## Interrupted trial
+
+[interrupted-trial-turn-1.jsonl](interrupted-trial-turn-1.jsonl) contains all 17 lines of the first native turn
+from the installed Codex 0.171.0 recovery fixture in session
+`01a1f722-8002-7742-8a1f-0d65e844b167/temp/wi146-integrated-runtime-Izw3OV/`. The response directory
+`responses/b1d4683f-6000-490a-bf89-7cc3691da01d/` holds the matching broker response, copied session manifest
+and `results-copy/artifacts/turn-1.events`. The raw stream's SHA-256 is
+`38efc874ef2d18f249c0a1b7f47e8617740eb49be1eb9a91adea4c9c84e1586d`.
+
+The native stream ends with `turn/completed` and status `interrupted` after the interrupt response. The recording
+replaces the thread ID, other UUIDs and host path prefixes throughout the stream. The adapter interrupt check
+verifies the request's thread and turn identities against the recorded terminal event and retains the full transcript.
+
+## E5 file and text evidence
+
+These streams come from Codex CLI 0.171.0 on installed CAT `1.0+b30730961acbe`, campaign
+`20261121T140529Z-86d2a1`. The retained `evidence/verified-codex-pilot.json` in session
+`01a1f722-8002-7742-8a1f-0d65e844b167` under `temp/e5-codex-path-retry-a8lJvx/` ties the native pairs
+to file pilot position 17 and chat pilot position 7. Both trial sessions used `gpt-6-luna` at low effort.
+
+| Resource | Lines | Raw source SHA-256 |
+| --- | ---: | --- |
+| e5-file-trial-turn-1.jsonl | 141 | ffa08553be09e7e170ebeae1390e422851666cfdab2439ce87ee7097505af74b |
+| e5-file-judge-turn-1.jsonl | 307 | 78eff866dfa5a207b05a723241f4436f06fb5acf66ecc779f94ef79582d23a34 |
+| e5-text-trial-turn-1.jsonl | 30 | bcfe91c38fb794e139c6649c6a6809c80125b2feff5b1588afa43296e74fe61f |
+| e5-text-judge-turn-1.jsonl | 203 | 4d8aa5e9daa534c34083041cd9b34565378bcde86b456f815102e77ad07de340 |
+
+The four streams preserve event order and response IDs. The capture directory and remaining home prefixes are
+replaced with `/recorded/e5` and `/recorded/user`. Root thread IDs use their resource role names. Other UUIDs
+and command process IDs receive consistent replacements in first-observed order.
+
+`e5-answer.md` contains the original staged file bytes. The file trial recorded a completed add, and the judge
+received the same bytes in the trial's unified diff. The replay stages those bytes to model the recorded file
+effect. The two replay tests feed the native events through the Codex adapter and parse the recorded verdicts
+with the production judge parser.
