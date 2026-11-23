@@ -42,8 +42,9 @@ recompilation. Run the build again only once all fixes have been applied.
 
 When a workflow verifies two or more immutable snapshots, give each build isolated working, log, and temporary state
 with a cleanup owner; set `TMPDIR`, `TMP`, and `TEMP` to that snapshot's own temporary child before starting the build
-so native tools do not inherit `/tmp`. If the selected build's tests support a JVM temporary-directory override, also
-set `JAVA_TOOL_OPTIONS=-Djava.io.tmpdir=<snapshot-temporary-child>`; otherwise preserve their supported JVM contract.
+so native tools do not inherit `/tmp`. Give CAT's own build the JVM temporary directory as the Maven property
+`-Djava.io.tmpdir=<snapshot-temporary-child>`, which `client/pom.xml` forwards to the forked test JVMs, never through
+`JAVA_TOOL_OPTIONS`: the JVM then prints a notice on standard error that tests comparing that stream reject.
 Then schedule builds in parallel without fixing a batch size up front. Before concurrent admission, run one equivalent
 build alone and measure the peak aggregate resident physical memory of its complete process tree, including Maven,
 forked test JVMs, and native children. Until that terminal calibration exists, admit only that one build. Before
