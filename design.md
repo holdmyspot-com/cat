@@ -2623,7 +2623,9 @@ the target's effect on behavior that other guidance governs (user ruling, 2026-1
 	`on_tool_failure`, which is `fail`, the default, or `judge` and requires a `tool`; optionally `covers`, the outcome
 	conditions that it checks (outcome coverage, below); for a judged assertion, one without a `tool` or whose
 	`on_tool_failure` is `judge`, `evidence_scope`, which is `response` or `actions` and which no other assertion may
-	have ([§6.4](#64-judge), evidence scope); and `description`, which states the assertion.
+	have ([§6.4](#64-judge), evidence scope), and `judge_reason`, one sentence saying why no built-in tool decides the
+	whole assertion, which no other assertion may have either ([§6.4](#64-judge), judge reasons); and `description`,
+	which states the assertion.
 
 **Section content (user rulings, 2026-10-10).** `# <Title>` and `## Design Goals` are prose for readers. Every other
 section's own content, the text before its first subsection, is key-value pairs: a list item whose bold key is followed
@@ -2915,9 +2917,10 @@ still inserts it into tools, statements, conditions and replies. Only its use as
 
 **Contracts and campaigns from before this ruling.**
 
-- A scenario that holds `### expected_outcome` among its assertions, the form that gave the removed assertion a tool, is
-	refused with the instruction to give that tool to the assertion that covers the outcome's reply condition, and so is a
-	proposal that holds the removed assertion's tool or judge reason. A recorded scenario without `## Expected Outcome`
+- A scenario that holds `### expected_outcome` among its assertions, the form that gave the removed assertion a tool or
+	a `judge_reason`, is refused with the instruction to give that tool to the assertion that covers the outcome's reply
+	condition, and so is a proposal whose prompt test holds the removed assertion's tool or judge reason, in its
+	`expected_outcome_tool` or `expected_outcome_judge_reason` field. A recorded scenario without `## Expected Outcome`
 	stays valid: the contract author adds the section and the `covers` keys, and the proposal shows the addition as an
 	edit.
 - A stored proposal that is not confirmed is refused at `confirm` with its coverage problems, and `revise` regenerates
@@ -3162,14 +3165,26 @@ under four duties.
 	a reading of meaning, such as a file that parses as valid configuration or a sequence of tool calls, which a check
 	program decides (`check-program`). Whether a reply is correct in a way no text match states, relevant, complete or
 	appropriate is not visible in the record and stays with the judge.
-- It lists, for each assertion left without a tool, one sentence saying why no built-in tool decides it. The proposal
-	shows the list under "Judged assertions", so the user sees where a judge session is spent and can ask for a tool
-	through `revise`. CAT does not check the sentence's truth; it makes the choice visible.
+- It writes, for each judged assertion, one without a tool or whose `on_tool_failure` is `judge`, one sentence saying
+	why no built-in tool decides the whole assertion (judge reasons, below). The proposal shows the list under "Judged
+	assertions", so the user sees where a judge session is spent and can ask for a tool through `revise`. CAT does not
+	check the sentence's truth; it makes the choice visible.
 - It chooses `on_tool_failure: judge` for a check that passes the common outcomes and fails some valid ones, such as a
 	word match that rejects a hyphenated name (H34), and `fail` for a check whose pass condition is the assertion.
 - Where a requirement is about an action, it gives a tool whether the action happened and leaves the judge only the part
 	that needs meaning ([§6.3](#63-prompt-tests-and-test-cases), test design rule 5), and it gives each judged assertion
 	its evidence scope (below). The outcome review checks both once, when the test is written.
+
+**Judge reasons.** The sentence is the judged assertion's `judge_reason` key in `scenario.md`, such as
+`- **judge_reason**: The wording can be correct without matching this exact phrase.` for a `pattern` under
+`on_tool_failure: judge`. The author writes it only there, never in the proposal file: when CAT validates the proposal,
+it copies the key into the contract's record of the assertion as its `judge_reason` field, only when the assertion is
+judged and has one. CAT refuses the key without a value, and on an assertion that a built-in tool decides under
+`on_tool_failure: fail`, whose verdict no judge gives. It refuses a proposal with a new prompt test, one that is not a
+recorded prompt test of the target, whose judged assertion lacks the key, and names the scenario and the assertion. A
+recorded prompt test without the key stays valid, and "Judged assertions" shows "No built-in tool can decide this
+assertion." in place of its sentence. The sentence reaches only the user: the judge's prompt never holds it and it is no
+part of a verdict key (consistent verdicts, below), so it changes no verdict.
 
 A check that cannot decide falls back in a fixed way. A tool that passes decides the assertion; a tool that fails
 under `fail` fails its assertion; a tool that fails under `judge` hands the assertion to the judge with the observed value; a
