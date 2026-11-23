@@ -1371,7 +1371,7 @@ public final class NestedSessionManager
 					links.put(destination.resolve(relative), target);
 				}
 			});
-		ProjectTree.createLinks(destination, links);
+		ProjectTree.createLinks(destination, "project", links, false);
 		// The copies exist, so that a link to a directory is created as one on Windows
 		List<Path> copies = new ArrayList<>();
 		for (Entry<Path, Path> copy : copyFolders.entrySet())

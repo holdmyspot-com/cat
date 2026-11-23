@@ -194,6 +194,32 @@ final class ProjectTree
 	}
 
 	/**
+	 * Indicates whether a symbolic link's target stays inside a directory both as text and when it is resolved one name
+	 * at a time, whether or not the target exists. A link of a draft may lead to a file that the draft lacks and that
+	 * the project supplies, so its target is missing where the link is read.
+	 *
+	 * @param root      the absolute, normalized directory
+	 * @param directory the directory that holds the link, below {@code root} and reached through no link
+	 * @param target    the link's target
+	 * @return {@code true} if the target is relative and leaves {@code root} neither as text nor through a link that it
+	 *   passes through; a name that does not exist leads nowhere, so that it cannot leave {@code root}
+	 * @throws FileSystemException if the target passes through more links than the operating system allows
+	 * @throws IOException         if a link cannot be read
+	 */
+	static boolean staysInsideWhetherOrNotItExists(Path root, Path directory, Path target) throws IOException
+	{
+		try
+		{
+			return resolveInside(root, directory, target, 0, Map.of()).isPresent();
+		}
+		catch (NoSuchFileException _)
+		{
+			// ".." follows a file, which no copy of the file can resolve
+			return false;
+		}
+	}
+
+	/**
 	 * Resolves a symbolic link's target one name at a time without leaving a directory, as the operating system
 	 * resolves it: a link that the target passes through is resolved from the directory that holds it, and {@code ..}
 	 * leads to the parent of the directory that the resolution has reached.
@@ -350,16 +376,21 @@ final class ProjectTree
 	}
 
 	/**
-	 * Creates the symbolic links of a copy of a project after its files and directories exist, each once every link
+	 * Creates the symbolic links of a copy of a directory after its files and directories exist, each once every link
 	 * that its target passes through exists, so that a link to a directory is created as one on Windows.
 	 *
 	 * @param project the absolute, normalized directory of the copy, which holds no symbolic link yet
+	 * @param owner   what the directory is, such as {@code project} or {@code workspace}, which a refusal names
 	 * @param links   the target of each link, by the link's absolute, normalized path below {@code project}; each
 	 *                link's directory exists and is reached through no link
-	 * @throws IOException if a link's target leaves the project, as text or through another link, if it does not exist
-	 *                     or leads back to itself, or if a link cannot be created
+	 * @param lenient {@code true} to create a link whose target does not exist, as a draft's link to a file that the
+	 *                project supplies, provided that the target is relative and leaves the directory neither as text nor
+	 *                through a link
+	 * @throws IOException if a link's target leaves the directory, as text or through another link, if it does not
+	 *                     exist, unless {@code lenient}, or leads back to itself, or if a link cannot be created
 	 */
-	static void createLinks(Path project, Map<Path, Path> links) throws IOException
+	static void createLinks(Path project, String owner, Map<Path, Path> links, boolean lenient)
+		throws IOException
 	{
 		List<Entry<Path, Path>> pending = new ArrayList<>(links.entrySet());
 		while (!pending.isEmpty())
@@ -380,19 +411,60 @@ final class ProjectTree
 				}
 				if (target.isEmpty())
 				{
-					throw new IOException("The project's symbolic link " + project.relativize(link.getKey()) +
-						" points to " + link.getValue() + ", which lies outside the project");
+					throw new IOException("The " + owner + "'s symbolic link " + project.relativize(link.getKey()) +
+						" points to " + link.getValue() + ", which lies outside the " + owner);
 				}
 				Files.createSymbolicLink(link.getKey(), link.getValue());
 			}
 			if (waiting.size() == pending.size())
 			{
+				if (lenient)
+				{
+					createMissingTargetLinks(project, owner, links, waiting);
+					return;
+				}
 				Entry<Path, Path> link = waiting.getFirst();
-				throw new IOException("The project's symbolic link " + project.relativize(link.getKey()) + " points to " +
+				throw new IOException("The " + owner + "'s symbolic link " + project.relativize(link.getKey()) + " points to " +
 					link.getValue() + ", which does not exist or leads back to the link");
 			}
 			pending = waiting;
 		}
+	}
+
+	/**
+	 * Creates the links of a copy of a directory that no creation order lets resolve to an existing target, after it
+	 * checks that each leaves the directory neither as text nor through a link and that none leads back to itself.
+	 *
+	 * @param project the absolute, normalized directory of the copy
+	 * @param owner   what the directory is, which a refusal names
+	 * @param links   the target of each link of the directory, by the link's absolute, normalized path
+	 * @param pending the links to create
+	 * @throws IOException if a link's target leaves the directory, as text or through another link, or leads back to
+	 *                     itself, or a link cannot be created
+	 */
+	private static void createMissingTargetLinks(Path project, String owner, Map<Path, Path> links,
+		List<Entry<Path, Path>> pending) throws IOException
+	{
+		for (Entry<Path, Path> link : pending)
+		{
+			Optional<Path> target;
+			try
+			{
+				target = resolveInside(project, link.getKey().getParent(), link.getValue(), 0, links);
+			}
+			catch (NoSuchFileException _)
+			{
+				throw new IOException("The " + owner + "'s symbolic link " + project.relativize(link.getKey()) +
+					" points to " + link.getValue() + ", which passes through a file");
+			}
+			if (target.isEmpty())
+			{
+				throw new IOException("The " + owner + "'s symbolic link " + project.relativize(link.getKey()) +
+					" points to " + link.getValue() + ", which lies outside the " + owner);
+			}
+		}
+		for (Entry<Path, Path> link : pending)
+			Files.createSymbolicLink(link.getKey(), link.getValue());
 	}
 
 	/**

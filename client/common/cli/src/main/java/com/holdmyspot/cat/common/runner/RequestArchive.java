@@ -74,6 +74,11 @@ public final class RequestArchive
 	 */
 	static final String LINK_TARGETS = "link-targets";
 	/**
+	 * The name of the workspace input, which is both its manifest field and its archive entry. Its symbolic links whose
+	 * targets stay inside it, whether or not they exist, travel as links.
+	 */
+	private static final String WORKSPACE = "workspace";
+	/**
 	 * The prefix of the temporary file that a sender writes beside a request before renaming it into place.
 	 */
 	private static final String TEMPORARY_PREFIX = ".tmp-";
@@ -164,7 +169,8 @@ public final class RequestArchive
 	/**
 	 * Publishes a request made inside a nested session with archive-relative manifest paths, packing prompt texts after
 	 * the request's prompt files. The request's {@code workspace} and {@code read_only_evidence}, when it names them,
-	 * travel inside the archive too.
+	 * travel inside the archive too; the workspace's symbolic links whose targets stay inside the workspace travel as
+	 * links with the same targets, even if a target is missing, as a draft's link to a file that the project supplies.
 	 *
 	 * @param json        the manifest mapper
 	 * @param destination the final request file
@@ -173,10 +179,10 @@ public final class RequestArchive
 	 * @param nullDevice  the null device, which a sandbox mounts over each file that the session may not read; the
 	 *                    request leaves those files out of the trees that it carries
 	 * @param limits      the bounds that the archive must stay within
-	 * @throws IOException if an input path passes through a symbolic link, a plugin, workspace or evidence input contains
-	 *                     one, a link in the project leads to a target that is missing, that the sandbox does not let
-	 *                     the session read or that holds the project, or an input is special, oversized, or cannot be
-	 *                     packed
+	 * @throws IOException if an input path passes through a symbolic link, a plugin or evidence input contains one, the
+	 *                     workspace contains one that is absolute or leads outside it, a link
+	 *                     in the project leads to a target that is missing, that the sandbox does not let the session
+	 *                     read or that holds the project, or an input is special, oversized, or cannot be packed
 	 */
 	static void pack(JsonMapper json, Path destination, ObjectNode request, List<String> prompts, Path nullDevice,
 		RequestLimits limits) throws IOException
@@ -204,15 +210,15 @@ public final class RequestArchive
 					if (field.equals("prompts"))
 						packFile(archive, source, name, MAXIMUM_PROMPT_BYTES, budget);
 					else
-						packTree(archive, source, name, budget, nullDevice, skipped);
+						packTree(archive, source, name, false, budget, nullDevice, skipped);
 					paths.set(index, json.getNodeFactory().stringNode(name));
 				}
 			}
-			if (request.has("workspace"))
+			if (request.has(WORKSPACE))
 			{
-				packTree(archive, Path.of(request.path("workspace").asString()), "workspace", budget, nullDevice,
+				packTree(archive, Path.of(request.path(WORKSPACE).asString()), WORKSPACE, true, budget, nullDevice,
 					skipped);
-				request.put("workspace", "workspace");
+				request.put(WORKSPACE, WORKSPACE);
 			}
 			if (request.has("read_only_evidence"))
 			{
@@ -227,7 +233,7 @@ public final class RequestArchive
 					Path source = Path.of(evidence.get(index).asString());
 					String name = evidenceEntry(index);
 					if (Files.isDirectory(source, LinkOption.NOFOLLOW_LINKS))
-						packTree(archive, source, name, budget, nullDevice, skipped);
+						packTree(archive, source, name, false, budget, nullDevice, skipped);
 					else
 						packFile(archive, source, name, limits.entryBytes(), budget);
 					evidence.set(index, json.getNodeFactory().stringNode(name));
@@ -296,7 +302,7 @@ public final class RequestArchive
 			for (TrialPluginInput plugin : request.plugins())
 			{
 				String name = "plugins/" + plugins.size();
-				packTree(archive, plugin.path(), name, budget, NULL_DEVICE, skipped);
+				packTree(archive, plugin.path(), name, false, budget, NULL_DEVICE, skipped);
 				plugins.add(name);
 			}
 			return manifest;
@@ -551,18 +557,24 @@ public final class RequestArchive
 	 * @param archive    the destination archive
 	 * @param source     the readable directory
 	 * @param name       its archive name
+	 * @param links      {@code true} if a symbolic link of the directory whose target is an existing file or directory
+	 *                   of the directory itself travels as a link with the same target, as the links of a draft
+	 *                   directory and of a trial's workspace files do; {@code false} if the directory may hold no link
 	 * @param budget     the request's cumulative limits
 	 * @param nullDevice the null device, which a sandbox mounts over each file that the session may not read
 	 * @param skipped    the real paths of the entries that the archive leaves out with their descendants
-	 * @throws IOException if the input is unsafe, oversized or unreadable
+	 * @throws IOException if the input is unsafe, oversized or unreadable, or holds a symbolic link that is not
+	 *                     allowed: any link when {@code links} is {@code false}, otherwise a link whose target is
+	 *                     missing, absolute, or reached through a name that leaves the directory
 	 */
-	private static void packTree(TarArchiveOutputStream archive, Path source, String name, Budget budget,
-		Path nullDevice, Set<Path> skipped) throws IOException
+	private static void packTree(TarArchiveOutputStream archive, Path source, String name, boolean links,
+		Budget budget, Path nullDevice, Set<Path> skipped) throws IOException
 	{
 		checkAncestors(source);
 		if (!Files.isDirectory(source, LinkOption.NOFOLLOW_LINKS))
 			throw new IOException("Input must be a directory without symbolic links: " + source);
 		Path realSource = source.toRealPath(LinkOption.NOFOLLOW_LINKS);
+		Path root = source.toAbsolutePath().normalize();
 		Files.walkFileTree(source, new SimpleFileVisitor<>()
 		{
 			@Override
@@ -580,12 +592,37 @@ public final class RequestArchive
 			@Override
 			public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException
 			{
-				if (!skipped.contains(realSource.resolve(source.relativize(file))) &&
-					!SandboxPlaceholders.isPlaceholder(file, attributes, nullDevice))
-				{
+				if (skipped.contains(realSource.resolve(source.relativize(file))))
+					return FileVisitResult.CONTINUE;
+				if (links && attributes.isSymbolicLink())
+					packLink(file);
+				else if (!SandboxPlaceholders.isPlaceholder(file, attributes, nullDevice))
 					packFile(archive, file, entryName(file), budget.limits.entryBytes(), budget);
-				}
 				return FileVisitResult.CONTINUE;
+			}
+
+			/**
+			 * Packs a symbolic link as a link with the same target.
+			 *
+			 * @param link the link
+			 * @throws IOException if the link's target is absolute, leaves the directory as text or through a link, or
+			 *                     the link cannot be written
+			 */
+			private void packLink(Path link) throws IOException
+			{
+				Path target = Files.readSymbolicLink(link);
+				// A draft's link may lead to a file that the project supplies, so that its target is missing here
+				if (!ProjectTree.staysInsideWhetherOrNotItExists(root, link.toAbsolutePath().normalize().getParent(),
+					target))
+				{
+					throw new IOException("Input path contains a symbolic link that is absolute or leads outside " +
+						name + ": " + link + " -> " + target);
+				}
+				budget.add(0, budget.limits.entryBytes());
+				TarArchiveEntry entry = new TarArchiveEntry(entryName(link), TarConstants.LF_SYMLINK);
+				entry.setLinkName(target.toString().replace(target.getFileSystem().getSeparator(), "/"));
+				archive.putArchiveEntry(entry);
+				archive.closeArchiveEntry();
 			}
 
 			/**
@@ -719,21 +756,25 @@ public final class RequestArchive
 	}
 
 	/**
-	 * Extracts only ordinary files, directories and the project's symbolic links from a private archive copy, creating
-	 * the links after every file and directory. A file or directory of the project whose entry carries
-	 * {@link #COPY_BIT}, as the copy of a link's target does, goes with the rest of its copy into its own directory of
-	 * {@code link-targets} beside the project, read-only as {@link PortableFiles#setReadOnly(Path)} makes it, and the
-	 * project holds a symbolic link to it in its place. A runner that copies the extracted project therefore copies the
-	 * copy as it copies any target of a link outside the project: read-only, and checked for changes once its session
-	 * ends. Every other file of the project gets the mode of its entry, and its owner may read it.
+	 * Extracts only ordinary files, directories and the symbolic links of the project and of the workspace from a
+	 * private archive copy, creating the links after every file and directory. A file or directory of the project whose
+	 * entry carries {@link #COPY_BIT}, as the copy of a link's target does, goes with the rest of its copy into its own
+	 * directory of {@code link-targets} beside the project, read-only as {@link PortableFiles#setReadOnly(Path)} makes
+	 * it, and the project holds a symbolic link to it in its place. A runner that copies the extracted project
+	 * therefore copies the copy as it copies any target of a link outside the project: read-only, and checked for
+	 * changes once its session ends. Every other file of the project gets the mode of its entry, and its owner may read
+	 * it. A link of the workspace may have a target that does not exist, as a draft's link to a file that the project
+	 * supplies.
 	 *
 	 * @param source the private archive
 	 * @param target the private empty destination
 	 * @param limits the bounds that the archive must stay within
-	 * @throws IOException if an entry is malformed, unsafe or exceeds request limits, a link lies outside the project or
-	 *                     its target leaves the project or does not exist, an entry's path passes through a link, an
-	 *                     entry lies in {@code link-targets}, or a copy of a link's target holds a writable entry, a
-	 *                     link or another copy, or comes after an entry inside it
+	 * @throws IOException if an entry is malformed, unsafe or exceeds request limits, a link lies outside the project
+	 *                     and the workspace, a link of the project has a target that leaves the project or does not
+	 *                     exist, a link of the workspace has a target that leaves the workspace, an
+	 *                     entry's path passes through a link, an entry lies in {@code link-targets}, or a copy of a
+	 *                     link's target holds a writable entry, a link or another copy, or comes after an entry inside
+	 *                     it
 	 */
 	public static void unpack(Path source, Path target, RequestLimits limits) throws IOException
 	{
@@ -829,7 +870,18 @@ public final class RequestArchive
 			}
 		}
 		linkCopies(copies, directory);
-		ProjectTree.createLinks(project, links);
+		Path workspace = directory.resolve(WORKSPACE);
+		Map<Path, Path> projectLinks = new LinkedHashMap<>();
+		Map<Path, Path> workspaceLinks = new LinkedHashMap<>();
+		for (Entry<Path, Path> link : links.entrySet())
+		{
+			if (link.getKey().startsWith(workspace))
+				workspaceLinks.put(link.getKey(), link.getValue());
+			else
+				projectLinks.put(link.getKey(), link.getValue());
+		}
+		ProjectTree.createLinks(project, "project", projectLinks, false);
+		ProjectTree.createLinks(workspace, WORKSPACE, workspaceLinks, true);
 		// A directory becomes read-only only once nothing more is added to it
 		for (Path readOnly : readOnlyDirectories)
 			PortableFiles.setReadOnly(readOnly);
@@ -918,20 +970,27 @@ public final class RequestArchive
 	}
 
 	/**
-	 * Returns the target of a symbolic link entry, which only the project holds.
+	 * Returns the target of a symbolic link entry, which only the project and the workspace hold.
 	 *
 	 * @param target the extraction directory
 	 * @param path   the link's resolved path below {@code target}
 	 * @param entry  the link entry
 	 * @return the link's relative target
-	 * @throws IOException if the link lies outside the project, has content, or names an absolute or platform-specific
-	 *                     target
+	 * @throws IOException if the link lies outside the project and the workspace, has content, or names an absolute or
+	 *                     platform-specific target
 	 */
 	private static Path linkTarget(Path target, Path path, TarArchiveEntry entry) throws IOException
 	{
-		Path project = target.toAbsolutePath().normalize().resolve("project");
-		if (!path.startsWith(project) || path.equals(project))
-			throw new IOException("Request archive symbolic link " + entry.getName() + " lies outside the project");
+		Path base = target.toAbsolutePath().normalize();
+		Path project = base.resolve("project");
+		Path workspace = base.resolve(WORKSPACE);
+		boolean inProject = path.startsWith(project) && !path.equals(project);
+		boolean inWorkspace = path.startsWith(workspace) && !path.equals(workspace);
+		if (!inProject && !inWorkspace)
+		{
+			throw new IOException("Request archive symbolic link " + entry.getName() + " lies outside the project and " +
+				"the workspace");
+		}
 		if (entry.getSize() != 0)
 			throw new IOException("Request archive symbolic link has content: " + entry.getName());
 		String link = entry.getLinkName();
@@ -1236,8 +1295,8 @@ public final class RequestArchive
 		if (agent.isEmpty())
 			HarnessRunnerOptions.requireProfile(harness, model, effort);
 		Optional<Path> workspace = Optional.empty();
-		if (value.has("workspace"))
-			workspace = Optional.of(entry(value, inputs, "workspace", Kind.DIRECTORY));
+		if (value.has(WORKSPACE))
+			workspace = Optional.of(entry(value, inputs, WORKSPACE, Kind.DIRECTORY));
 		List<Path> evidence = namedEntries(value, inputs, "read_only_evidence", Kind.ANY, MAXIMUM_LAUNCH_INPUTS);
 		Optional<Integer> toolOutputTokenLimit = count(value, "tool_output_token_limit");
 		if (toolOutputTokenLimit.isPresent() && toolOutputTokenLimit.get() <= 0)

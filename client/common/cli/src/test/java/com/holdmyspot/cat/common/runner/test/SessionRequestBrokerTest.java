@@ -519,8 +519,9 @@ public final class SessionRequestBrokerTest
 	{
 		return new Object[][]{{"outside"}, {"absolute"}, {"parent"}, {"drive"}, {"backslash"},
 			{"link_escape"}, {"link_absolute"}, {"link_beyond_project"}, {"link_back_out"}, {"link_broken"},
-			{"link_through"}, {"link_in_plugin"}, {"copy_in_link_targets"}, {"copy_writable_entry"}, {"copy_link"},
-			{"copy_after_entry"}, {"copy_inside_copy"}, {"hardlink_entry"}, {"special"}, {"duplicate"},
+			{"link_through"}, {"link_in_plugin"}, {"link_workspace_escape"}, {"link_workspace_escape_after_missing_name"},
+			{"link_workspace_through"}, {"link_workspace_cycle"}, {"copy_in_link_targets"}, {"copy_writable_entry"},
+			{"copy_link"}, {"copy_after_entry"}, {"copy_inside_copy"}, {"hardlink_entry"}, {"special"}, {"duplicate"},
 			{"directory_duplicate"},
 			{"too_many"}, {"large_entry"}, {"pax_chain"}, {"pax_size"}, {"long_chain"}, {"long_size"},
 			{"manifest_size"}, {"prompt_size"}, {"total_size"}, {"checksum"}, {"sparse"},
@@ -534,7 +535,9 @@ public final class SessionRequestBrokerTest
 	 * that the extracted project cannot hold: one whose target leaves the project, by its text or through another link,
 	 * or does not exist, one that an entry's path passes through, and one outside the project. Among them too are
 	 * read-only copies of link targets that the extracted project cannot hold: an entry where the copies go, a writable
-	 * entry or a link in a copy, a copy that comes after an entry inside it, and a copy inside another.
+	 * entry or a link in a copy, a copy that comes after an entry inside it, and a copy inside another. The workspace
+	 * holds links under similar limits: its links may not lead out of it, as text or past a name that does not
+	 * exist, or form a cycle, or be passed through.
 	 * <p>
 	 * The entry-count, cumulative-size and whole-archive-size cases cross the bounds that {@link #limits(String)}
 	 * gives the broker, which are small enough for a few small entries to cross; the other cases use the bounds of
@@ -3608,6 +3611,28 @@ public final class SessionRequestBrokerTest
 						entry(archive, "project/link/written", new byte[0]);
 					}
 					case "link_in_plugin" -> link(archive, "plugins/0/link", "../../project/marker");
+					case "link_workspace_escape" ->
+					{
+						entry(archive, "workspace/", new byte[0]);
+						link(archive, "workspace/link", "../project/marker");
+					}
+					case "link_workspace_escape_after_missing_name" ->
+					{
+						entry(archive, "workspace/", new byte[0]);
+						link(archive, "workspace/link", "absent/../../project/marker");
+					}
+					case "link_workspace_through" ->
+					{
+						entry(archive, "workspace/", new byte[0]);
+						link(archive, "workspace/link", ".");
+						entry(archive, "workspace/link/written", new byte[0]);
+					}
+					case "link_workspace_cycle" ->
+					{
+						entry(archive, "workspace/", new byte[0]);
+						link(archive, "workspace/first", "second");
+						link(archive, "workspace/second", "first");
+					}
 					case "copy_in_link_targets" -> entry(archive, "link-targets/0", new byte[0]);
 					case "copy_writable_entry" ->
 					{

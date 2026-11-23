@@ -100,6 +100,151 @@ public final class ServedSessionTest
 	}
 
 	/**
+	 * Verifies that a workspace that holds symbolic links whose targets lie inside it, such as a draft directory whose
+	 * prompt test links a workspace file to a file of the draft, reaches the served session with each link as a link with
+	 * the same target, so that a revision of a draft that holds links starts instead of being refused before the
+	 * session reads the feedback.
+	 *
+	 * @throws IOException if fixture or session I/O fails
+	 */
+	@Test(timeOut = 30_000)
+	public void carriesWorkspaceLinksThatStayInsideIt() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "served-")).toRealPath();
+			Inputs inputs = new Inputs(root);
+			Path tests = Files.createDirectories(inputs.workspace.resolve("cat-draft/.cat/tests/AGENTS"));
+			Files.writeString(tests.resolve("arrival-board.md"), "board");
+			Files.writeString(Files.createDirectories(tests.resolve("guides")).resolve("opening.md"), "opening");
+			Path linked = Files.createDirectories(tests.resolve("shipment/workspace"));
+			Files.createSymbolicLink(linked.resolve("arrival-board.md"), Path.of("../../arrival-board.md"));
+			Files.createSymbolicLink(linked.resolve("guides"), Path.of("../../guides"));
+			try (RequestingNestedSession parent = new RequestingNestedSession(root.resolve("parent"), jvm.fileLocks(), 1))
+			{
+				List<String> arguments = new ArrayList<>(inputs.arguments());
+				arguments.addAll(List.of("--workspace", inputs.workspace.toString()));
+				SessionRequestForwarder.serve(COMMAND, "claude", inputs.ownArtifact, arguments, new StringReader(RECORDS),
+					new StringWriter(), parent.requests(), bounded());
+
+				Path received = Path.of(value(parent.launches().getFirst(), "--workspace")).
+					resolve("cat-draft/.cat/tests/AGENTS/shipment/workspace");
+				requireThat(Files.readSymbolicLink(received.resolve("arrival-board.md")), "boardLink").
+					isEqualTo(Path.of("../../arrival-board.md"));
+				requireThat(Files.readString(received.resolve("arrival-board.md")), "board").isEqualTo("board");
+				requireThat(Files.readSymbolicLink(received.resolve("guides")), "guidesLink").
+					isEqualTo(Path.of("../../guides"));
+				requireThat(Files.readString(received.resolve("guides/opening.md")), "opening").isEqualTo("opening");
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a draft's link to a project file that the draft does not hold, which the fork supplies, reaches the
+	 * served session as a link with the same target even though the target is missing from the workspace, so that a
+	 * revision of a draft that holds such a link starts instead of being refused before the session reads the feedback.
+	 *
+	 * @throws IOException if fixture or session I/O fails
+	 */
+	@Test(timeOut = 30_000)
+	public void carriesLinkToForkFile() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "served-")).toRealPath();
+			Inputs inputs = new Inputs(root);
+			Path workspace = Files.createDirectories(
+				inputs.workspace.resolve("cat-draft/.cat/tests/guidance/case/workspace"));
+			Files.writeString(workspace.resolve("own.md"), "own");
+			Files.createSymbolicLink(workspace.resolve("latest"), Path.of("own.md"));
+			// Written for the prompt test's path in the project: five names up is the project's root there, so the
+			// targets are in the fork, and the draft's root here, where they are missing
+			Path link = Files.createSymbolicLink(workspace.resolve("reports"), Path.of("../../../../../reports"));
+			Files.createSymbolicLink(workspace.resolve("desk.md"), Path.of("../../../../../docs/dispatch-desk.md"));
+			requireThat(Files.exists(link), "targetExists").isFalse();
+			requireThat(Files.exists(workspace.resolve("desk.md")), "deskExists").isFalse();
+			try (RequestingNestedSession parent = new RequestingNestedSession(root.resolve("parent"), jvm.fileLocks(), 1))
+			{
+				List<String> arguments = new ArrayList<>(inputs.arguments());
+				arguments.addAll(List.of("--workspace", inputs.workspace.toString()));
+				SessionRequestForwarder.serve(COMMAND, "claude", inputs.ownArtifact, arguments, new StringReader(RECORDS),
+					new StringWriter(), parent.requests(), bounded());
+
+				Path received = Path.of(value(parent.launches().getFirst(), "--workspace")).
+					resolve("cat-draft/.cat/tests/guidance/case/workspace");
+				requireThat(Files.readSymbolicLink(received.resolve("reports")), "reportsLink").
+					isEqualTo(Path.of("../../../../../reports"));
+				requireThat(Files.readSymbolicLink(received.resolve("desk.md")), "deskLink").
+					isEqualTo(Path.of("../../../../../docs/dispatch-desk.md"));
+				requireThat(Files.readString(received.resolve("latest")), "latest").isEqualTo("own");
+			}
+		}
+	}
+
+	/**
+	 * Supplies the symbolic links that a workspace may not hold, because their targets leave it as text, or through
+	 * another link, or are absolute.
+	 *
+	 * @return the name of each case
+	 */
+	@DataProvider
+	public Object[][] workspaceLinksThatLeaveIt()
+	{
+		return new Object[][]{{"outside"}, {"outside_after_missing_name"}, {"absolute"}, {"through_outside_link"}};
+	}
+
+	/**
+	 * Verifies that a served session whose workspace holds a symbolic link that leads outside the workspace, as text,
+	 * past a name that does not exist or through another link, or to an absolute path, is refused before the command
+	 * publishes a request.
+	 *
+	 * @param kind the case
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test(dataProvider = "workspaceLinksThatLeaveIt", timeOut = 30_000)
+	public void refusesWorkspaceLinkThatLeavesIt(String kind) throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "served-")).toRealPath();
+			Inputs inputs = new Inputs(root);
+			Path link = inputs.workspace.resolve("link.md");
+			switch (kind)
+			{
+				case "outside" -> Files.createSymbolicLink(link, Path.of("../evidence.txt"));
+				case "outside_after_missing_name" -> Files.createSymbolicLink(link, Path.of("missing/../../evidence.txt"));
+				case "absolute" -> Files.createSymbolicLink(link, inputs.workspace.resolve("notes.txt"));
+				case "through_outside_link" ->
+				{
+					Files.createSymbolicLink(inputs.workspace.resolve("up"), Path.of(".."));
+					Files.createSymbolicLink(link, Path.of("up/evidence.txt"));
+				}
+				default -> throw new AssertionError(kind);
+			}
+			try (RequestingNestedSession parent = new RequestingNestedSession(root.resolve("parent"), jvm.fileLocks(), 1))
+			{
+				List<String> arguments = new ArrayList<>(inputs.arguments());
+				arguments.addAll(List.of("--workspace", inputs.workspace.toString()));
+				try
+				{
+					SessionRequestForwarder.serve(COMMAND, "claude", inputs.ownArtifact, arguments,
+						new StringReader(RECORDS), new StringWriter(), parent.requests(), bounded());
+					throw new AssertionError("A workspace link that leaves the workspace was sent");
+				}
+				catch (IOException e)
+				{
+					requireThat(e.getMessage(), "message").contains("symbolic link");
+				}
+				requireThat(names(parent.requests()), "requests").isEmpty();
+				requireThat(parent.launches(), "launches").isEmpty();
+			}
+		}
+	}
+
+	/**
 	 * Verifies that a served session whose prompt names, by absolute path, a launcher of the CAT plugin in the
 	 * requesting session's home, such as the contract tools that a contract author runs, is not denied reading that
 	 * launcher, while the runner still denies it the rest of the requesting nested session, such as that session's
