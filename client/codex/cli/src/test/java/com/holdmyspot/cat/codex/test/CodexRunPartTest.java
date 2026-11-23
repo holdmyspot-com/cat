@@ -25,6 +25,10 @@ import java.util.StringJoiner;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.testng.SkipException;
 import org.testng.annotations.Test;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
@@ -98,6 +102,111 @@ public final class CodexRunPartTest
 			requireThat(call.output(), "output").startsWith("out" + EOL + "err" + EOL + "[End of ");
 			requireThat(call.status(), "status").isEqualTo(3);
 			requireThat(call.commandError(), "commandError").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that the first complete line reaches the caller while the command is still waiting and appears only once
+	 * in the finished first page, even if the configured page limit changes before the command exits.
+	 *
+	 * @throws IOException if temporary files cannot be created
+	 * @throws InterruptedException if the test is interrupted
+	 * @throws java.util.concurrent.ExecutionException if the run-part task fails
+	 * @throws TimeoutException if the child does not reach either controlled state
+	 */
+	@Test
+	public void streamsFirstLineBeforeSavedCommandExits() throws IOException, InterruptedException,
+		java.util.concurrent.ExecutionException, TimeoutException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-"));
+			Path release = temporary.resolve("release");
+			String command = script("printf 'first\\n'; while [ ! -e \"$RELEASE_FILE\" ]; do :; done; " +
+				"i=1; while [ \"$i\" -le 200 ]; do printf 'line-%s\\n' \"$i\"; i=$((i + 1)); done; exit 7",
+				"[Console]::Out.WriteLine('first'); while (-not (Test-Path $env:RELEASE_FILE)) {}; " +
+				"1..200 | ForEach-Object { [Console]::Out.WriteLine(\"line-$_\") }; exit 7");
+			Map<String, String> environment = Map.of("TMPDIR", temporary.toString(), "RELEASE_FILE", release.toString(),
+				"CODEX_THREAD_ID", THREAD_ID, "CODEX_HOME", temporary.toString());
+			Path config = temporary.resolve("config.toml");
+			Files.writeString(config, "tool_output_token_limit = 250\n");
+			try (LiveOutput output = new LiveOutput())
+			{
+				ByteArrayOutputStream error = new ByteArrayOutputStream();
+				FutureTask<Integer> task = new FutureTask<>(() -> CodexRunPart.run(new String[0], new ByteArrayInputStream(
+					command.getBytes(UTF_8)), false, OUTSIDE_PROJECT, SHELL, READ_PART, OVERRIDES, environment, output,
+					new PrintStream(error, true, UTF_8), Redirect.to(temporary.resolve("command-error").toFile()),
+					Yielding.waiting()));
+				Thread thread = new Thread(task);
+				thread.start();
+				try
+				{
+					requireThat(output.firstLine.await(10, TimeUnit.SECONDS), "arrived").isTrue();
+					requireThat(task.isDone(), "childStillRunning").isFalse();
+					requireThat(output.text(), "liveOutput").startsWith("first" + EOL);
+					Files.writeString(config, "tool_output_token_limit = 100\n");
+				}
+				finally
+				{
+					Files.createFile(release);
+				}
+				int status = task.get(10, TimeUnit.SECONDS);
+				requireThat(output.text(), "output").startsWith("first" + EOL + "line-1" + EOL).
+					contains("[More output follows: ");
+				requireThat(count(output.text(), "first" + EOL), "firstCopies").isEqualTo(1);
+				requireThat(status, "status").isEqualTo(0);
+				requireThat(error.toString(UTF_8), "error").isEmpty();
+			}
+		}
+	}
+
+	/**
+	 * Verifies that run-part streams a complete line without a Codex thread budget and preserves the last-part status.
+	 *
+	 * @throws IOException if temporary files cannot be created
+	 * @throws InterruptedException if the test is interrupted
+	 * @throws java.util.concurrent.ExecutionException if the run-part task fails
+	 * @throws TimeoutException if the child does not reach either controlled state
+	 */
+	@Test
+	public void streamsFirstLineWithoutThreadBudget() throws IOException, InterruptedException,
+		java.util.concurrent.ExecutionException, TimeoutException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-"));
+			Path release = temporary.resolve("release");
+			String command = script("printf 'first\\n'; while [ ! -e \"$RELEASE_FILE\" ]; do :; done; " +
+				"printf 'second\\n'; exit 5", "[Console]::Out.WriteLine('first'); " +
+				"while (-not (Test-Path $env:RELEASE_FILE)) {}; [Console]::Out.WriteLine('second'); exit 5");
+			Map<String, String> environment = Map.of("TMPDIR", temporary.toString(), "RELEASE_FILE", release.toString());
+			try (LiveOutput output = new LiveOutput())
+			{
+				ByteArrayOutputStream error = new ByteArrayOutputStream();
+				FutureTask<Integer> task = new FutureTask<>(() -> CodexRunPart.run(new String[0], new ByteArrayInputStream(
+					command.getBytes(UTF_8)), false, OUTSIDE_PROJECT, SHELL, READ_PART, OVERRIDES, environment, output,
+					new PrintStream(error, true, UTF_8), Redirect.to(temporary.resolve("command-error").toFile()),
+					Yielding.waiting()));
+				new Thread(task).start();
+				boolean arrived = output.firstLine.await(10, TimeUnit.SECONDS);
+				if (!arrived)
+					Files.createFile(release);
+				try
+				{
+					requireThat(arrived, "arrived").isTrue();
+					requireThat(task.isDone(), "childStillRunning").isFalse();
+				}
+				finally
+				{
+					if (Files.notExists(release))
+						Files.createFile(release);
+				}
+				int status = task.get(10, TimeUnit.SECONDS);
+				requireThat(output.text(), "output").startsWith("first" + EOL + "second" + EOL + "[End of ");
+				requireThat(count(output.text(), "first" + EOL), "firstCopies").isEqualTo(1);
+				requireThat(status, "status").isEqualTo(5);
+				requireThat(error.toString(UTF_8), "error").isEmpty();
+			}
 		}
 	}
 
@@ -679,6 +788,69 @@ public final class CodexRunPartTest
 		if (SHELL == CommandShell.POWERSHELL)
 			return powerShell;
 		return posix;
+	}
+
+	/**
+	 * Counts non-overlapping occurrences of a literal in a string.
+	 *
+	 * @param text the searched text
+	 * @param wanted the literal to count
+	 * @return the occurrence count
+	 */
+	private static int count(String text, String wanted)
+	{
+		int result = 0;
+		for (int index = text.indexOf(wanted); index >= 0; index = text.indexOf(wanted, index + wanted.length()))
+			++result;
+		return result;
+	}
+
+	/**
+	 * Receives live output and signals when the first line arrives.
+	 */
+	private static final class LiveOutput extends ByteArrayOutputStream
+	{
+		private final CountDownLatch firstLine = new CountDownLatch(1);
+
+		/**
+		 * Records one output byte and signals the first complete line.
+		 *
+		 * @param value the byte
+		 */
+		@Override
+		public void write(int value)
+		{
+			synchronized (this)
+			{
+				super.write(value);
+				if (toString(UTF_8).startsWith("first" + EOL))
+					firstLine.countDown();
+			}
+		}
+
+		@Override
+		public void write(byte[] bytes, int offset, int length)
+		{
+			synchronized (this)
+			{
+				super.write(bytes, offset, length);
+				if (toString(UTF_8).startsWith("first" + EOL))
+					firstLine.countDown();
+			}
+		}
+
+		/**
+		 * Returns the output as UTF-8 text.
+		 *
+		 * @return the output
+		 */
+		String text()
+		{
+			synchronized (this)
+			{
+				return toString(UTF_8);
+			}
+		}
 	}
 
 	/**

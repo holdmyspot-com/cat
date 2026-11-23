@@ -146,9 +146,28 @@ public final class ResultsCopy
 		requireThat(target, "target").isNotNull();
 		deleteTurnCopies(target);
 		ResultsCopier copier = new ResultsCopier(source, target, ResultsCopy::includesTurnPath,
-			ResultsCopy::isRequiredTranscript, false);
+			ResultsCopy::isRequiredTurnPath, false);
 		Files.walkFileTree(source, copier);
 		return List.copyOf(copier.skipped);
+	}
+
+	/**
+	 * Publishes a completed turn and the selected project directory's symbolic-link declarations.
+	 *
+	 * @param source the nested session whose turn completed
+	 * @param target the session result directory
+	 * @param name the selected directory name relative to the nested session's project
+	 * @return the relative project paths whose copy the sandbox refused
+	 * @throws IOException if turn evidence or its link declarations cannot be published
+	 */
+	public static List<String> copyTurn(Path source, Path target, Path name) throws IOException
+	{
+		requireThat(name, "name").isNotNull();
+		if (!ResultProjectLinks.isDirectoryName(name.toString()))
+			throw new IllegalArgumentException("Expected a single project directory name: " + name);
+		List<String> skipped = copyTurn(source, target);
+		ResultProjectLinks.capture(source, target, name);
+		return skipped;
 	}
 
 	/**
@@ -165,6 +184,7 @@ public final class ResultsCopy
 		for (String name : TURN_COPIES)
 			TemporaryDirectories.deleteRecursively(sessionFolder.resolve(name));
 		TemporaryDirectories.deleteRecursively(sessionFolder.resolve(SESSION_ARTIFACTS).resolve(SESSION_TRANSCRIPTS));
+		TemporaryDirectories.deleteRecursively(sessionFolder.resolve(ResultProjectLinks.DIRECTORY));
 	}
 
 	/**
@@ -178,7 +198,8 @@ public final class ResultsCopy
 		if (relative.toString().isEmpty())
 			return true;
 		String first = relative.getName(0).toString();
-		return TURN_COPIES.contains(first) || first.equals(SESSION_ARTIFACTS) &&
+		return relative.startsWith(ResultProjectLinks.DIRECTORY) || TURN_COPIES.contains(first) ||
+			first.equals(SESSION_ARTIFACTS) &&
 			(relative.getNameCount() == 1 || relative.getName(1).toString().equals(SESSION_TRANSCRIPTS));
 	}
 
@@ -186,11 +207,12 @@ public final class ResultsCopy
 	 * Indicates whether a copy failure must abort turn evidence publication.
 	 *
 	 * @param relative the path relative to the nested session
-	 * @return whether the path is a native session transcript path
+	 * @return whether the path holds a native session transcript or a draft link declaration
 	 */
-	private static boolean isRequiredTranscript(Path relative)
+	private static boolean isRequiredTurnPath(Path relative)
 	{
-		return relative.getNameCount() == 1 && relative.getName(0).toString().equals(SESSION_ARTIFACTS) ||
+		return relative.startsWith(ResultProjectLinks.DIRECTORY) ||
+			relative.getNameCount() == 1 && relative.getName(0).toString().equals(SESSION_ARTIFACTS) ||
 			relative.getNameCount() >= 2 && relative.getName(0).toString().equals(SESSION_ARTIFACTS) &&
 				relative.getName(1).toString().equals(SESSION_TRANSCRIPTS);
 	}
@@ -205,7 +227,8 @@ public final class ResultsCopy
 	 */
 	private static Result copy(Path source, Path target, Predicate<Path> included)
 	{
-		ResultsCopier copier = new ResultsCopier(source, target, included, _ -> false, true);
+		ResultsCopier copier = new ResultsCopier(source, target, included,
+			relative -> relative.startsWith(ResultProjectLinks.DIRECTORY), true);
 		try
 		{
 			Files.walkFileTree(source, copier);

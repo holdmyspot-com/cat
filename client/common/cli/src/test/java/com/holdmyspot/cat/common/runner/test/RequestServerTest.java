@@ -5,21 +5,28 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.Pause;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.git.Git;
+import com.holdmyspot.cat.common.optimizer.proposal.HookReport;
+import com.holdmyspot.cat.common.optimizer.proposal.HookReport.HookDifference;
 import com.holdmyspot.cat.common.optimizer.workspace.GitWorktreeRegistrar;
 import com.holdmyspot.cat.common.optimizer.workspace.WorktreeRefusedException;
 import com.holdmyspot.cat.common.optimizer.workspace.WorktreeRegistrar;
+import com.holdmyspot.cat.common.release.fakes.test.FakeRelease;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
+import com.holdmyspot.cat.common.runner.HookComparisonRequest;
+import com.holdmyspot.cat.common.runner.HookComparisonResult;
 import com.holdmyspot.cat.common.runner.NestedSession;
 import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.NestedSessionReceipt;
 import com.holdmyspot.cat.common.runner.RequestServer;
-import com.holdmyspot.cat.common.runner.RequestedSessionStarter;
+import com.holdmyspot.cat.common.runner.RequestedRunner;
+import com.holdmyspot.cat.common.runner.RuntimeBinding;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
 import com.holdmyspot.cat.common.runner.WorktreeRequest;
 import com.holdmyspot.cat.common.runner.WorktreeRequestClient;
@@ -62,6 +69,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -379,6 +387,93 @@ public final class RequestServerTest
 		}
 	}
 
+
+	/**
+	 * Verifies that a writable directory in the installed peer prevents the broker from starting its runner.
+	 *
+	 * @throws IOException if the fixture cannot be created or a request cannot be served
+	 */
+	@Test(timeOut = 60_000)
+	public void refusesWritablePeerBeforeProbe() throws IOException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			Path peer = Files.createDirectory(fixture.root.resolve("peer"));
+			Path writable = Files.createDirectories(peer.resolve("bin/runtime/modules"));
+			fixture.peer = Optional.of(peer);
+			fixture.policy.allow(fixture.policy(List.of(fixture.project, writable)));
+			fixture.child = _ -> new ExitedProcess(new ProcessBuilder(), 1, "", "");
+			try (Fixture.Running server = fixture.startForRequest())
+			{
+				JsonNode response = server.request(fixture.manifest().put("harness", "codex"));
+				requireThat(fixture.needsCalls.get(), "needsCalls").withContext(response, "response").isEqualTo(0);
+				requireThat(response.path("status").asString(), "status").isEqualTo("refused");
+				requireThat(response.path("reason").asString(), "reason").contains(writable.toString());
+			}
+		}
+	}
+
+
+	/**
+	 * Verifies that a grant in the startup policy prevents execution of a peer's bound runtime, even after the
+	 * owner removes the grant from its current policy.
+	 *
+	 * @throws IOException if the fixture cannot be created or a request cannot be served
+	 */
+	@Test(timeOut = 60_000)
+	public void refusesRuntimeWritableInOwnerSnapshot() throws IOException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			Path runtime = fixture.installPeer();
+			Path writable = runtime.resolve("bin");
+			fixture.policy.allow(fixture.policy(List.of(fixture.project, writable)));
+			fixture.child = _ -> new ExitedProcess(new ProcessBuilder(), 1, "", "");
+			try (Fixture.Running server = fixture.startForRequest())
+			{
+				fixture.policy.allow(fixture.policy(List.of(fixture.project)));
+				JsonNode response = server.request(fixture.manifest().put("harness", "codex"));
+				requireThat(fixture.needsCalls.get(), "needsCalls").withContext(response, "response").isEqualTo(0);
+				requireThat(response.path("status").asString(), "status").isEqualTo("refused");
+				requireThat(response.path("reason").asString(), "reason").contains(writable.toString());
+			}
+		}
+	}
+
+	/**
+	 * Verifies that the broker starts a trusted peer with one selection for the probe and the launch.
+	 *
+	 * @throws IOException if the fixture cannot be created or a request cannot be served
+	 * @throws InterruptedException if the test is interrupted while the server ends
+	 */
+	@Test(timeOut = 60_000)
+	public void reusesTrustedPeerForProbeAndLaunch() throws IOException, InterruptedException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			fixture.installPeer();
+			AtomicInteger launches = new AtomicInteger();
+			fixture.child = _ ->
+			{
+				launches.incrementAndGet();
+				FakeHarnessCli process = new FakeHarnessCli(_ ->
+				{
+				}, 1);
+				process.exit();
+				return process;
+			};
+			try (Fixture.Running server = fixture.startForRequest())
+			{
+				JsonNode response = server.request(fixture.manifest().put("harness", "codex"));
+				requireThat(fixture.needsCalls.get(), "needsCalls").withContext(response, "response").isEqualTo(1);
+				requireThat(fixture.peerSelections.get(), "peerSelections").isEqualTo(1);
+				requireThat(launches.get(), "launches").isEqualTo(1);
+				fixture.processes.end(fixture.harness);
+				requireThat(server.end(), "exit").isEqualTo(0);
+			}
+		}
+	}
+
 	/**
 	 * Verifies that a launch with {@code --conversation} holds a conversation through the server: the client sends
 	 * the asking session's turn once the server has started the session, writes the session's reply and the turn's
@@ -492,12 +587,11 @@ public final class RequestServerTest
 				// The asking session reads the results folder as soon as it reads the line that ends the conversation
 				Future<Boolean> keptWhenEnded = fixture.executor.submit(() ->
 				{
-					long deadline = System.nanoTime() + WAIT.toNanos();
 					while (!(Files.isRegularFile(fromChild) && Files.readString(fromChild).contains("\"ended\"")))
 					{
-						if (System.nanoTime() > deadline)
-							throw new IOException("The conversation did not end");
-						Thread.onSpinWait();
+						if (Thread.currentThread().isInterrupted())
+							throw new InterruptedException("Observation of the conversation end was cancelled");
+						Thread.yield();
 					}
 					Path claude = results.resolve("claude");
 					if (!Files.isDirectory(claude))
@@ -508,31 +602,39 @@ public final class RequestServerTest
 							Files.isRegularFile(copy.resolve(lastFile)));
 					}
 				});
-				StringWriter errors = new StringWriter();
-				long deadline = System.nanoTime() + WAIT.toNanos();
-				int status = SessionRequestForwarder.forward(SessionRequestForwarder.Route.SERVER, "claude",
-					new String[]{"--project", fixture.project.toString(), "--results", results.toString(),
-						"--model", "haiku", "--effort", "low", "--conversation", folder.toString()},
-					new StringReader(""), server.requests(), results, () ->
-					{
-						if (System.nanoTime() > deadline)
-							throw new IOException("The conversation did not end");
-						// Once the session runs, its nested session holds many files, so that copying it takes a while
-						if (!served.isEmpty() && !endSent.get())
+				try
+				{
+					StringWriter errors = new StringWriter();
+					long deadline = System.nanoTime() + WAIT.toNanos();
+					int status = SessionRequestForwarder.forward(SessionRequestForwarder.Route.SERVER, "claude",
+						new String[]{"--project", fixture.project.toString(), "--results", results.toString(),
+							"--model", "haiku", "--effort", "low", "--conversation", folder.toString()},
+						new StringReader(""), server.requests(), results, () ->
 						{
-							Path many = Files.createDirectories(served.getFirst().nestedSession().directory().
-								resolve("artifacts/many"));
-							for (int i = 0; i < 400; ++i)
-								Files.writeString(many.resolve("file-" + i), "content");
-							Files.writeString(toChild, "{\"end\": true}\n", StandardOpenOption.CREATE,
-								StandardOpenOption.APPEND);
-							endSent.set(true);
-						}
-						Thread.yield();
-					}, OutputStream.nullOutputStream(), new PrintWriter(errors, true));
+							if (System.nanoTime() > deadline)
+								throw new IOException("The conversation did not end");
+							// Once the session runs, its nested session holds many files, so that copying it takes a while
+							if (!served.isEmpty() && !endSent.get())
+							{
+								Path many = Files.createDirectories(served.getFirst().nestedSession().directory().
+									resolve("artifacts/many"));
+								for (int i = 0; i < 400; ++i)
+									Files.writeString(many.resolve("file-" + i), "content");
+								Files.writeString(toChild, "{\"end\": true}\n", StandardOpenOption.CREATE,
+									StandardOpenOption.APPEND);
+								endSent.set(true);
+							}
+							Thread.yield();
+						}, OutputStream.nullOutputStream(), new PrintWriter(errors, true));
 
-				requireThat(status, "status").withContext(errors, "errors").isEqualTo(0);
-				requireThat(keptWhenEnded.get(WAIT.toSeconds(), TimeUnit.SECONDS), "sessionKeptInPlaceWhenEnded").isTrue();
+					requireThat(status, "status").withContext(errors, "errors").isEqualTo(0);
+					requireThat(keptWhenEnded.get(WAIT.toSeconds(), TimeUnit.SECONDS), "sessionKeptInPlaceWhenEnded").
+						isTrue();
+				}
+				finally
+				{
+					keptWhenEnded.cancel(true);
+				}
 			}
 		}
 	}
@@ -652,6 +754,66 @@ public final class RequestServerTest
 			requireThat(served, "served").size().isEqualTo(2);
 			requireThat(served.getFirst().resultsFolder(), "heldOut").isEqualTo(slots.resolve("h1"));
 			requireThat(served.getLast().resultsFolder(), "development").isEqualTo(slots.resolve("d1"));
+		}
+	}
+
+	/**
+	 * Verifies that a served judge request extracts both evidence trees at the paths that its prompt and runner use.
+	 *
+	 * @throws IOException          if the fixture cannot be created or a request cannot be served
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = 60_000)
+	public void servedJudgeReceivesEvidenceTrees() throws IOException, InterruptedException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			Path probe = Files.createDirectories(fixture.project.resolve("evidence-probe"));
+			Path judge = Files.createDirectory(probe.resolve("judge"));
+			Path effects = Files.createDirectory(probe.resolve("effects"));
+			Path artifacts = Files.createDirectory(probe.resolve("artifacts"));
+			String shipping = "shipping-slip-3164\n";
+			String transcript = "{\"type\":\"message\",\"text\":\"synthetic evidence\"}\n";
+			Files.writeString(effects.resolve("shipping.txt"), shipping);
+			Files.writeString(artifacts.resolve("transcript.jsonl"), transcript);
+			Files.writeString(probe.resolve("unrelated-note.txt"), "private\n");
+			Path ownArtifact = Files.createDirectory(fixture.root.resolve("artifact"));
+			Child child = slotChild(fixture, new CopyOnWriteArrayList<>());
+			UUID id = UUID.randomUUID();
+			try (Fixture.Running server = fixture.start())
+			{
+				Path offeredEffects = SessionRequestForwarder.offeredEvidence(server.requests(), id, 0);
+				Path offeredArtifacts = SessionRequestForwarder.offeredEvidence(server.requests(), id, 1);
+				fixture.child = arguments ->
+				{
+					int first = arguments.indexOf("--read-only-evidence");
+					int second = arguments.lastIndexOf("--read-only-evidence");
+					requireThat(first, "firstEvidenceOption").isNotNegative();
+					requireThat(second, "secondEvidenceOption").isGreaterThan(first);
+					requireThat(Path.of(arguments.get(first + 1)), "runnerEffectsDirectory").isEqualTo(offeredEffects);
+					requireThat(Path.of(arguments.get(second + 1)), "runnerArtifactsDirectory").isEqualTo(offeredArtifacts);
+					requireThat(Files.readString(offeredEffects.resolve("shipping.txt")), "stagedEffect").isEqualTo(shipping);
+					requireThat(Files.readString(offeredArtifacts.resolve("transcript.jsonl")), "stagedTranscript").
+						isEqualTo(transcript);
+					Path evidence = offeredEffects.getParent();
+					try (Stream<Path> roots = Files.list(evidence))
+					{
+						requireThat(roots.sorted().toList(), "stagedEvidenceDirectories").
+							isEqualTo(List.of(offeredEffects, offeredArtifacts));
+					}
+					return child.start(arguments);
+				};
+				List<String> arguments = List.of("--project", judge.toString(), "--results",
+					fixture.root.resolve("optimizer-nested-sessions").toString(), "--model", "haiku", "--effort", "low",
+					"--held-out", "--deny-read", fixture.project.toString(), "--read-only-evidence", effects.toString(),
+					"--read-only-evidence", artifacts.toString());
+				String prompt = "Read " + offeredEffects.resolve("shipping.txt") + " and " +
+					offeredArtifacts.resolve("transcript.jsonl");
+				String turn = fixture.json.createObjectNode().put("type", "turn").put("prompt", prompt).toString();
+				SessionRequestForwarder.serve(SessionRequestForwarder.Route.SERVER, id, "The prompt optimizer", "claude",
+					ownArtifact, arguments, new StringReader(turn + "\n{\"type\":\"complete\"}\n"), new StringWriter(),
+					server.requests(), Thread::yield);
+			}
 		}
 	}
 
@@ -1058,6 +1220,45 @@ public final class RequestServerTest
 	}
 
 	/**
+	 * Verifies that the owner server dispatches archived inputs to its comparison service, returns its observations
+	 * to the requester, and removes both copies after use.
+	 *
+	 * @throws IOException if the fixture cannot be prepared or the response cannot be read
+	 * @throws InterruptedException if the server is interrupted
+	 */
+	@Test(timeOut = 60_000)
+	public void servesHookComparison() throws IOException, InterruptedException
+	{
+		// Requirement: R-L7
+		try (Fixture fixture = new Fixture())
+		{
+			HookComparisonRequest request = new HookComparisonRequest(fixture.project.resolve("comparison"), List.of());
+			Files.writeString(Files.createDirectories(request.production()).resolve("guide"), "project guidance");
+			Files.createDirectories(request.trial());
+			HookComparisonResult expected = new HookComparisonResult(new HookReport(1,
+				List.of(new HookDifference("startup hook", List.of("trial"), List.of("session")))), List.of(),
+				List.of("docs@market PostToolUse `./log`"));
+			RequestServer.ComparisonHost comparison = (owner, _, _) -> (captured, scratch) ->
+			{
+				requireThat(owner.project(), "authenticatedOwner").isEqualTo(fixture.project);
+				requireThat(captured.production().startsWith(scratch), "privateCopy").isTrue();
+				requireThat(Files.readString(captured.production().resolve("guide")), "production").
+					isEqualTo("project guidance");
+				requireThat(Files.notExists(captured.trial().resolve("guide")), "trial").isTrue();
+				return expected;
+			};
+			try (Fixture.Running server = fixture.start(Optional.of(comparison)))
+			{
+				requireThat(server.compare(request), "result").isEqualTo(expected);
+				try (Stream<Path> responses = Files.list(fixture.sessionDirectory().resolve("responses")))
+				{
+					requireThat(responses.toList(), "responses").isEmpty();
+				}
+			}
+		}
+	}
+
+	/**
 	 * Verifies that the server refuses, with the reason and having changed nothing, a worktree request for a campaign
 	 * that is not its session's, one whose campaign directory or worktree is a link, an add over an existing worktree,
 	 * and any request of a session whose sandbox lets its commands write the repository's configuration.
@@ -1298,7 +1499,11 @@ public final class RequestServerTest
 	{
 		private final TemporaryDirectories cleanup = new TemporaryDirectories();
 		private final JsonMapper json = JsonMapper.builder().build();
-		private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+		/**
+		 * Runs the server and the output observer on platform threads so their polling leaves the broker's virtual
+		 * thread scheduler available to handle requests.
+		 */
+		private final ExecutorService executor = Executors.newThreadPerTaskExecutor(Thread.ofPlatform().factory());
 		private final Path root;
 		private final Path project;
 		private final Path home;
@@ -1312,6 +1517,9 @@ public final class RequestServerTest
 		private Optional<PolicyRefusal> sessionRefusal = Optional.empty();
 		private Optional<String> askingThread = Optional.empty();
 		private Pause pause = Thread::yield;
+		private Optional<Path> peer = Optional.empty();
+		private final AtomicInteger needsCalls = new AtomicInteger();
+		private final AtomicInteger peerSelections = new AtomicInteger();
 		private Child child = _ ->
 		{
 			throw new AssertionError("No session was expected");
@@ -1333,6 +1541,22 @@ public final class RequestServerTest
 				resolve(SESSION_ID + ".jsonl"), "{}\n");
 			harness = processes.start(4242);
 			policy = new FakeParentPolicySource("Claude Code", policy(List.of(project)));
+		}
+
+		/**
+		 * Installs a peer with a separate bound runtime, both outside the owning session's write roots.
+		 *
+		 * @return the peer's runtime
+		 * @throws IOException if the peer or runtime cannot be created
+		 */
+		private Path installPeer() throws IOException
+		{
+			Path artifact = root.resolve("peer");
+			Path runtime = FakeRelease.runtime(root.resolve("peer-runtime"), Platform.current());
+			RuntimeBinding.write(artifact, runtime);
+			Files.createFile(artifact.resolve("bin/runner"));
+			peer = Optional.of(artifact);
+			return runtime;
 		}
 
 		/**
@@ -1390,10 +1614,11 @@ public final class RequestServerTest
 		{
 			Map<String, String> environment = Map.of(HARNESS_A.sessionVariable(), SESSION_ID, "HOME", home.toString(),
 				"USERPROFILE", home.toString());
-			RequestedSessionStarter starter = (_, arguments, _) ->
+			RequestedRunner.Start starter = (arguments, _) ->
 			{
 				if (arguments.getFirst().equals(ChildNeedsReport.OPTION))
 				{
+					needsCalls.incrementAndGet();
 					new ChildNeedsReport(List.of(), Set.of(MODEL_HOST), List.of()).write(json, Path.of(arguments.get(1)));
 					return new ExitedProcess(new ProcessBuilder(), 0, "", "");
 				}
@@ -1406,7 +1631,16 @@ public final class RequestServerTest
 					throw sessionRefusal.get();
 				return new RequestServer.Session(policy, transcript, project, askingThread, harness);
 			}, directory -> ToolScope.forSession(directory, environment, List.of(HARNESS_A), Yielding.waiting(),
-				GitProjects.IGNORING), starter, processes, pause);
+				GitProjects.IGNORING), harness ->
+				{
+					Path artifact = plugin;
+					if (harness.equals("codex") && peer.isPresent())
+					{
+						peerSelections.incrementAndGet();
+						artifact = peer.get();
+					}
+					return new RequestedRunner.Selection(artifact, artifact.resolve("bin/runner"), starter);
+				}, processes, pause);
 		}
 
 		/**
@@ -1446,8 +1680,49 @@ public final class RequestServerTest
 		 */
 		private Running start() throws IOException
 		{
+			return start(Optional.empty());
+		}
+
+		/**
+		 * Starts a server whose next scan can wait for the fixture to publish a request.
+		 *
+		 * @return the running server
+		 * @throws IOException if the server does not serve in time
+		 */
+		private Running startForRequest() throws IOException
+		{
+			Semaphore requestReady = new Semaphore(0);
+			pause = Pause.interruptible(requestReady::acquire);
+			return start(Optional.empty(), requestReady::release);
+		}
+
+		/**
+		 * Starts the server with the selected native comparison service.
+		 *
+		 * @param comparison the comparison service, if the fixture serves one
+		 * @return the running server
+		 * @throws IOException if the server does not serve in time
+		 */
+		private Running start(Optional<RequestServer.ComparisonHost> comparison) throws IOException
+		{
+			return start(comparison, () ->
+			{
+			});
+		}
+
+		/**
+		 * Starts the server with the selected comparison service and scan signal.
+		 *
+		 * @param comparison the comparison service, if the fixture serves one
+		 * @param wake wakes the server after publication or when the owner ends
+		 * @return the running server
+		 * @throws IOException if the server does not serve in time
+		 */
+		private Running start(Optional<RequestServer.ComparisonHost> comparison, Runnable wake) throws IOException
+		{
+			StringWriter errors = new StringWriter();
 			Future<Integer> exit = executor.submit(() -> RequestServer.serve(new String[0], host(),
-				new PrintWriter(new StringWriter(), true)));
+				new PrintWriter(errors, true), comparison));
 			Path requests = sessionDirectory().resolve(RequestServer.REQUESTS);
 			long deadline = System.nanoTime() + WAIT.toNanos();
 			while (!Files.isDirectory(sessionDirectory().resolve("responses")))
@@ -1455,10 +1730,13 @@ public final class RequestServerTest
 				if (exit.isDone())
 					throw new AssertionError("The server ended: " + result(exit));
 				if (System.nanoTime() > deadline)
-					throw new AssertionError("The server created no request directories");
-				Thread.onSpinWait();
+				{
+					exit.cancel(true);
+					throw new AssertionError("The server created no request directories. " + errors);
+				}
+				Thread.yield();
 			}
-			return new Running(exit, requests);
+			return new Running(exit, requests, wake, errors);
 		}
 
 		/**
@@ -1492,8 +1770,11 @@ public final class RequestServerTest
 		 *
 		 * @param exit     the server's exit status
 		 * @param requests the directory into which the session's commands write their requests
+		 * @param wake wakes the server if it waits for the test to publish a request
+		 * @param errors the server's diagnostics
 		 */
-		private record Running(Future<Integer> exit, Path requests) implements AutoCloseable
+		private record Running(Future<Integer> exit, Path requests, Runnable wake, StringWriter errors)
+			implements AutoCloseable
 		{
 			/**
 			 * Writes a request archive that holds a manifest, a project and one prompt, and waits for its response.
@@ -1515,14 +1796,21 @@ public final class RequestServerTest
 					entry(archive, "project/marker", "original".getBytes(StandardCharsets.UTF_8));
 					entry(archive, "prompts/0", "hello".getBytes(StandardCharsets.UTF_8));
 				}
-				Files.move(staging, requests.resolve(id + ".tar"));
+				Path published = Files.move(staging, requests.resolve(id + ".tar"));
+				wake.run();
 				Path response = requests.resolveSibling("responses").resolve(id).resolve("response.json");
 				long deadline = System.nanoTime() + WAIT.toNanos();
 				while (!Files.isRegularFile(response))
 				{
+					if (exit.isDone())
+						throw new AssertionError("The server ended before answering " + id + ": " + result(exit) + ". " + errors);
 					if (System.nanoTime() > deadline)
-						throw new AssertionError("The server did not answer " + id);
-					Thread.onSpinWait();
+					{
+						throw new AssertionError("The server did not answer " + id + ". Request still in inbox: " +
+							Files.exists(published) + ". Response folder created: " + Files.isDirectory(response.getParent()) +
+							". " + errors);
+					}
+					Thread.yield();
 				}
 				return json.readTree(Files.readString(response));
 			}
@@ -1536,6 +1824,21 @@ public final class RequestServerTest
 			{
 				return new WorktreeRequestClient(() -> Optional.of(new ServerChannel(requests, exit)), new NoInPlace(),
 					JsonMapper.builder().build(), Thread::yield);
+			}
+
+			/**
+			 * Sends a comparison through this fixture's owner channel.
+			 *
+			 * @param request the comparison to send
+			 * @return the observed result
+			 * @throws IOException if the broker does not return a result
+			 */
+			private HookComparisonResult compare(HookComparisonRequest request) throws IOException
+			{
+				try (ServerChannel channel = new ServerChannel(requests, exit))
+				{
+					return request.compare(JsonMapper.builder().build(), channel, Thread::yield);
+				}
 			}
 
 			/**
@@ -1595,6 +1898,7 @@ public final class RequestServerTest
 			 */
 			private int end() throws InterruptedException
 			{
+				wake.run();
 				try
 				{
 					return exit.get(WAIT.toSeconds(), TimeUnit.SECONDS);

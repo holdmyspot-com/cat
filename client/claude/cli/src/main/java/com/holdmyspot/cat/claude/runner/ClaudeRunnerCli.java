@@ -541,8 +541,8 @@ public final class ClaudeRunnerCli
 		requireThat(environment, "environment").isNotNull();
 		return switch (harness)
 		{
-			case HARNESS_ID -> new RequestedRunner(scope, artifact.toAbsolutePath().resolve("bin/claude-runner"),
-				List.of());
+			case HARNESS_ID -> new RequestedRunner(scope, artifact.toAbsolutePath(),
+				artifact.toAbsolutePath().resolve("bin/claude-runner"), List.of());
 			case CODEX_ID -> RequestedRunner.resolved(scope, CodexArtifact.execute(environment), List.of("serve"));
 			default -> throw new IllegalArgumentException("Unsupported requested harness: " + harness);
 		};

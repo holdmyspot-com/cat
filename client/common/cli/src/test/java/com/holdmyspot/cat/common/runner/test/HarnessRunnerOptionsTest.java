@@ -9,6 +9,8 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
+import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
+import com.holdmyspot.cat.common.runner.TrialPluginInput;
 import com.holdmyspot.cat.common.runner.launcher.RunnerArguments;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -20,6 +22,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import com.holdmyspot.cat.common.fakes.test.GitProjects;
@@ -849,7 +852,31 @@ public final class HarnessRunnerOptionsTest
 				"unparsedTrialCat").isEqualTo(candidate);
 			requireThat(HarnessRunnerOptions.catArtifact(launch(withCandidate), manifest), "unparsedWithoutCat").
 				isEqualTo(path("artifact"));
+
+			HarnessRunnerOptions bound = HarnessRunnerOptions.parse(launch(concat(withCandidate, TrialPluginInput.ID_OPTION,
+				"tools@original", "--plugin", absolute("legacy"), "--install-cat")), "harness", SESSION);
+			requireThat(bound.trialPluginInputs(manifest), "boundInputs").isEqualTo(List.of(
+				new TrialPluginInput(tools, Optional.of("tools@original")),
+				new TrialPluginInput(path("legacy"), Optional.empty())));
+			requireThat(trial.trialPluginInputs(manifest), "legacyInputs").
+				isEqualTo(TrialPluginInput.unbound(List.of(tools)));
 		}
+	}
+
+	/**
+	 * A provenance option must immediately follow a plugin path and cannot name a parent directory.
+	 */
+	@Test
+	public void refusesInvalidPluginIdentifiers()
+	{
+		expectThrows(InvalidArgumentsException.class, () -> HarnessRunnerOptions.parse(
+			launch("--plugin", absolute("plugin"), "--install-cat", TrialPluginInput.ID_OPTION, "tools@market"),
+			"harness", SESSION));
+		expectThrows(InvalidArgumentsException.class, () -> HarnessRunnerOptions.parse(
+			launch("--plugin", absolute("plugin"), "--deny-read", "--plugin", "--install-cat",
+				TrialPluginInput.ID_OPTION, "tools@market"), "harness", SESSION));
+		expectThrows(InvalidArgumentsException.class, () -> HarnessRunnerOptions.parse(
+			launch("--plugin", absolute("plugin"), TrialPluginInput.ID_OPTION, "tools@.."), "harness", SESSION));
 	}
 
 	/**

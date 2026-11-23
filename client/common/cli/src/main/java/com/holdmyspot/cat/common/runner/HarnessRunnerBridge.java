@@ -289,7 +289,10 @@ public final class HarnessRunnerBridge
 														recoverableEvidence = false;
 													}
 												}
-												ResultsCopy.copyTurn(evidence, options.turnCopy());
+												if (options.resultProjectLinks() == null)
+													ResultsCopy.copyTurn(evidence, options.turnCopy());
+												else
+													ResultsCopy.copyTurn(evidence, options.turnCopy(), options.resultProjectLinks());
 											}
 										}
 										catch (IOException | RuntimeException e)

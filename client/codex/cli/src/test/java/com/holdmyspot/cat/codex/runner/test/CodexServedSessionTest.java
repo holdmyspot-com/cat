@@ -205,7 +205,9 @@ public final class CodexServedSessionTest
 			fixture.installed();
 			String reason = CodexServedSession.sandboxed(fixture.server, fixture.environment(), fixture.home, null);
 
-			requireThat(reason, "reason").contains("the rule that CAT's install adds for " + fixture.server);
+			requireThat(reason, "reason").contains("the rule that CAT's install adds for " + fixture.server).
+				contains("as the command name in a standalone shell command, with any arguments").
+				doesNotContain("absolute path alone");
 		}
 	}
 
@@ -284,8 +286,8 @@ public final class CodexServedSessionTest
 			String reason = CodexServedSession.sandboxed(fixture.server, fixture.environment(), fixture.home, null);
 
 			requireThat(reason, "reason").contains("The command ran the request server as ./plugin/bin/request-server, " +
-				"but the rule that CAT's install adds matches only the command " + fixture.server + ", spelled exactly " +
-				"so. Run " + fixture.server + " alone").
+				"but the rule that CAT's install adds matches only the command name " + fixture.server).
+				contains("with any arguments the operation requires").
 				doesNotContain("No rule in");
 		}
 	}

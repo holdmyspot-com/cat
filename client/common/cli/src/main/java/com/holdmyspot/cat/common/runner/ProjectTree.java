@@ -210,7 +210,24 @@ final class ProjectTree
 	 */
 	private static Optional<Path> resolveInside(Path root, Path directory, Path target) throws IOException
 	{
-		return resolveInside(root, directory, target, 0);
+		return resolveInside(root, directory, target, 0, null);
+	}
+
+	/**
+	 * Verifies staged link targets before creating them. A draft can refer to files supplied by the project overlay.
+	 *
+	 * @param root the absolute draft directory
+	 * @param declarations absolute link paths and their literal relative targets
+	 * @throws IOException if resolving any link would leave the draft or encounter an invalid link
+	 */
+	static void validateDeclaredLinks(Path root, Map<Path, Path> declarations) throws IOException
+	{
+		for (Entry<Path, Path> declaration : declarations.entrySet())
+		{
+			Path link = declaration.getKey();
+			if (resolveInside(root, link.getParent(), declaration.getValue(), 0, declarations).isEmpty())
+				throw new IOException("The declared link leaves its draft directory: " + root.relativize(link));
+		}
 	}
 
 	/**
@@ -220,12 +237,14 @@ final class ProjectTree
 	 * @param directory the directory that holds the link, at or below {@code root} and reached through no link
 	 * @param target    the link's target
 	 * @param links     the number of links that the resolution has passed through
+	 * @param declarations prospective links, or null to require targets already present on disk
 	 * @return the path that the target leads to, reached through no link, or empty if the target is absolute or leaves
 	 *   {@code root} as text or at any name
 	 * @throws IOException if a name does not exist, {@code ..} follows a name that is not a directory, the resolution
 	 *                     passes through too many links, or a link cannot be read
 	 */
-	private static Optional<Path> resolveInside(Path root, Path directory, Path target, int links)
+	private static Optional<Path> resolveInside(Path root, Path directory, Path target, int links,
+		Map<Path, Path> declarations)
 		throws IOException
 	{
 		if (target.getRoot() != null || !directory.resolve(target).normalize().startsWith(root))
@@ -242,23 +261,29 @@ final class ProjectTree
 				{
 					if (current.equals(root))
 						return Optional.empty();
-					if (!Files.isDirectory(current, NOFOLLOW_LINKS))
+					if (!Files.isDirectory(current, NOFOLLOW_LINKS) &&
+						(declarations == null || !Files.notExists(current, NOFOLLOW_LINKS)))
 						throw new NoSuchFileException(current.toString());
 					current = current.getParent();
 				}
 				default ->
 				{
 					Path next = current.resolve(name);
-					if (Files.isSymbolicLink(next))
+					Path link = null;
+					if (declarations != null)
+						link = declarations.get(next);
+					if (link != null || Files.isSymbolicLink(next))
 					{
 						if (links == MAXIMUM_LINKS)
 							throw new FileSystemException(next.toString(), null, "Too many levels of symbolic links");
-						Optional<Path> resolved = resolveInside(root, current, Files.readSymbolicLink(next), links + 1);
+						if (link == null)
+							link = Files.readSymbolicLink(next);
+						Optional<Path> resolved = resolveInside(root, current, link, links + 1, declarations);
 						if (resolved.isEmpty())
 							return resolved;
 						next = resolved.get();
 					}
-					else if (Files.notExists(next, NOFOLLOW_LINKS))
+					else if (declarations == null && Files.notExists(next, NOFOLLOW_LINKS))
 						throw new NoSuchFileException(next.toString());
 					current = next;
 				}

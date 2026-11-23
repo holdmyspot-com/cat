@@ -14,6 +14,7 @@ import com.holdmyspot.cat.common.MainJvmScope;
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
+import java.io.ByteArrayOutputStream;
 import java.io.Console;
 import java.io.File;
 import java.io.IOException;
@@ -21,14 +22,18 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.lang.ProcessBuilder.Redirect;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Saves the output of a command in a new file, then prints that file's first part the way {@code read-part} prints a
@@ -42,6 +47,8 @@ import java.util.Optional;
  * standard error. It saves the command's exit status in {@code <file>.exit-status}, so that whichever call prints
  * the last part, {@code run-part} or {@code read-part}, exits with that status; a part that more parts follow exits
  * with status 0.
+ * While a saved command is running, {@code run-part} may print complete first-page lines as they arrive. If a later
+ * byte makes the output binary, the final binary-file refusal cannot retract those already printed lines.
  * The output stays inside the project: in a Codex thread, which names its ID in {@code CODEX_THREAD_ID}, it is saved
  * in the temporary folder of the thread's CAT session directory (see {@link SessionDirectory}) in the nearest CAT
  * project that contains the folder that the command runs in. Outside a CAT project, or without
@@ -238,8 +245,20 @@ public final class CodexRunPart
 				redirectErrorStream(true).
 				redirectOutput(saved.get().toFile());
 			builder.environment().put("CAT_RUN_PART_OUTPUT", saved.get().toString());
-			int status = runCommand(builder);
-			return printSaved(saved.get(), status, lineLimit, shell, readPart, environment, output, error);
+			ByteArrayOutputStream streamed = new ByteArrayOutputStream();
+			long pageLimit = CodexReadPart.limit(environment);
+			long prefixLimit = 0;
+			if (lineLimit == 0)
+			{
+				long boundedLimit = pageLimit;
+				if (pageLimit == Long.MAX_VALUE)
+					boundedLimit = 8192;
+				String continuation = shell.command(readPart.toString(), saved.get().toString());
+				prefixLimit = CodexReadPart.streamingPrefixLimit(saved.get().toString(), continuation, boundedLimit);
+			}
+			int status = runSavedCommand(builder, saved.get(), prefixLimit, output, streamed);
+			return printSaved(saved.get(), status, lineLimit, shell, readPart, environment, output, error, streamed,
+				pageLimit);
 		}
 		catch (IOException | InvalidPathException e)
 		{
@@ -319,9 +338,98 @@ public final class CodexRunPart
 	private static int printSaved(Path saved, int status, int lineLimit, CommandShell shell, Path readPart,
 		Map<String, String> environment, OutputStream output, PrintStream error) throws IOException
 	{
+		return printSaved(saved, status, lineLimit, shell, readPart, environment, output, error,
+			new ByteArrayOutputStream(), 0);
+	}
+
+	/**
+	 * Prints a saved output while omitting lines already forwarded as the command ran.
+	 *
+	 * @param saved the command's output
+	 * @param status the command's exit status
+	 * @param lineLimit the search line limit, or 0
+	 * @param shell the command shell
+	 * @param readPart the read-part launcher
+	 * @param environment the process environment
+	 * @param output receives the page
+	 * @param error receives diagnostics
+	 * @param streamed the complete lines already written to output
+	 * @param pageLimit the budget used to select those lines, or 0 when no lines were streamed
+	 * @return the read-part status
+	 * @throws IOException if the output cannot be read or written
+	 */
+	private static int printSaved(Path saved, int status, int lineLimit, CommandShell shell, Path readPart,
+		Map<String, String> environment, OutputStream output, PrintStream error, ByteArrayOutputStream streamed,
+		long pageLimit) throws IOException
+	{
 		int savedStatus = RipgrepOutputLimit.limitOutput(saved, status, lineLimit);
 		Files.writeString(Path.of(saved + EXIT_STATUS_SUFFIX), savedStatus + "\n");
-		return CodexReadPart.run(new String[]{saved.toString()}, shell, readPart, environment, output, error);
+		if (streamed.size() == 0)
+			return CodexReadPart.run(new String[]{saved.toString()}, shell, readPart, environment, output, error);
+		PrefixOutputStream remaining = new PrefixOutputStream(streamed.toByteArray(), output);
+		int result = CodexReadPart.run(new String[]{saved.toString()}, shell, readPart, environment, remaining, error,
+			pageLimit);
+		remaining.finish();
+		return result;
+	}
+
+	private static final class PrefixOutputStream extends OutputStream
+	{
+		private final byte[] prefix;
+		private final OutputStream output;
+		private int matched;
+		private boolean received;
+
+		/**
+		 * Creates a filter for bytes already written while the command ran.
+		 *
+		 * @param prefix bytes to discard from the start of read-part output
+		 * @param output receives bytes after the prefix
+		 */
+		PrefixOutputStream(byte[] prefix, OutputStream output)
+		{
+			this.prefix = prefix.clone();
+			this.output = output;
+		}
+
+		@Override
+		public void write(int value) throws IOException
+		{
+			received = true;
+			if (matched < prefix.length)
+			{
+				if ((byte) value != prefix[matched])
+					throw new IOException("read-part's first page did not begin with streamed output");
+				++matched;
+				return;
+			}
+			output.write(value);
+		}
+
+		@Override
+		public void write(byte[] bytes, int offset, int length) throws IOException
+		{
+			int discarded = Math.min(length, prefix.length - matched);
+			for (int i = 0; i < discarded; ++i)
+				write(bytes[offset + i]);
+			if (discarded < length)
+			{
+				received = true;
+				output.write(bytes, offset + discarded, length - discarded);
+			}
+		}
+
+		/**
+		 * Verifies that read-part either refused a binary file or emitted all streamed bytes.
+		 *
+		 * @throws IOException if read-part emitted only part of the prefix
+		 */
+		void finish() throws IOException
+		{
+			if (received && matched != prefix.length)
+				throw new IOException("read-part's first page ended inside streamed output");
+			output.flush();
+		}
 	}
 
 	/**
@@ -417,21 +525,116 @@ public final class CodexRunPart
 	}
 
 	/**
-	 * Runs a command without input and waits for it to exit.
+	 * Runs a saved command while forwarding complete lines that fit in the first page.
 	 *
-	 * @param builder the process builder of the command
+	 * @param builder the saved-output command
+	 * @param saved the file receiving command output
+	 * @param prefixLimit the escaped-byte budget for live lines
+	 * @param output receives live lines
+	 * @param streamed records the live lines
 	 * @return the command's exit status
-	 * @throws IOException if the command cannot be started
-	 * @throws InterruptedException if the thread is interrupted while the command runs
+	 * @throws IOException if the process cannot start or the output cannot be read
+	 * @throws InterruptedException if the caller is interrupted while the command runs
 	 */
-	private static int runCommand(ProcessBuilder builder) throws IOException, InterruptedException
+	private static int runSavedCommand(ProcessBuilder builder, Path saved, long prefixLimit, OutputStream output,
+		ByteArrayOutputStream streamed)
+		throws IOException, InterruptedException
 	{
 		try (Process process = builder.start())
 		{
 			// The command reads no input: closing its standard input ends any read at once, on every platform
 			process.getOutputStream().close();
-			return process.waitFor();
+			if (prefixLimit <= 0)
+				return process.waitFor();
+			try (FileChannel file = FileChannel.open(saved, StandardOpenOption.READ))
+			{
+				ByteArrayOutputStream pending = new ByteArrayOutputStream();
+				long offset = 0;
+				long shown = 0;
+				boolean streaming = true;
+				ByteBuffer buffer = ByteBuffer.allocate(8192);
+				while (streaming && !process.waitFor(25, TimeUnit.MILLISECONDS))
+				{
+					long[] progress = streamCompleteLines(file, offset, buffer, pending, shown, prefixLimit, output,
+						streamed);
+					offset = progress[0];
+					shown = progress[1];
+					streaming = progress[2] == 1;
+				}
+				if (streaming)
+					streamCompleteLines(file, offset, buffer, pending, shown, prefixLimit, output, streamed);
+				return process.waitFor();
+			}
 		}
+	}
+
+	/**
+	 * Forwards complete lines from the saved output while they fit in the reserved first-page prefix.
+	 *
+	 * @param file the output file being appended by the command
+	 * @param offset the next byte to read
+	 * @param buffer the bounded read buffer
+	 * @param pending the incomplete line
+	 * @param shown the escaped bytes already forwarded
+	 * @param limit the escaped-byte limit for live lines
+	 * @param output receives forwarded lines
+	 * @param streamed records forwarded lines for final de-duplication
+	 * @return next file offset, escaped bytes shown, and whether streaming can continue
+	 * @throws IOException if file access or output fails
+	 */
+	private static long[] streamCompleteLines(FileChannel file, long offset, ByteBuffer buffer,
+		ByteArrayOutputStream pending, long shown, long limit, OutputStream output, ByteArrayOutputStream streamed)
+		throws IOException
+	{
+		long size = file.size();
+		boolean streaming = true;
+		while (offset < size && streaming)
+		{
+			buffer.clear();
+			buffer.limit((int) Math.min(buffer.capacity(), size - offset));
+			int count = file.read(buffer, offset);
+			if (count <= 0)
+				break;
+			buffer.flip();
+			while (buffer.hasRemaining())
+			{
+				byte value = buffer.get();
+				++offset;
+				if (value == 0)
+				{
+					streaming = false;
+					break;
+				}
+				if (value != '\n')
+				{
+					pending.write(value);
+					if (pending.size() > limit)
+					{
+						streaming = false;
+						break;
+					}
+					continue;
+				}
+				byte[] line = pending.toByteArray();
+				long lineSize = CodexReadPart.shownLength(line, 0, line.length) + 2;
+				if (shown + lineSize > limit)
+				{
+					streaming = false;
+					break;
+				}
+				output.write(line);
+				output.write('\n');
+				output.flush();
+				streamed.write(line);
+				streamed.write('\n');
+				shown += lineSize;
+				pending.reset();
+			}
+		}
+		long canContinue = 0;
+		if (streaming)
+			canContinue = 1;
+		return new long[]{offset, shown, canContinue};
 	}
 
 	/**

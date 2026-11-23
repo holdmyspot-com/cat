@@ -100,10 +100,26 @@ public final class ClaudePolicyReader
 	 */
 	public ParentPolicy reread(ClaudeSession session, ClaudePolicyReading snapshot) throws IOException, PolicyRefusal
 	{
+		requireThat(snapshot, "snapshot").isNotNull();
+		return snapshot.policy().intersect(currentPolicy(session, snapshot));
+	}
+
+	/**
+	 * Reads the current policy of the same process without intersecting it with the startup policy.
+	 *
+	 * @param session the session
+	 * @param snapshot the first authenticated reading
+	 * @return the current reading, used alongside the startup policy for source trust checks
+	 * @throws NullPointerException if either argument is null
+	 * @throws IOException if a file cannot be read
+	 * @throws PolicyRefusal if CAT cannot authenticate the process or safely read its policy
+	 */
+	public ParentPolicy currentPolicy(ClaudeSession session, ClaudePolicyReading snapshot)
+		throws IOException, PolicyRefusal
+	{
 		requireThat(session, "session").isNotNull();
 		requireThat(snapshot, "snapshot").isNotNull();
-		ClaudePolicyReading current = read(session, snapshot);
-		return snapshot.policy().intersect(current.policy());
+		return read(session, snapshot).policy();
 	}
 
 	/**

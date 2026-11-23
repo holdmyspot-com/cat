@@ -81,6 +81,9 @@ public final class RequestArchive
 	 * The version of the manifest of a request made inside a nested session.
 	 */
 	static final int VERSION = 3;
+	private static final int HOOK_COMPARISON_VERSION = 1;
+	private static final Set<String> HOOK_COMPARISON_FIELDS = Set.of("format_version", "project", "plugins",
+		TrialPluginInput.PROVENANCE_FIELD);
 	/**
 	 * The most bytes of a manifest at every level, which a receiver reads into memory.
 	 */
@@ -113,13 +116,15 @@ public final class RequestArchive
 	private static final Set<String> LAUNCH_FIELDS = Set.of("format_version", "harness", "project", "prompts",
 		"plugins", "model", "effort", "session_transcripts", "install_cat", EXTRA_PERMISSIONS,
 		StreamedRequest.INPUT_FIELD, "workspace", "read_only_evidence", "deny_read", "instruction_files",
-		"session_role", "tool_output_token_limit", "turn_copy", "held_out", RESUME, RETAINED_TRIAL_CLAIM);
+		"session_role", "tool_output_token_limit", "turn_copy", "held_out", RESUME, RETAINED_TRIAL_CLAIM,
+		TrialPluginInput.PROVENANCE_FIELD, ResultProjectLinks.FIELD);
 	/**
 	 * The manifest fields that a nested session fixed at its start, which a request that resumes the nested session's
 	 * harness session may not name.
 	 */
 	private static final Set<String> FIXED_FIELDS = Set.of("project", "plugins", "install_cat", "workspace",
-		"read_only_evidence", "deny_read", "instruction_files", "session_role", "tool_output_token_limit", "agent");
+		"read_only_evidence", "deny_read", "instruction_files", "session_role", "tool_output_token_limit", "agent",
+		TrialPluginInput.PROVENANCE_FIELD, ResultProjectLinks.FIELD);
 	/**
 	 * The manifest fields that a session's request server reads and the nested session's runner refuses, because the
 	 * nested session's runner chooses them for the sessions that it starts.
@@ -220,7 +225,7 @@ public final class RequestArchive
 				for (int index = 0; index < evidence.size(); ++index)
 				{
 					Path source = Path.of(evidence.get(index).asString());
-					String name = "read_only_evidence/" + index;
+					String name = evidenceEntry(index);
 					if (Files.isDirectory(source, LinkOption.NOFOLLOW_LINKS))
 						packTree(archive, source, name, budget, nullDevice, skipped);
 					else
@@ -242,6 +247,17 @@ public final class RequestArchive
 	}
 
 	/**
+	 * Returns the archive name of the evidence input at the given position.
+	 *
+	 * @param index the position in the read-only evidence list
+	 * @return the entry name
+	 */
+	static String evidenceEntry(int index)
+	{
+		return "read_only_evidence/" + index;
+	}
+
+	/**
 	 * Publishes a request whose archive holds its manifest and nothing else.
 	 *
 	 * @param json        the manifest mapper
@@ -254,6 +270,84 @@ public final class RequestArchive
 		throws IOException
 	{
 		publish(json, destination, limits, (_, _) -> manifest);
+	}
+
+	/**
+	 * Captures the comparison inputs with project link handling and the regular plugin archive layout.
+	 *
+	 * @param json the request mapper
+	 * @param destination the final request archive
+	 * @param request the comparison inputs
+	 * @throws IOException if the workspace or any plugin cannot be packed
+	 */
+	static void packHookComparison(JsonMapper json, Path destination, HookComparisonRequest request) throws IOException
+	{
+		if (request.plugins().size() > MAXIMUM_LAUNCH_INPUTS)
+			throw new IOException("Too many plugin inputs for a hook comparison request");
+		ObjectNode manifest = json.createObjectNode().put("format_version", HOOK_COMPARISON_VERSION).
+			put("project", HookComparisonRequest.PROJECT_DIRECTORY);
+		ArrayNode plugins = manifest.putArray("plugins");
+		TrialPluginInput.writeProvenance(request.plugins(), manifest);
+		Set<Path> skipped = RequestServer.ownEntries(destination.toAbsolutePath().getParent().toRealPath().
+			getParent());
+		publish(json, destination, RequestLimits.UNBOUNDED, (archive, budget) ->
+		{
+			packProject(archive, request.workspace(), budget, NULL_DEVICE, skipped);
+			for (TrialPluginInput plugin : request.plugins())
+			{
+				String name = "plugins/" + plugins.size();
+				packTree(archive, plugin.path(), name, budget, NULL_DEVICE, skipped);
+				plugins.add(name);
+			}
+			return manifest;
+		});
+	}
+
+	/**
+	 * Validates a captured comparison without accepting caller-selected commands, host paths or a native home.
+	 *
+	 * @param json the request mapper
+	 * @param inputs the extracted request
+	 * @return the comparison inputs
+	 * @throws IOException if the request contains an invalid field or workspace layout
+	 */
+	static HookComparisonRequest readHookComparison(JsonMapper json, Path inputs) throws IOException
+	{
+		JsonNode value = manifest(json, inputs, HOOK_COMPARISON_FIELDS, "A hook comparison request",
+			HOOK_COMPARISON_VERSION, "Unsupported hook comparison request format");
+		String project = HookComparisonRequest.PROJECT_DIRECTORY;
+		String session = HookComparisonRequest.SESSION_DIRECTORY;
+		String trial = HookComparisonRequest.TRIAL_DIRECTORY;
+		Path root = entry(value, inputs, project, Kind.DIRECTORY);
+		Path productionSide = extracted(root, session, Kind.DIRECTORY);
+		Path trialSide = extracted(root, trial, Kind.DIRECTORY);
+		extracted(productionSide, project, Kind.DIRECTORY);
+		extracted(trialSide, project, Kind.DIRECTORY);
+		requireOnly(root, Set.of(session, trial));
+		requireOnly(productionSide, Set.of(project));
+		requireOnly(trialSide, Set.of(project));
+		List<Path> paths = namedEntries(value, inputs, "plugins", Kind.DIRECTORY, MAXIMUM_LAUNCH_INPUTS);
+		return new HookComparisonRequest(root,
+			TrialPluginInput.readProvenance(paths, value.path(TrialPluginInput.PROVENANCE_FIELD)));
+	}
+
+	/**
+	 * Prevents comparison inputs from supplying a native home or other side-wide data.
+	 *
+	 * @param directory an envelope or comparison side
+	 * @param names the directory's permitted entries
+	 * @throws IOException if an entry is unexpected or cannot be listed
+	 */
+	private static void requireOnly(Path directory, Set<String> names) throws IOException
+	{
+		try (DirectoryStream<Path> entries = Files.newDirectoryStream(directory))
+		{
+			for (Path entry : entries)
+			{
+				if (!names.contains(entry.getFileName().toString()))
+					throw new IOException("Unexpected hook comparison workspace entry: " + entry.getFileName());
+			}
+		}
 	}
 
 	/**
@@ -1109,7 +1203,9 @@ public final class RequestArchive
 		}
 		else
 			project = entry(value, inputs, "project", Kind.DIRECTORY);
-		List<Path> plugins = namedEntries(value, inputs, "plugins", Kind.DIRECTORY, MAXIMUM_LAUNCH_INPUTS);
+		List<TrialPluginInput> plugins = TrialPluginInput.readProvenance(
+			namedEntries(value, inputs, "plugins", Kind.DIRECTORY, MAXIMUM_LAUNCH_INPUTS),
+			value.path(TrialPluginInput.PROVENANCE_FIELD));
 		List<Path> promptFiles = namedEntries(value, inputs, "prompts", Kind.FILE, MAXIMUM_LAUNCH_INPUTS);
 		boolean streamed = value.has(StreamedRequest.INPUT_FIELD);
 		String input = value.path(StreamedRequest.INPUT_FIELD).stringValue("");
@@ -1146,13 +1242,16 @@ public final class RequestArchive
 		Optional<Integer> toolOutputTokenLimit = count(value, "tool_output_token_limit");
 		if (toolOutputTokenLimit.isPresent() && toolOutputTokenLimit.get() <= 0)
 			throw new IOException("tool_output_token_limit must be positive");
+		Optional<String> resultProjectLinks = optionalText(value, ResultProjectLinks.FIELD);
+		if (resultProjectLinks.isPresent() && !ResultProjectLinks.isDirectoryName(resultProjectLinks.get()))
+			throw new IOException(ResultProjectLinks.FIELD + " must name one project directory");
 		return new LaunchRequest(harness, project, plugins, prompts, model, effort, flag(value, "session_transcripts"),
 			flag(value, "install_cat"), extraPermissions(value), streamed, conversation, workspace, evidence,
 			absolutePaths(value, "deny_read"), optionalText(value, "instruction_files"), optionalText(value, "session_role"),
 			toolOutputTokenLimit, turnCopy, agent,
 			nonNegative(value, "session_requests").orElse(0), nonNegative(value, "request_depth").orElse(0),
 			nonNegative(value, "capacity_wait"), positive(value, "max_concurrency"), flag(value, "held_out"), resume,
-			claim);
+			claim, resultProjectLinks.map(Path::of));
 	}
 
 	/**
@@ -1494,15 +1593,16 @@ public final class RequestArchive
 	 * @param resume             the harness session that the request resumes in a retained nested session, or empty for a
 	 *                           request that starts a session; a request that resumes one has no {@code project}
 	 * @param retainedTrialClaim the required checkpoint of a guarded trial resume, or empty for another launch
+	 * @param resultProjectLinks the name of a project directory whose link declarations are needed in the result
 	 */
-	record LaunchRequest(String harness, Path project, List<Path> plugins, List<String> prompts, String model,
+	record LaunchRequest(String harness, Path project, List<TrialPluginInput> plugins, List<String> prompts, String model,
 		String effort, boolean sessionTranscripts, boolean installCat, ExtraPermissions extraPermissions,
 		boolean streamed, boolean conversation, Optional<Path> workspace, List<Path> readOnlyEvidence,
 		List<Path> deniedReads, Optional<String> instructionFiles, Optional<String> sessionRole,
 		Optional<Integer> toolOutputTokenLimit, boolean turnCopy, Optional<String> agent, int sessionRequests,
 		int requestDepth,
 		Optional<Integer> capacityWait, Optional<Integer> maximumConcurrency, boolean heldOut, Optional<String> resume,
-		Optional<RetainedTrialClaim> retainedTrialClaim)
+		Optional<RetainedTrialClaim> retainedTrialClaim, Optional<Path> resultProjectLinks)
 	{
 	}
 

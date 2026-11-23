@@ -80,8 +80,9 @@ public final class CodexConnectionConfiguration
 	/**
 	 * The permission profiles that CAT gives a session's thread.
 	 */
+	private static final String MOUNTED_RUNNER_PERMISSION_PROFILE = "cat-mounted-runner";
 	private static final List<String> SESSION_PERMISSION_PROFILES = List.of("cat-runner", "cat-validator",
-		"cat-denied-reads");
+		"cat-denied-reads", MOUNTED_RUNNER_PERMISSION_PROFILE);
 	private static final Set<String> CONNECTION_SETTINGS = Set.of("forced_login_method", "model",
 		"model_reasoning_effort", "openai_base_url");
 	/**
@@ -1060,21 +1061,83 @@ public final class CodexConnectionConfiguration
 	public static String addSessionProfile(Path destination, List<Path> readOnlyEvidence, List<Path> deniedReads)
 		throws IOException
 	{
+		return addSessionProfile(destination, readOnlyEvidence, deniedReads, RUNNER_PERMISSION_PROFILE);
+	}
+
+	/**
+	 * Adds the thread profile above the runner profile selected for its app-server command.
+	 *
+	 * @param destination the isolated Codex configuration
+	 * @param readOnlyEvidence the evidence the thread may read
+	 * @param deniedReads the additional paths the thread must not read
+	 * @param runnerProfile the base profile of the thread
+	 * @return the thread's profile, or empty when the default runner sandbox applies
+	 * @throws IOException if the configuration cannot be updated
+	 */
+	static String addSessionProfile(Path destination, List<Path> readOnlyEvidence, List<Path> deniedReads,
+		String runnerProfile) throws IOException
+	{
 		requireThat(destination, "destination").isNotNull();
 		requireThat(readOnlyEvidence, "readOnlyEvidence").isNotNull();
 		requireThat(deniedReads, "deniedReads").isNotNull();
-		String profile = "";
+		String profile = runnerProfile;
 		if (!readOnlyEvidence.isEmpty())
 		{
-			addValidatorProfile(destination, readOnlyEvidence);
+			addValidatorProfile(destination, readOnlyEvidence, runnerProfile);
 			profile = VALIDATOR_PERMISSION_PROFILE;
 		}
-		if (deniedReads.isEmpty())
-			return profile;
-		if (profile.isEmpty())
-			profile = RUNNER_PERMISSION_PROFILE;
-		addDeniedReadsProfile(destination, profile, deniedReads);
-		return DENIED_READS_PERMISSION_PROFILE;
+		if (!deniedReads.isEmpty())
+		{
+			addDeniedReadsProfile(destination, profile, deniedReads);
+			return DENIED_READS_PERMISSION_PROFILE;
+		}
+		if (RUNNER_PERMISSION_PROFILE.equals(profile))
+			return "";
+		return profile;
+	}
+
+	/**
+	 * Selects a runner profile for a Linux app-server that already masks the named directories. Keep the default
+	 * profile for other commands. Repeating the same mask in the thread would cover the evidence mounts. Denials
+	 * below an outer mask still apply to the paths that the app-server reopens.
+	 *
+	 * @param destination the isolated Codex configuration
+	 * @param maskedDirectories the real directory paths masked by the app-server command
+	 * @param reopenedPaths the paths the command reopens inside those masks
+	 * @param policy the launch's full read and write restrictions
+	 * @return the runner profile for the app-server's thread
+	 * @throws IOException if the configuration cannot be read or updated
+	 */
+	static String addMountedRunnerProfile(Path destination, List<Path> maskedDirectories, List<Path> reopenedPaths,
+		ChildPolicy policy) throws IOException
+	{
+		if (maskedDirectories.isEmpty() || policy == null)
+			return RUNNER_PERMISSION_PROFILE;
+		Set<Path> repeatedDenials = new HashSet<>(policy.readDenials());
+		repeatedDenials.retainAll(maskedDirectories);
+		if (repeatedDenials.isEmpty())
+			return RUNNER_PERMISSION_PROFILE;
+		String configuration = BoundedInput.readUtf8(destination, MAXIMUM_CONFIGURATION_BYTES, "Codex configuration");
+		JsonNode permissions = parse(destination, configuration, "runner profile").path("permissions");
+		if (!(permissions.path(RUNNER_PERMISSION_PROFILE) instanceof ObjectNode runner))
+			throw new IOException("The mounted session is missing its CAT runner permission profile");
+		ObjectNode mounted = runner.deepCopy();
+		if (!(mounted.path("filesystem") instanceof ObjectNode filesystem))
+			throw new IOException("The mounted session is missing its CAT runner filesystem permissions");
+		List<String> keys = new ArrayList<>(filesystem.propertyNames());
+		for (String key : keys)
+		{
+			if (filesystem.path(key).asString("").equals("deny"))
+				filesystem.remove(key);
+		}
+		List<Path> grants = new ArrayList<>(reopenedPaths);
+		grants.addAll(profileGrants(permissions, RUNNER_PERMISSION_PROFILE));
+		for (Path denial : outermostExisting(policy.readDenials(), grants, repeatedDenials))
+			filesystem.put(denial.toString(), "deny");
+		StringBuilder additions = new StringBuilder();
+		appendTable(additions, TomlMapper.builder().build(), "permissions." + MOUNTED_RUNNER_PERMISSION_PROFILE, mounted);
+		Files.writeString(destination, configuration + additions);
+		return MOUNTED_RUNNER_PERMISSION_PROFILE;
 	}
 
 	/**
@@ -1159,6 +1222,21 @@ public final class CodexConnectionConfiguration
 	 */
 	private static List<Path> outermostExisting(List<Path> denials, List<Path> grants) throws IOException
 	{
+		return outermostExisting(denials, grants, Set.of());
+	}
+
+	/**
+	 * Finds the effective existing denials after excluding exact paths masked by the app-server.
+	 *
+	 * @param denials the paths to deny
+	 * @param grants the paths the thread may read or write
+	 * @param masked the real paths already masked outside the thread
+	 * @return the real paths to deny in the thread
+	 * @throws IOException if a denial or a grant cannot be resolved
+	 */
+	private static List<Path> outermostExisting(List<Path> denials, List<Path> grants, Set<Path> masked)
+		throws IOException
+	{
 		List<Path> resolvedGrants = RealPaths.resolveAll(grants);
 		List<Path> existing = new ArrayList<>();
 		for (Path denial : denials)
@@ -1166,7 +1244,7 @@ public final class CodexConnectionConfiguration
 			if (Files.exists(denial))
 			{
 				Path realPath = denial.toRealPath();
-				if (!existing.contains(realPath))
+				if (!masked.contains(realPath) && !existing.contains(realPath))
 					existing.add(realPath);
 			}
 		}
@@ -1199,13 +1277,27 @@ public final class CodexConnectionConfiguration
 	 */
 	public static void addValidatorProfile(Path destination, List<Path> evidenceRoots) throws IOException
 	{
+		addValidatorProfile(destination, evidenceRoots, RUNNER_PERMISSION_PROFILE);
+	}
+
+	/**
+	 * Adds the read-only evidence grant above the runner profile selected for the thread.
+	 *
+	 * @param destination the isolated Codex configuration
+	 * @param evidenceRoots the evidence paths
+	 * @param runnerProfile the base profile of the thread
+	 * @throws IOException if the configuration cannot be updated
+	 */
+	private static void addValidatorProfile(Path destination, List<Path> evidenceRoots, String runnerProfile)
+		throws IOException
+	{
 		requireThat(evidenceRoots, "evidenceRoots").isNotEmpty();
 		String configuration = BoundedInput.readUtf8(destination, MAXIMUM_CONFIGURATION_BYTES, "Codex configuration");
 		if (!configuration.contains("[permissions." + RUNNER_PERMISSION_PROFILE + "]"))
 			throw new IOException("Read-only validator evidence requires the CAT runner permission profile");
 		// A validator's verdict is credible only if the harness can read executor evidence but cannot rewrite it.
 		Files.writeString(destination, configuration + System.lineSeparator() + "[permissions." +
-			VALIDATOR_PERMISSION_PROFILE + "]" + System.lineSeparator() + "extends = \"" + RUNNER_PERMISSION_PROFILE +
+			VALIDATOR_PERMISSION_PROFILE + "]" + System.lineSeparator() + "extends = \"" + runnerProfile +
 			"\"" + System.lineSeparator() + "[permissions." + VALIDATOR_PERMISSION_PROFILE + ".filesystem]" +
 			System.lineSeparator() + evidencePermissions(evidenceRoots));
 	}
@@ -1231,8 +1323,8 @@ public final class CodexConnectionConfiguration
 	/**
 	 * Copies the host's existing approvals for CAT's hooks into an isolated Codex home.
 	 * <p>
-	 * The copied value is only an expected hook hash. Codex compares it against the installed artifact's current hook
-	 * hash before execution, so a changed hook remains untrusted.
+	 * Codex checks the copied approval against the installed declaration. Explicit host disablement is preserved even
+	 * if the host has no approval for the hook.
 	 *
 	 * @param source the host Codex configuration file
 	 * @param destination the isolated Codex configuration file
@@ -1246,12 +1338,18 @@ public final class CodexConnectionConfiguration
 		StringBuilder approvals = new StringBuilder(256);
 		for (String key : CAT_HOOK_KEYS)
 		{
-			String hash = state.path(key).path("trusted_hash").asString("");
-			if (!TRUSTED_HASH.matcher(hash).matches())
+			JsonNode hook = state.path(key);
+			String hash = hook.path("trusted_hash").asString("");
+			boolean approved = TRUSTED_HASH.matcher(hash).matches();
+			boolean disabled = hook.path("enabled").isBoolean() && !hook.path("enabled").booleanValue();
+			if (!approved && !disabled)
 				continue;
 			approvals.append(System.lineSeparator()).append("[hooks.state.\"").append(key).append("\"]").
-				append(System.lineSeparator()).append("trusted_hash = \"").append(hash).append('"').
 				append(System.lineSeparator());
+			if (approved)
+				approvals.append("trusted_hash = \"").append(hash).append('"').append(System.lineSeparator());
+			if (disabled)
+				approvals.append("enabled = false").append(System.lineSeparator());
 		}
 		if (approvals.isEmpty())
 			return;
@@ -1261,38 +1359,54 @@ public final class CodexConnectionConfiguration
 	}
 
 	/**
-	 * Copies the user's approvals of a plugin's hooks into an isolated configuration, under the session-local marketplace
-	 * that bears the plugin's name. Codex keys an approval by the plugin, its marketplace and the hook, and rejects an
-	 * approval whose recorded hash differs from the hook's normalized declaration, so an approval of another version of
-	 * the hook gives it no trust.
+	 * Records a set of approvals whose native source and destination records have already been matched.
 	 *
-	 * @param source      the host configuration file
 	 * @param destination the isolated configuration file
-	 * @param plugin      the plugin's manifest name
-	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code plugin} is blank
+	 * @param bound exact trial hook keys mapped to their full native hashes
 	 * @throws IOException if configuration I/O fails
 	 */
-	public static void copyTrustedHooks(Path source, Path destination, String plugin) throws IOException
+	static void copyBoundHooks(Path destination, Map<String, String> bound) throws IOException
 	{
-		requireThat(source, "source").isNotNull();
-		requireThat(destination, "destination").isNotNull();
-		requireThat(plugin, "plugin").isNotBlank();
-		// The user's approval names the marketplace that the user installed the plugin from; the session-local marketplace
-		// bears the plugin's name instead, so each approval is rewritten under it
 		StringBuilder approvals = new StringBuilder(256);
-		for (Entry<String, String> approval : pluginHookApprovals(source, plugin).entrySet())
+		for (Entry<String, String> approval : bound.entrySet())
 		{
-			String key = TomlStrings.escape(plugin + '@' + plugin + ':' + approval.getKey());
+			String key = TomlStrings.escape(approval.getKey());
+			String hash = CodexPluginHooks.declarationHash(approval.getValue());
 			approvals.append(System.lineSeparator()).append("[hooks.state.\"").append(key).
 				append("\"]").append(System.lineSeparator()).
-				append("trusted_hash = \"").append(approval.getValue()).append('"').append(System.lineSeparator());
+				append("trusted_hash = \"").append(hash).append('"').append(System.lineSeparator());
 		}
 		if (approvals.isEmpty())
 			return;
 		Files.createDirectories(destination.getParent());
 		Files.writeString(destination, approvals.toString(), java.nio.file.StandardOpenOption.CREATE,
 			java.nio.file.StandardOpenOption.APPEND);
+	}
+
+	/**
+	 * Reads enabled host approval records without removing the native marketplace or source identity from their keys.
+	 *
+	 * @param source the host configuration file
+	 * @return exact keys mapped to existing declaration approvals
+	 * @throws IOException if the configuration cannot be read
+	 */
+	static Map<String, String> configuredHookApprovals(Path source) throws IOException
+	{
+		Map<String, String> approvals = new LinkedHashMap<>();
+		if (!Files.isRegularFile(source))
+			return approvals;
+		for (Entry<String, JsonNode> entry : hookState(source).properties())
+		{
+			JsonNode hook = entry.getValue();
+			String hash = hook.path("trusted_hash").asString("");
+			JsonNode enabled = hook.path("enabled");
+			if (TRUSTED_HASH.matcher(hash).matches() && (enabled.isMissingNode() ||
+				(enabled.isBoolean() && enabled.booleanValue())))
+			{
+				approvals.put(entry.getKey(), hash);
+			}
+		}
+		return approvals;
 	}
 
 	/**

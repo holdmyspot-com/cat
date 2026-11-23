@@ -499,6 +499,9 @@ public final class SessionSlotsTest
 	 * Verifies that a retained slot is refused while a launch holds it, while a process that its nested session recorded
 	 * stays alive, when its nested session is of another harness, and when its manifest is malformed, and that a refusal
 	 * keeps the slot's files.
+	 * <p>
+	 * The case retains a real session directory, reacquires its slot, and changes its manifest on disk. Reusing that
+	 * directory lets each refusal check the slot and the kept session files across ownership changes.
 	 *
 	 * @throws IOException          if the filesystem operation fails
 	 * @throws InterruptedException if the test is interrupted

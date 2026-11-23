@@ -189,6 +189,42 @@ public final class ResultsCopyTest
 	}
 
 	/**
+	 * Verifies that the served turn carries the selected directory's link text and replaces it on the next turn.
+	 *
+	 * @throws IOException if fixture or copy I/O fails
+	 */
+	@Test
+	public void forwardsSelectedTurnLinkDeclarations() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("turn-link-declarations-"));
+			Path source = Files.createDirectory(root.resolve("source"));
+			Path draft = Files.createDirectories(source.resolve("project/draft/workspace"));
+			Files.writeString(draft.resolve("report.md"), "ready");
+			Path latest = draft.resolve("latest");
+			Files.createSymbolicLink(latest, Path.of("report.md"));
+			Files.createSymbolicLink(source.resolve("project/other"), Path.of("draft"));
+			Path published = root.resolve("published");
+			Path forwarded = root.resolve("forwarded");
+			Path declaration = Path.of("project-link-declarations/draft/workspace/latest");
+
+			ResultsCopy.copyTurn(source, published, Path.of("draft"));
+			ResultsCopy.copyTurn(published, forwarded);
+			requireThat(Files.readString(forwarded.resolve(declaration)), "targetText").isEqualTo("report.md");
+			requireThat(Files.exists(forwarded.resolve("project-link-declarations/other")), "unrelatedRecord").
+				isFalse();
+			requireThat(Files.isSymbolicLink(forwarded.resolve("project/draft/workspace/latest")), "liveLink").
+				isFalse();
+
+			Files.delete(latest);
+			ResultsCopy.copyTurn(source, published, Path.of("draft"));
+			ResultsCopy.copyTurn(published, forwarded);
+			requireThat(Files.exists(forwarded.resolve(declaration)), "staleDeclaration").isFalse();
+		}
+	}
+
+	/**
 	 * Verifies that cleanup removes only turn copies and permits the subsequent full results copy.
 	 *
 	 * @throws IOException if fixture files cannot be created or copied

@@ -2184,6 +2184,9 @@ public final class NestedSessionManagerTest
 	/**
 	 * Verifies that a runner that is stopped while its nested session runs stops its harness, but records no end for the
 	 * nested session and keeps its home, so that the nested session's harness session can continue.
+	 * <p>
+	 * Each case starts a fixture JVM and waits for it to publish its child's process ID. Both processes are needed to
+	 * check termination alongside the session files that survive it.
 	 *
 	 * @param stop how the runner is stopped
 	 * @throws IOException          if the filesystem operation fails or the runner cannot start

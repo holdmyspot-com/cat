@@ -23,6 +23,7 @@ import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.HarnessProcessStarter;
 import com.holdmyspot.cat.common.runner.HarnessProcessTermination;
 import com.holdmyspot.cat.common.runner.HarnessProjectRepository;
+import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.HarnessSessionTranscripts;
 import com.holdmyspot.cat.common.runner.LiveNestedSession;
 import com.holdmyspot.cat.common.runner.MainHarnessRunnerScope;
@@ -34,11 +35,13 @@ import com.holdmyspot.cat.common.runner.PluginManifest;
 import com.holdmyspot.cat.common.runner.SessionCommandLimits;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SetupCommands;
+import com.holdmyspot.cat.common.runner.TrialPluginInput;
 import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
+import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 
 import java.io.File;
@@ -48,6 +51,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -58,6 +62,7 @@ import java.util.StringJoiner;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.function.Consumer;
+import tools.jackson.databind.JsonNode;
 
 /**
  * Creates an isolated Codex configuration and starts one persistent Codex CLI process, optionally with CAT.
@@ -147,7 +152,7 @@ public final class CodexRunner
 	 * @throws IOException             if validation, copying, or process startup fails
 	 */
 	@SuppressWarnings("PMD.CloseResource")
-	LiveNestedSession start(Path artifact, Path project, Path workspace, List<Path> trialPlugins,
+	LiveNestedSession start(Path artifact, Path project, Path workspace, List<TrialPluginInput> trialPlugins,
 		NestedSessionManager manager, String executable, Map<String, String> environment, String model, String effort,
 		boolean installCat, CodexAgentDefinition agent, List<Path> readOnlyEvidence, List<Path> deniedReads,
 		int toolOutputTokenLimit, boolean sessionTranscripts, int sessionRequests, ParentPolicy bound,
@@ -232,7 +237,7 @@ public final class CodexRunner
 				}
 				policyListener.accept(policy);
 				sandbox = sessionSandbox(stagedConfiguration, manager, nestedSession, readOnlyEvidence, deniedReads,
-					Platform.current(), environment, requestAccess, appServer);
+					Platform.current(), environment, requestAccess, appServer, policy);
 				replacer.replace(stagedConfiguration, isolatedConfiguration);
 			}
 			finally
@@ -244,11 +249,23 @@ public final class CodexRunner
 			requireNetworkProxy(arguments -> commandOutput(executable, arguments, worktree, isolatedEnvironment,
 				executables, manager, nestedSession), featureFlags(pluginsInstalled), policy.hosts());
 			// A resumed nested session keeps the plugins that its start installed in its home
-			if (!resumes)
+			Path hookBindings = nestedSession.directory().resolve(CodexPluginHooks.BINDINGS_FILE);
+			Map<String, String> boundHooks;
+			if (resumes)
 			{
-				installPlugins(executable, artifact, installCat, trialPlugins, hostHome, isolatedHome,
+				boundHooks = CodexPluginHooks.resumeBindings(scope.json(), hookBindings,
+					CodexConnectionConfiguration.configuredHookApprovals(isolatedConfiguration), installCat);
+			}
+			else
+			{
+				installPlugins(executable, artifact, installCat, trialPlugins.stream().map(TrialPluginInput::path).toList(),
+					hostHome, isolatedHome,
 					isolatedEnvironment, executables, replacer, (setup, step) ->
 						HarnessCommand.execute(setup, worktree, isolatedEnvironment, executables, manager, nestedSession, step));
+				boundHooks = copyBoundTrialHooks(trialPlugins, hostHome, isolatedHome, project, worktree, temporaryDirectory,
+					executable, bound, environment, scope);
+				if (!boundHooks.isEmpty())
+					CodexPluginHooks.saveBindings(scope.json(), hookBindings, boundHooks);
 			}
 			// The requested sessions of the session may read the CAT version that Codex installed, whose launchers the
 			// session's commands run
@@ -256,6 +273,8 @@ public final class CodexRunner
 			if (installCat)
 				catPlugin = installedCat(isolatedHome);
 			List<String> command = sandbox.command();
+			if (!boundHooks.isEmpty())
+				command = protectHookBindings(command, hookBindings, bound, environment);
 			manager.initialize(nestedSession, artifact, project, "codex_app_server", command);
 			lock = manager.acquireLock(nestedSession);
 			HarnessSessionTranscripts transcripts = null;
@@ -291,7 +310,7 @@ public final class CodexRunner
 							agentInstructions);
 					}
 					process.initialize(worktree, selectedModel, instructions, selectedEffort, sandbox.profile(),
-						resumedSession);
+					resumedSession, boundHooks);
 				}
 				catch (IOException e)
 				{
@@ -321,6 +340,45 @@ public final class CodexRunner
 				manager.fail(nestedSession, e.getMessage());
 			throw e;
 		}
+	}
+
+	/**
+	 * Keeps the runner's trial hook bindings read-only in the native process and its descendants.
+	 *
+	 * @param command the app-server command with any existing outer sandbox
+	 * @param file the runner-owned bindings file
+	 * @param policy the authenticated parent policy
+	 * @param environment the launcher's environment
+	 * @return the command with the existing or a new sandbox protecting the file
+	 * @throws IOException if the bindings cannot be protected
+	 */
+	private static List<String> protectHookBindings(List<String> command, Path file, ParentPolicy policy,
+		Map<String, String> environment) throws IOException
+	{
+		Path wrapper = bubblewrap(environment).orElseThrow(() ->
+			new IOException("Codex cannot protect the retained trial's plugin hook bindings without bubblewrap"));
+		try
+		{
+			policy.requireTrusted(wrapper.toRealPath());
+		}
+		catch (PolicyRefusal e)
+		{
+			throw new IOException("Codex cannot protect trial hook bindings with an untrusted sandbox", e);
+		}
+		String bindings = file.toRealPath().toString();
+		List<String> rootMount = List.of(wrapper.toString(), "--dev-bind", "/", "/");
+		List<String> protectedCommand = new ArrayList<>(rootMount);
+		protectedCommand.addAll(List.of("--ro-bind", bindings, bindings));
+		if (command.size() >= rootMount.size() && command.subList(0, rootMount.size()).equals(rootMount))
+		{
+			protectedCommand.addAll(command.subList(rootMount.size(), command.size()));
+		}
+		else
+		{
+			protectedCommand.addAll(List.of("--die-with-parent", "--"));
+			protectedCommand.addAll(command);
+		}
+		return protectedCommand;
 	}
 
 	/**
@@ -537,9 +595,9 @@ public final class CodexRunner
 	 * {@link #withHiddenDirectories(List, Path, List, List, List)} describes, which hides from the app-server each
 	 * directory that {@link #hiddenDirectories(NestedSessionManager, List, List, Platform, Map)} returns, and reopens
 	 * inside it the session's project and home and its requests directory, if any, for writing and the session's
-	 * read-only evidence for reading only. The permission profile then names neither those directories nor the paths
-	 * under them, so its size does not grow with the number of runs or files beside the evidence. Otherwise, and when
-	 * it hides nothing, the command is the app-server command itself.
+	 * read-only evidence for reading only. The profile does not enumerate files beside the evidence, so its size
+	 * does not grow with the number of runs or unrelated files. Otherwise, and when it hides nothing, the command
+	 * is the app-server command itself.
 	 * <p>
 	 * A Linux session whose {@code readOnlyEvidence} lies inside a directory that it is denied, such as the results
 	 * folder, cannot start without that bubblewrap, so the method refuses it before it changes the configuration.
@@ -566,21 +624,52 @@ public final class CodexRunner
 		List<Path> readOnlyEvidence, List<Path> deniedReads, Platform platform, Map<String, String> environment,
 		SessionRequestAccess requestAccess, List<String> appServer) throws IOException
 	{
+		return sessionSandbox(configuration, manager, nestedSession, readOnlyEvidence, deniedReads, platform,
+			environment, requestAccess, appServer, null);
+	}
+
+	/**
+	 * Prepares an app-server command and its thread profile together. If a Linux app-server already masks a
+	 * directory, the thread profile relies on that mask and retains the policy's other read denials. The default
+	 * runner profile still enforces the full policy for commands outside the app-server.
+	 *
+	 * @param configuration the isolated Codex configuration that contains the runner profile
+	 * @param manager the nested-session manager
+	 * @param nestedSession the session's nested session
+	 * @param readOnlyEvidence the caller's permitted read-only evidence
+	 * @param deniedReads the paths that the caller denies the session reading
+	 * @param platform the session's platform
+	 * @param environment the caller's environment
+	 * @param requestAccess the session's request access, or {@code null} if it may request none
+	 * @param appServer the command that starts the app-server
+	 * @param policy the policy used to generate the runner profile, or {@code null} to use that profile as written
+	 * @return the sandbox command and its matching thread profile
+	 * @throws IOException if the sandbox cannot be prepared
+	 */
+	public static SessionSandbox sessionSandbox(Path configuration, NestedSessionManager manager,
+		NestedSession nestedSession,
+		List<Path> readOnlyEvidence, List<Path> deniedReads, Platform platform, Map<String, String> environment,
+		SessionRequestAccess requestAccess, List<String> appServer, ChildPolicy policy) throws IOException
+	{
 		requireThat(appServer, "appServer").isNotEmpty();
 		requireBubblewrapForEvidence(manager, readOnlyEvidence, deniedReads, platform, environment);
-		String profile = addSessionProfile(configuration, manager, nestedSession, readOnlyEvidence, deniedReads, platform,
-			environment, requestAccess);
+		List<Path> readOnly = sessionReadOnly(nestedSession, readOnlyEvidence, requestAccess);
+		List<Path> denied = sessionDeniedReads(manager, nestedSession, readOnly, deniedReads, platform, environment,
+			requestAccess);
 		Optional<Path> bubblewrap = bubblewrap(environment);
 		if (bubblewrap.isEmpty())
-			return new SessionSandbox(profile, appServer);
+			return new SessionSandbox(CodexConnectionConfiguration.addSessionProfile(configuration, readOnly, denied),
+				appServer);
 		List<Path> writable = new ArrayList<>(List.of(nestedSession.directory().resolve("project"),
 			nestedSession.directory().resolve("home")));
 		if (requestAccess != null)
 			writable.add(requestAccess.requests());
-		List<String> command = withHiddenDirectories(appServer, bubblewrap.get(),
-			hiddenDirectories(manager, sessionReadOnly(nestedSession, readOnlyEvidence, requestAccess), deniedReads, platform,
-				environment), writable, sessionReadOnly(nestedSession, readOnlyEvidence, requestAccess));
-		return new SessionSandbox(profile, command);
+		OuterSandbox outer = outerSandbox(appServer, bubblewrap.get(),
+			hiddenDirectories(manager, readOnly, deniedReads, platform, environment), writable, readOnly);
+		String runner = CodexConnectionConfiguration.addMountedRunnerProfile(configuration, outer.masked(),
+			outer.reopened(), policy);
+		String profile = CodexConnectionConfiguration.addSessionProfile(configuration, readOnly, denied, runner);
+		return new SessionSandbox(profile, outer.command());
 	}
 
 	/**
@@ -883,8 +972,8 @@ public final class CodexRunner
 
 	/**
 	 * Installs CAT, when requested, and each trial plugin into an isolated Codex home, each from a marketplace of its
-	 * own, with the user's approvals of its hooks. Plugin hooks are untrusted in every fresh home, so the approvals are
-	 * copied from the user's configuration; Codex rejects an approval whose hook's normalized declaration differs.
+	 * own. Ordinary trial plugins start without inherited hook approvals. The native binding step verifies their
+	 * approvals after installation.
 	 * <p>
 	 * Installing CAT also writes into the isolated home the entries that CAT's installer writes for the installed
 	 * plugin version: the execution-policy rules for its installer and request server, and the hash of each of its
@@ -928,7 +1017,6 @@ public final class CodexRunner
 		{
 			String name = PluginManifest.name(trialPlugin, MANIFEST);
 			names.add(name);
-			CodexConnectionConfiguration.copyTrustedHooks(hostConfiguration, isolatedConfiguration, name);
 		}
 		if (installCat)
 		{
@@ -953,6 +1041,164 @@ public final class CodexRunner
 			commands.execute(pluginCommands.get(0), "trial-plugin-" + name + "-marketplace-add");
 			commands.execute(pluginCommands.get(1), "trial-plugin-" + name + "-add");
 		}
+	}
+
+	/**
+	 * Transfers approvals only between exact original and trial installations observed by native Codex.
+	 *
+	 * @param inputs the installed trial copies with their original IDs, when known
+	 * @param hostHome the host Codex home
+	 * @param isolatedHome the trial Codex home
+	 * @param project the source project
+	 * @param worktree the trial project
+	 * @param scratch the trial's writable temporary directory
+	 * @param executable the native Codex executable name
+	 * @param policy the authenticated parent policy
+	 * @param environment the launcher environment
+	 * @param scope the runner's process services
+	 * @return the transferred keys and full hashes, to verify before creating a thread
+	 * @throws IOException if an approval source or native observation cannot be verified
+	 */
+	private static Map<String, String> copyBoundTrialHooks(List<TrialPluginInput> inputs, Path hostHome,
+		Path isolatedHome, Path project, Path worktree, Path scratch, String executable, ParentPolicy policy,
+		Map<String, String> environment, AbstractHarnessRunnerScope scope) throws IOException
+	{
+		TrialHookEvidence evidence = inspectTrialHooks(inputs, hostHome, isolatedHome, project, worktree, scratch,
+			executable, policy, environment, Optional.empty(), scope);
+		Map<String, String> hashes = new LinkedHashMap<>();
+		for (CodexPluginHooks.Binding binding : evidence.bindings())
+			hashes.put(binding.trialKey(), binding.hash());
+		CodexConnectionConfiguration.copyBoundHooks(configuration(isolatedHome), hashes);
+		return hashes;
+	}
+
+	/**
+	 * Resolves the exact native hook records that an installed trial can inherit from the owner's approved plugins.
+	 *
+	 * @param inputs the installed trial copies with their original IDs, when known
+	 * @param hostHome the host Codex home
+	 * @param isolatedHome the trial Codex home with the plugins installed
+	 * @param project the original project, as opened by the owner
+	 * @param worktree the copied trial project
+	 * @param scratch the caller's writable temporary directory
+	 * @param executable the native Codex executable name
+	 * @param policy the authenticated parent policy
+	 * @param environment the launcher environment
+	 * @param sandboxExecutable bubblewrap selected by the caller, or empty to find it in the launcher environment
+	 * @param scope services for the native process
+	 * @return the exact bound pairs, with their native records
+	 * @throws IOException if a protected source or native observation cannot be verified
+	 */
+	static TrialHookEvidence inspectTrialHooks(List<TrialPluginInput> inputs, Path hostHome,
+		Path isolatedHome, Path project, Path worktree, Path scratch, String executable, ParentPolicy policy,
+		Map<String, String> environment, Optional<Path> sandboxExecutable, HarnessRunnerScope scope) throws IOException
+	{
+		List<TrialPluginInput> installed = inputs.stream().filter(input -> input.installedId().isPresent()).toList();
+		if (installed.isEmpty() || !Platform.current().isLinux())
+			return TrialHookEvidence.EMPTY;
+		Optional<Path> sandbox = sandboxExecutable.or(() -> bubblewrap(environment));
+		if (sandbox.isEmpty())
+			return TrialHookEvidence.EMPTY;
+		Path configuration = configuration(hostHome);
+		if (!policy.mayRead(configuration) || !Files.isRegularFile(configuration))
+		{
+			return TrialHookEvidence.EMPTY;
+		}
+		try
+		{
+			policy.requireTrusted(configuration);
+		}
+		catch (PolicyRefusal _)
+		{
+			// A mutable approval file provides no authority to inherit approvals.
+			return TrialHookEvidence.EMPTY;
+		}
+		Map<String, String> approvals = CodexConnectionConfiguration.configuredHookApprovals(configuration);
+		List<TrialPluginInput> eligible = installed.stream().filter(input -> approvals.keySet().stream().anyMatch(
+			key -> key.startsWith(input.installedId().orElseThrow() + ":"))).toList();
+		if (eligible.isEmpty())
+			return TrialHookEvidence.EMPTY;
+		Path nativeExecutable = Path.of(Platform.current().findProgram(executable, environment)).toRealPath();
+		Path bubblewrap = sandbox.orElseThrow().toRealPath();
+		CodexHookInspection.requireReadableExecutables(policy, bubblewrap, nativeExecutable);
+		try
+		{
+			policy.requireTrusted(nativeExecutable);
+			policy.requireTrusted(bubblewrap);
+			Map<String, List<Path>> sourceRoots = new LinkedHashMap<>();
+			for (TrialPluginInput input : eligible)
+			{
+				String id = input.installedId().orElseThrow();
+				List<Path> roots = pluginRoots(hostHome, id);
+				for (Path root : roots)
+				{
+					if (!policy.mayRead(root))
+						throw new IOException("The owner cannot read the Codex plugin used for hook approval: " + root);
+					policy.requireTrustedTree(root);
+				}
+				sourceRoots.put(id, roots);
+			}
+			Map<String, JsonNode> sourceRecords = CodexHookInspection.read(hostHome, project.toRealPath(), scratch,
+				bubblewrap, nativeExecutable, policy, List.of(), scope);
+			Map<String, JsonNode> trialRecords = CodexHookInspection.readTrial(isolatedHome, worktree.toRealPath(),
+				scratch, bubblewrap, nativeExecutable, policy, featureFlags(true), scope);
+			List<CodexPluginHooks.Binding> matched = new ArrayList<>();
+			for (TrialPluginInput input : eligible)
+			{
+				String declared = input.installedId().orElseThrow();
+				String name = PluginManifest.name(input.path(), MANIFEST);
+				if (!declared.startsWith(name + "@"))
+					continue;
+				String trialId = name + "@" + name;
+				matched.addAll(CodexPluginHooks.bind(sourceRecords, trialRecords,
+					new CodexPluginHooks.Installation(declared, sourceRoots.get(declared)),
+					new CodexPluginHooks.Installation(trialId, pluginRoots(isolatedHome, trialId)), approvals));
+			}
+			return new TrialHookEvidence(matched, sourceRecords);
+		}
+		catch (PolicyRefusal e)
+		{
+			throw new IOException("Codex could not verify a protected source for trial hook approval", e);
+		}
+	}
+
+	/**
+	 * Native observations and the approvals that bind their exact hook keys.
+	 *
+	 * @param bindings the exact original and isolated bindings
+	 * @param original the native records from the original installation
+	 */
+	record TrialHookEvidence(List<CodexPluginHooks.Binding> bindings, Map<String, JsonNode> original)
+	{
+		private static final TrialHookEvidence EMPTY = new TrialHookEvidence(List.of(), Map.of());
+
+		/**
+		 * Creates one native observation.
+		 *
+		 * @param bindings the approved pairs
+		 * @param original the original native records
+		 */
+		TrialHookEvidence
+		{
+			bindings = List.copyOf(bindings);
+			original = Map.copyOf(original);
+		}
+	}
+
+	/**
+	 * Resolves the canonical roots that one exact native plugin registration owns.
+	 *
+	 * @param home the native home
+	 * @param id the exact plugin and marketplace identity
+	 * @return the installed cache roots
+	 * @throws IOException if an installed cache root cannot be resolved
+	 */
+	static List<Path> pluginRoots(Path home, String id) throws IOException
+	{
+		List<Path> result = new ArrayList<>();
+		for (Path candidate : InstalledPlugins.of(home, id))
+			result.add(candidate.toRealPath());
+		return result;
 	}
 
 	/**
@@ -1020,7 +1266,7 @@ public final class CodexRunner
 	 * @param pluginsInstalled {@code true} if CAT or a trial plugin is installed into the isolated home
 	 * @return the options
 	 */
-	private static List<String> featureFlags(boolean pluginsInstalled)
+	static List<String> featureFlags(boolean pluginsInstalled)
 	{
 		if (pluginsInstalled)
 			return List.of("--enable", "hooks");
@@ -1139,13 +1385,30 @@ public final class CodexRunner
 	public static List<String> withHiddenDirectories(List<String> command, Path bubblewrap, List<Path> hidden,
 		List<Path> writable, List<Path> readOnly) throws IOException
 	{
+		return outerSandbox(command, bubblewrap, hidden, writable, readOnly).command();
+	}
+
+	/**
+	 * Builds the app-server command and records the paths that its mounts use.
+	 *
+	 * @param command the app-server command
+	 * @param bubblewrap the bubblewrap executable
+	 * @param hidden the directories to mask
+	 * @param writable the directories that may stay writable
+	 * @param readOnly the evidence that may stay readable
+	 * @return the outer sandbox
+	 * @throws IOException if the mount paths cannot be resolved
+	 */
+	private static OuterSandbox outerSandbox(List<String> command, Path bubblewrap, List<Path> hidden,
+		List<Path> writable, List<Path> readOnly) throws IOException
+	{
 		requireThat(command, "command").isNotEmpty();
 		requireThat(bubblewrap, "bubblewrap").isNotNull();
 		requireThat(hidden, "hidden").isNotNull();
 		requireThat(writable, "writable").isNotNull();
 		requireThat(readOnly, "readOnly").isNotNull();
 		if (hidden.isEmpty())
-			return command;
+			return new OuterSandbox(command, List.of(), List.of());
 		List<String> wrapped = new ArrayList<>(List.of(bubblewrap.toString(), "--dev-bind", "/", "/"));
 		// The paths are compared in their real form, so that a directory reached through a symbolic link, such as
 		// /var/folders/... on macOS, which leads to /private/var/folders/..., still holds the session's real paths
@@ -1177,7 +1440,18 @@ public final class CodexRunner
 		// Codex dies when bubblewrap does, so stopping the recorded harness process also stops Codex
 		wrapped.addAll(List.of("--die-with-parent", "--"));
 		wrapped.addAll(command);
-		return wrapped;
+		return new OuterSandbox(wrapped, hiddenReal, List.copyOf(reopened.keySet()));
+	}
+
+	/**
+	 * The app-server's filesystem wrapper.
+	 *
+	 * @param command the app-server command with any required mounts
+	 * @param masked the real destinations of its empty-directory mounts
+	 * @param reopened the real destinations of its writable and read-only paths
+	 */
+	private record OuterSandbox(List<String> command, List<Path> masked, List<Path> reopened)
+	{
 	}
 
 	/**

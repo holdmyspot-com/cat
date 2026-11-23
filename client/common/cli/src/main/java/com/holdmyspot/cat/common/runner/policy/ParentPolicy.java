@@ -263,6 +263,27 @@ public record ParentPolicy(boolean sandboxed, List<Path> writeRoots, List<Path> 
 	}
 
 	/**
+	 * Checks both a trusted directory and write grants below it. The directory may itself be read-only even when
+	 * the parent's commands can write a descendant.
+	 *
+	 * @param directory the absolute path of the trusted directory
+	 * @throws NullPointerException if {@code directory} is null
+	 * @throws IllegalArgumentException if {@code directory} is relative
+	 * @throws IOException if a path cannot be resolved
+	 * @throws PolicyRefusal if the parent's commands may write the directory or a descendant write root
+	 */
+	public void requireTrustedTree(Path directory) throws IOException, PolicyRefusal
+	{
+		requireTrusted(directory);
+		if (!sandboxed)
+			return;
+		Path root = RealPaths.resolve(directory);
+		for (Path writable : RealPaths.resolveAll(writeRoots))
+			if (!writable.equals(root) && writable.startsWith(root))
+				requireTrusted(writable);
+	}
+
+	/**
 	 * Checks that the parent's commands cannot have changed a file that CAT reads to establish the parent's policy or
 	 * to exchange data with it, such as a settings file or a state folder. The file is trusted when it lies outside the
 	 * parent's writable paths, or inside one of {@link #protectedSources()}; every file is trusted when the parent is

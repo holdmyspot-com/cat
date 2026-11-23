@@ -37,8 +37,6 @@ import tools.jackson.databind.json.JsonMapper;
  *   where {@code deniedReads} would deny them
  * @param workspace the optional directory whose files are copied into the project on top of {@code project}, refusing
  *   any path that the project holds already
- * @param plugins the trial plugins, plugin directories that are installed into the isolated harness home under their
- *   manifests' names, beside CAT when {@code installCat} is also set
  * @param sessionRequests how many sessions the session may request over the nested session; {@code 0} allows none
  * @param capacityWait the longest wait for a capacity slot, or {@code null} to wait until one is free
  * @param requestDepth how many levels of requested sessions below the session may request sessions in turn, each
@@ -65,13 +63,15 @@ import tools.jackson.databind.json.JsonMapper;
  *   if the directory exists.
  * @param resumeSlot the harness session that the runner continues in the slot's nested session, which records it, or
  *   {@code null} for a runner that starts a session
+ * @param pluginInputs the plugin directories to install beside CAT, with their optional source installation IDs
+ * @param resultProjectLinks the project directory whose link declarations the turn copy includes, or {@code null}
  */
 public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFolder, String model, String effort,
 	Path output, Path receipt, boolean sessionTranscripts, boolean installCat, int maximumConcurrency,
-	List<Path> deniedReads, List<Path> readOnlyEvidence, Path workspace, List<Path> plugins, int sessionRequests,
+	List<Path> deniedReads, List<Path> readOnlyEvidence, Path workspace, int sessionRequests,
 	Duration capacityWait, int requestDepth, Path input, Path conversation, Path policyBound, boolean capacityHeld,
 	String gitName, String gitEmail, Path extraPermissions, Path turnCopy, boolean continueAfterFailedTurn,
-	String slotId, String resumeSlot)
+	String slotId, String resumeSlot, List<TrialPluginInput> pluginInputs, Path resultProjectLinks)
 {
 	/**
 	 * The reasoning effort that selects no reasoning, for every model. Each runner passes it to its harness as that
@@ -93,13 +93,28 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 	private static final Set<String> VALUE_OPTIONS = Set.of("--artifact", "--project", "--results", "--model",
 		"--effort", "--output", "--receipt", "--deny-read", "--read-only-evidence", "--workspace", "--plugin", "--input",
 		"--session-requests", "--request-depth", "--capacity-wait", "--policy-bound", "--git-name", "--git-email",
-		ExtraPermissions.OPTION, Conversation.OPTION, "--turn-copy",
+		ExtraPermissions.OPTION, Conversation.OPTION, "--turn-copy", TrialPluginInput.ID_OPTION,
+		RunnerArguments.RESULT_PROJECT_LINKS_OPTION,
 		RunnerArguments.SLOT_ID_OPTION, RunnerArguments.RESUME_SLOT_OPTION, RunnerArguments.STARTUP_PERMIT_OPTION,
 		RunnerArguments.INHERITED_DENY_READ_OPTION);
 	/**
 	 * The name that a candidate CAT's manifest gives it.
 	 */
 	private static final String CAT_NAME = "cat";
+
+	/** Creates launch options that carry plugin paths without source installation IDs. */
+	public HarnessRunnerOptions(Path artifact, Path project, Path resultsFolder, String model, String effort,
+		Path output, Path receipt, boolean sessionTranscripts, boolean installCat, int maximumConcurrency,
+		List<Path> deniedReads, List<Path> readOnlyEvidence, Path workspace, List<Path> plugins, int sessionRequests,
+		Duration capacityWait, int requestDepth, Path input, Path conversation, Path policyBound, boolean capacityHeld,
+		String gitName, String gitEmail, Path extraPermissions, Path turnCopy, boolean continueAfterFailedTurn,
+		String slotId, String resumeSlot)
+	{
+		this(artifact, project, resultsFolder, model, effort, output, receipt, sessionTranscripts, installCat,
+			maximumConcurrency, deniedReads, readOnlyEvidence, workspace, sessionRequests, capacityWait, requestDepth,
+			input, conversation, policyBound, capacityHeld, gitName, gitEmail, extraPermissions, turnCopy,
+			continueAfterFailedTurn, slotId, resumeSlot, TrialPluginInput.unbound(plugins), null);
+	}
 
 	/**
 	 * Parses the legacy {@code serve} bridge command while runners migrate to unprefixed bridge options.
@@ -144,6 +159,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 		String effort = "";
 		ParsedOptions options = new ParsedOptions();
 		int index = 0;
+		int pluginIdOption = -1;
 		while (index < args.length)
 		{
 			String option = args[index];
@@ -248,7 +264,16 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 			else if (option.equals("--workspace"))
 				options.workspace = Path.of(value);
 			else if (option.equals("--plugin"))
-				options.plugins.add(Path.of(value));
+			{
+				options.plugins.add(new TrialPluginInput(Path.of(value), Optional.empty()));
+				pluginIdOption = index + 2;
+			}
+			else if (option.equals(TrialPluginInput.ID_OPTION))
+			{
+				if (index != pluginIdOption)
+					throw new InvalidArgumentsException(TrialPluginInput.ID_OPTION + " must follow --plugin");
+				TrialPluginInput.bindLast(options.plugins, value);
+			}
 			else if (option.equals("--policy-bound"))
 				options.policyBound = Path.of(value);
 			else if (option.equals("--git-name"))
@@ -261,6 +286,12 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 				options.conversation = Path.of(value).toAbsolutePath();
 			else if (option.equals("--turn-copy"))
 				options.turnCopy = Path.of(value).toAbsolutePath();
+			else if (option.equals(RunnerArguments.RESULT_PROJECT_LINKS_OPTION))
+			{
+				if (!ResultProjectLinks.isDirectoryName(value))
+					throw new InvalidArgumentsException(option + " must name one project directory");
+				options.resultProjectLinks = Path.of(value);
+			}
 			else if (option.equals(RunnerArguments.SLOT_ID_OPTION))
 			{
 				if (!NestedSessionManager.isSlotId(value))
@@ -309,10 +340,11 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 		Path resultsFolder = temporaryRoot.resultsFolder(explicitResultsFolder);
 		return new HarnessRunnerOptions(options.artifact, project, resultsFolder, model, effort, options.output,
 			options.receipt, options.sessionTranscripts, options.installCat, options.maximumConcurrency,
-			options.deniedReads, options.readOnlyEvidence, options.workspace, options.plugins, options.sessionRequests,
+			options.deniedReads, options.readOnlyEvidence, options.workspace, options.sessionRequests,
 			options.capacityWait, options.requestDepth, options.input, options.conversation, options.policyBound,
 			options.capacityHeld, options.gitName, options.gitEmail, options.extraPermissions,
-			options.turnCopy, options.continueAfterFailedTurn, options.slotId, options.resumeSlot);
+			options.turnCopy, options.continueAfterFailedTurn, options.slotId, options.resumeSlot, options.plugins,
+			options.resultProjectLinks);
 	}
 
 	/**
@@ -691,8 +723,6 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 	 * @param deniedReads the files and directories that the harness sandbox denies the session reading
 	 * @param readOnlyEvidence the completed evidence files and directories that the session may read but not change
 	 * @param workspace the optional directory whose files are copied into the project on top of {@code project}
-	 * @param plugins the trial plugins, plugin directories that are installed into the isolated harness home under
-	 *   their manifests' names
 	 * @param sessionRequests how many sessions the session may request over the nested session
 	 * @param capacityWait the longest wait for a capacity slot, or {@code null} to wait until one is free
 	 * @param requestDepth how many levels of requested sessions below the session may request sessions in turn
@@ -713,10 +743,11 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 	 * @param slotId the identifier that the nested session takes, or {@code null} for a newly generated identifier
 	 * @param resumeSlot the harness session that the runner continues in the slot's nested session, or {@code null} for a
 	 *   runner that starts a session
+	 * @param pluginInputs the trial plugin inputs, which the isolated harness home installs under their manifest names
 	 * @throws NullPointerException if any of the arguments are null, other than {@code output}, {@code receipt},
 	 *   {@code workspace}, {@code capacityWait}, {@code input}, {@code conversation}, {@code policyBound},
 	 *   {@code gitName}, {@code gitEmail}, {@code extraPermissions}, {@code turnCopy}, {@code slotId} and
-	 *   {@code resumeSlot}
+	 *   {@code resumeSlot} and {@code resultProjectLinks}
 	 * @throws IllegalArgumentException if {@code model} or {@code effort} are blank, {@code resultsFolder} or an element
 	 *   of {@code deniedReads} or {@code readOnlyEvidence} is not absolute, {@code sessionRequests} or {@code
 	 *   requestDepth} is negative, {@code requestDepth} is positive while {@code sessionRequests} is zero, or {@code
@@ -746,7 +777,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 				throw new IllegalArgumentException("Each read-only evidence path must be absolute: " + evidence);
 		}
 		readOnlyEvidence = List.copyOf(readOnlyEvidence);
-		plugins = List.copyOf(plugins);
+		pluginInputs = List.copyOf(pluginInputs);
 		requireThat(sessionRequests, "sessionRequests").isNotNegative();
 		if (capacityWait != null)
 			requireThat(capacityWait, "capacityWait").isGreaterThan(Duration.ZERO);
@@ -776,6 +807,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 	 */
 	public Path catArtifact(Path manifest) throws IOException
 	{
+		List<Path> plugins = plugins();
 		if (isCandidateCat(installCat, plugins, manifest))
 			return plugins.getFirst();
 		return artifact;
@@ -817,9 +849,31 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 	 */
 	public List<Path> trialPlugins(Path manifest) throws IOException
 	{
-		if (isCandidateCat(installCat, plugins, manifest))
-			return plugins.subList(1, plugins.size());
-		return plugins;
+		return trialPluginInputs(manifest).stream().map(TrialPluginInput::path).toList();
+	}
+
+	/**
+	 * Returns the plugins beside CAT with their original installation IDs where known.
+	 *
+	 * @param manifest the path of a plugin's manifest, relative to the plugin directory
+	 * @return the ordered inputs after excluding a candidate CAT
+	 * @throws IOException if the first plugin's manifest cannot be read
+	 */
+	public List<TrialPluginInput> trialPluginInputs(Path manifest) throws IOException
+	{
+		if (isCandidateCat(installCat, plugins(), manifest))
+			return pluginInputs.subList(1, pluginInputs.size());
+		return pluginInputs;
+	}
+
+	/**
+	 * Returns all plugin paths, including a candidate CAT if present.
+	 *
+	 * @return the paths in launch order
+	 */
+	public List<Path> plugins()
+	{
+		return pluginInputs.stream().map(TrialPluginInput::path).toList();
 	}
 
 	/**
@@ -852,7 +906,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 		private final List<Path> deniedReads = new ArrayList<>();
 		private final List<Path> readOnlyEvidence = new ArrayList<>();
 		private Path workspace;
-		private final List<Path> plugins = new ArrayList<>();
+		private final List<TrialPluginInput> plugins = new ArrayList<>();
 		private int sessionRequests;
 		private Duration capacityWait;
 		private int requestDepth;
@@ -864,6 +918,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 		private String gitEmail;
 		private Path extraPermissions;
 		private Path turnCopy;
+		private Path resultProjectLinks;
 		private boolean continueAfterFailedTurn;
 		private String slotId;
 		private String resumeSlot;

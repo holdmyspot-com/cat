@@ -230,14 +230,14 @@ public final class CodexServedSession
 		missingRule(server, environment, accountHome).ifPresent(causes::add);
 		command.flatMap(text -> LauncherSpelling.otherSpelling(text, server)).ifPresent(word -> causes.add(
 			"The command ran the request server as " + word + ", but the rule that CAT's install adds matches only " +
-			"the command " + server + ", spelled exactly so. Run " + server + " alone, with nothing in front of it " +
-			"or after it."));
+			"the command name " + server + ", spelled exactly so. Use that absolute path as the command name in a " +
+			"standalone shell command, with any arguments the operation requires."));
 		if (!causes.isEmpty())
 			return start + String.join(" ", causes);
-		return start + "Codex runs the request server outside its sandbox only through the rule that CAT's install " +
-			"adds for " + server + ", and only for a command that is that absolute path alone, with nothing in front " +
-			"of it or after it. A session that started before that install has no such rule. Run " + server + " as " +
-			"such a command that keeps running, or start a new Codex session and run it there.";
+		return start + "Codex runs the request server outside its sandbox through the rule that CAT's install adds for " +
+			server + ". Use that absolute path as the command name in a standalone shell command, with any arguments " +
+			"the operation requires. A session that started before that install has no such rule. Start a new Codex " +
+			"session if needed.";
 	}
 
 	/**

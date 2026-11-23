@@ -45,6 +45,10 @@ public final class RunnerArguments
 	 */
 	public static final String HELD_OUT_OPTION = "--held-out";
 	/**
+	 * The launch option that selects one project directory whose link declarations are returned as result data.
+	 */
+	public static final String RESULT_PROJECT_LINKS_OPTION = "--result-project-links";
+	/**
 	 * The runner option that names the Git author of the copied project.
 	 */
 	public static final String GIT_NAME_OPTION = "--git-name";
