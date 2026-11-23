@@ -136,6 +136,61 @@ public final class AppServerPromptSourcesTest
 	}
 
 	/**
+	 * Observes the recorded lines as the session driver does for a trial that ran in a slot: the harness reports paths
+	 * inside the slot's nested session folder, while the driver stages only the results copy.
+	 *
+	 * @param lines the harness event lines
+	 * @param slot the slot's nested session folder, which replaces the folder that the lines mention
+	 * @return the observed value
+	 */
+	private static String observeInSlot(List<String> lines, String slot)
+	{
+		AppServerPromptSources sources = AppServerPromptSourcesSecrets.getAppServerPromptSourcesAccess().
+			newAppServerPromptSources(JSON, Map.of("session", Path.of("/campaign/results/codex/01a0f670")));
+		for (String line : lines)
+			sources.accept(line.replace(SESSION_FOLDER, slot));
+		return sources.value();
+	}
+
+	/**
+	 * Verifies that two trials that loaded the same hooks in different slots yield the same value, which also equals
+	 * the value of a trial that ran in a session folder of the results folder.
+	 *
+	 * @throws IOException if the recorded lines cannot be read
+	 */
+	@Test
+	public void sameSourcesInAnySlotGiveOneValue() throws IOException
+	{
+		String first = observeInSlot(recorded(), "/campaign/.cat/sessions/39a1cbf9/slots/d1/codex/s-1");
+		String second = observeInSlot(recorded(), "/campaign/.cat/sessions/39a1cbf9/slots/d3/codex/s-3");
+		String heldOut = observeInSlot(recorded(), "/campaign/.cat/sessions/39a1cbf9/slots/h2/codex/s-2");
+
+		requireThat(second, "second").isEqualTo(first);
+		requireThat(heldOut, "heldOut").isEqualTo(first);
+		requireThat(first, "first").doesNotContain("slots");
+		requireThat(first, "first").
+			isEqualTo("hook:sessionStart plugin session/home/plugins/cache/cat/cat/1.0+b08307c76ca2a/hooks/hooks.json");
+		requireThat(observeInSlot(recorded(), "/campaign/results/codex/01a0f670"), "inResultsFolder").
+			isEqualTo(first);
+	}
+
+	/**
+	 * Verifies that a different hook source in another slot still changes the value.
+	 *
+	 * @throws IOException if the recorded lines cannot be read
+	 */
+	@Test
+	public void changedSourceChangesValueInAnySlot() throws IOException
+	{
+		List<String> other = recorded().stream().map(line -> line.replace("hooks/hooks.json", "hooks/other.json")).
+			toList();
+		String first = observeInSlot(recorded(), "/campaign/.cat/sessions/39a1cbf9/slots/d1/codex/s-1");
+
+		requireThat(observeInSlot(other, "/campaign/.cat/sessions/39a1cbf9/slots/d3/codex/s-3"), "other").
+			isNotEqualTo(first);
+	}
+
+	/**
 	 * Verifies that the order of the records does not matter.
 	 *
 	 * @throws IOException if the recorded lines cannot be read

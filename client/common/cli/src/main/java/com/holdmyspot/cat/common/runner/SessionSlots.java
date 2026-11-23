@@ -101,6 +101,14 @@ public final class SessionSlots
 	private static final Pattern SLOT_NAME = Pattern.compile("(?<part>[" + DEVELOPMENT + HELD_OUT +
 		"])(?<number>[1-9][0-9]{0,8})");
 	/**
+	 * Matches the start of a path that lies in a slot's nested session: the slot's directory, the harness's directory
+	 * and the nested session, whose identifier ends with the slot's number. Either kind of separator may divide the
+	 * names, and any directories may lead to the slot's directory.
+	 */
+	private static final Pattern NESTED_SESSION_IN_SLOT = Pattern.compile("^(?:.*[/\\\\])?[" + DEVELOPMENT +
+		HELD_OUT + "](?<number>[1-9][0-9]{0,8})[/\\\\][^/\\\\]+[/\\\\]" + SLOT_ID +
+		"\\k<number>(?=[/\\\\]|$)");
+	/**
 	 * The maximum size of an original request record, which holds a format version and one archive identifier.
 	 */
 	private static final int MAXIMUM_BINDING_BYTES = 512;
@@ -905,6 +913,25 @@ public final class SessionSlots
 			// Emptying the slot reports the reason
 		}
 		return false;
+	}
+
+	/**
+	 * Returns the length of the leading part of a path that names a slot's nested session folder. A harness reports the
+	 * paths of the session's own files, so the part tells which slot ran the session, which sessions of different slots
+	 * do not share, and says nothing about what the session loaded.
+	 *
+	 * @param path the path, written with {@code /} or {@code \} between its names
+	 * @return the number of characters of {@code path} that name the nested session's folder, or empty if the path does
+	 *   not lie in a slot's nested session. When nested sessions of slots lie inside one another, the innermost wins.
+	 * @throws NullPointerException if {@code path} is null
+	 */
+	public static OptionalInt nestedSessionLength(String path)
+	{
+		requireThat(path, "path").isNotNull();
+		Matcher matcher = NESTED_SESSION_IN_SLOT.matcher(path);
+		if (!matcher.find())
+			return OptionalInt.empty();
+		return OptionalInt.of(matcher.end());
 	}
 
 	/**

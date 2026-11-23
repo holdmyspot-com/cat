@@ -211,6 +211,60 @@ public final class StreamJsonPromptSourcesTest
 	}
 
 	/**
+	 * Observes the recorded lines as the session driver does for a trial that ran in a slot: the harness reports paths
+	 * inside the slot's nested session folder, while the driver stages only the results copy.
+	 *
+	 * @param lines the harness event lines
+	 * @param slot the slot's nested session folder, which replaces the folder that the lines mention
+	 * @return the observed value
+	 */
+	private static String observeInSlot(List<String> lines, String slot)
+	{
+		StreamJsonPromptSources sources = StreamJsonPromptSourcesSecrets.getStreamJsonPromptSourcesAccess().
+			newStreamJsonPromptSources(JSON, Map.of("session", Path.of("/campaign/results/claude/629e9453")));
+		for (String line : lines)
+			sources.accept(line.replace(SESSION_FOLDER, slot));
+		return sources.value();
+	}
+
+	/**
+	 * Verifies that two trials that loaded the same sources in different slots yield the same value, which also equals
+	 * the value of a trial that ran in a session folder of the results folder.
+	 *
+	 * @throws IOException if the recorded lines cannot be read
+	 */
+	@Test
+	public void sameSourcesInAnySlotGiveOneValue() throws IOException
+	{
+		String first = observeInSlot(recorded(), "/campaign/.cat/sessions/39a1cbf9/slots/d1/claude/s-1");
+		String second = observeInSlot(recorded(), "/campaign/.cat/sessions/39a1cbf9/slots/d3/claude/s-3");
+		String heldOut = observeInSlot(recorded(), "/campaign/.cat/sessions/39a1cbf9/slots/h2/claude/s-2");
+
+		requireThat(second, "second").isEqualTo(first);
+		requireThat(heldOut, "heldOut").isEqualTo(first);
+		requireThat(first, "first").doesNotContain("slots");
+		requireThat(first.lines().toList(), "entries").
+			contains("plugin:cat cat@cat session/home/.claude/plugins/cat-marketplace/plugins/cat");
+		requireThat(observeInSlot(recorded(), "/campaign/results/claude/629e9453"), "inResultsFolder").
+			isEqualTo(first);
+	}
+
+	/**
+	 * Verifies that a source that loads in one slot and not in another still changes the value.
+	 *
+	 * @throws IOException if the recorded lines cannot be read
+	 */
+	@Test
+	public void changedSourceChangesValueInAnySlot() throws IOException
+	{
+		List<String> without = recorded().stream().map(line -> line.replace("\"cat:git-squash\",", "")).toList();
+		String first = observeInSlot(recorded(), "/campaign/.cat/sessions/39a1cbf9/slots/d1/claude/s-1");
+
+		requireThat(observeInSlot(without, "/campaign/.cat/sessions/39a1cbf9/slots/d3/claude/s-3"), "without").
+			isNotEqualTo(first);
+	}
+
+	/**
 	 * Verifies that repeated records, such as the second {@code init} that a background child causes, do not change the
 	 * value, and that the order of the records does not matter.
 	 *

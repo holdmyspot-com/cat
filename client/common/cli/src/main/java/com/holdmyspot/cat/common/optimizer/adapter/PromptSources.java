@@ -2,12 +2,14 @@ package com.holdmyspot.cat.common.optimizer.adapter;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.runner.SessionSlots;
 import java.nio.file.FileSystems;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalInt;
 import java.util.SortedSet;
 import java.util.TreeSet;
 
@@ -20,14 +22,22 @@ import tools.jackson.databind.json.JsonMapper;
  * The value lists the sources that the harness's events report, one entry per line in sorted order. A subclass
  * reads one harness's event format and adds an entry for each source. A path inside one of the supplied directories
  * appears relative to that directory's placeholder, so the value does not depend on where the nested session's files
- * were staged. The value records no file content and no content hash, so it does not change when a candidate edits a
- * prompt file. It changes only when the set of loaded sources changes.
+ * were staged. A path inside the nested session that a slot holds appears relative to the {@link #SESSION}
+ * placeholder, whichever slot ran the session: the harness reports the slot's paths, but the slot says where the
+ * session ran and nothing about what it loaded, so two trials of one campaign that load the same sources in different
+ * slots yield the same value. The value records no file content and no content hash, so it does not change when a
+ * candidate edits a prompt file. It changes only when the set of loaded sources changes.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe. {@link #read(JsonNode)} never runs concurrently with itself or
  * with a public method of this class.
  */
 public abstract class PromptSources
 {
+	/**
+	 * The placeholder of the directory that holds the nested session's files, which a path in the session's slot
+	 * appears relative to.
+	 */
+	public static final String SESSION = "session";
 	private final JsonMapper json;
 	private final List<Map.Entry<String, String>> roots;
 	/**
@@ -110,14 +120,21 @@ public abstract class PromptSources
 	}
 
 	/**
-	 * Replaces a leading staged directory with its placeholder. The harness may write the directory with the
-	 * platform's separator or with {@code /}, and either may separate it from the rest of the path.
+	 * Replaces a leading staged directory, or the folder of a slot's nested session, with its placeholder. The harness
+	 * may write the directory with the platform's separator or with {@code /}, and either may separate it from the rest
+	 * of the path.
 	 *
 	 * @param path the path or name that the event reported
 	 * @return the normalized text
+	 * @throws NullPointerException if {@code path} is null
 	 */
 	protected final String relativize(String path)
 	{
+		// A slot's folder lies where the runner keeps it, which the staged directories do not name, and a staged
+		// directory may hold the slots, so the slot is the more specific match
+		OptionalInt slot = SessionSlots.nestedSessionLength(path);
+		if (slot.isPresent())
+			return SESSION + path.substring(slot.getAsInt());
 		for (Map.Entry<String, String> root : roots)
 		{
 			String directory = root.getValue();
