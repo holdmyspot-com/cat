@@ -5433,7 +5433,7 @@ models that `codex debug models` reports and asked; given `gpt-6-luna`, `low`, i
 | WI-160 | Not started; designed 2026-11-23 (`design.md` §8 "Codex authentication", D163, H44, H45, P24 and P26) and revised the same day by the user's source-home ruling. The user ruled Q22 to Q24 the same day: "Q22-Q24: a"; the ruling on Q22 refuses a ChatGPT sign-in, which replaces P26. P24 is not run. Needs WI-159. Closes R-I15. |
 | WI-161 | Steps 1 and 2 implemented 2026-11-23 (full build 6492 tests, 0 failures); step 3 open, blocked on WI-156. Designed 2026-11-23 (`design.md` §6.3 test design rule 5 and the outcome review, §6.4 "Evidence scope", "Sessions by scope", "Why the scopes stay when assertions are split" and "Consistent verdicts", D164, D165) with the user's rulings of the same day. Step 1 needs WI-150; step 3 needs WI-156. Steps 1 and 2 close R-L19 except its outcome-review clause; step 3 closes that clause and R-L20. Closes R-L19 and R-L20. |
 | WI-162 | Implemented 2026-11-23 (clone full build 6472 tests, 0 failures; `design.md` "Each trial installs every trial plugin", D167). Codex campaigns whose trial plugin is CAT built from the project, such as `20261123T152244Z-94bfcc`, measured trials without session rules until a build with WI-162 is installed. Amends R-W12. |
-| WI-163 | Not started; designed 2026-11-23 (`design.md` §6.4 "Check programs", §6.3 test design rule 5, the scenario format and "Outcome coverage" step 1, §6.1 "Guard pilot" and "Assertion agreement", D168, H46 and P27). Not ready: waits for P27, for its macOS part only (the user ruled Q25 and Q26 on 2026-11-23). Needs WI-155, WI-156 and WI-161. Closes R-L21 and R-L22. |
+| WI-163 | Not started; designed 2026-11-23 (`design.md` §6.4 "Check programs", §6.3 test design rule 5, the scenario format and "Outcome coverage" step 1, §6.1 "Guard pilot" and "Assertion agreement", D168, H46 and P27). Not ready: waits for P27, for its macOS part only (the user ruled Q25, Q26 and the check-program limits on 2026-11-23). Needs WI-155, WI-156 and WI-161. Closes R-L21 and R-L22. |
 | WI-164 | Not started; designed 2026-11-23 (`design.md` §8 "Sandbox start", D169, H47 and P28). Step 1 (P28) is ready; step 4 waits for the user's choice Q27. Needs WI-147. Closes R-I16. |
 | WI-145 | Implemented 2026-11-16 (Claude implementer; `87db96986`..`a378c7aa5`; clean full build 6034 tests, 0 failures, 0 errors, 6 skipped): one in-place registrar (`GitWorktreeRegistrar`) for add, recreate, remove and repair behind `Fork`, `GitForks` and the session-start sweep; worktree requests (`worktree-<uuid>.tar`, document of operation and campaign only) served on a thread of their own by the request server (with the `.git/config`/`.git/hooks` write check against the session's policy) and by a run's runner (the one campaign of that identifier in the run's project; refused when the run allows no requests), counted against no limit; the client (`WorktreeRequestClient`) sends by the launch route, sends nothing for intact links, and `start`, `run`, `choose` and `cancel` refuse with status 2 before any change when no server serves the session; the Claude runner's `.git/worktrees` grant removed (session environment version 25); the build-command limit stated in the prompt-optimizer skill. Remaining: the live checks in Claude Code and Codex. Decided 2026-11-16: the code stays (`status` never reconnects; a campaign without its worktree is not a fork, `ForksContract.missingWorktreeIsNotAFork`), and the live check names the next command that reconnects (`run` or `choose`) instead. Probe evidence: `~/cat/worktrees/gitwt-probe4/` and `gitwt-probe3/`. |
 | Incremental build-workflow rule (user request, 2026-10-25) | Done 2026-10-27 (Codex; `ebe1687e7d`, released in v1.0). Record: [history](plan-history.md). |
@@ -10654,11 +10654,13 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 	Q17 and Q21. Still applied: Q10 "Yes, implement option b": a secret file denies group and other access. Q12 "Clear
 	it": `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` whenever a token is in the Claude process's environment, with P22. Q14
 	"Changing the auth should be allowed when resuming a campaign and should not invalidate old results.": recorded per
-	launch, outside measurement identity. Q16 "Refuse": a source file that the requester may not read is refused. Q20
-	"The caller says which because for end-users it might not be a subscription": `--gateway-login-class`, required with
-	a base URL. Q22, Q23 and Q24, "Q22-Q24: a", as the choices below state: a stored Claude login is shared through
-	`CLAUDE_SECURESTORAGE_CONFIG_DIR` instead of copied, and a Codex ChatGPT sign-in is refused; without `--home`, the
-	runner's own `CLAUDE_CONFIG_DIR` and `CODEX_HOME` move the source home's folders; one class covers both harnesses.
+	launch, outside measurement identity. Q16 "Refuse": a source file that the requester may not read is refused; the user
+	confirmed it on 2026-11-23, "M3: Keep 'refuse'", accepting that a user who keeps a key file out of an agent's sandbox
+	cannot launch sessions billed with that key from that agent. Q20 "The caller says which because for end-users it might
+	not be a subscription": `--gateway-login-class`, required with a base URL. Q22, Q23 and Q24, "Q22-Q24: a", as the
+	choices below state: a stored Claude login is shared through `CLAUDE_SECURESTORAGE_CONFIG_DIR` instead of copied, and
+	a Codex ChatGPT sign-in is refused; without `--home`, the runner's own `CLAUDE_CONFIG_DIR` and `CODEX_HOME` move the
+	source home's folders; one class covers both harnesses.
 - **Order:** (1) Done 2026-11-23: P20 and P22 passed (`design.md` P20, P22), each run with Claude Code 2.1.330, model
 	`haiku` and effort `low`, in a disposable `CLAUDE_CONFIG_DIR` and source home, from a shell in which Claude Code's
 	command sandbox started; the receipts are kept in the parent session `fab0ed75-654f-4a5c-b939-08335a367474`, and
@@ -11026,16 +11028,16 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 		and `SessionEvidence`. `CheckProgram` builds the input directory (`project/`, `initial/`, `activity.json` in the
 		activity format version 1 that a peer evaluator's `evaluator-evidence.json` uses, `replies.json`, `checks/`)
 		read-only, a new scratch directory and the fixed environment, starts the program as an argument list without a
-		shell under the platform's sandbox, applies the 60-second and 16 KiB limits, maps the exit status to a decision
-		or a program error, keeps the output as the observed value, and deletes the scratch directory. The sandbox
-		launcher denies the network and every write outside the scratch directory and masks the held-out directory, the
-		held-out results folder and the driver session's denied reads, as `CodexHookInspection.readOnlyView` and
-		`applyReadDenials` do on Linux; on macOS it writes a Seatbelt profile; on native Windows a proposal with a check
-		program is refused. `Driver` runs each check program of an ended trial as in-flight work beside its judgings,
-		applies `on_tool_failure` to a failure or program error, and treats a launch fault of the host as an
-		infrastructure failure; `EarlyTrialEnd` never ends a test with a check program early. `GuardPilot` runs each
-		program twice per pilot trial and reports a differing outcome or a run longer than half the time limit as a
-		proposal problem.
+		shell under the platform's sandbox, applies the 60-second and 16 KiB limits that the user ruled, maps the exit
+		status to a decision or a program error, keeps the output as the observed value, and deletes the scratch
+		directory. The sandbox launcher denies the network and every write outside the scratch directory and masks the
+		held-out directory, the held-out results folder and the driver session's denied reads, as
+		`CodexHookInspection.readOnlyView` and `applyReadDenials` do on Linux; on macOS it writes a Seatbelt profile; on
+		native Windows a proposal with a check program is refused. `Driver` runs each check program of an ended trial as
+		in-flight work beside its judgings, applies `on_tool_failure` to a failure or program error, and treats a launch
+		fault of the host as an infrastructure failure; `EarlyTrialEnd` never ends a test with a check program early.
+		`GuardPilot` runs each program twice per pilot trial and reports a differing outcome or a run longer than half the
+		time limit as a proposal problem.
 	3. **Examples and coverage (needs WI-155 and WI-156).** `ProposalCheck`, `TestRevisionCheck` and `contract check`
 		run each program twice on each example of `check-examples/<assertion id>/`, with the example's defaults and the
 		placeholders of its class's first test case in values-file order, and refuse the problems of `design.md` "Check
@@ -11109,6 +11111,10 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 		(c) Build a Windows sandbox for it, such as an AppContainer with a restricted token, which CAT has no code
 		for. Recommended: (a), because it matches the existing Windows rule and costs nothing, while (b) breaks the
 		held-out separation and (c) adds a platform-specific sandbox to maintain.
+	- **Check-program limits. Ruled: 60 seconds and 16 KiB; user's words: "Check-program limits: Proceed with 60 seconds
+		and 16KiB".** A run of a check program stops at a time limit of 60 seconds or an output limit of 16 KiB of
+		standard output and standard error together, and either stop is a program error (`design.md` "Check programs",
+		outcome). Step 2 applies them, and the determinism check refuses a run longer than 30 seconds, half the limit.
 - **Classes affected:** `BuiltInTool`, `ToolLine`, `ScenarioParser`, `PromptTest`, `PromptTestFiles`, `TrialRecord`,
 	`TrialEvidence`, `PeerTrialEvidence` and the moved activity writer, `CheckProgram` and its sandbox launcher (new),
 	`Driver`, `InFlight`, `EarlyTrialEnd`, `GuardPilot`, `ProposalCheck`, `TestRevisionCheck`, `Markdown`, the

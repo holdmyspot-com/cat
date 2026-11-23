@@ -3244,19 +3244,19 @@ brief was sufficient or an explanation is correct needs meaning and stays with a
 	`LC_ALL=C.UTF-8`, so that the host's settings do not change a verdict. CAT deletes the scratch directory after the
 	run. The program runs in the process that decides the trial's built-in tools, the campaign owner's driver, so a trial
 	that the other harness ran is checked in the same way ([§7.1](#71-shared-optimization-across-harnesses)).
-- **Outcome.** Exit status 0 passes and 1 fails. Any other status, a run that its time limit of 60 seconds or its
-	output limit of 16 KiB (standard output and standard error together) stops, and a program that does not start
-	because of its own content, such as one that does not compile, is a **program error**. CAT keeps the output, up to
-	the limit, standard output first, with the cause of a program error, as the tool's observed value, which is the
-	assertion's rationale. A failure shows the behavior `check_program_failed` and a program error
-	`check_program_error`, so development groups them apart. Both are failures of the tool under the assertion's
-	`on_tool_failure`: under `fail` the assertion fails, and under `judge` the judge decides it from its description
-	with the observed value as evidence (judge on tool failure, above). A host problem that keeps CAT from running any
-	program, such as a scratch directory that cannot be created or a sandbox that does not start, is an infrastructure
-	failure, as for a tool whose evidence the record lacks. A program error is not an infrastructure failure because
-	the same evidence gives the same error: rerunning the trial would replace each trial that the program cannot handle
-	with another and so drop the unusual trials from the counts, while a failure never removes a trial and never passes
-	one that the program did not pass.
+- **Outcome (limits: user ruling, 2026-11-23).** Exit status 0 passes and 1 fails. Any other status, a run that its
+	time limit of 60 seconds or its output limit of 16 KiB (standard output and standard error together) stops, and a
+	program that does not start because of its own content, such as one that does not compile, is a **program error**.
+	CAT keeps the output, up to the limit, standard output first, with the cause of a program error, as the tool's
+	observed value, which is the assertion's rationale. A failure shows the behavior `check_program_failed` and a
+	program error `check_program_error`, so development groups them apart. Both are failures of the tool under the
+	assertion's `on_tool_failure`: under `fail` the assertion fails, and under `judge` the judge decides it from its
+	description with the observed value as evidence (judge on tool failure, above). A host problem that keeps CAT from
+	running any program, such as a scratch directory that cannot be created or a sandbox that does not start, is an
+	infrastructure failure, as for a tool whose evidence the record lacks. A program error is not an infrastructure
+	failure because the same evidence gives the same error: rerunning the trial would replace each trial that the
+	program cannot handle with another and so drop the unusual trials from the counts, while a failure never removes a
+	trial and never passes one that the program did not pass.
 - **Sandbox.** The program has no network, writes only its scratch directory, and cannot read the held-out directory,
 	the held-out results folder ([§6.3](#63-prompt-tests-and-test-cases), held-out content on disk) or any path that the
 	driver's own session is denied, apart from its input directory, through which CAT presents the trial's directories.
@@ -3308,8 +3308,8 @@ brief was sufficient or an explanation is correct needs meaning and stays with a
 	early ([§3.2](#32-logical-trials)). The runtime in both artifacts grows by the `jdk.compiler` module, by a size that
 	has not been measured.
 
-**Choices that the user has made (user rulings, 2026-11-23; Q25 and Q26 in `plan.md` WI-163).** The text above states
-both:
+**Choices that the user has made (user rulings, 2026-11-23; Q25, Q26 and the limits in `plan.md` WI-163).** The text
+above states all three:
 
 - how a check program is launched: as a Java source program, run in source-file mode by the Java runtime that CAT
 	ships (Q25, option (a); user ruling: "25. a"). The rejected option was a command that the author names, such as
@@ -3317,7 +3317,10 @@ both:
 - what native Windows does with a check program: CAT refuses a proposal that has a check program and directs the user
 	to WSL2 (Q26, option (a); user ruling: "26. Is this for prompt-optimization? If so: a"). Check programs are part
 	of prompt tests in the prompt optimizer, so the ruling applies. The rejected options were to run the program there
-	without a sandbox, with a warning in the proposal, and to build a Windows sandbox for it.
+	without a sandbox, with a warning in the proposal, and to build a Windows sandbox for it;
+- the limits of one run of a check program: a time limit of 60 seconds and an output limit of 16 KiB of standard output
+	and standard error together (user ruling: "Check-program limits: Proceed with 60 seconds and 16KiB"). A run that
+	reaches either is a program error (outcome, above).
 
 **Evidence scope (user rulings, 2026-11-23).** Every judged assertion, one without a `tool` or whose `on_tool_failure`
 is `judge`, declares in its `evidence_scope` key what its judge reads. The contract author sets it from the obligation
@@ -3862,9 +3865,11 @@ the check nor the denial, because the runner cannot see it.
 A launch is also refused when the sandbox of the session that requests it denies that session reading a file that the
 runner reads from the source home, whether the session's request server serves the launch or one of CAT's own starters
 names the bound that it computed: a session may use a secret that it may read, and a launch never extends its
-requester's reach (user ruling, 2026-11-23: "Refuse"; D99). The check applies where a source home is chosen, at a launch
-that no nested session requested; the sessions that a nested session requests use their runner's source home, which that
-nested session's commands are denied by design. `--home` comes from a session, so it is untrusted input (D133).
+requester's reach (user ruling, 2026-11-23: "Refuse"; D99). The user confirmed this ruling on 2026-11-23 ("M3: Keep
+'refuse'") after its trade-off was explained: a user who keeps a key file out of an agent's sandbox cannot launch
+sessions billed with that key from that agent. The check applies where a source home is chosen, at a launch that no
+nested session requested; the sessions that a nested session requests use their runner's source home, which that nested
+session's commands are denied by design. `--home` comes from a session, so it is untrusted input (D133).
 
 The session's commands and file tools are denied every source file that holds a secret and every copy in the session's
 home. The runner adds them to the session's denied reads, which become a `sandbox.filesystem.denyRead` entry and a
