@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.proposal.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.CampaignEvent;
@@ -1857,8 +1858,9 @@ public final class ProposalTest
 	}
 
 	/**
-	 * Verifies that the proposal names each hook of the trial plugins that trials do not run, and records no hook
-	 * limitation when trials run every hook.
+	 * Verifies that the proposal names each hook of the trial plugins that trials do not run, advises reviewing the
+	 * approvals of an installed plugin's or CAT's hooks, says that a project-built plugin other than CAT inherits no
+	 * approval, and records no hook limitation when trials run every hook.
 	 *
 	 * @throws InvalidProposalException if the fixture is rejected
 	 */
@@ -1866,17 +1868,31 @@ public final class ProposalTest
 	@Test
 	public void listsUnapprovedPluginHooks() throws InvalidProposalException
 	{
-		Proposal unapproved = pluginProposal(new PluginCheck(List.of(builtPlugin()), List.of(), List.of(), List.of(),
-			List.of(), List.of("cat SessionStart `./log.sh`", "cat PostToolUse `./check.sh`"), Map.of()));
+		Proposal built = pluginProposal(new PluginCheck(List.of(builtPlugin(), installedPlugin()), List.of(),
+			List.of(), List.of(), List.of(), List.of("cat SessionStart `./log.sh`", "cat PostToolUse `./check.sh`",
+			"tools@market SessionStart `./tools.sh`"), Map.of()));
+		TrialPlugin cat = new TrialPlugin("cat", "a".repeat(64), new TrialPlugin.Build(List.of("./build-plugin"),
+			Path.of("out/plugin")), List.of(), PluginInfo.CAT_REPOSITORY);
+		Proposal builtCat = pluginProposal(new PluginCheck(List.of(cat), List.of(), List.of(), List.of(), List.of(),
+			List.of("cat SessionStart `./log.sh`"), Map.of()));
 		Proposal approved = pluginProposal(new PluginCheck(List.of(builtPlugin()), List.of(), List.of(), List.of(),
 			List.of(), List.of(), Map.of()));
 
-		requireThat(unapproved.contract().limitations(), "unapproved").contains(
+		requireThat(built.contract().limitations(), "built").contains(
 			"Trials skip these hooks of the trial plugins because CAT could not verify their approval for the " +
-			"installed trial copies: cat SessionStart `./log.sh`; cat PostToolUse `./check.sh`. Review those hooks " +
-			"and their approvals in the harness, then run revise to check them again.");
+			"installed trial copies: tools@market SessionStart `./tools.sh`. Review those hooks and their approvals " +
+			"in the harness, then run revise to check them again.").contains(
+			"Trials skip these hooks of trial plugins that the project builds: cat SessionStart `./log.sh`; cat " +
+			"PostToolUse `./check.sh`. CAT reuses the user's hook approvals only for a copy of an installed plugin " +
+			"and for CAT, so approving these hooks in the harness does not change this.");
+		requireThat(builtCat.contract().limitations(), "builtCat").contains(
+			"Trials skip these hooks of the trial plugins because CAT could not verify their approval for the " +
+			"installed trial copies: cat SessionStart `./log.sh`. Review those hooks and their approvals in the " +
+			"harness, then run revise to check them again.");
+		requireThat(builtCat.contract().limitations().stream().
+			filter(limitation -> limitation.contains("that the project builds")).toList(), "builtCat").isEmpty();
 		requireThat(approved.contract().limitations().stream().
-			filter(limitation -> limitation.contains("hooks of the trial plugins")).toList(), "approved").isEmpty();
+			filter(limitation -> limitation.startsWith("Trials skip these hooks")).toList(), "approved").isEmpty();
 	}
 
 	/**

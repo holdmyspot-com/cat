@@ -12,6 +12,7 @@ import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.runner.AbstractHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.HarnessArtifact;
@@ -1044,7 +1045,8 @@ public final class CodexRunner
 	}
 
 	/**
-	 * Transfers approvals only between exact original and trial installations observed by native Codex.
+	 * Transfers approvals only between original and trial installations observed by native Codex: an installed plugin's
+	 * exact copy, or CAT's own plugin built from the project.
 	 *
 	 * @param inputs the installed trial copies with their original IDs, when known
 	 * @param hostHome the host Codex home
@@ -1073,7 +1075,11 @@ public final class CodexRunner
 	}
 
 	/**
-	 * Resolves the exact native hook records that an installed trial can inherit from the owner's approved plugins.
+	 * Resolves the native hook records that an installed trial can inherit from the owner's approved plugins. A copy of
+	 * an installed plugin inherits the approval of each hook whose full hash, including the plugin's artifact hash,
+	 * equals the original's. CAT's own plugin built from the project inherits the approvals of the owner's installed
+	 * CAT by hook declaration hash alone, because its build differs from the installed copy; any other plugin that the
+	 * project builds inherits none.
 	 *
 	 * @param inputs the installed trial copies with their original IDs, when known
 	 * @param hostHome the host Codex home
@@ -1093,8 +1099,15 @@ public final class CodexRunner
 		Path isolatedHome, Path project, Path worktree, Path scratch, String executable, ParentPolicy policy,
 		Map<String, String> environment, Optional<Path> sandboxExecutable, HarnessRunnerScope scope) throws IOException
 	{
-		List<TrialPluginInput> installed = inputs.stream().filter(input -> input.installedId().isPresent()).toList();
-		if (installed.isEmpty() || !Platform.current().isLinux())
+		List<ApprovalSource> approvable = new ArrayList<>();
+		for (TrialPluginInput input : inputs)
+		{
+			if (input.installedId().isPresent())
+				approvable.add(new ApprovalSource(input, input.installedId().orElseThrow(), true));
+			else if (PluginInfo.isCatRepository(PluginManifest.repository(input.path(), MANIFEST).orElse(null)))
+				approvable.add(new ApprovalSource(input, CAT_PLUGIN_ID, false));
+		}
+		if (approvable.isEmpty() || !Platform.current().isLinux())
 			return TrialHookEvidence.EMPTY;
 		Optional<Path> sandbox = sandboxExecutable.or(() -> bubblewrap(environment));
 		if (sandbox.isEmpty())
@@ -1114,8 +1127,8 @@ public final class CodexRunner
 			return TrialHookEvidence.EMPTY;
 		}
 		Map<String, String> approvals = CodexConnectionConfiguration.configuredHookApprovals(configuration);
-		List<TrialPluginInput> eligible = installed.stream().filter(input -> approvals.keySet().stream().anyMatch(
-			key -> key.startsWith(input.installedId().orElseThrow() + ":"))).toList();
+		List<ApprovalSource> eligible = approvable.stream().filter(source -> approvals.keySet().stream().anyMatch(
+			key -> key.startsWith(source.originalId() + ":"))).toList();
 		if (eligible.isEmpty())
 			return TrialHookEvidence.EMPTY;
 		Path nativeExecutable = Path.of(Platform.current().findProgram(executable, environment)).toRealPath();
@@ -1126,9 +1139,9 @@ public final class CodexRunner
 			policy.requireTrusted(nativeExecutable);
 			policy.requireTrusted(bubblewrap);
 			Map<String, List<Path>> sourceRoots = new LinkedHashMap<>();
-			for (TrialPluginInput input : eligible)
+			for (ApprovalSource source : eligible)
 			{
-				String id = input.installedId().orElseThrow();
+				String id = source.originalId();
 				List<Path> roots = pluginRoots(hostHome, id);
 				for (Path root : roots)
 				{
@@ -1143,16 +1156,24 @@ public final class CodexRunner
 			Map<String, JsonNode> trialRecords = CodexHookInspection.readTrial(isolatedHome, worktree.toRealPath(),
 				scratch, bubblewrap, nativeExecutable, policy, featureFlags(true), scope);
 			List<CodexPluginHooks.Binding> matched = new ArrayList<>();
-			for (TrialPluginInput input : eligible)
+			for (ApprovalSource source : eligible)
 			{
-				String declared = input.installedId().orElseThrow();
-				String name = PluginManifest.name(input.path(), MANIFEST);
-				if (!declared.startsWith(name + "@"))
+				String declared = source.originalId();
+				String name = PluginManifest.name(source.input().path(), MANIFEST);
+				if (source.sameArtifact() && !declared.startsWith(name + "@"))
 					continue;
 				String trialId = name + "@" + name;
-				matched.addAll(CodexPluginHooks.bind(sourceRecords, trialRecords,
-					new CodexPluginHooks.Installation(declared, sourceRoots.get(declared)),
-					new CodexPluginHooks.Installation(trialId, pluginRoots(isolatedHome, trialId)), approvals));
+				CodexPluginHooks.Installation original = new CodexPluginHooks.Installation(declared,
+					sourceRoots.get(declared));
+				CodexPluginHooks.Installation isolated = new CodexPluginHooks.Installation(trialId,
+					pluginRoots(isolatedHome, trialId));
+				if (source.sameArtifact())
+					matched.addAll(CodexPluginHooks.bind(sourceRecords, trialRecords, original, isolated, approvals));
+				else
+				{
+					matched.addAll(CodexPluginHooks.bindDeclarations(sourceRecords, trialRecords, original, isolated,
+						approvals));
+				}
 			}
 			return new TrialHookEvidence(matched, sourceRecords);
 		}
@@ -1160,6 +1181,18 @@ public final class CodexRunner
 		{
 			throw new IOException("Codex could not verify a protected source for trial hook approval", e);
 		}
+	}
+
+	/**
+	 * A trial plugin whose hooks can inherit the owner's approvals.
+	 *
+	 * @param input the trial plugin
+	 * @param originalId the native plugin and marketplace ID of the owner's installation whose approvals it inherits
+	 * @param sameArtifact {@code true} if a hook inherits an approval only when its full hash equals the original's;
+	 *   {@code false} for CAT built from the project, whose hooks inherit approvals by declaration hash
+	 */
+	private record ApprovalSource(TrialPluginInput input, String originalId, boolean sameArtifact)
+	{
 	}
 
 	/**

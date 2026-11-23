@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.proposal;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
+import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.campaign.CampaignEvent;
 import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
 import com.holdmyspot.cat.common.optimizer.campaign.ContractIdentity;
@@ -13,6 +14,7 @@ import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.Part;
 import com.holdmyspot.cat.common.optimizer.contract.ProposalSchema;
 import com.holdmyspot.cat.common.optimizer.contract.Split;
+import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfiles;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveredTest;
@@ -395,8 +397,7 @@ public final class Proposal
 		limitations.add(CONTROL_SOURCE_LIMIT);
 		if (!links.entries().isEmpty())
 			limitations.add(LinkReport.STAGING_CONSEQUENCE);
-		if (!plugin.unapprovedHooks().isEmpty())
-			limitations.add(pluginHooksLimit(plugin.unapprovedHooks()));
+		limitations.addAll(pluginHooksLimits(plugin));
 		Contract contract = new Contract(proposed.requirements(), proposed.tests(), proposed.profiles(),
 			proposed.judge(), limitations, proposed.minimumPassRate(), proposed.salt(),
 			proposed.dependents(), proposed.referencedFiles());
@@ -438,16 +439,65 @@ public final class Proposal
 	}
 
 	/**
-	 * Returns the limitation that a contract records when trials do not run some hooks of the trial plugins.
+	 * Returns the limitations that a contract records when trials do not run some hooks of the trial plugins. Trials
+	 * run a hook once CAT verifies the user's approval of it, except a hook of a plugin that the project builds and that
+	 * is not CAT, which inherits no approval.
 	 *
-	 * @param unapprovedHooks the trial plugins' hooks that trials do not run, each as its plugin, event and command
-	 * @return the limitation
+	 * @param plugin the trial plugins and the hooks that trials do not run
+	 * @return the limitations, which are empty when trials run every hook
 	 */
-	private static String pluginHooksLimit(List<String> unapprovedHooks)
+	private static List<String> pluginHooksLimits(PluginCheck plugin)
 	{
-		return "Trials skip these hooks of the trial plugins because CAT could not verify their approval for the " +
-			"installed trial copies: " + String.join("; ", unapprovedHooks) + ". Review those hooks and their " +
-			"approvals in the harness, then run revise to check them again.";
+		List<String> unverified = new ArrayList<>();
+		List<String> built = new ArrayList<>();
+		if (plugin.byEvaluator().isEmpty())
+			classifyUnapprovedHooks(plugin, "", unverified, built);
+		for (Map.Entry<Harness, PluginCheck> local : plugin.byEvaluator().entrySet())
+		{
+			classifyUnapprovedHooks(local.getValue(), local.getKey().productName() + " — ", unverified, built);
+		}
+		List<String> limitations = new ArrayList<>(2);
+		if (!unverified.isEmpty())
+		{
+			limitations.add("Trials skip these hooks of the trial plugins because CAT could not verify their approval " +
+				"for the installed trial copies: " + String.join("; ", unverified) + ". Review those hooks and their " +
+				"approvals in the harness, then run revise to check them again.");
+		}
+		if (!built.isEmpty())
+		{
+			limitations.add("Trials skip these hooks of trial plugins that the project builds: " +
+				String.join("; ", built) + ". CAT reuses the user's hook approvals only for a copy of an installed " +
+				"plugin and for CAT, so approving these hooks in the harness does not change this.");
+		}
+		return limitations;
+	}
+
+	/**
+	 * Sorts one check's unapproved hooks by whether an approval in the harness can make trials run them.
+	 *
+	 * @param check the check of one harness
+	 * @param label the text that names the check's harness before each hook, or empty for a single check
+	 * @param unverified receives each hook whose approval CAT could not verify
+	 * @param built receives each hook of a plugin that the project builds and that is not CAT
+	 */
+	private static void classifyUnapprovedHooks(PluginCheck check, String label, List<String> unverified,
+		List<String> built)
+	{
+		Set<String> inheritsNone = new LinkedHashSet<>();
+		for (TrialPlugin trialPlugin : check.plugins())
+		{
+			if (trialPlugin.isProjectBuilt() && !trialPlugin.isCat())
+				inheritsNone.add(trialPlugin.name());
+		}
+		for (String hook : check.unapprovedHooks())
+		{
+			// Each hook starts with its plugin's name, which contains no space
+			int end = hook.indexOf(' ');
+			if (end > 0 && inheritsNone.contains(hook.substring(0, end)))
+				built.add(label + hook);
+			else
+				unverified.add(label + hook);
+		}
 	}
 
 	/**

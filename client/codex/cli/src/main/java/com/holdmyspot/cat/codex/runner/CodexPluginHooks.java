@@ -76,6 +76,46 @@ public final class CodexPluginHooks
 	public static List<Binding> bind(Map<String, JsonNode> source, Map<String, JsonNode> trial,
 		Installation original, Installation isolated, Map<String, String> approvals) throws IOException
 	{
+		return bind(source, trial, original, isolated, approvals, true);
+	}
+
+	/**
+	 * Selects the enabled hooks of CAT's own plugin, built from the project, whose original approval covers the trial
+	 * copy's hook declaration. The build's other files, and so its artifact hash, may differ from those of the approved
+	 * installation: the approved hooks then run the launchers that the project built, not the approved ones.
+	 *
+	 * @param source records from the protected home
+	 * @param trial records from the isolated home
+	 * @param original the user's installed CAT
+	 * @param isolated the trial's copy of CAT built from the project
+	 * @param approvals the host's existing approvals, with exact native keys
+	 * @return each eligible pair of native identities and the trial copy's full hash, which must still match after
+	 *   transfer
+	 * @throws IOException if a native declaration path cannot be resolved
+	 */
+	public static List<Binding> bindDeclarations(Map<String, JsonNode> source, Map<String, JsonNode> trial,
+		Installation original, Installation isolated, Map<String, String> approvals) throws IOException
+	{
+		return bind(source, trial, original, isolated, approvals, false);
+	}
+
+	/**
+	 * Selects the enabled hooks whose exact original approval covers the trial copy's hook.
+	 *
+	 * @param source records from the protected home
+	 * @param trial records from the isolated home
+	 * @param original the requested original installation
+	 * @param isolated the corresponding trial installation
+	 * @param approvals the host's existing approvals, with exact native keys
+	 * @param sameArtifact {@code true} to require the trial copy's full hash to equal the original's; {@code false}
+	 *   to require only its declaration hash to
+	 * @return each eligible pair of native identities and the trial copy's full hash
+	 * @throws IOException if a native declaration path cannot be resolved
+	 */
+	private static List<Binding> bind(Map<String, JsonNode> source, Map<String, JsonNode> trial,
+		Installation original, Installation isolated, Map<String, String> approvals, boolean sameArtifact)
+		throws IOException
+	{
 		String originalPrefix = original.id() + ":";
 		List<Binding> bound = new ArrayList<>();
 		for (Map.Entry<String, String> approval : approvals.entrySet())
@@ -91,12 +131,20 @@ public final class CodexPluginHooks
 				continue;
 			String trialKey = isolated.id() + key.substring(original.id().length());
 			JsonNode after = trial.get(trialKey);
-			if (after == null || !hash.equals(after.path("currentHash").asString("")))
+			if (after == null)
+				continue;
+			String copied = after.path("currentHash").asString("");
+			if (sameArtifact)
+			{
+				if (!hash.equals(copied))
+					continue;
+			}
+			else if (!PLUGIN_HASH.matcher(copied).matches() || !declarationHash(copied).equals(declarationHash(hash)))
 				continue;
 			Path originalPath = declaration(before, original);
 			Path trialPath = declaration(after, isolated);
 			if (originalPath != null && originalPath.equals(trialPath))
-				bound.add(new Binding(key, trialKey, hash));
+				bound.add(new Binding(key, trialKey, copied));
 		}
 		return List.copyOf(bound);
 	}
