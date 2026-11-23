@@ -4221,6 +4221,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-155 | `optimize-xhigh` | Adds outcome conditions to the scenario format, coverage replies to the proposal, and the mechanical coverage, agreement and bare-value refusals; an error accepts a test with a condition that no assertion checks, refuses a covered one, or lets a refusal tell the author which part holds a test case. |
 | WI-156 | `optimize-xhigh` | Starts judge sessions before confirmation that label coverage replies and review each test's outcomes, within the one correction turn; an error accepts a judged assertion that passes an omission reply, starts a session for a test that tools cover, gives a held-out case to a session that shapes a candidate, or ends a derivation that the correction turn could have fixed. |
 | WI-157 | `optimize-xhigh` | Removes the assertion that CAT adds to every prompt test from contracts, trials, judging, adoption, reports and prompts, increments the judge version and treats stored campaigns; an error leaves a trial judged on the removed assertion, lets a requirement-less assertion break a profile set or a failure group, loses a stored campaign, or keeps a certification current under a changed judge. |
+| WI-158 | `optimize-xhigh` | Records a confirmed campaign's revision request and feedback as a pending decision, retries a failed derivation, pauses with retry and stop, and makes `status` and `run` report a waiting revision as `awaiting_user` with text that is true of its state; an error leaves a campaign that waits for a revision no session derives, reports `running` for it, loses the user's feedback, or retries a session that CAT interrupted. |
 | WI-159 | `optimize-xhigh` | Changes how every Claude session gets its credential, what its process environment and settings hold, what its commands may read, what the request server accepts as a reference and what the evidence records, and removes the shared login store; an error lets a session's command read the secret, puts the secret in a command line, a file or a record, starts a session under a credential other than the one named, accepts a reference that the requester may not read, or lets a requested session name a path that the runner opens. |
 | WI-160 | `optimize-xhigh` | Changes how every Codex session gets its credential, what its home, environment and configuration hold and what its commands may read, and removes the copy of the user's Codex login; an error lets a session's command read the key, keeps a copy of the user's login in a session, starts a session under a credential or host other than the one named, or breaks Codex sessions that a Claude session requests. |
 | WI-108 | `optimize-medium` | Changes how every CAT launcher starts its JVM; an error makes launchers fail outside a sandbox too, or lets two JVMs in separate PID namespaces write the same perf-data file. |
@@ -5414,6 +5415,7 @@ models that `codex debug models` reports and asked; given `gpt-6-luna`, `low`, i
 | WI-155 | Not started; designed 2026-11-23 (`design.md` "Outcome coverage", "Assertion agreement", "Mechanically decidable conditions", D158 to D160). Not ready: waits for the user's choices of where conditions are declared, how assertion agreement is checked and whether the bare-value refusal stays (the list at the end of `design.md` "Outcome coverage"). Needs WI-10 and WI-151. Closes R-L14 and R-L15. |
 | WI-156 | Not started; designed 2026-11-23 (`design.md` "Outcome coverage" steps 2 and 3, "Coverage and the held-out part", D158, D159). Not ready: waits for the user's choice of how a condition that no tool covers is checked. Needs WI-155. Closes R-L16. |
 | WI-157 | Not started; designed 2026-11-23 (`design.md` §6.4, "Outcome coverage", "Contracts and campaigns from before this ruling", D158). Not ready: waits for the user's choices of how stored campaigns are treated, whether the judge still receives the expected outcome and whether a covering assertion may name no requirement. Needs WI-155 and WI-156. Closes R-L17. |
+| WI-158 | Implemented 2026-11-23 in a clone, not integrated (`design.md` §7 "Revision request", D161). Closes R-L18. |
 | WI-159 | Not started; designed 2026-11-23 (`design.md` §8 "Claude authentication", D162, H42, P20 to P22) with the user's rulings on Q8 to Q16 the same day. P20 to P22 are not run; Q17 and Q20 await the user's rulings. Needs WI-142 and WI-147. Closes R-I14. |
 | WI-160 | Not started; designed 2026-11-23 (`design.md` §8 "Codex authentication", D163, P23 to P25). P23 to P25 are not run; Q17 to Q19 await the user's rulings. Needs WI-159. Closes R-I15. |
 | WI-145 | Implemented 2026-11-16 (Claude implementer; `87db96986`..`a378c7aa5`; clean full build 6034 tests, 0 failures, 0 errors, 6 skipped): one in-place registrar (`GitWorktreeRegistrar`) for add, recreate, remove and repair behind `Fork`, `GitForks` and the session-start sweep; worktree requests (`worktree-<uuid>.tar`, document of operation and campaign only) served on a thread of their own by the request server (with the `.git/config`/`.git/hooks` write check against the session's policy) and by a run's runner (the one campaign of that identifier in the run's project; refused when the run allows no requests), counted against no limit; the client (`WorktreeRequestClient`) sends by the launch route, sends nothing for intact links, and `start`, `run`, `choose` and `cancel` refuse with status 2 before any change when no server serves the session; the Claude runner's `.git/worktrees` grant removed (session environment version 25); the build-command limit stated in the prompt-optimizer skill. Remaining: the live checks in Claude Code and Codex. Decided 2026-11-16: the code stays (`status` never reconnects; a campaign without its worktree is not a fork, `ForksContract.missingWorktreeIsNotAFork`), and the live check names the next command that reconnects (`run` or `choose`) instead. Probe evidence: `~/cat/worktrees/gitwt-probe4/` and `gitwt-probe3/`. |
@@ -5915,6 +5917,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-L15 | Every prompt test declares its outcome conditions and covers each with one of its own assertions. CAT refuses a test without conditions, an uncovered condition, a `covers` or `classes` entry that names nothing declared, a reply condition that no reply-examining assertion covers, a missing coverage reply, a reply tool that passes an omission reply, and a reply tool under `fail` that fails a reference reply; a tool under `fail` that passes the reference reply and fails the omission reply covers its condition without a session. A covering assertion may name no requirement, joins no profile set and fails with `unexpected_outcome`. Coverage replies are filled from each class's first test case in the values file, whatever the salt, and no refusal names a part. | §6.1, §6.3 | WI-155 | U: `ScenarioTest`, `ProposalTest`, `ContractCheckTest`, `CoverageRepliesTest`, `TestRevisionTest`, `ProfileSetTest`, `ValuesPromptTest` |
 | R-L16 | A condition that no tool covers mechanically is checked once before confirmation by the judge that the proposal would freeze: a judged covering assertion that passes its omission reply is refused, one that fails a reference reply is a warning, and the outcome review refuses an outcome that states an undeclared condition and an effect condition that no assertion covers. Every problem reaches the contract author in its one correction turn without naming a part; the records stay in the held-out directory, appear under "Outcome coverage", rerun only for changed tests and reach no session that shapes a candidate. | §6.1, §6.3 | WI-156 | U: `OutcomeCoverageTest`, `ContractCheckTest`, `ProposalTest`, `OptimizerCoreTest`, `FileCampaignStoreTest`, `ValuesPromptTest` |
 | R-L17 | No prompt test has an assertion that its scenario does not declare. A trial whose tools decide every assertion starts no judge session and can end early; the judge's prompt names no added assertion and the judge version increments in both harnesses; the removed assertion's scenario and proposal forms are refused with a conversion instruction; a confirmed stored campaign whose contract lacks conditions revises each such test before other work, an unconfirmed one is refused at `confirm`, and stored `expected_outcome` verdicts reload as history. | §6.3, §6.4, §7 | WI-157 | U: `ContractTest`, `ScenarioTest`, `ProposalSchemaTest`, `DriverTest`, `EarlyTrialEndTest`, `AdoptionTest`, `JudgePromptTest`, `TransitionsTest`, `OptimizerCoreTest`, `FileCampaignStoreTest` |
+| R-L18 | A confirmed campaign keeps each revision request and its feedback from `revise`, a chosen requirement change and a conflict's last resolution until the revised contract is confirmed or the campaign stops. A failed derivation (a failed, interrupted, rate-limited or refused session, an invalid proposal, or a session that cannot be prepared) is retried up to 3 times with the saved feedback, except after an interruption by CAT or a failure that no new session changes; then the campaign pauses with `retry` and `stop`, and `retry` derives from the saved feedback. `status` and `run` report `awaiting_user` with the same text, which says whether the revision is being derived, failed or waits for confirmation, and carry no `proposal_file`; `confirm` and `start` are refused while a derivation is pending. | §7, §8 | WI-158 | U: `TransitionsTest`, `FileCampaignStoreTest`, `StatusReportTest`, `OptimizerCoreTest`, `DriverTest` |
 
 ### 3.7 Reporting, interface and testability
 
@@ -10543,6 +10546,39 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 	`CampaignJson`, `FileCampaignStore`, `ClaudeSessions`, `CodexSessions`, `FakeSessionPort`.
 - **Exit:** the tests pass and failed before; no design or plan ID appears in code. Closes R-L17 and supersedes R-C8.
 
+### WI-158 — Keep a confirmed campaign's revision request until it is answered (user rulings, 2026-11-23)
+
+- **Problem:** after a conflict resolution was chosen and the request server was unavailable, the campaign stayed
+	confirmed and waited for a revised contract that no session was deriving. Its feedback was gone, `run` said that a
+	revision waited for confirmation of a proposal that did not exist, and `status` said `running`, so the host agent had
+	no way forward. The earlier fix refuses `revise` and the last resolution up front when no request server serves the
+	session; it does not cover a contract author that fails after it starts.
+- **Scope:** `client/common/cli/src/main/java/com/holdmyspot/cat/common/optimizer/` `campaign/` (`PendingDecision`,
+	`CampaignEvent`, `Transitions`, `Campaign`, `UserChoices`), `store/CampaignJson`, `report/StatusReport`,
+	`execution/SliceReports` and `Driver`, `cli/` (`OptimizerCore`, `Core`), the skill `first-use.md`, the tests of these
+	classes, this design and plan.
+- **Change:** as `design.md` §7 "Revision request" and D161 define it. A new pending decision, *contract revision*,
+	holds the feedback and, once every attempt has failed, the reason. `revise`, a chosen proposed change and the last
+	conflict resolution apply the revision request and this decision before the contract author starts. A derivation that
+	succeeds stores the proposal and clears the decision. One that fails is repeated up to 3 more times, except after an
+	interruption by CAT, and a failure before a session can start is not repeated; then the reason is recorded and the
+	decision offers `retry` and `stop`. `choose retry` derives again from the saved feedback; `confirm` and `start` are
+	refused while the decision is pending. `StatusReport` reports a confirmed campaign whose revision request has no
+	decision as `awaiting_user` with the text that `run` reports, and the pending text of each state says which state
+	holds. The skill shows the failure pause and passes `retry` and `stop` like a paused guard pilot's.
+- **Verification:** write these first and see each fail on the current tree, with CAT's real classes and the scripted
+	sessions. (a) `OptimizerCoreTest`: a contract author that fails on `revise` for every kind of failed result and for an
+	invalid proposal leaves the saved feedback and a failure decision with `retry` and `stop` after 4 sessions, with no
+	`running` status from `status` or `run`; one that fails twice and then succeeds presents the proposal and leaves no
+	decision; an interrupted session starts no second one. (b) The same through `choose proposed_change` and the last
+	`choose resolution_N`, whose feedback `retry` reuses after the author is repaired; `revise` with other feedback
+	replaces it. (c) `confirm` and `start` are refused while the decision is pending. (d) `StatusReportTest` and
+	`DriverTest`: `status` and `run` report the same `awaiting_user` text for each state, with no `proposal_file`.
+	(e) `TransitionsTest` and `FileCampaignStoreTest`: the decision reloads. Then the clean full offline build,
+	reporting every test taking at least one second.
+- **Classes affected:** `PendingDecision`, `CampaignEvent`, `Transitions`, `Campaign`, `UserChoices`, `CampaignJson`,
+	`StatusReport`, `SliceReports`, `Driver`, `OptimizerCore`, `Core`.
+- **Exit:** the tests pass and failed before; no design or plan ID appears in code. Closes R-L18.
 ### WI-159 — Explicit Claude authentication for every Claude launch (user rulings, 2026-11-23)
 
 - **Problem:** `claude-runner` takes a session's credential from whatever the caller's environment and Claude settings
@@ -10914,6 +10950,7 @@ blocks only the part of a work item that it names.
 | WI-155 | WI-10, WI-151 |
 | WI-156 | WI-155 |
 | WI-157 | WI-155, WI-156 |
+| WI-158 | WI-3, WI-4 |
 | WI-159 | WI-142, WI-147 |
 | WI-160 | WI-159 |
 | WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57, WI-60 to WI-69, WI-90, WI-91, WI-92, WI-93, WI-95, WI-96, WI-97, WI-98, WI-99, WI-100, WI-101, WI-102, WI-103, WI-104, WI-105, WI-107, WI-108, WI-109, WI-110, WI-114, WI-115 and WI-116. |
