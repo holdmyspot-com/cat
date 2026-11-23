@@ -40,9 +40,11 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * reply <n>}, and completes with a retained-evidence receipt. A turn whose prompt is {@value #HOLD} gets no reply until
  * an {@code interrupt} record arrives, which the session answers with an {@code interrupted} record and the turn's
  * completion, as a Claude runner does. A turn whose prompt is {@value #WRITE_OUTPUT} writes {@value #OUTPUT_FILE} to
- * the session's project. A session that the broker asks for turn copies copies its project and initial project, as the
- * bridge does, before it reports a turn's completion. Its nested session holds {@code project/result.txt} and a login
- * in its home.
+ * the session's project, and one whose prompt starts with {@value #WRITE_DRAFT} creates {@value #DRAFT} there. A
+ * session that the broker asks for turn copies copies its project and initial project, as the bridge does, including
+ * the link declarations of the directory that {@code --result-project-links} names, before it reports a turn's
+ * completion. A copy that fails ends the turn with a {@code turn_failed} record, as the bridge does. Its nested session
+ * holds {@code project/result.txt} and a login in its home.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -66,9 +68,23 @@ public final class RequestingNestedSession implements AutoCloseable
 	 */
 	public static final String OUTPUT_FILE = "cat-output.json";
 	/**
+	 * The start of the prompt of a turn in which the requested session creates the directory {@value #DRAFT} in its
+	 * project before it replies. A session with a role receives its role's rules after its prompt.
+	 */
+	public static final String WRITE_DRAFT = "write draft";
+	/**
+	 * The directory that the requested session creates in a turn whose prompt is {@value #WRITE_DRAFT}.
+	 */
+	public static final String DRAFT = "cat-draft";
+	/**
 	 * The option with which the broker asks a requested session to copy its project at the end of each turn.
 	 */
 	private static final String TURN_COPY_OPTION = "--turn-copy";
+	/**
+	 * The option with which the broker asks a requested session to return the link declarations of one project
+	 * directory with each turn's copy.
+	 */
+	private static final String RESULT_PROJECT_LINKS_OPTION = "--result-project-links";
 	/**
 	 * How often the broker discovers requests.
 	 */
@@ -241,8 +257,29 @@ public final class RequestingNestedSession implements AutoCloseable
 						}
 						if (record.path("prompt").asString().equals(WRITE_OUTPUT))
 							Files.writeString(child.directory().resolve("project").resolve(OUTPUT_FILE), "{\"written\":true}");
+						if (record.path("prompt").asString().startsWith(WRITE_DRAFT))
+							Files.createDirectories(child.directory().resolve("project").resolve(DRAFT));
 						if (arguments.contains(TURN_COPY_OPTION))
-							ResultsCopy.copyTurn(child.directory(), Path.of(option(arguments, TURN_COPY_OPTION)));
+						{
+							// A copy that fails ends the turn as the runner's bridge reports it
+							try
+							{
+								Path turnCopy = Path.of(option(arguments, TURN_COPY_OPTION));
+								if (arguments.contains(RESULT_PROJECT_LINKS_OPTION))
+								{
+									ResultsCopy.copyTurn(child.directory(), turnCopy,
+										Path.of(option(arguments, RESULT_PROJECT_LINKS_OPTION)));
+								}
+								else
+									ResultsCopy.copyTurn(child.directory(), turnCopy);
+							}
+							catch (IOException e)
+							{
+								append(output, json.createObjectNode().put("type", "turn_failed").
+									put("error", e.getMessage()).toString());
+								return;
+							}
+						}
 						String reply = replyForTurn.apply(turns.incrementAndGet());
 						ObjectNode completed = json.createObjectNode().put("type", "turn_completed").
 							put("exit_code", 0).put("error", "").put("assistant_response", reply);

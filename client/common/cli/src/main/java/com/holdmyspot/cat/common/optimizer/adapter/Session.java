@@ -713,9 +713,10 @@ final class Session implements SessionHandle
 	 * Builds the runner's command-line options. A trial asks for session transcripts and installs exactly the request's
 	 * plugins: the first one whose manifest states CAT's repository is installed as CAT, and each other one as a plugin.
 	 * Other sessions install no plugin. A trial on the control source adds the harness's control-source options.
-	 * Every session is denied reading the host session's project, except its own nested session and the evidence that it
-	 * reads, and a session of the development part is also denied reading the held-out locations. A session whose request
-	 * asks for extra permissions names the file that lists them.
+	 * A contract author session that receives a draft directory asks for the draft's symbolic-link declarations with
+	 * its result. Every session is denied reading the host session's project, except its own nested session and the
+	 * evidence that it reads, and a session of the development part is also denied reading the held-out locations. A
+	 * session whose request asks for extra permissions names the file that lists them.
 	 *
 	 * @param workspace the directory that holds the trial's workspace files, or {@code null} if there are none
 	 * @param permissions the file that lists the request's extra permissions, or {@code null} if it asks for none
@@ -744,7 +745,8 @@ final class Session implements SessionHandle
 		// Only a trial's transcripts are read, to learn what its agents received
 		if (request.role() == SessionRole.TRIAL)
 			arguments.add("--session-transcripts");
-		if (request.role() == SessionRole.CONTRACT_AUTHOR)
+		// Only a session that receives a draft directory writes one, so only its result carries the draft's links
+		if (request.role() == SessionRole.CONTRACT_AUTHOR && !request.files().isEmpty())
 			arguments.addAll(List.of(RunnerArguments.RESULT_PROJECT_LINKS_OPTION, DraftDirectory.name(request.source())));
 		if (request.part() == Part.HELD_OUT)
 			arguments.add(RunnerArguments.HELD_OUT_OPTION);
