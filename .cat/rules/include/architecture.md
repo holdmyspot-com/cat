@@ -44,3 +44,8 @@ layout. Use Bats for each supporting harness when the contract crosses the plugi
 harness-specific launcher result, installer, or shell bootstrap; the jlink launcher template is common code, tested
 once. Document a missing peer test with the feature's verification evidence only when that harness
 cannot support the behavior natively or through emulation.
+
+Use one shared definition for each prompt test that exercises multiple harnesses. Run the same scenario, cases, expected
+outcomes, and assertions on every target harness. Harness-specific setup can load the shared prompt or translate native
+events into common observations. Keep the inputs and pass criteria in the shared test. If a harness cannot run the test
+or supply a required observation, report the missing capability and leave that harness's acceptance unverified.

@@ -5,6 +5,7 @@
 - A command that the user runs in a shell other than this session's tool shell acts on the same harness home, project
 	and user directories as this session, and sets only the environment values it needs to do so.
 - The user can tell which parts of the command are required and which are a precaution.
+- Session values carried into the command reach the user's shell without transcription.
 - The session relies on the command's effect only after confirming it at the session's own paths.
 
 ## Guidance
@@ -20,7 +21,7 @@ harness home (for example `~/.claude`) instead of this session's.
 	from `CLAUDE_CONFIG_DIR`, else `$HOME/.claude`, for Claude Code, and from `CODEX_HOME`, else `$HOME/.codex`, for Codex.
 2. Read the session's value of each listed variable from the session, for example with `printenv NAME` in the tool
 	shell; "unset" is a value. Do not use a remembered or assumed value.
-3. Write into the command only the variables it needs:
+3. Determine which variables the command needs:
 	- Set `HOME`, with the session's value, only when the session's `HOME` is not the account's home folder in the
 	  account database, or that folder cannot be determined: a terminal that the account opens has the account's home
 	  folder as its `HOME`, so only then would the command act elsewhere. Print the session's `HOME` and the account's
@@ -39,7 +40,12 @@ harness home (for example `~/.claude`) instead of this session's.
 	  unset it first"). Do not add the variable to the command: that presents a precaution as a requirement.
 	- A command whose every target is named by an explicit path or argument, and that reads no variable to choose a
 	  target, needs no assignments.
-4. After the user reports that the command finished, and before relying on its effect, check the effect at the
+4. When the handoff needs values from this session, use code to read them, quote them for the receiving shell, and
+	write the complete command to a file that shell can read. Give the user the path and the shell to run it in.
+	Verify that the file is readable from that shell. If a shared path is unavailable, deliver the generated file
+	through a store the user can reach. If neither is available, report which setting must reach the user's shell
+	before the operation can proceed.
+5. After the user reports that the command finished, and before relying on its effect, check the effect at the
 	session's paths: inspect the artifact the command was to create or change under the session's harness home or project
 	directory (for an installer, the installed plugin and its version). If it is absent or unchanged, the command acted on
 	another environment: ask the user for the command's printed output instead of continuing as if it had succeeded.

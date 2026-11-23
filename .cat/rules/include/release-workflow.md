@@ -12,11 +12,13 @@ release.
 
 1. Push the release commit on a branch and wait until `.github/workflows/build.yml` passes on every platform. It runs
 	the release's build and tests on the same platforms and publishes nothing.
-2. When `release.yml` or a script it runs changed since the last successful release, copy it to a workflow on a test
-	branch that runs on a push to that branch. In the copy, replace every `${GITHUB_REF_NAME}` with the release tag,
+2. When `release.yml` or a script it runs changed since the last successful release, use code to copy the workflow
+	file from the release commit into a workflow on a test branch that runs on a push to that branch. In the copy,
+	replace every `${GITHUB_REF_NAME}` with the release tag,
 	because GitHub sets that variable to the branch name and does not let a workflow override it, and replace the
 	`gh release create` command with one that lists the files it would publish. Keep the cleanup job: it deletes only
-	the run's own workflow artifacts.
+	the run's own workflow artifacts. Before pushing the test branch, compare the rehearsal workflow with the release
+	commit's workflow and verify that the diff contains only the rehearsal trigger and these substitutions.
 3. When the change can affect recovering a failed release by re-running its failed jobs, make one platform's build job
 	in the copy fail once, re-run the failed jobs, and check that the publish and cleanup jobs then succeed.
 4. Delete the test branch and its workflow copy, then push the tag.

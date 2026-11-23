@@ -22,6 +22,9 @@ or writing or changing Bash source code, including a function, a Bats test, or a
 Before constructing or running a Maven command in this project, lazy load
 `${CAT_PROJECT_ROOT}/.cat/rules/include/build.md`, then `${CAT_PROJECT_ROOT}/.cat/rules/include/maven.md`.
 
+Before preparing, reusing, or launching a sandboxed test environment for this project, lazy load
+`${CAT_PROJECT_ROOT}/.cat/rules/include/test-cache-access.md`.
+
 When writing or changing a file under `client/common/` or `.cat/rules/common/`, adding or changing functionality for
 one harness, designing common or harness-specific modules, or deciding whether code should be shared, lazy load
 `${CAT_PROJECT_ROOT}/.cat/rules/include/architecture.md`.

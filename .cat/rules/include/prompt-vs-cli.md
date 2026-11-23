@@ -8,12 +8,10 @@
 
 ## Guidance
 
-When creating or updating a prompt or its CLI, make the prompt/CLI division of responsibility explicit.
-Move an operation from the prompt to Java CLI code under `client/**` when it has a deterministic, non-brittle contract.
-This includes file or structured-data I/O, derivation, validation, formatting, and constructing subprocess arguments,
-paths, prompts, or output locations. Move an operation from a CLI to the prompt when it requires contextual judgment,
-user authority or preference, genuinely novel text, or a decision that cannot be expressed as explicit structured input.
-Shell and LLM instructions may dispatch CLIs, but must not reimplement deterministic behavior.
+First lazy load the `## Guidance` section of the shared plugin rule from the checkout at
+`${CAT_PROJECT_ROOT}/client/common/rules/src/main/resources/rules/include/common/prompt-vs-cli.md`. This applies the
+guidance from the version of CAT being developed. In CAT, put operations with deterministic, non-brittle contracts
+in Java CLI code under `client/**`. Shell and prompt instructions dispatch those operations through the CLI.
 
 A prompt may invoke a public CLI operation. A CLI may construct a typed request for a runner and consume its retained
 result, but it must not start, configure, or communicate with a model. Only a focused Runner implementation may own a
@@ -25,9 +23,8 @@ When a prompt, CLI, hook, or launcher depends on environment state, first lazy l
 exist in its process; do not make a prompt or tool reuse a hook-only variable in an agent shell or another process
 context.
 
-Prefer one CLI command for a complete deterministic workflow. When contextual judgment, user interaction, or novel text
-must occur between deterministic operations, make the instruction call a CLI at each such boundary. Keep only those
-three kinds of work in the prompt layer.
+Prefer one CLI command for a complete deterministic workflow. When a model decision, user interaction, or original
+content must occur between deterministic operations, call the CLI again at that boundary.
 
 A public CLI entry point exposes only complete caller-facing operations: a workflow lifecycle action, or a bounded
 creation, audit, comparison, or diagnosis that accepts all of its caller inputs and returns its documented result. Do
@@ -41,14 +38,11 @@ Test that the public entry point rejects an internal step before it creates file
 
 Before leaving or returning an operation in a prompt file, build an exhaustive operation ledger covering its inputs,
 outputs, state transitions, validation, formatting, Git or filesystem work, subprocess construction, failure checks,
-and follow-up diagnosis. Classify every ledger item as CLI-owned or prompt-owned; no operation may remain
-unclassified. Move every operation into a CLI when it has a deterministic contract, can be implemented without semantic
-judgment, and can be verified without brittle pattern matching. Keep or return an operation to the prompt only when it
-requires contextual judgment, user authority or preference, genuinely novel text, or a decision that cannot be
-expressed as explicit structured input to a CLI; record that exact reason. Reinspect the rendered prompt after either
-conversion and prove every prompt-owned operation has that reason. The CLI must accept the LLM's reviewed decisions as
-data; it must not infer topics, intent, names, or equivalence from prose, paths, regular expressions, or patch
-similarity.
+and follow-up diagnosis. Classify every ledger item as CLI-owned or prompt-owned. Apply the shared rule and CAT's
+Java CLI requirement above, and record the reason for every prompt-owned operation. Reinspect the rendered prompt
+after either conversion and check every remaining prompt operation against its recorded reason. The CLI accepts the
+model's reviewed decisions as structured data. It must not infer topics, intent, names, or equivalence from prose,
+paths, regular expressions, or patch similarity.
 
 For each extracted workflow, make the CLI own the complete mechanical transaction: capture authoritative state, derive
 safe values, validate preconditions and postconditions, preserve recovery evidence, execute deterministic steps in

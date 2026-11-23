@@ -2,15 +2,20 @@
 
 ## Design Goals
 
-- Give another module, including a test module, access to a module's internals only through a narrow typed façade
-	that the owning module controls, and never through reflection.
+- Preserve the Java module rule's direct test access. Route other cross-module access to non-public behavior through
+	a narrow typed façade controlled by the owning module, without reflective member access.
 
 ## Guidance
 
-Use the SharedSecrets approach through a topic-specific façade in the module whose internals it exposes. Place every
-public access interface and `<Topic>Secrets` façade in that module's unexported `<module-base-package>.secrets` package,
-such as `com.holdmyspot.cat.distribution.secrets`. Do not export a secrets package by default. If a named external
-module must use a specific secret, add a qualified export to that module—and no others:
+When a test needs access beyond the module's accessible behavior or a test fake needs to override a non-public hook,
+lazy load `${CAT_PROJECT_ROOT}/.cat/rules/include/java-modules.md` if you have not already loaded it. Follow its Tests
+section for direct access through an own-test-only qualified export and for fake override hooks.
+
+When another module needs non-public behavior outside those direct test-access cases, use a topic-specific
+SharedSecrets façade in the module that owns the behavior. Place every public access interface and `<Topic>Secrets`
+façade in that module's unexported `<module-base-package>.secrets` package, such as
+`com.holdmyspot.cat.distribution.secrets`. Do not export a secrets package by default. If a named external module must
+use a specific secret, add a qualified export to that module only:
 
 ```java
 exports com.holdmyspot.cat.distribution.secrets to other.module;
