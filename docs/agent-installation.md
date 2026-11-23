@@ -2,21 +2,12 @@
 
 If you are a person, follow the [getting-started guide](installation.md) instead.
 
-If CAT's `update` skill is installed, use it. Otherwise do not download or run this release's files, because the
-sandbox blocks the writes they need. Reply with this command, for the user to run in their own terminal or at a Claude
-Code prompt after `! `. Write `codex` for Codex, and also `CLAUDE_CONFIG_DIR=<value>` or `CODEX_HOME=<value>` before
-`sh` when your session sets it:
+If CAT's `update` skill is installed, use it. Otherwise leave the installation to the user. For a standard
+installation, point them to the command for their harness and shell in the [getting-started guide](installation.md).
 
-```bash
-curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.sh | sh -s -- --harness claude
-```
-
-- Add `HOME=<your session's HOME>` before `sh` only when it differs from the account's home folder, which
-	`getent passwd "$(id -un)" | cut -d: -f6` prints on Linux and `dscl . -read "/Users/$(id -un)" NFSHomeDirectory` on
-	macOS, or when you cannot tell.
-
-On Windows, write no `HOME`, and put `$env:CODEX_HOME='<value>'; ` first when your session sets it:
-
-```powershell
-& ([scriptblock]::Create((irm https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.ps1))) -Harness claude
-```
+When the target session uses a different home or harness configuration directory, have code select the command from
+that guide, read the required session paths, and write a runnable command file with values quoted for the receiving
+shell. On Linux or macOS, compare the session home with the account's home and set `HOME` only when they differ or
+the account's home cannot be determined. On Windows, use the harness configuration directory override when needed.
+Ask the user to run the generated file from a terminal that can read it. If the file cannot be delivered to that
+terminal, direct the user to the guide's custom-directory instructions and tell them which setting to check.
