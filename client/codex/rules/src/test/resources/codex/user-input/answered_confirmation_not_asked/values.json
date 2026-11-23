@@ -1,23 +1,26 @@
 {
-	"format_version": 1,
+	"format_version": 2,
 	"test_cases": [
 		{
 			"values": {
 				"width": "2"
 			},
-			"expected_outcome": "Every tab of indentation under src/ becomes 2 spaces without a request to confirm the width, the files or permission to proceed"
+			"expected_outcome": "Every tab of indentation under src/ becomes 2 spaces without a request to confirm the width, the files or permission to proceed",
+			"boundary_class": "indent_width_already_given"
 		},
 		{
 			"values": {
 				"width": "4"
 			},
-			"expected_outcome": "Every tab of indentation under src/ becomes 4 spaces without a request to confirm the width, the files or permission to proceed"
+			"expected_outcome": "Every tab of indentation under src/ becomes 4 spaces without a request to confirm the width, the files or permission to proceed",
+			"boundary_class": "indent_width_already_given"
 		},
 		{
 			"values": {
 				"width": "8"
 			},
-			"expected_outcome": "Every tab of indentation under src/ becomes 8 spaces without a request to confirm the width, the files or permission to proceed"
+			"expected_outcome": "Every tab of indentation under src/ becomes 8 spaces without a request to confirm the width, the files or permission to proceed",
+			"boundary_class": "indent_width_already_given"
 		}
 	]
 }

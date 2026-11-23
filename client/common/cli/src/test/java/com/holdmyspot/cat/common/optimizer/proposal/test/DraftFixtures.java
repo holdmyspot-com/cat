@@ -253,7 +253,7 @@ public final class DraftFixtures
 	public static String values(JsonMapper json, JsonNode test)
 	{
 		ObjectNode root = json.createObjectNode();
-		root.put("format_version", 1);
+		root.put("format_version", 2);
 		ArrayNode testCases = root.putArray("test_cases");
 		for (JsonNode testCase : test.path("test_cases"))
 		{
@@ -268,6 +268,8 @@ public final class DraftFixtures
 					values.set(name, value.get("text"));
 			}
 			testCaseNode.set("expected_outcome", testCase.get("expected_outcome"));
+			if (testCase.has("boundary_class"))
+				testCaseNode.set("boundary_class", testCase.get("boundary_class"));
 		}
 		return json.writerWithDefaultPrettyPrinter().writeValueAsString(root);
 	}

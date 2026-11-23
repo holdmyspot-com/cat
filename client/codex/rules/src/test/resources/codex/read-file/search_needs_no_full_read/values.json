@@ -1,5 +1,5 @@
 {
-	"format_version" : 1,
+	"format_version" : 2,
 	"test_cases" : [ {
 		"values" : {
 			"notes" : "release-notes.md",
@@ -13,7 +13,8 @@
 				"count" : 144
 			}
 		},
-		"expected_outcome" : "report builder"
+		"expected_outcome" : "report builder",
+		"boundary_class" : "component_lookup"
 	}, {
 		"values" : {
 			"notes" : "lookup_2.md",
@@ -27,7 +28,8 @@
 				"count" : 144
 			}
 		},
-		"expected_outcome" : "importer"
+		"expected_outcome" : "importer",
+		"boundary_class" : "component_lookup"
 	}, {
 		"values" : {
 			"notes" : "lookup_3.md",
@@ -41,7 +43,8 @@
 				"count" : 144
 			}
 		},
-		"expected_outcome" : "validator"
+		"expected_outcome" : "validator",
+		"boundary_class" : "component_lookup"
 	}, {
 		"values" : {
 			"notes" : "lookup_4.md",
@@ -55,7 +58,8 @@
 				"count" : 144
 			}
 		},
-		"expected_outcome" : "uploader"
+		"expected_outcome" : "uploader",
+		"boundary_class" : "component_lookup"
 	}, {
 		"values" : {
 			"notes" : "lookup_5.md",
@@ -69,7 +73,8 @@
 				"count" : 144
 			}
 		},
-		"expected_outcome" : "retry policy"
+		"expected_outcome" : "retry policy",
+		"boundary_class" : "component_lookup"
 	}, {
 		"values" : {
 			"notes" : "lookup_6.md",
@@ -83,7 +88,8 @@
 				"count" : 144
 			}
 		},
-		"expected_outcome" : "parser"
+		"expected_outcome" : "parser",
+		"boundary_class" : "component_lookup"
 	}, {
 		"values" : {
 			"notes" : "lookup_7.md",
@@ -97,7 +103,8 @@
 				"count" : 144
 			}
 		},
-		"expected_outcome" : "logging"
+		"expected_outcome" : "logging",
+		"boundary_class" : "component_lookup"
 	}, {
 		"values" : {
 			"notes" : "lookup_8.md",
@@ -111,7 +118,8 @@
 				"count" : 144
 			}
 		},
-		"expected_outcome" : "cache"
+		"expected_outcome" : "cache",
+		"boundary_class" : "component_lookup"
 	}, {
 		"values" : {
 			"notes" : "lookup_9.md",
@@ -125,7 +133,8 @@
 				"count" : 144
 			}
 		},
-		"expected_outcome" : "exporter"
+		"expected_outcome" : "exporter",
+		"boundary_class" : "component_lookup"
 	}, {
 		"values" : {
 			"notes" : "lookup_10.md",
@@ -139,7 +148,8 @@
 				"count" : 144
 			}
 		},
-		"expected_outcome" : "CLI"
+		"expected_outcome" : "CLI",
+		"boundary_class" : "component_lookup"
 	}, {
 		"values" : {
 			"notes" : "lookup_11.md",
@@ -153,7 +163,8 @@
 				"count" : 144
 			}
 		},
-		"expected_outcome" : "configuration loader"
+		"expected_outcome" : "configuration loader",
+		"boundary_class" : "component_lookup"
 	}, {
 		"values" : {
 			"notes" : "lookup_12.md",
@@ -167,6 +178,7 @@
 				"count" : 144
 			}
 		},
-		"expected_outcome" : "scheduler"
+		"expected_outcome" : "scheduler",
+		"boundary_class" : "component_lookup"
 	} ]
 }

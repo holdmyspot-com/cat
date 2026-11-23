@@ -8,9 +8,10 @@
 - From the prompt system in the current directory, return one complete compliance contract proposal whose lists hold
 	every requirement, prompt test, assertion, test case, workspace file and known limitation as separate items, so the
 	user can review each item before confirming it. A count or a summary never stands in for an item.
-- Check every requirement with assertions in prompt tests whose test cases vary the content that the agent works on
-	and spread their expected outcomes over both parts of CAT's split, so that certification measures the prompts on
-	test cases that prompt editing never saw.
+- Check every requirement with assertions in prompt tests whose test cases vary the content that the agent works on,
+	each tagged with the boundary class that it exercises, and give every class expected outcomes in both parts of CAT's
+	split, so that certification measures the prompts on test cases that prompt editing never saw and both parts see
+	every boundary.
 - Name every part of the prompt system that exists only to deliver the target prompt file or to carry out, enforce or
 	repair what it instructs, with the target instruction that it serves, so that control trials remove it together with
 	the target's text and the user can confirm each one. A part that also serves another purpose stays out of the list.
@@ -167,8 +168,10 @@ below, with the citation that records it and the guidance whose contract require
 proposal that leaves one out, naming every missing test.
 
 - A recorded test's `values.json` may hold test cases that earlier campaigns committed. CAT keeps them in the test, so
-	keep its variables, and add test cases whose values and expected outcomes differ from the committed ones. Its
-	workspace files stay in its `workspace/` directory, and the files that its links reach stay where they are.
+	keep its variables, and add test cases whose values and expected outcomes differ from the committed ones. Tag every
+	test case of the file with its `boundary_class`, committed ones included, and write the file with `"format_version":
+	2`; a file of format version 1 holds no classes. Its workspace files stay in its `workspace/` directory, and the
+	files that its links reach stay where they are.
 - A recorded test in an earlier format holds its context in prose and its values fixed in the text of its `scenario.md`.
 	Convert it in place: rewrite its `scenario.md` with variables, turns with placeholders, the expected behavior and the
 	assertions, and write its workspace files and its `values.json`. Its fixed values become one test case, and the other

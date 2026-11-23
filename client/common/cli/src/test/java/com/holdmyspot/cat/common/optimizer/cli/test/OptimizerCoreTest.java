@@ -4217,8 +4217,8 @@ public final class OptimizerCoreTest
 
 	/**
 	 * Verifies that {@code revise} keeps every test case that the user reviewed in the part that the proposal showed,
-	 * under the same salt, when the revision adds test cases, and that the confirmed contract assigns each of them
-	 * to that part.
+	 * under the same salt, when the revision adds test cases of a new boundary class, and that the confirmed contract
+	 * assigns each of them to that part.
 	 * <p>
 	 * Starting the proposal runs its guard pilot, and the proposal, the revision and the confirmation each persist the
 	 * campaign, so the test can exceed one second during a parallel build.
@@ -4242,6 +4242,7 @@ public final class OptimizerCoreTest
 					values.addObject().put("variable", "tone").put("text", tone);
 					values.addObject().put("variable", "audience").put("text", "an expert");
 					testCase.put("expected_outcome", tone + " summary shortened for an expert reader");
+					testCase.put("boundary_class", "expert_reader");
 				}
 			}));
 			CommandResult started = repository.core().start(Path.of("CLAUDE.md"));
@@ -4296,8 +4297,8 @@ public final class OptimizerCoreTest
 	private static Map<String, Part> partsShown(String proposal)
 	{
 		Map<String, Part> parts = new HashMap<>();
-		Matcher matcher = Pattern.compile("expected outcome \"([^\"]*)\"; (development|held-out) part").
-			matcher(proposal);
+		Matcher matcher = Pattern.compile("expected outcome \"([^\"]*)\"; (?:boundary class `[^`]*`; )?" +
+			"(development|held-out) part").matcher(proposal);
 		while (matcher.find())
 		{
 			Part part = Part.DEVELOPMENT;
@@ -6471,6 +6472,7 @@ public final class OptimizerCoreTest
 				values.addObject().put("variable", "tone").put("text", tone);
 				values.addObject().put("variable", "audience").put("text", audience);
 				testCase.put("expected_outcome", tone + " summary shortened for " + audience + " reader");
+				testCase.put("boundary_class", tone.substring(tone.indexOf(' ') + 1) + "_tone");
 			}
 		}
 		change.accept(test);
@@ -7024,6 +7026,7 @@ public final class OptimizerCoreTest
 					values.addObject().put("variable", "tone").put("text", "a formal");
 					values.addObject().put("variable", "audience").put("text", "an expert");
 					reused.put("expected_outcome", "a formal summary shortened for an expert reader");
+					reused.put("boundary_class", "upbeat_tone");
 				});
 			});
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();

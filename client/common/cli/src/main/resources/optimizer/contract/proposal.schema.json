@@ -58,7 +58,8 @@
 			"required": ["values", "expected_outcome"],
 			"properties": {
 				"values": {"$ref": "#/$defs/values"},
-				"expected_outcome": {"description": "The result that a compliant reply gives for these values, such as the date that the turn asks for.", "type": "string", "pattern": "\\S"}
+				"expected_outcome": {"description": "The result that a compliant reply gives for these values, such as the date that the turn asks for.", "type": "string", "pattern": "\\S"},
+				"boundary_class": {"description": "The kind of input boundary that the test case exercises, such as same_day or crosses_midnight. Test cases that share an expected outcome share a class.", "type": "string", "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$"}
 			}
 		}
 	},

@@ -784,6 +784,8 @@ public final class ProposalSchema
 			ObjectNode testCaseNode = node.addObject();
 			TestValueJson.write(testCase.values(), testCaseNode.putArray("values"));
 			testCaseNode.put(TestCase.EXPECTED_OUTCOME, testCase.expectedOutcome());
+			if (!testCase.boundaryClass().isEmpty())
+				testCaseNode.put(ValuesFile.BOUNDARY_CLASS, testCase.boundaryClass());
 		}
 	}
 
@@ -1188,7 +1190,8 @@ public final class ProposalSchema
 					values = TestValueJson.read(node.get("values"));
 				else
 					values = TestValueJson.readCalls(node.get("values"), seeds, taken);
-				return new TestCase(values, text(node, TestCase.EXPECTED_OUTCOME));
+				return new TestCase(values, text(node, TestCase.EXPECTED_OUTCOME),
+					node.path(ValuesFile.BOUNDARY_CLASS).asString(""));
 			});
 		}
 

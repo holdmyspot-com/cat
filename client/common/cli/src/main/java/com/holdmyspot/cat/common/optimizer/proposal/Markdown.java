@@ -355,10 +355,12 @@ public final class Markdown
 		text.append("Each prompt test is certified on its own, in its own cells. This is a balanced benchmark: a " +
 			"trial draws each test case of its part with equal probability. These weights are testing assumptions, " +
 			"not usage frequencies; actual future usage frequencies are unknown.\n\n" +
-			"Each distinct expected outcome of a test belongs to the development part or the held-out part, each " +
-			"with probability 1/2, under a random value that confirmation freezes. Test cases whose expected " +
-			"outcomes differ only in case or spacing share a part, and test cases that an earlier campaign " +
-			"committed belong to the development part. Development trials and every session that edits the " +
+			"Each test case has a boundary class: the kind of input boundary that it exercises. Each distinct " +
+			"expected outcome of a test belongs to the development part or the held-out part, under a random value " +
+			"that confirmation freezes, so that the parts of each class hold numbers of distinct outcomes that " +
+			"differ by at most one. Test cases whose expected outcomes differ only in case or spacing share a part " +
+			"and a class, and test cases that an earlier campaign committed belong to the development part, where " +
+			"they count for their class. Development trials and every session that edits the " +
 			"prompts use development test cases only; formal trials and the incumbent's baseline draw held-out " +
 			"test cases only. Confirmation needs at least " + Proposal.MINIMUM_OUTCOMES + " distinct expected " +
 			"outcomes in each part of every test.\n");
@@ -556,7 +558,8 @@ public final class Markdown
 	}
 
 	/**
-	 * Lists a test's test cases with the part of each, and the number of distinct expected outcomes in each part.
+	 * Lists a test's test cases with the boundary class and the part of each, and the number of distinct expected
+	 * outcomes in each part, for the test and for each class.
 	 *
 	 * @param test the prompt test
 	 */
@@ -574,8 +577,10 @@ public final class Markdown
 					map(value -> "`" + value.getKey() + "` = " + value(value.getValue())).
 					collect(Collectors.joining(", "));
 				text.append("  - ").append(values).append("; expected outcome ").
-					append(quote(testCase.expectedOutcome())).append("; ").
-					append(split.partOf(test, testCase)).append(" part");
+					append(quote(testCase.expectedOutcome())).append("; ");
+				if (!testCase.boundaryClass().isEmpty())
+					text.append("boundary class `").append(testCase.boundaryClass()).append("`; ");
+				text.append(split.partOf(test, testCase)).append(" part");
 				if (test.committedTestCases().contains(testCase))
 					text.append(", committed");
 				text.append('\n');
@@ -590,6 +595,18 @@ public final class Markdown
 			text.append("  Confirmation is refused until each part holds at least ").
 				append(Proposal.MINIMUM_OUTCOMES).
 				append(". Ask for test cases with more expected outcomes in revision feedback.\n");
+		}
+		Set<String> classes = new LinkedHashSet<>();
+		for (TestCase testCase : test.allTestCases())
+		{
+			if (!testCase.boundaryClass().isEmpty())
+				classes.add(testCase.boundaryClass());
+		}
+		for (String boundaryClass : classes)
+		{
+			text.append("  - Boundary class `").append(boundaryClass).append("`: ").
+				append(split.outcomeCount(test, Part.DEVELOPMENT, boundaryClass)).append(" in the development part, ").
+				append(split.outcomeCount(test, Part.HELD_OUT, boundaryClass)).append(" in the held-out part\n");
 		}
 	}
 

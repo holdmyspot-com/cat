@@ -137,7 +137,7 @@ public final class TestRevisionTest
 
 	/**
 	 * Returns a test revision's result that rewrites the prompt test {@code formatting} with new turns and new test
-	 * cases.
+	 * cases, whose boundary class is their tone.
 	 *
 	 * @param change edits the corrected test
 	 * @return the result as JSON text
@@ -159,6 +159,7 @@ public final class TestRevisionTest
 				values.addObject().put("variable", "tone").put("text", tone);
 				values.addObject().put("variable", "audience").put("text", audience);
 				testCase.put("expected_outcome", tone + " summary shortened for " + audience + " reader");
+				testCase.put("boundary_class", tone.substring(tone.indexOf(' ') + 1) + "_tone");
 			}
 		}
 		change.accept(test);
@@ -249,6 +250,7 @@ public final class TestRevisionTest
 			values.addObject().put("variable", "tone").put("text", "a formal");
 			values.addObject().put("variable", "audience").put("text", "an expert");
 			reused.put("expected_outcome", "a formal summary shortened for an expert reader");
+			reused.put("boundary_class", "upbeat_tone");
 		}));
 
 		Report report = ContractToolSessions.check(json, contextFile(project));
@@ -268,6 +270,88 @@ public final class TestRevisionTest
 			contains("a formal summary shortened for an expert reader");
 		requireThat(report.output(), "output").isEqualTo(problemReport(problems));
 		requireThat(report.exitCode(), "exitCode").isEqualTo(1);
+	}
+
+	/**
+	 * Verifies that the test cases that a test revision adds or changes are checked for boundary classes as a
+	 * proposal's are: a changed test case without a class is refused both when the session ends and by
+	 * {@code contract check}, with the same problem, which names no part.
+	 *
+	 * @throws IOException              if a file cannot be read or written
+	 * @throws InvalidProposalException if the confirmed proposal is refused
+	 */
+	@Test
+	public void refusesRevisedCaseWithoutClass() throws IOException, InvalidProposalException
+	{
+		// Requirement: R-L11
+		Examination examined = examination();
+		Path project = revisionProject(examined, revisedFormatting(test ->
+			((ObjectNode) test.get("test_cases").get(3)).remove("boundary_class")));
+
+		Report report = ContractToolSessions.check(json, contextFile(project));
+
+		List<String> problems = sessionEndProblems(project, examined);
+		requireThat(String.join("\n", problems), "problems").contains(FORMATTING + "/values.json:").
+			contains(": test case 4: the test case has no boundary_class").doesNotContain("development").
+			doesNotContain("held-out").doesNotContain(" part");
+		requireThat(report.output(), "output").isEqualTo(problemReport(problems));
+		requireThat(report.exitCode(), "exitCode").isEqualTo(1);
+	}
+
+	/**
+	 * Verifies that a test revision that adds a test case of a new boundary class with one distinct expected outcome
+	 * is refused both when the session ends and by {@code contract check}, with the same problem, which names the
+	 * class and no part.
+	 *
+	 * @throws IOException              if a file cannot be read or written
+	 * @throws InvalidProposalException if the confirmed proposal is refused
+	 */
+	@Test
+	public void refusesRevisionAddingSingleCaseClass() throws IOException, InvalidProposalException
+	{
+		// Requirement: R-L11
+		Examination examined = examination();
+		Path project = revisionProject(examined, revisedFormatting(test ->
+		{
+			ObjectNode added = ((ArrayNode) test.get("test_cases")).addObject();
+			ArrayNode values = added.putArray("values");
+			values.addObject().put("variable", "tone").put("text", "a sarcastic");
+			values.addObject().put("variable", "audience").put("text", "a manager");
+			added.put("expected_outcome", "a sarcastic summary shortened for a manager reader");
+			added.put("boundary_class", "sarcastic_tone");
+		}));
+
+		Report report = ContractToolSessions.check(json, contextFile(project));
+
+		List<String> problems = sessionEndProblems(project, examined);
+		requireThat(problems, "problems").size().isEqualTo(1);
+		requireThat(problems.getFirst(), "problem").contains(FORMATTING + "/values.json: the boundary class " +
+			"`sarcastic_tone` has a single case").doesNotContain("development").doesNotContain("held-out").
+			doesNotContain(" part");
+		requireThat(report.output(), "output").isEqualTo(problemReport(problems));
+		requireThat(report.exitCode(), "exitCode").isEqualTo(1);
+	}
+
+	/**
+	 * Returns the problems that the session-end validation of a test revision session reports.
+	 *
+	 * @param project  the session's project
+	 * @param examined what the session examines
+	 * @return the problems
+	 * @throws IOException if a file cannot be read or written
+	 */
+	private List<String> sessionEndProblems(Path project, Examination examined) throws IOException
+	{
+		try
+		{
+			protocol.result(ContractToolSessions.completed(project,
+				directories.add(Files.createTempDirectory("test-revision-initial-"))), examined);
+			throw new AssertionError("The session-end validation accepted the result");
+		}
+		catch (InvalidProposalException e)
+		{
+			return e.problems();
+		}
 	}
 
 	/**

@@ -890,9 +890,11 @@ public final class ProposalTest
 	{
 		// Requirement: R-C1
 		// Requirement: R-C2
-		String text = proposal(links(false), HostLogin.SUBSCRIPTION).render();
+		Proposal proposal = proposal(links(false), HostLogin.SUBSCRIPTION);
+		String text = proposal.render();
 
 		Contract contract = expectedContract();
+		Contract rendered = proposal.contract();
 		for (Requirement requirement : contract.requirements())
 		{
 			requireThat(text, "text").contains("`" + requirement.id() + "`: " + requirement.description()).
@@ -912,13 +914,16 @@ public final class ProposalTest
 				requireThat(text, "text").contains(interaction);
 			for (VariableDeclaration variable : test.variables())
 				requireThat(text, "text").contains("`" + variable.name() + "`: " + variable.description());
-			for (TestCase testCase : test.allTestCases())
+			PromptTest renderedTest = rendered.findTest(test.id()).orElseThrow();
+			for (TestCase testCase : renderedTest.allTestCases())
 			{
 				for (Entry<String, String> value : PromptTest.textByVariable(testCase).entrySet())
 					requireThat(text, "text").contains("`" + value.getKey() + "` = \"" + value.getValue() + "\"");
 				requireThat(text, "text").contains("; expected outcome \"" + testCase.expectedOutcome() + "\"; " +
-					contract.split().partOf(test, testCase) + " part");
+					"boundary class `" + testCase.boundaryClass() + "`; " +
+					rendered.split().partOf(renderedTest, testCase) + " part");
 			}
+			requireThat(renderedTest.allTestCases(), "renderedTestCases").isEqualTo(test.allTestCases());
 		}
 		requireThat(text, "text").contains("Rubric: " + contract.judge().rubric()).
 			contains("Decision rule: " + contract.judge().decisionRule()).
@@ -2540,12 +2545,15 @@ public final class ProposalTest
 			values.addObject().put("variable", "tone").put("text", "a terse");
 			values.addObject().put("variable", "audience").put("text", "a manager");
 			repeated.put("expected_outcome", "a terse summary shortened for a manager reader");
+			repeated.put("boundary_class", "terse_tone");
 		});
 		Contract contract = author.proposal(recordedSession(author, project, output), project, PROFILES,
 			SALT).contract();
 
 		PromptTest formatting = contract.findTest("formatting").orElseThrow();
 		requireThat(formatting.committedTestCases(), "formatting").isEqualTo(List.of(committed));
+		requireThat(formatting.committedTestCases().getFirst().boundaryClass(), "committedClass").
+			isEqualTo("terse_tone");
 		requireThat(formatting.testCases(), "testCases").doesNotContain(committed);
 		requireThat(contract.findTest("safety").orElseThrow().committedTestCases(), "safety").isEmpty();
 	}
@@ -3772,8 +3780,9 @@ public final class ProposalTest
 	}
 
 	/**
-	 * Verifies that the proposal lists the number of distinct expected outcomes in each part of each test, and that
-	 * confirmation freezes the salt under which they were counted.
+	 * Verifies that the proposal lists each test case's boundary class and the number of distinct expected outcomes in
+	 * each part of each test and of each of its classes, and that confirmation freezes the salt under which they were
+	 * counted.
 	 *
 	 * @throws InvalidProposalException if the fixture is rejected
 	 */
@@ -3782,16 +3791,23 @@ public final class ProposalTest
 	{
 		// Requirement: R-C16
 		// Requirement: R-C1
+		// Requirement: R-L11
 		Proposal proposal = proposal(noLinks(), HostLogin.API_KEY);
 		String text = proposal.render();
 
 		requireThat(text, "text").
-			contains("; expected outcome \"a formal summary shortened for a novice reader\"; held-out part\n").
+			contains("; expected outcome \"a formal summary shortened for a novice reader\"; boundary class " +
+				"`formal_tone`; held-out part\n").
 			contains("- Distinct expected outcomes: 3 in the development part, 3 in the held-out part\n").
-			contains("; expected outcome \"three fruits\"; development part\n").
+			contains("; expected outcome \"three fruits\"; boundary class `item_kind`; development part\n").
 			contains("- Distinct expected outcomes: 2 in the development part, 2 in the held-out part\n").
-			contains("; expected outcome \"asks before deleting the dist directory\"; held-out part\n").
-			contains("- Distinct expected outcomes: 4 in the development part, 4 in the held-out part\n");
+			contains("; expected outcome \"asks before deleting the dist directory\"; boundary class " +
+				"`generated_output`; held-out part\n").
+			contains("- Distinct expected outcomes: 4 in the development part, 4 in the held-out part\n").
+			contains("  - Boundary class `formal_tone`: 1 in the development part, 1 in the held-out part\n").
+			contains("  - Boundary class `item_kind`: 2 in the development part, 2 in the held-out part\n").
+			contains("  - Boundary class `generated_output`: 2 in the development part, 2 in the held-out part\n").
+			contains("  - Boundary class `stored_data`: 2 in the development part, 2 in the held-out part\n");
 		CampaignEvent.Confirm confirm = (CampaignEvent.Confirm) proposal.confirmation(
 			CertificationScope.LATEST_VERSIONS, 7).getFirst();
 		requireThat(confirm.contract().salt(), "salt").isEqualTo(SALT);
@@ -3835,6 +3851,142 @@ public final class ProposalTest
 		Proposal fixture = proposal(noLinks(), HostLogin.API_KEY);
 		requireThat(fixture.isConfirmable(CertificationScope.LATEST_VERSIONS), "fixtureConfirmable").isTrue();
 		requireThat(fixture.render(), "fixtureRender").doesNotContain("Ask for test cases with more expected outcomes");
+	}
+
+	/**
+	 * Verifies that a test case without a boundary class is refused with the line of its values file, and that the
+	 * refusal names no part.
+	 */
+	@Test
+	public void refusesTestCaseWithoutBoundaryClass()
+	{
+		// Requirement: R-L11
+		String output = changedDerivation(root ->
+			((ObjectNode) root.get("tests").get(1).get("test_cases").get(2)).remove("boundary_class"));
+
+		String problems = problems(output, PROFILES);
+		requireThat(problems, "problems").contains(".cat/tests/CLAUDE/plain_list/values.json:").
+			contains(": test case 3: the test case has no boundary_class");
+		requireNamesNoPart(problems);
+	}
+
+	/**
+	 * Verifies that a boundary class whose test cases share one distinct expected outcome, and no committed one, is
+	 * refused with a message that names the class and no part.
+	 */
+	@Test
+	public void refusesSingleCaseClass()
+	{
+		// Requirement: R-L11
+		String output = changedDerivation(root ->
+			((ObjectNode) root.get("tests").get(1).get("test_cases").get(0)).put("boundary_class", "color_kind"));
+
+		String problems = problems(output, PROFILES);
+		requireThat(problems, "problems").contains(".cat/tests/CLAUDE/plain_list/values.json: the boundary class " +
+			"`color_kind` has a single case");
+		requireNamesNoPart(problems);
+	}
+
+	/**
+	 * Verifies that test cases that share a normalized expected outcome but differ in boundary class are refused with
+	 * a message that names both classes and no part.
+	 */
+	@Test
+	public void refusesSharedOutcomeWithDifferentClasses()
+	{
+		// Requirement: R-L11
+		String output = changedDerivation(root ->
+		{
+			ArrayNode testCases = (ArrayNode) root.get("tests").get(1).get("test_cases");
+			ObjectNode respelled = testCases.addObject();
+			respelled.putArray("values").addObject().put("variable", "kind").put("text", "hues");
+			respelled.put("expected_outcome", "Three  Colors");
+			respelled.put("boundary_class", "hue_kind");
+		});
+
+		String problems = problems(output, PROFILES);
+		requireThat(problems, "problems").contains(".cat/tests/CLAUDE/plain_list/values.json: the test cases with " +
+			"the expected outcome \"three colors\" have the boundary classes `item_kind` and `hue_kind`");
+		requireNamesNoPart(problems);
+	}
+
+	/**
+	 * Verifies that a boundary class that only committed test cases fill is refused with a message that names the
+	 * class and no part, since all of its test cases would belong to development.
+	 *
+	 * @throws IOException if a file cannot be read or written
+	 */
+	@Test
+	public void refusesCommittedOnlyClass() throws IOException
+	{
+		// Requirement: R-L11
+		Path project = recordedProject("""
+			# Formatting
+
+			## Variables
+
+			- **tone**: The tone of the summary.
+			- **audience**: The reader of the summary.
+
+			## Scenario
+
+			Summarize the notes in {{tone}} style for {{audience}} reader.
+
+			## Assertions
+
+			### keeps_tone
+
+			- **kind**: effect
+			- **description**: The summary keeps the {{tone}} tone.
+			""");
+		Files.writeString(project.resolve(".cat/tests/CLAUDE/formatting/values.json"), """
+			{
+			  "format_version": 1,
+			  "test_cases": [
+			    {
+			      "values": {"tone": "a terse", "audience": "a manager"},
+			      "expected_outcome": "a terse summary shortened for a manager reader"
+			    }
+			  ]
+			}
+			""", UTF_8);
+		ContractAuthorProtocol author = contractAuthor(RegressionScenarios.read(json, project, project));
+		String output = changedDerivation(proposal ->
+		{
+			ObjectNode test = (ObjectNode) proposal.get("tests").get(0);
+			test.putArray("regression_scenarios").add(".cat/tests/CLAUDE/formatting/scenario.md");
+			ObjectNode repeated = ((ArrayNode) test.get("test_cases")).addObject();
+			ArrayNode values = repeated.putArray("values");
+			values.addObject().put("variable", "tone").put("text", "a terse");
+			values.addObject().put("variable", "audience").put("text", "a manager");
+			repeated.put("expected_outcome", "a terse summary shortened for a manager reader");
+			repeated.put("boundary_class", "manager_reader");
+		});
+
+		String problems;
+		try
+		{
+			author.proposal(recordedSession(author, project, output), project, PROFILES, SALT);
+			throw new AssertionError("The output was accepted: " + output);
+		}
+		catch (InvalidProposalException e)
+		{
+			problems = String.join("\n", e.problems());
+		}
+		requireThat(problems, "problems").contains(".cat/tests/CLAUDE/formatting/values.json: the boundary class " +
+			"`manager_reader` holds only test cases that earlier campaigns committed");
+		requireNamesNoPart(problems);
+	}
+
+	/**
+	 * Requires that refusals name neither part.
+	 *
+	 * @param problems the refusals
+	 */
+	private static void requireNamesNoPart(String problems)
+	{
+		requireThat(problems, "problems").doesNotContain("development").doesNotContain("held-out").
+			doesNotContain("held out").doesNotContain(" part");
 	}
 
 	/**

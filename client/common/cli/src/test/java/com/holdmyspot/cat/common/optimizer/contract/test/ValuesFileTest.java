@@ -66,7 +66,8 @@ public final class ValuesFileTest
 	}
 
 	/**
-	 * Verifies that written test cases, with text and generated values, read back equal and in order.
+	 * Verifies that written test cases, with text and generated values and their boundary classes, read back equal,
+	 * with the same classes and in order, from a file of format version 2.
 	 *
 	 * @throws IOException             if the content cannot be written or read
 	 * @throws ScenarioFormatException if the written content is refused
@@ -75,6 +76,7 @@ public final class ValuesFileTest
 	public void roundTrip() throws IOException, ScenarioFormatException
 	{
 		// Requirement: R-C22
+		// Requirement: R-L11
 		Map<String, TestValue> first = new LinkedHashMap<>();
 		first.put("notes", new TestValue.Text("release-notes.md"));
 		first.put("before", new TestValue.Generated("log_lines", 1, -4_611_686_018_427_387_904L,
@@ -82,14 +84,80 @@ public final class ValuesFileTest
 		Map<String, TestValue> second = new LinkedHashMap<>();
 		second.put("notes", new TestValue.Text("line one\nline \"two\" \\ | é"));
 		second.put("before", new TestValue.Text(""));
-		List<TestCase> testCases = List.of(new TestCase(first, "2025-03-04"), new TestCase(second, "March 5"));
+		List<TestCase> testCases = List.of(new TestCase(first, "2025-03-04", "same_day"),
+			new TestCase(second, "March 5", "crosses_midnight"));
 
 		StringWriter out = new StringWriter();
 		ValuesFile.write(json, testCases, out);
-		requireThat(out.toString(), "out").startsWith("{").contains("\"format_version\" : 1").endsWith("\n");
+		requireThat(out.toString(), "out").startsWith("{").contains("\"format_version\" : 2").
+			contains("\"boundary_class\" : \"same_day\"").endsWith("\n");
 		List<TestCase> read = read(out.toString());
 		requireThat(read, "read").isEqualTo(testCases);
+		requireThat(read.stream().map(TestCase::boundaryClass).toList(), "classes").
+			isEqualTo(List.of("same_day", "crosses_midnight"));
 		requireThat(List.copyOf(read.get(0).values().keySet()), "order").isEqualTo(List.of("notes", "before"));
+	}
+
+	/**
+	 * Verifies that a values file of format version 1, which predates boundary classes, reads with untagged test
+	 * cases and refuses a boundary class, which that version does not define.
+	 *
+	 * @throws IOException             if the content cannot be read
+	 * @throws ScenarioFormatException if the content is refused
+	 */
+	@Test
+	public void readsVersionOneUntagged() throws IOException, ScenarioFormatException
+	{
+		// Requirement: R-L11
+		List<TestCase> read = read("""
+			{"format_version": 1, "test_cases": [{"values": {"a": "x"}, "expected_outcome": "y"}]}""");
+		requireThat(read.getFirst().boundaryClass(), "boundaryClass").isEmpty();
+		requireThat(refusal("""
+			{"format_version": 1, "test_cases": [{"values": {"a": "x"}, "expected_outcome": "y",
+			"boundary_class": "same_day"}]}"""), "tagged").contains("boundary_class");
+	}
+
+	/**
+	 * Verifies that a boundary class is no part of a test case's identity: the same values and expected outcome make
+	 * the same test case whatever their class, or without one.
+	 *
+	 * @throws IOException             if the content cannot be read
+	 * @throws ScenarioFormatException if the content is refused
+	 */
+	@Test
+	public void classIsNoPartOfIdentity() throws IOException, ScenarioFormatException
+	{
+		// Requirement: R-L11
+		TestCase untagged = read("""
+			{"format_version": 1, "test_cases": [{"values": {"a": "x"}, "expected_outcome": "y"}]}""").getFirst();
+		TestCase tagged = read("""
+			{"format_version": 2, "test_cases": [{"values": {"a": "x"}, "expected_outcome": "y",
+			"boundary_class": "same_day"}]}""").getFirst();
+		TestCase retagged = new TestCase(tagged.values(), tagged.expectedOutcome(), "crosses_midnight");
+
+		requireThat(tagged.boundaryClass(), "tagged.boundaryClass()").isEqualTo("same_day");
+		requireThat(tagged, "tagged").isEqualTo(untagged).isEqualTo(retagged);
+		requireThat(tagged.hashCode(), "tagged.hashCode()").isEqualTo(untagged.hashCode()).
+			isEqualTo(retagged.hashCode());
+	}
+
+	/**
+	 * Verifies that a boundary class that is not lowercase words joined by underscores is refused with the file's
+	 * location.
+	 *
+	 * @throws IOException if the content cannot be read
+	 */
+	@Test
+	public void refusesMalformedBoundaryClass() throws IOException
+	{
+		// Requirement: R-L11
+		requireThat(refusal("""
+			{"format_version": 2, "test_cases": [{"values": {"a": "x"}, "expected_outcome": "y",
+			"boundary_class": "Same Day"}]}"""), "refusal").startsWith("tests/case/values.json:").
+			contains("boundaryClass");
+		requireThat(refusal("""
+			{"format_version": 2, "test_cases": [{"values": {"a": "x"}, "expected_outcome": "y",
+			"boundary_class": 3}]}"""), "number").startsWith("tests/case/values.json:").contains("boundary_class");
 	}
 
 	/**
@@ -109,6 +177,9 @@ public final class ValuesFileTest
 		requireThat(refusal("""
 			{"format_version": 1, "test_cases": [{"values": {"a": {"generator": "log_lines", "version": 1,
 			"seed": 3, "count": 5, "width": 80}}, "expected_outcome": "y"}]}"""), "generated").contains("width");
+		requireThat(refusal("""
+			{"format_version": 2, "test_cases": [{"values": {"a": "x"}, "expected_outcome": "y",
+			"boundary_class": "same_day", "weight": 2}]}"""), "versionTwo").contains("weight");
 	}
 
 	/**
@@ -123,7 +194,7 @@ public final class ValuesFileTest
 		requireThat(refusal("""
 			{"test_cases": []}"""), "missing").contains("format_version");
 		requireThat(refusal("""
-			{"format_version": 2, "test_cases": []}"""), "other").contains("format_version");
+			{"format_version": 3, "test_cases": []}"""), "other").contains("format_version");
 	}
 
 	/**
@@ -207,5 +278,25 @@ public final class ValuesFileTest
 		{
 			requireThat(e.getMessage(), "message").startsWith("tests/case/values.json:2:");
 		}
+	}
+
+	/**
+	 * Verifies that a draft's values file of format version 2 keeps each test case's boundary class.
+	 *
+	 * @throws IOException             if the content cannot be read
+	 * @throws ScenarioFormatException if the content is refused
+	 */
+	@Test
+	public void draftKeepsBoundaryClass() throws IOException, ScenarioFormatException
+	{
+		// Requirement: R-L11
+		List<ValuesFile.DraftTestCase> read = ValuesFile.readDraft(json, new StringReader("""
+			{"format_version": 2, "test_cases": [
+			{"values": {"notes": "a.md"}, "expected_outcome": "one", "boundary_class": "same_day"},
+			{"values": {"notes": "b.md"}, "expected_outcome": "two"}]}"""), "tests/case/values.json");
+
+		requireThat(read.get(0).testCase().toString(), "first").isEqualTo("{\"values\":[{\"variable\":\"notes\"," +
+			"\"text\":\"a.md\"}],\"expected_outcome\":\"one\",\"boundary_class\":\"same_day\"}");
+		requireThat(read.get(1).testCase().has("boundary_class"), "second").isFalse();
 	}
 }

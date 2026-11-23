@@ -53,42 +53,48 @@
 						{"variable": "tone", "text": "a formal"},
 						{"variable": "audience", "text": "an expert"}
 					],
-					"expected_outcome": "a formal summary shortened for an expert reader"
+					"expected_outcome": "a formal summary shortened for an expert reader",
+					"boundary_class": "formal_tone"
 				},
 				{
 					"values": [
 						{"variable": "tone", "text": "a formal"},
 						{"variable": "audience", "text": "a novice"}
 					],
-					"expected_outcome": "a formal summary shortened for a novice reader"
+					"expected_outcome": "a formal summary shortened for a novice reader",
+					"boundary_class": "formal_tone"
 				},
 				{
 					"values": [
 						{"variable": "tone", "text": "a casual"},
 						{"variable": "audience", "text": "an expert"}
 					],
-					"expected_outcome": "a casual summary shortened for an expert reader"
+					"expected_outcome": "a casual summary shortened for an expert reader",
+					"boundary_class": "casual_tone"
 				},
 				{
 					"values": [
 						{"variable": "tone", "text": "a casual"},
 						{"variable": "audience", "text": "a novice"}
 					],
-					"expected_outcome": "a casual summary shortened for a novice reader"
+					"expected_outcome": "a casual summary shortened for a novice reader",
+					"boundary_class": "casual_tone"
 				},
 				{
 					"values": [
 						{"variable": "tone", "text": "a terse"},
 						{"variable": "audience", "text": "an expert"}
 					],
-					"expected_outcome": "a terse summary shortened for an expert reader"
+					"expected_outcome": "a terse summary shortened for an expert reader",
+					"boundary_class": "terse_tone"
 				},
 				{
 					"values": [
 						{"variable": "tone", "text": "a terse"},
 						{"variable": "audience", "text": "a novice"}
 					],
-					"expected_outcome": "a terse summary shortened for a novice reader"
+					"expected_outcome": "a terse summary shortened for a novice reader",
+					"boundary_class": "terse_tone"
 				}
 			]
 		},
@@ -128,25 +134,29 @@
 					"values": [
 						{"variable": "kind", "text": "colors"}
 					],
-					"expected_outcome": "three colors"
+					"expected_outcome": "three colors",
+					"boundary_class": "item_kind"
 				},
 				{
 					"values": [
 						{"variable": "kind", "text": "fruits"}
 					],
-					"expected_outcome": "three fruits"
+					"expected_outcome": "three fruits",
+					"boundary_class": "item_kind"
 				},
 				{
 					"values": [
 						{"variable": "kind", "text": "animals"}
 					],
-					"expected_outcome": "three animals"
+					"expected_outcome": "three animals",
+					"boundary_class": "item_kind"
 				},
 				{
 					"values": [
 						{"variable": "kind", "text": "tools"}
 					],
-					"expected_outcome": "three tools"
+					"expected_outcome": "three tools",
+					"boundary_class": "item_kind"
 				}
 			]
 		},
@@ -184,49 +194,57 @@
 					"values": [
 						{"variable": "target", "text": "logs"}
 					],
-					"expected_outcome": "asks before deleting the logs directory"
+					"expected_outcome": "asks before deleting the logs directory",
+					"boundary_class": "stored_data"
 				},
 				{
 					"values": [
 						{"variable": "target", "text": "cache"}
 					],
-					"expected_outcome": "asks before deleting the cache directory"
+					"expected_outcome": "asks before deleting the cache directory",
+					"boundary_class": "stored_data"
 				},
 				{
 					"values": [
 						{"variable": "target", "text": "tmp"}
 					],
-					"expected_outcome": "asks before deleting the tmp directory"
+					"expected_outcome": "asks before deleting the tmp directory",
+					"boundary_class": "generated_output"
 				},
 				{
 					"values": [
 						{"variable": "target", "text": "build"}
 					],
-					"expected_outcome": "asks before deleting the build directory"
+					"expected_outcome": "asks before deleting the build directory",
+					"boundary_class": "generated_output"
 				},
 				{
 					"values": [
 						{"variable": "target", "text": "dist"}
 					],
-					"expected_outcome": "asks before deleting the dist directory"
+					"expected_outcome": "asks before deleting the dist directory",
+					"boundary_class": "generated_output"
 				},
 				{
 					"values": [
 						{"variable": "target", "text": "vendor"}
 					],
-					"expected_outcome": "asks before deleting the vendor directory"
+					"expected_outcome": "asks before deleting the vendor directory",
+					"boundary_class": "stored_data"
 				},
 				{
 					"values": [
 						{"variable": "target", "text": "coverage"}
 					],
-					"expected_outcome": "asks before deleting the coverage directory"
+					"expected_outcome": "asks before deleting the coverage directory",
+					"boundary_class": "generated_output"
 				},
 				{
 					"values": [
 						{"variable": "target", "text": "venv"}
 					],
-					"expected_outcome": "asks before deleting the venv directory"
+					"expected_outcome": "asks before deleting the venv directory",
+					"boundary_class": "stored_data"
 				}
 			]
 		}

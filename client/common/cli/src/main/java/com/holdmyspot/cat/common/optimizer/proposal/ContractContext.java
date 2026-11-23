@@ -7,6 +7,7 @@ import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TestValueJson;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
+import com.holdmyspot.cat.common.optimizer.contract.ValuesFile;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.proposal.ProposalCheck.RecordedTest;
 
@@ -192,6 +193,8 @@ public record ContractContext(String proposalFile, String draft, Path target, bo
 				ObjectNode testCaseNode = committed.addObject();
 				TestValueJson.write(testCase.values(), testCaseNode.putArray("values"));
 				testCaseNode.put(TestCase.EXPECTED_OUTCOME, testCase.expectedOutcome());
+				if (!testCase.boundaryClass().isEmpty())
+					testCaseNode.put(ValuesFile.BOUNDARY_CLASS, testCase.boundaryClass());
 			}
 		}
 		if (revision.isPresent())
@@ -245,7 +248,8 @@ public record ContractContext(String proposalFile, String draft, Path target, bo
 				for (JsonNode testCase : node.path("committed_test_cases"))
 				{
 					committed.add(new TestCase(TestValueJson.read(testCase.get("values")),
-						testCase.path(TestCase.EXPECTED_OUTCOME).asString()));
+						testCase.path(TestCase.EXPECTED_OUTCOME).asString(),
+						testCase.path(ValuesFile.BOUNDARY_CLASS).asString("")));
 				}
 				recorded.add(new RecordedTest(node.path("citation").asString(),
 					Path.of(node.path("directory").asString()), committed));

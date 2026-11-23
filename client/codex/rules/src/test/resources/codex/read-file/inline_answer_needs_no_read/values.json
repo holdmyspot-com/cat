@@ -1,77 +1,89 @@
 {
-	"format_version": 1,
+	"format_version": 2,
 	"test_cases": [
 		{
 			"values": {
 				"label": "parcel_violet"
 			},
-			"expected_outcome": "parcel_violet"
+			"expected_outcome": "parcel_violet",
+			"boundary_class": "label_given_inline"
 		},
 		{
 			"values": {
 				"label": "parcel_amber"
 			},
-			"expected_outcome": "parcel_amber"
+			"expected_outcome": "parcel_amber",
+			"boundary_class": "label_given_inline"
 		},
 		{
 			"values": {
 				"label": "parcel_jade"
 			},
-			"expected_outcome": "parcel_jade"
+			"expected_outcome": "parcel_jade",
+			"boundary_class": "label_given_inline"
 		},
 		{
 			"values": {
 				"label": "parcel_cobalt"
 			},
-			"expected_outcome": "parcel_cobalt"
+			"expected_outcome": "parcel_cobalt",
+			"boundary_class": "label_given_inline"
 		},
 		{
 			"values": {
 				"label": "parcel_saffron"
 			},
-			"expected_outcome": "parcel_saffron"
+			"expected_outcome": "parcel_saffron",
+			"boundary_class": "label_given_inline"
 		},
 		{
 			"values": {
 				"label": "parcel_indigo"
 			},
-			"expected_outcome": "parcel_indigo"
+			"expected_outcome": "parcel_indigo",
+			"boundary_class": "label_given_inline"
 		},
 		{
 			"values": {
 				"label": "parcel_coral"
 			},
-			"expected_outcome": "parcel_coral"
+			"expected_outcome": "parcel_coral",
+			"boundary_class": "label_given_inline"
 		},
 		{
 			"values": {
 				"label": "parcel_ochre"
 			},
-			"expected_outcome": "parcel_ochre"
+			"expected_outcome": "parcel_ochre",
+			"boundary_class": "label_given_inline"
 		},
 		{
 			"values": {
 				"label": "parcel_crimson"
 			},
-			"expected_outcome": "parcel_crimson"
+			"expected_outcome": "parcel_crimson",
+			"boundary_class": "label_given_inline"
 		},
 		{
 			"values": {
 				"label": "parcel_ivory"
 			},
-			"expected_outcome": "parcel_ivory"
+			"expected_outcome": "parcel_ivory",
+			"boundary_class": "label_given_inline"
 		},
 		{
 			"values": {
 				"label": "parcel_silver"
 			},
-			"expected_outcome": "parcel_silver"
+			"expected_outcome": "parcel_silver",
+			"boundary_class": "label_given_inline"
 		},
 		{
 			"values": {
 				"label": "parcel_copper"
 			},
-			"expected_outcome": "parcel_copper"
+			"expected_outcome": "parcel_copper",
+			"boundary_class": "label_given_inline"
 		}
 	]
 }

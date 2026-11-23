@@ -369,7 +369,7 @@ public final class ContractFixtures
 	}
 
 	/**
-	 * Returns a test case whose values are text.
+	 * Returns a test case without a boundary class whose values are text.
 	 *
 	 * @param expectedOutcome the result that a compliant reply gives
 	 * @param textByVariable  the text of each variable's value, by name
@@ -377,10 +377,23 @@ public final class ContractFixtures
 	 */
 	public static TestCase testCase(String expectedOutcome, Map<String, String> textByVariable)
 	{
+		return testCase(expectedOutcome, "", textByVariable);
+	}
+
+	/**
+	 * Returns a test case whose values are text.
+	 *
+	 * @param expectedOutcome the result that a compliant reply gives
+	 * @param boundaryClass   the kind of input boundary that the test case exercises, or an empty string if untagged
+	 * @param textByVariable  the text of each variable's value, by name
+	 * @return the test case
+	 */
+	public static TestCase testCase(String expectedOutcome, String boundaryClass, Map<String, String> textByVariable)
+	{
 		Map<String, TestValue> values = new LinkedHashMap<>();
 		for (Map.Entry<String, String> value : textByVariable.entrySet())
 			values.put(value.getKey(), new TestValue.Text(value.getValue()));
-		return new TestCase(values, expectedOutcome);
+		return new TestCase(values, expectedOutcome, boundaryClass);
 	}
 
 	/**

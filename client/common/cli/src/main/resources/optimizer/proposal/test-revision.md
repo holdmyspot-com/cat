@@ -79,9 +79,9 @@ tests below, and decide on one `result`:
 - `revised` when the test breaks a rule and a corrected test proves the same requirements. Correct the test's files in
 	its directory, and return its item of the proposal file in `test`. Keep its `directory`, `requirement_ids` and
 	`absent_triggers`, and change only what the rules need. Replace the test cases of its `values.json` with new ones:
-	none may repeat a test case of the confirmed test, and their expected outcomes must reach at least 2 distinct ones in
-	each part of CAT's split. CAT refuses a corrected test that breaks either condition, changes a kept field or changes
-	a file outside the test's directory.
+	none may repeat a test case of the confirmed test, each has a `boundary_class` that follows Prompt tests below, and
+	their expected outcomes must reach at least 2 distinct ones in each part of CAT's split. CAT refuses a corrected test
+	that breaks any of these conditions, changes a kept field or changes a file outside the test's directory.
 - `sound` when the test follows every rule, so its failures show what the prompt system makes the agent do.
 - `unprovable` when no organic test can prove a requirement that the test lists. Name the requirement and say why.
 - `requirement_change` when correcting the test needs a change to a confirmed requirement, such as a narrower outcome

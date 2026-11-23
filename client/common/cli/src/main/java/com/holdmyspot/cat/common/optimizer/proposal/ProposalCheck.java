@@ -220,7 +220,7 @@ public final class ProposalCheck
 		ProfileEvidence profiles, long salt) throws InvalidProposalException
 	{
 		requireThat(project, "project").isNotNull();
-		return check(proposalFile, project, draft, observedSources, profiles, salt, true, Map.of());
+		return check(proposalFile, project, draft, observedSources, profiles, salt, true, true, Map.of());
 	}
 
 	/**
@@ -249,7 +249,7 @@ public final class ProposalCheck
 	{
 		requireThat(project, "project").isNotNull();
 		requireThat(fixed, "fixed").isNotNull();
-		return check(proposalFile, project, draft, observedSources, profiles, salt, true, fixed);
+		return check(proposalFile, project, draft, observedSources, profiles, salt, true, true, fixed);
 	}
 
 	/**
@@ -275,7 +275,7 @@ public final class ProposalCheck
 	{
 		requireThat(project, "project").isNotNull();
 		requireThat(draft, "draft").isNotNull();
-		return check(proposalFile, project, draft, observedSources, profiles, salt, false, Map.of());
+		return check(proposalFile, project, draft, observedSources, profiles, salt, false, false, Map.of());
 	}
 
 	/**
@@ -288,14 +288,16 @@ public final class ProposalCheck
 	 * @param profiles         the profile inventory, its shipped capability ranking and the bindings
 	 * @param salt             the salt that CAT drew for the proposal
 	 * @param newMustBeAbsent  {@code true} if a new prompt test's directory must not exist in {@code project}
+	 * @param requireClasses   {@code true} if the boundary classes of the draft directory's test cases are checked;
+	 *                         {@code false} for a stored proposal, which may predate boundary classes
 	 * @param fixed            the completed form of each prompt test whose files the draft directory need not hold,
 	 *                         by its directory
 	 * @return the proposal
 	 * @throws InvalidProposalException if the proposal is invalid
 	 */
 	private DerivedProposal check(ObjectNode proposalFile, Path project, Path draft, String observedSources,
-		ProfileEvidence profiles, long salt, boolean newMustBeAbsent, Map<Path, ObjectNode> fixed)
-		throws InvalidProposalException
+		ProfileEvidence profiles, long salt, boolean newMustBeAbsent, boolean requireClasses,
+		Map<Path, ObjectNode> fixed) throws InvalidProposalException
 	{
 		requireThat(proposalFile, "proposalFile").isNotNull();
 		requireThat(draft, "draft").isNotNull();
@@ -342,7 +344,7 @@ public final class ProposalCheck
 		problems.addAll(violations);
 		// The files of a prompt test whose item satisfies the schema are read even when another part of the proposal
 		// file breaks it, so that every problem is reported at once
-		DraftAssembly assembled = new DraftAssembly(project, draft, newMustBeAbsent, fixed, problems).
+		DraftAssembly assembled = new DraftAssembly(project, draft, newMustBeAbsent, requireClasses, fixed, problems).
 			assemble(proposalFile, invalidTests(violations));
 		// Read from the raw file so that a missing recorded prompt test is reported even when the schema rejects it
 		problems.addAll(missingRecorded(proposalFile));
@@ -855,6 +857,10 @@ public final class ProposalCheck
 		private final Path draft;
 		private final boolean newMustBeAbsent;
 		/**
+		 * {@code true} if the boundary classes of the draft directory's test cases are checked.
+		 */
+		private final boolean requireClasses;
+		/**
 		 * The completed form of each prompt test whose files the draft directory need not hold, by its directory.
 		 */
 		private final Map<Path, ObjectNode> fixed;
@@ -873,15 +879,18 @@ public final class ProposalCheck
 		 * @param project         the directory that problems name files relative to
 		 * @param draft           the draft directory
 		 * @param newMustBeAbsent {@code true} if a new prompt test's directory must not exist in {@code project}
+		 * @param requireClasses  {@code true} if the boundary classes of the draft directory's test cases are checked
 		 * @param fixed           the completed form of each prompt test whose files the draft directory need not
 		 *                        hold, by its directory
 		 * @param problems        receives each problem
 		 */
-		DraftAssembly(Path project, Path draft, boolean newMustBeAbsent, Map<Path, ObjectNode> fixed, List<String> problems)
+		DraftAssembly(Path project, Path draft, boolean newMustBeAbsent, boolean requireClasses,
+			Map<Path, ObjectNode> fixed, List<String> problems)
 		{
 			this.project = project;
 			this.draft = draft;
 			this.newMustBeAbsent = newMustBeAbsent;
+			this.requireClasses = requireClasses;
 			this.fixed = fixed;
 			this.problems = problems;
 		}
@@ -1039,9 +1048,9 @@ public final class ProposalCheck
 				return null;
 			}
 
-			List<TestCase> committedTestCases = List.of();
+			List<TestCase> committedTestCases = new ArrayList<>();
 			if (recordedTest != null)
-				committedTestCases = recordedTest.committed();
+				committedTestCases.addAll(recordedTest.committed());
 			TestFiles filesOfTest = new TestFiles(display(testDirectory), display(scenarioFile),
 				display(testDirectory.resolve(ValuesFile.NAME)), new ArrayList<>(), new ArrayList<>());
 			ArrayNode testCases = testCases(testDirectory, committedTestCases, filesOfTest);
@@ -1127,7 +1136,8 @@ public final class ProposalCheck
 			for (JsonNode testCase : test.remove(ProposalSchema.COMMITTED_TEST_CASES))
 			{
 				committedTestCases.add(new TestCase(TestValueJson.read(testCase.get("values")),
-					testCase.get(TestCase.EXPECTED_OUTCOME).asString()));
+					testCase.get(TestCase.EXPECTED_OUTCOME).asString(),
+					testCase.path(ValuesFile.BOUNDARY_CLASS).asString("")));
 			}
 			if (!committedTestCases.isEmpty())
 				committed.put(id, committedTestCases);
@@ -1207,10 +1217,11 @@ public final class ProposalCheck
 
 		/**
 		 * Reads the test cases of a prompt test's {@value ValuesFile#NAME}, leaving out those that earlier campaigns
-		 * committed, which CAT adds.
+		 * committed, which CAT adds, and checks the boundary classes of all of them.
 		 *
 		 * @param testDirectory the prompt test's directory
-		 * @param committed     the test cases that earlier campaigns committed to it
+		 * @param committed     the test cases that earlier campaigns committed to it; each that the values file holds
+		 *                      takes the values file's boundary class
 		 * @param files         receives the line of each test case that the result holds
 		 * @return the test cases, or {@code null} if a problem was added
 		 */
@@ -1238,37 +1249,70 @@ public final class ProposalCheck
 				throw new UncheckedIOException(e);
 			}
 			ArrayNode testCases = json.createArrayNode();
+			List<BoundaryClassCheck.Entry> entries = new ArrayList<>();
+			Set<Integer> drafts = new HashSet<>();
+			int problemsBefore = problems.size();
 			for (int i = 0; i < drafted.size(); ++i)
 			{
 				DraftTestCase testCase = drafted.get(i);
-				if (isCommitted(testCase.testCase(), committed))
+				String location = files.values() + ":" + testCase.line() + ": test case " + (i + 1);
+				String boundaryClass = testCase.testCase().path(ValuesFile.BOUNDARY_CLASS).asString("");
+				String expectedOutcome = testCase.testCase().get(TestCase.EXPECTED_OUTCOME).asString();
+				int index = committedIndex(testCase.testCase(), committed);
+				if (index < 0)
+				{
+					testCases.add(testCase.testCase());
+					files.testCases().add(new TestCaseLine(testCase.line(), i + 1));
+				}
+				else
+					drafts.add(index);
+				if (!boundaryClass.isEmpty() && !Identifier.SNAKE_CASE.matcher(boundaryClass).matches())
+				{
+					problems.add(location + ": " + ValuesFile.BOUNDARY_CLASS + " must be lowercase words joined by " +
+						"underscores, but it is \"" + boundaryClass + "\"");
 					continue;
-				testCases.add(testCase.testCase());
-				files.testCases().add(new TestCaseLine(testCase.line(), i + 1));
+				}
+				entries.add(new BoundaryClassCheck.Entry(location, expectedOutcome, boundaryClass, index >= 0));
+				if (index >= 0 && !boundaryClass.isEmpty())
+					committed.set(index, committed.get(index).withBoundaryClass(boundaryClass));
 			}
+			for (int i = 0; i < committed.size(); ++i)
+			{
+				if (drafts.contains(i))
+					continue;
+				TestCase testCase = committed.get(i);
+				entries.add(new BoundaryClassCheck.Entry(files.values() + ": the committed test case with the " +
+					"expected outcome \"" + testCase.expectedOutcome() + "\", which the file leaves out,",
+					testCase.expectedOutcome(), testCase.boundaryClass(), true));
+			}
+			if (requireClasses)
+				problems.addAll(BoundaryClassCheck.problems(files.values(), entries));
+			if (problems.size() > problemsBefore)
+				return null;
 			return testCases;
 		}
 
 		/**
-		 * Indicates whether a test case of a values file is one that an earlier campaign committed.
+		 * Returns the position of the committed test case that a test case of a values file is.
 		 *
 		 * @param testCase  the test case as the values file holds it
 		 * @param committed the committed test cases
-		 * @return {@code true} if the test case states the seed of each call and equals a committed one
+		 * @return the index of the committed test case that equals the test case, which states the seed of each
+		 *   call, or {@code -1} if there is none
 		 */
-		private static boolean isCommitted(ObjectNode testCase, List<TestCase> committed)
+		private static int committedIndex(ObjectNode testCase, List<TestCase> committed)
 		{
 			if (committed.isEmpty())
-				return false;
+				return -1;
 			try
 			{
-				return committed.contains(new TestCase(TestValueJson.read(testCase.get("values")),
+				return committed.indexOf(new TestCase(TestValueJson.read(testCase.get("values")),
 					testCase.get(TestCase.EXPECTED_OUTCOME).asString()));
 			}
 			catch (IllegalArgumentException _)
 			{
 				// A new test case may leave out its calls' seeds
-				return false;
+				return -1;
 			}
 		}
 

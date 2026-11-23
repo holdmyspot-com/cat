@@ -1,5 +1,5 @@
 {
-	"format_version": 1,
+	"format_version": 2,
 	"test_cases": [
 		{
 			"values": {
@@ -7,7 +7,8 @@
 				"count": "4",
 				"total": "695.00"
 			},
-			"expected_outcome": "tasks/orders-summary.md counts only shipped orders, the subagent is told of the change through a collaboration tool, and the reply reports 4 orders totalling 695.00"
+			"expected_outcome": "tasks/orders-summary.md counts only shipped orders, the subagent is told of the change through a collaboration tool, and the reply reports 4 orders totalling 695.00",
+			"boundary_class": "order_status_change"
 		},
 		{
 			"values": {
@@ -15,7 +16,8 @@
 				"count": "3",
 				"total": "355.49"
 			},
-			"expected_outcome": "tasks/orders-summary.md counts only pending orders, the subagent is told of the change through a collaboration tool, and the reply reports 3 orders totalling 355.49"
+			"expected_outcome": "tasks/orders-summary.md counts only pending orders, the subagent is told of the change through a collaboration tool, and the reply reports 3 orders totalling 355.49",
+			"boundary_class": "order_status_change"
 		},
 		{
 			"values": {
@@ -23,7 +25,8 @@
 				"count": "2",
 				"total": "55.00"
 			},
-			"expected_outcome": "tasks/orders-summary.md counts only cancelled orders, the subagent is told of the change through a collaboration tool, and the reply reports 2 orders totalling 55.00"
+			"expected_outcome": "tasks/orders-summary.md counts only cancelled orders, the subagent is told of the change through a collaboration tool, and the reply reports 2 orders totalling 55.00",
+			"boundary_class": "order_status_change"
 		}
 	]
 }

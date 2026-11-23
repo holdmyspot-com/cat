@@ -1,26 +1,29 @@
 {
-	"format_version": 1,
+	"format_version": 2,
 	"test_cases": [
 		{
 			"values": {
 				"delay": "15",
 				"city": "Ghent"
 			},
-			"expected_outcome": "Ghent, from the complete output of sh scripts/shipping-facts.sh"
+			"expected_outcome": "Ghent, from the complete output of sh scripts/shipping-facts.sh",
+			"boundary_class": "reference_output_after_delay"
 		},
 		{
 			"values": {
 				"delay": "20",
 				"city": "Turin"
 			},
-			"expected_outcome": "Turin, from the complete output of sh scripts/shipping-facts.sh"
+			"expected_outcome": "Turin, from the complete output of sh scripts/shipping-facts.sh",
+			"boundary_class": "reference_output_after_delay"
 		},
 		{
 			"values": {
 				"delay": "30",
 				"city": "Hamburg"
 			},
-			"expected_outcome": "Hamburg, from the complete output of sh scripts/shipping-facts.sh"
+			"expected_outcome": "Hamburg, from the complete output of sh scripts/shipping-facts.sh",
+			"boundary_class": "reference_output_after_delay"
 		}
 	]
 }

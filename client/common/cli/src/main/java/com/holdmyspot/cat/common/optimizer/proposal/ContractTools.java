@@ -30,6 +30,7 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -88,7 +89,8 @@ public final class ContractTools
 	 * Applies to the proposal file and the draft directory every validation that CAT applies when the session ends,
 	 * apart from the split of each prompt test's expected outcomes between the parts. Prints every problem, each with
 	 * the file and line or the JSON path that it concerns, or, when there is none, the number of distinct expected
-	 * outcomes of each prompt test.
+	 * outcomes of each prompt test, and the number of test cases and of distinct expected outcomes of each of its
+	 * boundary classes, never which part holds them.
 	 *
 	 * @param contextFile the context file that CAT wrote into the session's project
 	 * @param out         receives the report
@@ -117,9 +119,24 @@ public final class ContractTools
 			for (PromptTest test : contract.get().tests())
 			{
 				Set<String> outcomes = new HashSet<>();
+				Map<String, Integer> testCasesByClass = new LinkedHashMap<>();
+				Map<String, Set<String>> outcomesByClass = new LinkedHashMap<>();
 				for (TestCase testCase : test.allTestCases())
-					outcomes.add(Split.normalize(testCase.expectedOutcome()));
+				{
+					String outcome = Split.normalize(testCase.expectedOutcome());
+					outcomes.add(outcome);
+					testCasesByClass.merge(testCase.boundaryClass(), 1, Integer::sum);
+					outcomesByClass.computeIfAbsent(testCase.boundaryClass(), _ -> new HashSet<>()).add(outcome);
+				}
 				out.println("- `" + test.id() + "`" + directory(test) + ": " + outcomes.size());
+				for (Map.Entry<String, Integer> entry : testCasesByClass.entrySet())
+				{
+					String name = "Untagged test cases";
+					if (!entry.getKey().isEmpty())
+						name = "Boundary class `" + entry.getKey() + "`";
+					out.println("  - " + name + ": " + entry.getValue() + " test cases, " +
+						outcomesByClass.get(entry.getKey()).size() + " distinct expected outcomes");
+				}
 			}
 		}
 		return 0;

@@ -1,5 +1,5 @@
 {
-	"format_version": 1,
+	"format_version": 2,
 	"test_cases": [
 		{
 			"values": {
@@ -7,7 +7,8 @@
 				"entry": "Delivery approved by Mina.",
 				"file_text": "Release ledger\nEntries:\nDelivery approved by Mina."
 			},
-			"expected_outcome": "Delivery approved by Mina."
+			"expected_outcome": "Delivery approved by Mina.",
+			"boundary_class": "ledger_entry_update"
 		},
 		{
 			"values": {
@@ -15,7 +16,8 @@
 				"entry": "Delivery approved by Ivo.",
 				"file_text": "Release ledger\nEntries:\nDelivery approved by Ivo."
 			},
-			"expected_outcome": "Delivery approved by Ivo."
+			"expected_outcome": "Delivery approved by Ivo.",
+			"boundary_class": "ledger_entry_update"
 		},
 		{
 			"values": {
@@ -23,7 +25,8 @@
 				"entry": "Delivery approved by Zara.",
 				"file_text": "Release ledger\nEntries:\nDelivery approved by Zara."
 			},
-			"expected_outcome": "Delivery approved by Zara."
+			"expected_outcome": "Delivery approved by Zara.",
+			"boundary_class": "ledger_entry_update"
 		},
 		{
 			"values": {
@@ -31,7 +34,8 @@
 				"entry": "Delivery approved by Niko.",
 				"file_text": "Release ledger\nEntries:\nDelivery approved by Niko."
 			},
-			"expected_outcome": "Delivery approved by Niko."
+			"expected_outcome": "Delivery approved by Niko.",
+			"boundary_class": "ledger_entry_update"
 		},
 		{
 			"values": {
@@ -39,7 +43,8 @@
 				"entry": "Delivery approved by Elena.",
 				"file_text": "Release ledger\nEntries:\nDelivery approved by Elena."
 			},
-			"expected_outcome": "Delivery approved by Elena."
+			"expected_outcome": "Delivery approved by Elena.",
+			"boundary_class": "ledger_entry_update"
 		},
 		{
 			"values": {
@@ -47,7 +52,8 @@
 				"entry": "Delivery approved by Luca.",
 				"file_text": "Release ledger\nEntries:\nDelivery approved by Luca."
 			},
-			"expected_outcome": "Delivery approved by Luca."
+			"expected_outcome": "Delivery approved by Luca.",
+			"boundary_class": "ledger_entry_update"
 		},
 		{
 			"values": {
@@ -55,7 +61,8 @@
 				"entry": "Delivery approved by Sora.",
 				"file_text": "Release ledger\nEntries:\nDelivery approved by Sora."
 			},
-			"expected_outcome": "Delivery approved by Sora."
+			"expected_outcome": "Delivery approved by Sora.",
+			"boundary_class": "ledger_entry_update"
 		},
 		{
 			"values": {
@@ -63,7 +70,8 @@
 				"entry": "Delivery approved by Tariq.",
 				"file_text": "Release ledger\nEntries:\nDelivery approved by Tariq."
 			},
-			"expected_outcome": "Delivery approved by Tariq."
+			"expected_outcome": "Delivery approved by Tariq.",
+			"boundary_class": "ledger_entry_update"
 		},
 		{
 			"values": {
@@ -71,7 +79,8 @@
 				"entry": "Delivery approved by Noor.",
 				"file_text": "Release ledger\nEntries:\nDelivery approved by Noor."
 			},
-			"expected_outcome": "Delivery approved by Noor."
+			"expected_outcome": "Delivery approved by Noor.",
+			"boundary_class": "ledger_entry_update"
 		},
 		{
 			"values": {
@@ -79,7 +88,8 @@
 				"entry": "Delivery approved by Asha.",
 				"file_text": "Release ledger\nEntries:\nDelivery approved by Asha."
 			},
-			"expected_outcome": "Delivery approved by Asha."
+			"expected_outcome": "Delivery approved by Asha.",
+			"boundary_class": "ledger_entry_update"
 		},
 		{
 			"values": {
@@ -87,7 +97,8 @@
 				"entry": "Delivery approved by Enzo.",
 				"file_text": "Release ledger\nEntries:\nDelivery approved by Enzo."
 			},
-			"expected_outcome": "Delivery approved by Enzo."
+			"expected_outcome": "Delivery approved by Enzo.",
+			"boundary_class": "ledger_entry_update"
 		},
 		{
 			"values": {
@@ -95,7 +106,8 @@
 				"entry": "Delivery approved by Lea.",
 				"file_text": "Release ledger\nEntries:\nDelivery approved by Lea."
 			},
-			"expected_outcome": "Delivery approved by Lea."
+			"expected_outcome": "Delivery approved by Lea.",
+			"boundary_class": "ledger_entry_update"
 		}
 	]
 }

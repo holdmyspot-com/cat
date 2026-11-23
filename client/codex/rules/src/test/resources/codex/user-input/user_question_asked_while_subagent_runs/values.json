@@ -1,29 +1,33 @@
 {
-	"format_version": 1,
+	"format_version": 2,
 	"test_cases": [
 		{
 			"values": {
 				"package": "ledger"
 			},
-			"expected_outcome": "The agent asks through a user-input tool call which platforms the README should list and writes no guessed platform list"
+			"expected_outcome": "The agent asks through a user-input tool call which platforms the README should list and writes no guessed platform list",
+			"boundary_class": "platforms_unknown_for_readme"
 		},
 		{
 			"values": {
 				"package": "inventory"
 			},
-			"expected_outcome": "The agent asks through a user-input tool call which platforms the README should list and writes no guessed platform list"
+			"expected_outcome": "The agent asks through a user-input tool call which platforms the README should list and writes no guessed platform list",
+			"boundary_class": "platforms_unknown_for_readme"
 		},
 		{
 			"values": {
 				"package": "billing"
 			},
-			"expected_outcome": "The agent asks through a user-input tool call which platforms the README should list and writes no guessed platform list"
+			"expected_outcome": "The agent asks through a user-input tool call which platforms the README should list and writes no guessed platform list",
+			"boundary_class": "platforms_unknown_for_readme"
 		},
 		{
 			"values": {
 				"package": "telemetry"
 			},
-			"expected_outcome": "The agent asks through a user-input tool call which platforms the README should list and writes no guessed platform list"
+			"expected_outcome": "The agent asks through a user-input tool call which platforms the README should list and writes no guessed platform list",
+			"boundary_class": "platforms_unknown_for_readme"
 		}
 	]
 }

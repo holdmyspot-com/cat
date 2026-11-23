@@ -73,32 +73,51 @@ A test that always presents the same content cannot be certified fairly: prompt 
 content, so certifying on it measures them on their own training data. Every test therefore has variables, such as a
 file's name or content, the value that a turn asks about, or the wording of a turn. CAT refuses a test without one.
 
-`values.json` holds the test cases, each of which gives every variable a value, in `values`, and states its
-`expected_outcome`: the result that a compliant reply gives for those values, such as the date that the turn asks for.
-An expected outcome is never a pass or fail result. Two test cases with the same values are the same test case, so make
-every test case's values differ.
+`values.json` holds the test cases, each of which gives every variable a value, in `values`, states its
+`expected_outcome`: the result that a compliant reply gives for those values, such as the date that the turn asks for,
+and names its `boundary_class`. An expected outcome is never a pass or fail result. Two test cases with the same values
+are the same test case, so make every test case's values differ.
 
 ```json
 {
-	"format_version": 1,
+	"format_version": 2,
 	"test_cases": [
 		{
 			"values": {
 				"notes": "release-notes.md",
 				"before": {"generator": "log_lines", "count": 18000}
 			},
-			"expected_outcome": "2025-03-04"
+			"expected_outcome": "2025-03-04",
+			"boundary_class": "same_day"
 		}
 	]
 }
 ```
 
-Before any trial, CAT assigns each distinct expected outcome to the development part or the held-out part, each with
-probability 1/2, ignoring case and spacing, so test cases with the same expected outcome share a part. Prompt editing
-sees only development test cases, and formal trials draw only held-out ones, so formal trials measure the prompts on
-answers that prompt editing never saw. CAT refuses a test with fewer than 2 distinct expected outcomes in either part,
-naming the test and both counts. Give each test at least 12 distinct expected outcomes, which leaves less than 1 chance
-in 100 that either part receives fewer than 2.
+A test case's `boundary_class` names, in lowercase words joined by underscores, the kind of input boundary that it
+exercises, chosen so that one defect of a reply can fail every test case of the class and no other test case. A turn
+that asks when a shipment arrives has the classes `same_day`, `crosses_midnight` and `arrives_exactly_at_midnight`. Give
+a boundary that a prompt could mishandle on its own a class of its own, since a wider class hides it behind the class's
+other test cases. Tag every test case of the test, committed ones included; a class is no part of a test case's
+identity, so tagging a committed test case, or changing its tag, leaves it the same test case. Test cases whose expected
+outcomes differ only in case or spacing must share a class.
+
+Before any trial, CAT assigns each distinct expected outcome to the development part or the held-out part, ignoring
+case and spacing, so test cases with the same expected outcome share a part. Within each class, CAT balances the
+distinct outcomes between the parts, so that they differ by at most one, and an outcome of a committed test case counts
+for development. Prompt editing sees only development test cases, and formal trials draw only held-out ones, so formal
+trials measure the prompts on answers that prompt editing never saw, and both parts see every class. CAT refuses:
+
+- a test case without a class;
+- test cases that share an expected outcome but differ in class;
+- a class whose test cases share one distinct expected outcome and none of which is committed;
+- a class that only committed test cases fill;
+- a test with fewer than 2 distinct expected outcomes in either part, naming the test and both counts.
+
+Give each class at least 2 distinct expected outcomes, or one beside a committed outcome of the class, and write each
+outcome as its test case's own result, such as the day as well as the time, since test cases that share an outcome share
+a part. Every class then has an outcome in each part, so a test with at least 2 classes, or 4 distinct expected
+outcomes in its one class, has at least 2 in each part.
 
 ### Values
 

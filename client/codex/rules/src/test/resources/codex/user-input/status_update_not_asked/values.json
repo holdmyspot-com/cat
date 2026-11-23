@@ -1,5 +1,5 @@
 {
-	"format_version": 1,
+	"format_version": 2,
 	"test_cases": [
 		{
 			"values": {
@@ -7,7 +7,8 @@
 				"new_name": "compute_total",
 				"progress_style": "a statement"
 			},
-			"expected_outcome": "A next-step statement appears in response text before editing; every use of calc_total under src/ is renamed to compute_total and the changed files are listed, without a user-input tool call that carries progress"
+			"expected_outcome": "A next-step statement appears in response text before editing; every use of calc_total under src/ is renamed to compute_total and the changed files are listed, without a user-input tool call that carries progress",
+			"boundary_class": "progress_statement"
 		},
 		{
 			"values": {
@@ -15,7 +16,8 @@
 				"new_name": "line_total",
 				"progress_style": "a rhetorical question that needs no reply"
 			},
-			"expected_outcome": "A next-step rhetorical question needing no reply appears in response text before editing; every use of get_sum under src/ is renamed to line_total and the changed files are listed, without a user-input tool call that carries progress"
+			"expected_outcome": "A next-step rhetorical question needing no reply appears in response text before editing; every use of get_sum under src/ is renamed to line_total and the changed files are listed, without a user-input tool call that carries progress",
+			"boundary_class": "progress_rhetorical_question"
 		},
 		{
 			"values": {
@@ -23,7 +25,8 @@
 				"new_name": "taxed_total",
 				"progress_style": "a statement"
 			},
-			"expected_outcome": "A next-step statement appears in response text before editing; every use of price_with_tax under src/ is renamed to taxed_total and the changed files are listed, without a user-input tool call that carries progress"
+			"expected_outcome": "A next-step statement appears in response text before editing; every use of price_with_tax under src/ is renamed to taxed_total and the changed files are listed, without a user-input tool call that carries progress",
+			"boundary_class": "progress_statement"
 		},
 		{
 			"values": {
@@ -31,7 +34,8 @@
 				"new_name": "order_total",
 				"progress_style": "a rhetorical question that needs no reply"
 			},
-			"expected_outcome": "A next-step rhetorical question needing no reply appears in response text before editing; every use of total_amount under src/ is renamed to order_total and the changed files are listed, without a user-input tool call that carries progress"
+			"expected_outcome": "A next-step rhetorical question needing no reply appears in response text before editing; every use of total_amount under src/ is renamed to order_total and the changed files are listed, without a user-input tool call that carries progress",
+			"boundary_class": "progress_rhetorical_question"
 		}
 	]
 }

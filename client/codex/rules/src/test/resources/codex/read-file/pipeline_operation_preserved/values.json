@@ -1,5 +1,5 @@
 {
-	"format_version": 1,
+	"format_version": 2,
 	"test_cases": [
 		{
 			"values": {
@@ -7,7 +7,8 @@
 				"tag": "dispatch_violet",
 				"replacement": "DISPATCH_VIOLET"
 			},
-			"expected_outcome": "DISPATCH_VIOLET"
+			"expected_outcome": "DISPATCH_VIOLET",
+			"boundary_class": "tag_replaced_in_pipeline"
 		},
 		{
 			"values": {
@@ -15,7 +16,8 @@
 				"tag": "dispatch_amber",
 				"replacement": "DISPATCH_AMBER"
 			},
-			"expected_outcome": "DISPATCH_AMBER"
+			"expected_outcome": "DISPATCH_AMBER",
+			"boundary_class": "tag_replaced_in_pipeline"
 		},
 		{
 			"values": {
@@ -23,7 +25,8 @@
 				"tag": "dispatch_jade",
 				"replacement": "DISPATCH_JADE"
 			},
-			"expected_outcome": "DISPATCH_JADE"
+			"expected_outcome": "DISPATCH_JADE",
+			"boundary_class": "tag_replaced_in_pipeline"
 		},
 		{
 			"values": {
@@ -31,7 +34,8 @@
 				"tag": "dispatch_cobalt",
 				"replacement": "DISPATCH_COBALT"
 			},
-			"expected_outcome": "DISPATCH_COBALT"
+			"expected_outcome": "DISPATCH_COBALT",
+			"boundary_class": "tag_replaced_in_pipeline"
 		},
 		{
 			"values": {
@@ -39,7 +43,8 @@
 				"tag": "dispatch_saffron",
 				"replacement": "DISPATCH_SAFFRON"
 			},
-			"expected_outcome": "DISPATCH_SAFFRON"
+			"expected_outcome": "DISPATCH_SAFFRON",
+			"boundary_class": "tag_replaced_in_pipeline"
 		},
 		{
 			"values": {
@@ -47,7 +52,8 @@
 				"tag": "dispatch_indigo",
 				"replacement": "DISPATCH_INDIGO"
 			},
-			"expected_outcome": "DISPATCH_INDIGO"
+			"expected_outcome": "DISPATCH_INDIGO",
+			"boundary_class": "tag_replaced_in_pipeline"
 		},
 		{
 			"values": {
@@ -55,7 +61,8 @@
 				"tag": "dispatch_coral",
 				"replacement": "DISPATCH_CORAL"
 			},
-			"expected_outcome": "DISPATCH_CORAL"
+			"expected_outcome": "DISPATCH_CORAL",
+			"boundary_class": "tag_replaced_in_pipeline"
 		},
 		{
 			"values": {
@@ -63,7 +70,8 @@
 				"tag": "dispatch_ochre",
 				"replacement": "DISPATCH_OCHRE"
 			},
-			"expected_outcome": "DISPATCH_OCHRE"
+			"expected_outcome": "DISPATCH_OCHRE",
+			"boundary_class": "tag_replaced_in_pipeline"
 		},
 		{
 			"values": {
@@ -71,7 +79,8 @@
 				"tag": "dispatch_crimson",
 				"replacement": "DISPATCH_CRIMSON"
 			},
-			"expected_outcome": "DISPATCH_CRIMSON"
+			"expected_outcome": "DISPATCH_CRIMSON",
+			"boundary_class": "tag_replaced_in_pipeline"
 		},
 		{
 			"values": {
@@ -79,7 +88,8 @@
 				"tag": "dispatch_ivory",
 				"replacement": "DISPATCH_IVORY"
 			},
-			"expected_outcome": "DISPATCH_IVORY"
+			"expected_outcome": "DISPATCH_IVORY",
+			"boundary_class": "tag_replaced_in_pipeline"
 		},
 		{
 			"values": {
@@ -87,7 +97,8 @@
 				"tag": "dispatch_silver",
 				"replacement": "DISPATCH_SILVER"
 			},
-			"expected_outcome": "DISPATCH_SILVER"
+			"expected_outcome": "DISPATCH_SILVER",
+			"boundary_class": "tag_replaced_in_pipeline"
 		},
 		{
 			"values": {
@@ -95,7 +106,8 @@
 				"tag": "dispatch_copper",
 				"replacement": "DISPATCH_COPPER"
 			},
-			"expected_outcome": "DISPATCH_COPPER"
+			"expected_outcome": "DISPATCH_COPPER",
+			"boundary_class": "tag_replaced_in_pipeline"
 		}
 	]
 }

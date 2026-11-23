@@ -1,5 +1,5 @@
 {
-	"format_version" : 1,
+	"format_version" : 2,
 	"test_cases" : [ {
 		"values" : {
 			"release" : "4.1",
@@ -13,7 +13,8 @@
 				"count" : 144
 			}
 		},
-		"expected_outcome" : "Release 4.1 improved the report builder and corrected a message in the parser. -- Release Desk"
+		"expected_outcome" : "Release 4.1 improved the report builder and corrected a message in the parser. -- Release Desk",
+		"boundary_class" : "release_note_from_guides"
 	}, {
 		"values" : {
 			"release" : "4.2",
@@ -27,7 +28,8 @@
 				"count" : 144
 			}
 		},
-		"expected_outcome" : "Release 4.2 improved the importer and corrected a message in the logging. -- Migration Desk"
+		"expected_outcome" : "Release 4.2 improved the importer and corrected a message in the logging. -- Migration Desk",
+		"boundary_class" : "release_note_from_guides"
 	}, {
 		"values" : {
 			"release" : "4.3",
@@ -41,7 +43,8 @@
 				"count" : 144
 			}
 		},
-		"expected_outcome" : "Release 4.3 improved the validator and corrected a message in the cache. -- Delivery Team"
+		"expected_outcome" : "Release 4.3 improved the validator and corrected a message in the cache. -- Delivery Team",
+		"boundary_class" : "release_note_from_guides"
 	}, {
 		"values" : {
 			"release" : "4.4",
@@ -55,7 +58,8 @@
 				"count" : 144
 			}
 		},
-		"expected_outcome" : "Release 4.4 improved the uploader and corrected a message in the exporter. -- Customer Desk"
+		"expected_outcome" : "Release 4.4 improved the uploader and corrected a message in the exporter. -- Customer Desk",
+		"boundary_class" : "release_note_from_guides"
 	}, {
 		"values" : {
 			"release" : "4.5",
@@ -69,7 +73,8 @@
 				"count" : 144
 			}
 		},
-		"expected_outcome" : "Release 4.5 improved the retry policy and corrected a message in the CLI. -- Operations Team"
+		"expected_outcome" : "Release 4.5 improved the retry policy and corrected a message in the CLI. -- Operations Team",
+		"boundary_class" : "release_note_from_guides"
 	}, {
 		"values" : {
 			"release" : "4.6",
@@ -83,7 +88,8 @@
 				"count" : 144
 			}
 		},
-		"expected_outcome" : "Release 4.6 improved the parser and corrected a message in the configuration loader. -- Platform Team"
+		"expected_outcome" : "Release 4.6 improved the parser and corrected a message in the configuration loader. -- Platform Team",
+		"boundary_class" : "release_note_from_guides"
 	}, {
 		"values" : {
 			"release" : "4.7",
@@ -97,7 +103,8 @@
 				"count" : 144
 			}
 		},
-		"expected_outcome" : "Release 4.7 improved the logging and corrected a message in the scheduler. -- Support Desk"
+		"expected_outcome" : "Release 4.7 improved the logging and corrected a message in the scheduler. -- Support Desk",
+		"boundary_class" : "release_note_from_guides"
 	}, {
 		"values" : {
 			"release" : "4.8",
@@ -111,7 +118,8 @@
 				"count" : 144
 			}
 		},
-		"expected_outcome" : "Release 4.8 improved the cache and corrected a message in the report builder. -- Release Team"
+		"expected_outcome" : "Release 4.8 improved the cache and corrected a message in the report builder. -- Release Team",
+		"boundary_class" : "release_note_from_guides"
 	}, {
 		"values" : {
 			"release" : "4.9",
@@ -125,7 +133,8 @@
 				"count" : 144
 			}
 		},
-		"expected_outcome" : "Release 4.9 improved the exporter and corrected a message in the importer. -- Client Desk"
+		"expected_outcome" : "Release 4.9 improved the exporter and corrected a message in the importer. -- Client Desk",
+		"boundary_class" : "release_note_from_guides"
 	}, {
 		"values" : {
 			"release" : "4.10",
@@ -139,7 +148,8 @@
 				"count" : 144
 			}
 		},
-		"expected_outcome" : "Release 4.10 improved the CLI and corrected a message in the validator. -- Service Team"
+		"expected_outcome" : "Release 4.10 improved the CLI and corrected a message in the validator. -- Service Team",
+		"boundary_class" : "release_note_from_guides"
 	}, {
 		"values" : {
 			"release" : "4.11",
@@ -153,7 +163,8 @@
 				"count" : 144
 			}
 		},
-		"expected_outcome" : "Release 4.11 improved the configuration loader and corrected a message in the uploader. -- Delivery Desk"
+		"expected_outcome" : "Release 4.11 improved the configuration loader and corrected a message in the uploader. -- Delivery Desk",
+		"boundary_class" : "release_note_from_guides"
 	}, {
 		"values" : {
 			"release" : "4.173",
@@ -167,6 +178,7 @@
 				"count" : 144
 			}
 		},
-		"expected_outcome" : "Release 4.173 improved the scheduler and corrected a message in the retry policy. Callers must pass an explicit exporter destination. -- Migration Team"
+		"expected_outcome" : "Release 4.173 improved the scheduler and corrected a message in the retry policy. Callers must pass an explicit exporter destination. -- Migration Team",
+		"boundary_class" : "release_note_from_guides"
 	} ]
 }

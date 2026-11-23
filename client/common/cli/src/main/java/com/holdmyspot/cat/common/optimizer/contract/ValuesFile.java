@@ -22,26 +22,29 @@ import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * Reads and writes a prompt test's values file, {@code values.json}, which holds its test cases' values and expected
- * outcomes:
+ * Reads and writes a prompt test's values file, {@code values.json}, which holds its test cases' values, expected
+ * outcomes and boundary classes:
  * <pre>{@code
  * {
- *   "format_version": 1,
+ *   "format_version": 2,
  *   "test_cases": [
  *     {
  *       "values": {
  *         "notes": "release-notes.md",
  *         "before": {"generator": "log_lines", "version": 1, "seed": 7419, "count": 18000}
  *       },
- *       "expected_outcome": "2025-03-04"
+ *       "expected_outcome": "2025-03-04",
+ *       "boundary_class": "same_day"
  *     }
  *   ]
  * }
  * }</pre>
  * A value is a string, or a generator call with its {@code generator}, {@code version} and {@code seed} and the
  * generator's parameters. In a draft directory, a call may leave out both its {@code version} and its {@code seed},
- * which CAT adds when it validates the proposal. Unknown fields are refused. Reading streams the file, so it holds at
- * most one test case at a time as a tree.
+ * which CAT adds when it validates the proposal. A test case without a {@code boundary_class} is untagged. Format
+ * version 1, which predates boundary classes, reads too: its test cases are untagged, and it refuses a
+ * {@code boundary_class}. Unknown fields are refused. Reading streams the file, so it holds at most one test case at a
+ * time as a tree.
  */
 public final class ValuesFile
 {
@@ -50,9 +53,17 @@ public final class ValuesFile
 	 */
 	public static final String NAME = "values.json";
 	/**
-	 * The format version that this class reads and writes.
+	 * The format version that this class writes.
 	 */
-	public static final int FORMAT_VERSION = 1;
+	public static final int FORMAT_VERSION = 2;
+	/**
+	 * The format version that predates boundary classes, which this class reads too.
+	 */
+	private static final int UNTAGGED_FORMAT_VERSION = 1;
+	/**
+	 * The name of a test case's boundary class in a values file.
+	 */
+	public static final String BOUNDARY_CLASS = "boundary_class";
 	private static final String FORMAT_VERSION_FIELD = "format_version";
 	private static final String TEST_CASES = "test_cases";
 	private static final String VALUES = "values";
@@ -76,7 +87,8 @@ public final class ValuesFile
 	 * @return the test cases, in file order
 	 * @throws NullPointerException    if any of the arguments are null
 	 * @throws IOException             if {@code in} cannot be read
-	 * @throws ScenarioFormatException if the content is not a values file of {@link #FORMAT_VERSION}
+	 * @throws ScenarioFormatException if the content is not a values file of {@link #FORMAT_VERSION} or of the format
+	 *                                 version before it
 	 */
 	public static List<TestCase> read(JsonMapper json, Reader in, String location)
 		throws IOException, ScenarioFormatException
@@ -86,8 +98,11 @@ public final class ValuesFile
 			ObjectNode testCase = draft.testCase();
 			try
 			{
+				String boundaryClass = "";
+				if (testCase.has(BOUNDARY_CLASS))
+					boundaryClass = testCase.get(BOUNDARY_CLASS).asString();
 				return new TestCase(TestValueJson.read(testCase.get(VALUES)),
-					testCase.get(TestCase.EXPECTED_OUTCOME).asString());
+					testCase.get(TestCase.EXPECTED_OUTCOME).asString(), boundaryClass);
 			}
 			catch (IllegalArgumentException e)
 			{
@@ -106,8 +121,9 @@ public final class ValuesFile
 	 * @return the test cases, in file order
 	 * @throws NullPointerException    if any of the arguments are null
 	 * @throws IOException             if {@code in} cannot be read
-	 * @throws ScenarioFormatException if the content is not a values file of {@link #FORMAT_VERSION}, apart from the
-	 *                                 calls that leave out both their version and their seed
+	 * @throws ScenarioFormatException if the content is not a values file of {@link #FORMAT_VERSION} or of the format
+	 *                                 version before it, apart from the calls that leave out both their version and
+	 *                                 their seed
 	 */
 	public static List<DraftTestCase> readDraft(JsonMapper json, Reader in, String location)
 		throws IOException, ScenarioFormatException
@@ -156,7 +172,7 @@ public final class ValuesFile
 	 *
 	 * @param line     the line on which the test case starts
 	 * @param testCase the test case as a proposal writes it: its {@code values}, an array as {@link TestValueJson}
-	 *                 writes it, and its {@code expected_outcome}
+	 *                 writes it, its {@code expected_outcome}, and its {@code boundary_class} if it has one
 	 */
 	public record DraftTestCase(int line, ObjectNode testCase)
 	{
@@ -205,6 +221,19 @@ public final class ValuesFile
 	}
 
 	/**
+	 * The test cases of a values file.
+	 *
+	 * @param <T>               the type of a converted test case
+	 * @param converted         the converted test cases, in file order
+	 * @param firstTaggedLine   the line on which the first test case with a boundary class starts, or {@code -1} if
+	 *                          none has one
+	 * @param firstTaggedColumn the column at which that test case starts
+	 */
+	private record ReadTestCases<T>(List<T> converted, int firstTaggedLine, int firstTaggedColumn)
+	{
+	}
+
+	/**
 	 * Reads the top-level object.
 	 *
 	 * @param <T>       the type of a converted test case
@@ -212,7 +241,8 @@ public final class ValuesFile
 	 * @param reading   the reading
 	 * @param converter converts each test case
 	 * @return the converted test cases
-	 * @throws ScenarioFormatException if the object is not a values file of {@link #FORMAT_VERSION}
+	 * @throws ScenarioFormatException if the object is not a values file of {@link #FORMAT_VERSION} or of the format
+	 *                                 version before it
 	 */
 	private static <T> List<T> readRoot(JsonParser parser, Reading reading, Converter<T> converter)
 		throws ScenarioFormatException
@@ -221,8 +251,7 @@ public final class ValuesFile
 		parser.nextToken();
 		requireToken(parser, JsonToken.START_OBJECT, location, "the file must hold one JSON object");
 		Integer formatVersion = null;
-		boolean hasTestCases = false;
-		List<T> testCases = List.of();
+		ReadTestCases<T> testCases = null;
 		while (parser.nextToken() == JsonToken.PROPERTY_NAME)
 		{
 			String name = parser.currentName();
@@ -235,23 +264,28 @@ public final class ValuesFile
 						throw problem(parser, location, FORMAT_VERSION_FIELD + " must be an integer");
 					formatVersion = parser.getIntValue();
 				}
-				case TEST_CASES ->
-				{
-					testCases = readTestCases(parser, reading, converter);
-					hasTestCases = true;
-				}
+				case TEST_CASES -> testCases = readTestCases(parser, reading, converter);
 				default -> throw problem(parser, location, "the field '" + name + "' is unknown. Fields: " +
 					FORMAT_VERSION_FIELD + ", " + TEST_CASES);
 			}
 		}
-		if (formatVersion == null || formatVersion != FORMAT_VERSION)
+		if (formatVersion == null || formatVersion != FORMAT_VERSION && formatVersion != UNTAGGED_FORMAT_VERSION)
 		{
 			throw problem(parser, location, FORMAT_VERSION_FIELD + " must be " + FORMAT_VERSION + ", but it is " +
 				formatVersion);
 		}
-		if (!hasTestCases)
+		if (testCases == null)
 			throw problem(parser, location, "the field " + TEST_CASES + " is missing");
-		return testCases;
+		if (formatVersion == UNTAGGED_FORMAT_VERSION && testCases.firstTaggedLine() >= 0)
+		{
+			String where = location + ":";
+			if (testCases.firstTaggedLine() >= 1)
+				where += testCases.firstTaggedLine() + ":" + testCases.firstTaggedColumn() + ":";
+			throw new ScenarioFormatException(where + " " + FORMAT_VERSION_FIELD + " " + UNTAGGED_FORMAT_VERSION +
+				" has no " + BOUNDARY_CLASS + "; a values file with boundary classes has " + FORMAT_VERSION_FIELD + " " +
+				FORMAT_VERSION);
+		}
+		return testCases.converted();
 	}
 
 	/**
@@ -264,18 +298,21 @@ public final class ValuesFile
 	 * @return the converted test cases
 	 * @throws ScenarioFormatException if a test case is malformed or {@code converter} refuses it
 	 */
-	private static <T> List<T> readTestCases(JsonParser parser, Reading reading, Converter<T> converter)
+	private static <T> ReadTestCases<T> readTestCases(JsonParser parser, Reading reading, Converter<T> converter)
 		throws ScenarioFormatException
 	{
 		String location = reading.location();
 		requireToken(parser, JsonToken.START_ARRAY, location, TEST_CASES + " must be an array");
 		List<T> testCases = new ArrayList<>();
+		int firstTaggedLine = -1;
+		int firstTaggedColumn = -1;
 		while (parser.nextToken() != JsonToken.END_ARRAY)
 		{
 			TokenStreamLocation start = parser.currentLocation();
 			requireToken(parser, JsonToken.START_OBJECT, location, "a test case must be an object");
 			ArrayNode values = null;
 			String expectedOutcome = null;
+			String boundaryClass = null;
 			while (parser.nextToken() == JsonToken.PROPERTY_NAME)
 			{
 				String name = parser.currentName();
@@ -289,8 +326,13 @@ public final class ValuesFile
 							" must be a string");
 						expectedOutcome = parser.getString();
 					}
+					case BOUNDARY_CLASS ->
+					{
+						requireToken(parser, JsonToken.VALUE_STRING, location, BOUNDARY_CLASS + " must be a string");
+						boundaryClass = parser.getString();
+					}
 					default -> throw problem(parser, location, "the test case field '" + name + "' is unknown. " +
-						"Fields: " + VALUES + ", " + TestCase.EXPECTED_OUTCOME);
+						"Fields: " + VALUES + ", " + TestCase.EXPECTED_OUTCOME + ", " + BOUNDARY_CLASS);
 				}
 			}
 			if (values == null)
@@ -303,9 +345,18 @@ public final class ValuesFile
 			ObjectNode testCase = reading.json().createObjectNode();
 			testCase.set(VALUES, values);
 			testCase.put(TestCase.EXPECTED_OUTCOME, expectedOutcome);
+			if (boundaryClass != null)
+			{
+				testCase.put(BOUNDARY_CLASS, boundaryClass);
+				if (firstTaggedLine < 0)
+				{
+					firstTaggedLine = Math.max(start.getLineNr(), 0);
+					firstTaggedColumn = start.getColumnNr();
+				}
+			}
 			testCases.add(converter.convert(new DraftTestCase(Math.max(start.getLineNr(), 0), testCase)));
 		}
-		return testCases;
+		return new ReadTestCases<>(testCases, firstTaggedLine, firstTaggedColumn);
 	}
 
 	/**
@@ -489,6 +540,8 @@ public final class ValuesFile
 				}
 				generator.writeEndObject();
 				generator.writeStringProperty(TestCase.EXPECTED_OUTCOME, testCase.expectedOutcome());
+				if (!testCase.boundaryClass().isEmpty())
+					generator.writeStringProperty(BOUNDARY_CLASS, testCase.boundaryClass());
 				generator.writeEndObject();
 			}
 			generator.writeEndArray();

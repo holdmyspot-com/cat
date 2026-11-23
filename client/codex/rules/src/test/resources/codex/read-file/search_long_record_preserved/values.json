@@ -1,5 +1,5 @@
 {
-	"format_version": 1,
+	"format_version": 2,
 	"test_cases": [
 		{
 			"values": {
@@ -8,7 +8,8 @@
 				"archive_id": "arc_7c91a2",
 				"before": {"generator": "markdown_sections", "version": 1, "seed": 7738783101905355427, "count": 144}
 			},
-			"expected_outcome": "arc_7c91a2"
+			"expected_outcome": "arc_7c91a2",
+			"boundary_class": "archive_id_in_long_record"
 		},
 		{
 			"values": {
@@ -17,7 +18,8 @@
 				"archive_id": "arc_b438e6",
 				"before": {"generator": "markdown_sections", "version": 1, "seed": 4698256662415830470, "count": 144}
 			},
-			"expected_outcome": "arc_b438e6"
+			"expected_outcome": "arc_b438e6",
+			"boundary_class": "archive_id_in_long_record"
 		},
 		{
 			"values": {
@@ -26,7 +28,8 @@
 				"archive_id": "arc_2f6d90",
 				"before": {"generator": "markdown_sections", "version": 1, "seed": -8524510893339329536, "count": 144}
 			},
-			"expected_outcome": "arc_2f6d90"
+			"expected_outcome": "arc_2f6d90",
+			"boundary_class": "archive_id_in_long_record"
 		},
 		{
 			"values": {
@@ -35,7 +38,8 @@
 				"archive_id": "arc_e05b73",
 				"before": {"generator": "markdown_sections", "version": 1, "seed": -7349410131164915072, "count": 144}
 			},
-			"expected_outcome": "arc_e05b73"
+			"expected_outcome": "arc_e05b73",
+			"boundary_class": "archive_id_in_long_record"
 		},
 		{
 			"values": {
@@ -44,7 +48,8 @@
 				"archive_id": "arc_96a4c8",
 				"before": {"generator": "markdown_sections", "version": 1, "seed": -1312876071601112912, "count": 144}
 			},
-			"expected_outcome": "arc_96a4c8"
+			"expected_outcome": "arc_96a4c8",
+			"boundary_class": "archive_id_in_long_record"
 		},
 		{
 			"values": {
@@ -53,7 +58,8 @@
 				"archive_id": "arc_4d82f1",
 				"before": {"generator": "markdown_sections", "version": 1, "seed": -8340045846887169040, "count": 144}
 			},
-			"expected_outcome": "arc_4d82f1"
+			"expected_outcome": "arc_4d82f1",
+			"boundary_class": "archive_id_in_long_record"
 		},
 		{
 			"values": {
@@ -62,7 +68,8 @@
 				"archive_id": "arc_a71e05",
 				"before": {"generator": "markdown_sections", "version": 1, "seed": -4142899674183821168, "count": 144}
 			},
-			"expected_outcome": "arc_a71e05"
+			"expected_outcome": "arc_a71e05",
+			"boundary_class": "archive_id_in_long_record"
 		},
 		{
 			"values": {
@@ -71,7 +78,8 @@
 				"archive_id": "arc_03c9b4",
 				"before": {"generator": "markdown_sections", "version": 1, "seed": 8259588698688205050, "count": 144}
 			},
-			"expected_outcome": "arc_03c9b4"
+			"expected_outcome": "arc_03c9b4",
+			"boundary_class": "archive_id_in_long_record"
 		},
 		{
 			"values": {
@@ -80,7 +88,8 @@
 				"archive_id": "arc_d58a62",
 				"before": {"generator": "markdown_sections", "version": 1, "seed": -722807635979334660, "count": 144}
 			},
-			"expected_outcome": "arc_d58a62"
+			"expected_outcome": "arc_d58a62",
+			"boundary_class": "archive_id_in_long_record"
 		},
 		{
 			"values": {
@@ -89,7 +98,8 @@
 				"archive_id": "arc_6b20ed",
 				"before": {"generator": "markdown_sections", "version": 1, "seed": -1839635694181587971, "count": 144}
 			},
-			"expected_outcome": "arc_6b20ed"
+			"expected_outcome": "arc_6b20ed",
+			"boundary_class": "archive_id_in_long_record"
 		},
 		{
 			"values": {
@@ -98,7 +108,8 @@
 				"archive_id": "arc_f19c37",
 				"before": {"generator": "markdown_sections", "version": 1, "seed": 5462702320647684260, "count": 144}
 			},
-			"expected_outcome": "arc_f19c37"
+			"expected_outcome": "arc_f19c37",
+			"boundary_class": "archive_id_in_long_record"
 		},
 		{
 			"values": {
@@ -107,7 +118,8 @@
 				"archive_id": "arc_85e4a0",
 				"before": {"generator": "markdown_sections", "version": 1, "seed": -6495480090761612440, "count": 144}
 			},
-			"expected_outcome": "arc_85e4a0"
+			"expected_outcome": "arc_85e4a0",
+			"boundary_class": "archive_id_in_long_record"
 		}
 	]
 }

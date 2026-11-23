@@ -1,5 +1,5 @@
 {
-	"format_version": 1,
+	"format_version": 2,
 	"test_cases": [
 		{
 			"values": {
@@ -7,7 +7,8 @@
 				"owner": "Mina",
 				"decision": "approved for violet rollout"
 			},
-			"expected_outcome": "Mina: approved for violet rollout"
+			"expected_outcome": "Mina: approved for violet rollout",
+			"boundary_class": "review_decision_in_short_file"
 		},
 		{
 			"values": {
@@ -15,7 +16,8 @@
 				"owner": "Ivo",
 				"decision": "approved for amber rollout"
 			},
-			"expected_outcome": "Ivo: approved for amber rollout"
+			"expected_outcome": "Ivo: approved for amber rollout",
+			"boundary_class": "review_decision_in_short_file"
 		},
 		{
 			"values": {
@@ -23,7 +25,8 @@
 				"owner": "Zara",
 				"decision": "approved for jade rollout"
 			},
-			"expected_outcome": "Zara: approved for jade rollout"
+			"expected_outcome": "Zara: approved for jade rollout",
+			"boundary_class": "review_decision_in_short_file"
 		},
 		{
 			"values": {
@@ -31,7 +34,8 @@
 				"owner": "Niko",
 				"decision": "approved for cobalt rollout"
 			},
-			"expected_outcome": "Niko: approved for cobalt rollout"
+			"expected_outcome": "Niko: approved for cobalt rollout",
+			"boundary_class": "review_decision_in_short_file"
 		},
 		{
 			"values": {
@@ -39,7 +43,8 @@
 				"owner": "Elena",
 				"decision": "approved for saffron rollout"
 			},
-			"expected_outcome": "Elena: approved for saffron rollout"
+			"expected_outcome": "Elena: approved for saffron rollout",
+			"boundary_class": "review_decision_in_short_file"
 		},
 		{
 			"values": {
@@ -47,7 +52,8 @@
 				"owner": "Luca",
 				"decision": "approved for indigo rollout"
 			},
-			"expected_outcome": "Luca: approved for indigo rollout"
+			"expected_outcome": "Luca: approved for indigo rollout",
+			"boundary_class": "review_decision_in_short_file"
 		},
 		{
 			"values": {
@@ -55,7 +61,8 @@
 				"owner": "Sora",
 				"decision": "approved for coral rollout"
 			},
-			"expected_outcome": "Sora: approved for coral rollout"
+			"expected_outcome": "Sora: approved for coral rollout",
+			"boundary_class": "review_decision_in_short_file"
 		},
 		{
 			"values": {
@@ -63,7 +70,8 @@
 				"owner": "Tariq",
 				"decision": "approved for ochre rollout"
 			},
-			"expected_outcome": "Tariq: approved for ochre rollout"
+			"expected_outcome": "Tariq: approved for ochre rollout",
+			"boundary_class": "review_decision_in_short_file"
 		},
 		{
 			"values": {
@@ -71,7 +79,8 @@
 				"owner": "Noor",
 				"decision": "approved for crimson rollout"
 			},
-			"expected_outcome": "Noor: approved for crimson rollout"
+			"expected_outcome": "Noor: approved for crimson rollout",
+			"boundary_class": "review_decision_in_short_file"
 		},
 		{
 			"values": {
@@ -79,7 +88,8 @@
 				"owner": "Asha",
 				"decision": "approved for ivory rollout"
 			},
-			"expected_outcome": "Asha: approved for ivory rollout"
+			"expected_outcome": "Asha: approved for ivory rollout",
+			"boundary_class": "review_decision_in_short_file"
 		},
 		{
 			"values": {
@@ -87,7 +97,8 @@
 				"owner": "Enzo",
 				"decision": "approved for silver rollout"
 			},
-			"expected_outcome": "Enzo: approved for silver rollout"
+			"expected_outcome": "Enzo: approved for silver rollout",
+			"boundary_class": "review_decision_in_short_file"
 		},
 		{
 			"values": {
@@ -95,7 +106,8 @@
 				"owner": "Lea",
 				"decision": "approved for copper rollout"
 			},
-			"expected_outcome": "Lea: approved for copper rollout"
+			"expected_outcome": "Lea: approved for copper rollout",
+			"boundary_class": "review_decision_in_short_file"
 		}
 	]
 }

@@ -148,8 +148,8 @@ public final class ContractCheckTest
 
 	/**
 	 * Verifies that {@code contract check} accepts a valid proposal and reports each prompt test's number of distinct
-	 * expected outcomes, counting outcomes that differ only in case and whitespace once, without saying how they would
-	 * be split between the parts.
+	 * expected outcomes, and each boundary class's number of test cases and distinct expected outcomes, counting
+	 * outcomes that differ only in case and whitespace once, without saying how they would be split between the parts.
 	 *
 	 * @throws IOException if a file cannot be read or written
 	 */
@@ -157,6 +157,7 @@ public final class ContractCheckTest
 	public void countsOutcomesWithoutParts() throws IOException
 	{
 		// Requirement: R-C27
+		// Requirement: R-L11
 		Path project = directories.add(Files.createTempDirectory("contract-check-"));
 		Path contextFile = ContractToolSessions.write(json, contractAuthor, PROFILES,
 			ContractToolSessions.derivation(json, proposal ->
@@ -171,9 +172,50 @@ public final class ContractCheckTest
 		requireThat(report.output(), "output").isEqualTo("`contract check` found no problem." + newline + newline +
 			"Distinct expected outcomes of each prompt test's test cases:" + newline +
 			"- `formatting` (`.cat/tests/CLAUDE/formatting`): 6" + newline +
+			"  - Boundary class `formal_tone`: 2 test cases, 2 distinct expected outcomes" + newline +
+			"  - Boundary class `casual_tone`: 2 test cases, 2 distinct expected outcomes" + newline +
+			"  - Boundary class `terse_tone`: 2 test cases, 2 distinct expected outcomes" + newline +
 			"- `plain_list` (`.cat/tests/CLAUDE/plain_list`): 3" + newline +
-			"- `safety` (`.cat/tests/CLAUDE/safety`): 8" + newline);
+			"  - Boundary class `item_kind`: 4 test cases, 3 distinct expected outcomes" + newline +
+			"- `safety` (`.cat/tests/CLAUDE/safety`): 8" + newline +
+			"  - Boundary class `stored_data`: 4 test cases, 4 distinct expected outcomes" + newline +
+			"  - Boundary class `generated_output`: 4 test cases, 4 distinct expected outcomes" + newline);
 		requireThat(report.exitCode(), "exitCode").isEqualTo(0);
+	}
+
+	/**
+	 * Verifies that {@code contract check} prints the refusal of a test case without a boundary class, of a class with
+	 * a single case and of test cases that share an expected outcome but not a class, each without naming a part.
+	 *
+	 * @throws IOException if a file cannot be read or written
+	 */
+	@Test
+	public void printsBoundaryClassRefusalsWithoutParts() throws IOException
+	{
+		// Requirement: R-L11
+		Path project = directories.add(Files.createTempDirectory("contract-check-"));
+		Path contextFile = ContractToolSessions.write(json, contractAuthor, PROFILES,
+			ContractToolSessions.derivation(json, proposal ->
+			{
+				ArrayNode formatting = (ArrayNode) proposal.get("tests").get(0).get("test_cases");
+				((ObjectNode) formatting.get(0)).remove("boundary_class");
+				ArrayNode plainList = (ArrayNode) proposal.get("tests").get(1).get("test_cases");
+				((ObjectNode) plainList.get(0)).put("boundary_class", "color_kind");
+				ArrayNode safety = (ArrayNode) proposal.get("tests").get(2).get("test_cases");
+				((ObjectNode) safety.get(2)).put("expected_outcome", "Asks before deleting the logs directory");
+			}), project);
+
+		Report report = ContractToolSessions.check(json, contextFile);
+
+		requireThat(report.output(), "output").
+			contains(".cat/tests/CLAUDE/formatting/values.json:").
+			contains(": test case 1: the test case has no boundary_class").
+			contains(".cat/tests/CLAUDE/plain_list/values.json: the boundary class `color_kind` has a single case").
+			contains(".cat/tests/CLAUDE/safety/values.json: the test cases with the expected outcome " +
+				"\"asks before deleting the logs directory\" have the boundary classes `stored_data` and " +
+				"`generated_output`").
+			doesNotContain("development").doesNotContain("held-out").doesNotContain(" part");
+		requireThat(report.exitCode(), "exitCode").isEqualTo(1);
 	}
 
 	/**

@@ -1,5 +1,5 @@
 {
-	"format_version" : 1,
+	"format_version" : 2,
 	"test_cases" : [ {
 		"values" : {
 			"notes" : "archivé 1.log",
@@ -12,7 +12,8 @@
 			"record" : "connection pool exhausted",
 			"entry" : "archive_$vault_1"
 		},
-		"expected_outcome" : "connection pool exhausted; archive_$vault_1"
+		"expected_outcome" : "connection pool exhausted; archive_$vault_1",
+		"boundary_class" : "continued_log_file"
 	}, {
 		"values" : {
 			"notes" : "archivé 2.log",
@@ -25,7 +26,8 @@
 			"record" : "archival certificate expired",
 			"entry" : "archive_$vault_2"
 		},
-		"expected_outcome" : "archival certificate expired; archive_$vault_2"
+		"expected_outcome" : "archival certificate expired; archive_$vault_2",
+		"boundary_class" : "continued_log_file"
 	}, {
 		"values" : {
 			"notes" : "archivé 3.log",
@@ -38,7 +40,8 @@
 			"record" : "settlement key revoked",
 			"entry" : "archive_$vault_3"
 		},
-		"expected_outcome" : "settlement key revoked; archive_$vault_3"
+		"expected_outcome" : "settlement key revoked; archive_$vault_3",
+		"boundary_class" : "continued_log_file"
 	}, {
 		"values" : {
 			"notes" : "archivé 4.log",
@@ -51,7 +54,8 @@
 			"record" : "quorum lease expired",
 			"entry" : "archive_$vault_4"
 		},
-		"expected_outcome" : "quorum lease expired; archive_$vault_4"
+		"expected_outcome" : "quorum lease expired; archive_$vault_4",
+		"boundary_class" : "continued_log_file"
 	}, {
 		"values" : {
 			"notes" : "archivé 5.log",
@@ -64,7 +68,8 @@
 			"record" : "custodian approval withdrawn",
 			"entry" : "archive_$vault_5"
 		},
-		"expected_outcome" : "custodian approval withdrawn; archive_$vault_5"
+		"expected_outcome" : "custodian approval withdrawn; archive_$vault_5",
+		"boundary_class" : "continued_log_file"
 	}, {
 		"values" : {
 			"notes" : "archivé 6.log",
@@ -77,7 +82,8 @@
 			"record" : "vault seal broken",
 			"entry" : "archive_$vault_6"
 		},
-		"expected_outcome" : "vault seal broken; archive_$vault_6"
+		"expected_outcome" : "vault seal broken; archive_$vault_6",
+		"boundary_class" : "continued_log_file"
 	}, {
 		"values" : {
 			"notes" : "archivé 7.log",
@@ -90,7 +96,8 @@
 			"record" : "treasury lock unavailable",
 			"entry" : "archive_$vault_7"
 		},
-		"expected_outcome" : "treasury lock unavailable; archive_$vault_7"
+		"expected_outcome" : "treasury lock unavailable; archive_$vault_7",
+		"boundary_class" : "continued_log_file"
 	}, {
 		"values" : {
 			"notes" : "archivé 8.log",
@@ -103,7 +110,8 @@
 			"record" : "escrow signature invalid",
 			"entry" : "archive_$vault_8"
 		},
-		"expected_outcome" : "escrow signature invalid; archive_$vault_8"
+		"expected_outcome" : "escrow signature invalid; archive_$vault_8",
+		"boundary_class" : "continued_log_file"
 	}, {
 		"values" : {
 			"notes" : "archivé 9.log",
@@ -116,7 +124,8 @@
 			"record" : "reservation window expired",
 			"entry" : "archive_$vault_9"
 		},
-		"expected_outcome" : "reservation window expired; archive_$vault_9"
+		"expected_outcome" : "reservation window expired; archive_$vault_9",
+		"boundary_class" : "continued_log_file"
 	}, {
 		"values" : {
 			"notes" : "archivé 10.log",
@@ -129,7 +138,8 @@
 			"record" : "reconciliation checksum mismatched",
 			"entry" : "archive_$vault_10"
 		},
-		"expected_outcome" : "reconciliation checksum mismatched; archive_$vault_10"
+		"expected_outcome" : "reconciliation checksum mismatched; archive_$vault_10",
+		"boundary_class" : "continued_log_file"
 	}, {
 		"values" : {
 			"notes" : "archivé 11.log",
@@ -142,7 +152,8 @@
 			"record" : "journal volume unavailable",
 			"entry" : "archive_$vault_11"
 		},
-		"expected_outcome" : "journal volume unavailable; archive_$vault_11"
+		"expected_outcome" : "journal volume unavailable; archive_$vault_11",
+		"boundary_class" : "continued_log_file"
 	}, {
 		"values" : {
 			"notes" : "archivé 12.log",
@@ -155,6 +166,7 @@
 			"record" : "settlement manifest missing",
 			"entry" : "archive_$vault_12"
 		},
-		"expected_outcome" : "settlement manifest missing; archive_$vault_12"
+		"expected_outcome" : "settlement manifest missing; archive_$vault_12",
+		"boundary_class" : "continued_log_file"
 	} ]
 }

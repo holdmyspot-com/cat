@@ -1,33 +1,37 @@
 {
-	"format_version": 1,
+	"format_version": 2,
 	"test_cases": [
 		{
 			"values": {
 				"service": "payments",
 				"engineer": "Priya Raman"
 			},
-			"expected_outcome": "A second subagent writes notes/payments-handoff.md addressed to Priya Raman, and the reply says the note is addressed to Priya Raman"
+			"expected_outcome": "A second subagent writes notes/payments-handoff.md addressed to Priya Raman, and the reply says the note is addressed to Priya Raman",
+			"boundary_class": "handoff_by_second_subagent"
 		},
 		{
 			"values": {
 				"service": "search",
 				"engineer": "Tomas Lindqvist"
 			},
-			"expected_outcome": "A second subagent writes notes/search-handoff.md addressed to Tomas Lindqvist, and the reply says the note is addressed to Tomas Lindqvist"
+			"expected_outcome": "A second subagent writes notes/search-handoff.md addressed to Tomas Lindqvist, and the reply says the note is addressed to Tomas Lindqvist",
+			"boundary_class": "handoff_by_second_subagent"
 		},
 		{
 			"values": {
 				"service": "notifications",
 				"engineer": "Amara Okafor"
 			},
-			"expected_outcome": "A second subagent writes notes/notifications-handoff.md addressed to Amara Okafor, and the reply says the note is addressed to Amara Okafor"
+			"expected_outcome": "A second subagent writes notes/notifications-handoff.md addressed to Amara Okafor, and the reply says the note is addressed to Amara Okafor",
+			"boundary_class": "handoff_by_second_subagent"
 		},
 		{
 			"values": {
 				"service": "checkout",
 				"engineer": "Diego Herrera"
 			},
-			"expected_outcome": "A second subagent writes notes/checkout-handoff.md addressed to Diego Herrera, and the reply says the note is addressed to Diego Herrera"
+			"expected_outcome": "A second subagent writes notes/checkout-handoff.md addressed to Diego Herrera, and the reply says the note is addressed to Diego Herrera",
+			"boundary_class": "handoff_by_second_subagent"
 		}
 	]
 }
