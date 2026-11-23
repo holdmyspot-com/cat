@@ -5432,7 +5432,7 @@ models that `codex debug models` reports and asked; given `gpt-6-luna`, `low`, i
 | WI-160 | Not started; designed 2026-11-23 (`design.md` §8 "Codex authentication", D163, H44, H45, P24 and P26) and revised the same day by the user's source-home ruling. P24 and P26 are not run; Q22 to Q24 await the user's rulings. Needs WI-159. Closes R-I15. |
 | WI-161 | Not started; designed 2026-11-23 (`design.md` §6.3 test design rule 5 and the outcome review, §6.4 "Evidence scope", "Sessions by scope", "Why the scopes stay when assertions are split" and "Consistent verdicts", D164, D165) with the user's rulings of the same day. Step 1 needs WI-150; step 3 needs WI-156. Closes R-L19 and R-L20. |
 | WI-162 | Implemented 2026-11-23 (clone full build 6472 tests, 0 failures; `design.md` "Each trial installs every trial plugin", D167). Codex campaigns whose trial plugin is CAT built from the project, such as `20261123T152244Z-94bfcc`, measured trials without session rules until a build with WI-162 is installed. Amends R-W12. |
-| WI-163 | Not started; designed 2026-11-23 (`design.md` §6.4 "Check programs", §6.3 test design rule 5, the scenario format and "Outcome coverage" step 1, §6.1 "Guard pilot" and "Assertion agreement", D168, H46 and P27). Not ready: waits for the user's choices Q25 and Q26 and for P27, each blocking only its part. Needs WI-155, WI-156 and WI-161. Closes R-L21 and R-L22. |
+| WI-163 | Not started; designed 2026-11-23 (`design.md` §6.4 "Check programs", §6.3 test design rule 5, the scenario format and "Outcome coverage" step 1, §6.1 "Guard pilot" and "Assertion agreement", D168, H46 and P27). Not ready: waits for P27, for its macOS part only (the user ruled Q25 and Q26 on 2026-11-23). Needs WI-155, WI-156 and WI-161. Closes R-L21 and R-L22. |
 | WI-145 | Implemented 2026-11-16 (Claude implementer; `87db96986`..`a378c7aa5`; clean full build 6034 tests, 0 failures, 0 errors, 6 skipped): one in-place registrar (`GitWorktreeRegistrar`) for add, recreate, remove and repair behind `Fork`, `GitForks` and the session-start sweep; worktree requests (`worktree-<uuid>.tar`, document of operation and campaign only) served on a thread of their own by the request server (with the `.git/config`/`.git/hooks` write check against the session's policy) and by a run's runner (the one campaign of that identifier in the run's project; refused when the run allows no requests), counted against no limit; the client (`WorktreeRequestClient`) sends by the launch route, sends nothing for intact links, and `start`, `run`, `choose` and `cancel` refuse with status 2 before any change when no server serves the session; the Claude runner's `.git/worktrees` grant removed (session environment version 25); the build-command limit stated in the prompt-optimizer skill. Remaining: the live checks in Claude Code and Codex. Decided 2026-11-16: the code stays (`status` never reconnects; a campaign without its worktree is not a fork, `ForksContract.missingWorktreeIsNotAFork`), and the live check names the next command that reconnects (`run` or `choose`) instead. Probe evidence: `~/cat/worktrees/gitwt-probe4/` and `gitwt-probe3/`. |
 | Incremental build-workflow rule (user request, 2026-10-25) | Done 2026-10-27 (Codex; `ebe1687e7d`, released in v1.0). Record: [history](plan-history.md). |
 | G9 Git diff owner (`4da627d85c`) | Done 2026-10-27 (Claude `optimize-high`). Record: [history](plan-history.md). |
@@ -11006,7 +11006,7 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 		not regular in either, and a program that `checks/` does not hold. The confirmed contract records each file's
 		SHA-256, so an edit is a test revision, and delivery writes the files with the scenario. Staging already leaves
 		the prompt test directory out of every trial (`PromptTestLocations`); a test pins that.
-	2. **Running (needs Q25 for the launch, Q26 for native Windows and P27 for macOS).** `TrialRecord` gains the final
+	2. **Running (needs P27 for its macOS part; Q25 and Q26 are ruled).** `TrialRecord` gains the final
 		and initial project directories and the activity, which `TrialEvidence` supplies from `SessionResult.Completed`
 		and `SessionEvidence`. `CheckProgram` builds the input directory (`project/`, `initial/`, `activity.json` in the
 		activity format version 1 that a peer evaluator's `evaluator-evidence.json` uses, `replies.json`, `checks/`)
@@ -11035,7 +11035,7 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 		example directories and the refusals. `Markdown` shows each check-program assertion with its program and its
 		examples' results. WI-161 step 3's warning on an `actions` assertion whose happening a tool could decide names
 		`check-program` when no fixed tool applies.
-	5. **Runtime (under Q25's option (a)).** `DistributionMain` adds `jdk.compiler` to the modules of the runtime that
+	5. **Runtime (Q25's option (a), ruled).** `DistributionMain` adds `jdk.compiler` to the modules of the runtime that
 		both harness artifacts ship. The tool's version covers the input format and the runtime's Java feature version.
 - **Premise:** P27 (`design.md` §12) runs on a macOS host with Claude Code 2.1.330 and Codex: a Java program from the
 	bundled runtime under a CAT-written `sandbox-exec` profile, once inside Claude Code's Bash sandbox and once outside
@@ -11074,29 +11074,32 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 	on the build host. Gate 3's list of processes that tests start gains `bwrap` and `sandbox-exec`. End to end, on
 	Linux, one campaign in each harness whose prompt test has a check-program assertion with passing and failing
 	examples runs its guard pilot to the proposal, and the proposal shows each pilot trial's verdict from the program.
-- **Open choices (for the user; each blocks only the parts that depend on it):**
-	- **Q25, how a check program is launched:** (a) a Java source program, `checks/<Name>.java` with any other `.java`
-		files of `checks/`, run in source-file mode by the Java runtime that CAT ships in both artifacts, without a shell.
-		A program decides alike on Linux, macOS and Windows and needs nothing on the host; authors and the contract
-		author's model write Java; the runtime grows by `jdk.compiler`, by a size not yet measured, and each run starts a
-		JVM and compiles in memory. (b) A command that the author names, such as `python3 checks/check.py`, run from the
-		host's `PATH` without a shell: any language, but the verdict depends on the host's interpreter and its version,
-		which the measurement identity would have to record, a host without the interpreter refuses the proposal, and
-		interpreter names differ between platforms (`python3` is not on a default Windows `PATH`). Recommended: (a),
-		because a verdict that one host's interpreter shapes is not reproducible on another host of the same campaign.
-	- **Q26, what native Windows does with a check program:** CAT has no sandbox for a program there, and already
-		refuses sandboxed Claude sessions on native Windows. (a) Refuse a proposal with a check program and direct the
-		user to WSL2. (b) Run the program there without a sandbox and warn in the proposal: the program, which the
-		contract author's model wrote, could then reach the network, write the user's files and read held-out content
-		into a rationale that development reads. (c) Build a Windows sandbox for it, such as an AppContainer with a
-		restricted token, which CAT has no code for. Recommended: (a), because it matches the existing Windows rule and
-		costs nothing, while (b) breaks the held-out separation and (c) adds a platform-specific sandbox to maintain.
+- **Choices (user rulings, 2026-11-23):**
+	- **Q25, how a check program is launched. Ruled: (a); user's words: "25. a".** (a) A Java source program,
+		`checks/<Name>.java` with any other `.java` files of `checks/`, run in source-file mode by the Java runtime
+		that CAT ships in both artifacts, without a shell. A program decides alike on Linux, macOS and Windows and
+		needs nothing on the host; authors and the contract author's model write Java; the runtime grows by
+		`jdk.compiler`, by a size not yet measured, and each run starts a JVM and compiles in memory. (b) A command
+		that the author names, such as `python3 checks/check.py`, run from the host's `PATH` without a shell: any
+		language, but the verdict depends on the host's interpreter and its version, which the measurement identity
+		would have to record, a host without the interpreter refuses the proposal, and interpreter names differ
+		between platforms (`python3` is not on a default Windows `PATH`). Recommended: (a), because a verdict that one
+		host's interpreter shapes is not reproducible on another host of the same campaign.
+	- **Q26, what native Windows does with a check program. Ruled: (a); user's words: "26. Is this for
+		prompt-optimization? If so: a". Check programs are part of prompt tests in the prompt optimizer, so the ruling
+		applies.** CAT has no sandbox for a program there, and already refuses sandboxed Claude sessions on native
+		Windows. (a) Refuse a proposal with a check program and direct the user to WSL2. (b) Run the program there
+		without a sandbox and warn in the proposal: the program, which the contract author's model wrote, could then
+		reach the network, write the user's files and read held-out content into a rationale that development reads.
+		(c) Build a Windows sandbox for it, such as an AppContainer with a restricted token, which CAT has no code
+		for. Recommended: (a), because it matches the existing Windows rule and costs nothing, while (b) breaks the
+		held-out separation and (c) adds a platform-specific sandbox to maintain.
 - **Classes affected:** `BuiltInTool`, `ToolLine`, `ScenarioParser`, `PromptTest`, `PromptTestFiles`, `TrialRecord`,
 	`TrialEvidence`, `PeerTrialEvidence` and the moved activity writer, `CheckProgram` and its sandbox launcher (new),
 	`Driver`, `InFlight`, `EarlyTrialEnd`, `GuardPilot`, `ProposalCheck`, `TestRevisionCheck`, `Markdown`, the
 	prompt-test delivery, `DistributionMain`, and WI-156's `OutcomeCoverage`.
 - **Tier and dependencies:** `optimize-xhigh`. Steps 1 and 2 need WI-161 step 1, whose scope rule refuses `response`
-	on this tool; step 2's launch waits for Q25, its Windows part for Q26 and its macOS part for P27. Step 3 needs
+	on this tool; step 2 waits only for P27, for its macOS part (Q25 and Q26 are ruled). Step 3 needs
 	WI-155 and WI-156, whose conditions, classes, coverage replies and outcome review it extends. Step 4 needs WI-161
 	step 2, which rewrites the same author instructions.
 - **Exit:** P27 passed or its fallback is applied, the tests above pass and failed before the change, the clean full
