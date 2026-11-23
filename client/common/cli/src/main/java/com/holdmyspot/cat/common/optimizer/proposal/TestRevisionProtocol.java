@@ -191,7 +191,7 @@ public final class TestRevisionProtocol
 			Map.entry("generators", ValueGenerators.describeAll()), Map.entry("output_schema", outputSchema),
 			Map.entry("output_file", files.context().proposalFile()), Map.entry("draft_directory", files.draft()),
 			Map.entry("launcher", contractAuthor.launcher()), Map.entry("context_file", files.contextFile())));
-		FollowUp correct = result -> correction(result, examined, files);
+		FollowUp correct = result -> correction(result, promptSystem, examined, files);
 		return new SessionRequest(SessionRole.CONTRACT_AUTHOR, Part.DEVELOPMENT, promptSystem, List.of(turn),
 			List.of(), TIME_LIMIT, contractAuthor.role(), files, List.of(), Optional.of(correct));
 	}
@@ -250,17 +250,18 @@ public final class TestRevisionProtocol
 	/**
 	 * Returns the turn that asks the session to correct its result.
 	 *
-	 * @param result   the session's result after it sent its answer
-	 * @param examined what the session examined
-	 * @param files    the files that the session's project received
+	 * @param result       the session's result after it sent its answer
+	 * @param promptSystem the directory that holds the prompt system, which the request named
+	 * @param examined     what the session examined
+	 * @param files        the files that the session's project received
 	 * @return the turn that lists the result's problems, or empty if the result is valid
 	 */
-	private Optional<String> correction(SessionResult.Completed result, Examination examined,
+	private Optional<String> correction(SessionResult.Completed result, Path promptSystem, Examination examined,
 		ContractAuthorFiles files)
 	{
 		try
 		{
-			validate(result, examined);
+			validate(result, promptSystem, examined);
 			return Optional.empty();
 		}
 		catch (InvalidProposalException e)
@@ -281,8 +282,9 @@ public final class TestRevisionProtocol
 	 * confirmed one, which holds the confirmed draft with the corrected test's files and their generator calls'
 	 * seeds.
 	 *
-	 * @param result   the session's result
-	 * @param examined what the session examined
+	 * @param result       the session's result
+	 * @param promptSystem the directory that holds the prompt system, which the request named
+	 * @param examined     what the session examined
 	 * @return the outcome of the examination; a corrected test's proposal has the new draft directory, each prompt
 	 *   test's change from the recorded one and the confirmed proposal's derived sources
 	 * @throws NullPointerException     if any of the arguments are null
@@ -296,9 +298,10 @@ public final class TestRevisionProtocol
 	 *                                  invalid. The exception lists every problem found.
 	 * @throws UncheckedIOException     if a file cannot be read or written
 	 */
-	public Result result(SessionResult.Completed result, Examination examined) throws InvalidProposalException
+	public Result result(SessionResult.Completed result, Path promptSystem, Examination examined)
+		throws InvalidProposalException
 	{
-		Result outcome = validate(result, examined);
+		Result outcome = validate(result, promptSystem, examined);
 		if (!(outcome instanceof Result.Revised revised))
 			return outcome;
 		DerivedProposal confirmed = examined.confirmed();
@@ -322,24 +325,29 @@ public final class TestRevisionProtocol
 	/**
 	 * Validates a test revision session's result without changing a file.
 	 *
-	 * @param result   the session's result
-	 * @param examined what the session examined
+	 * @param result       the session's result
+	 * @param promptSystem the directory that holds the prompt system, which the request named
+	 * @param examined     what the session examined
 	 * @return the outcome of the examination; a corrected test's proposal has the session's draft directory, which
 	 *   holds only the corrected test
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws InvalidProposalException if the result is invalid
 	 * @throws UncheckedIOException     if a file cannot be read
 	 */
-	private Result validate(SessionResult.Completed result, Examination examined) throws InvalidProposalException
+	private Result validate(SessionResult.Completed result, Path promptSystem, Examination examined)
+		throws InvalidProposalException
 	{
 		requireThat(result, "result").isNotNull();
+		requireThat(promptSystem, "promptSystem").isNotNull();
 		requireThat(examined, "examined").isNotNull();
 		ObjectNode output = outputFile.read(result);
 		contractAuthor.rewriteProjectPaths(output, result.effects());
 		DerivedProposal confirmed = examined.confirmed();
 		TestRevisionCheck check = check(examined);
 		Path effects = result.effects();
-		String draftName = DraftDirectory.name(result.initialProject());
+		// The session's draft directory is named from the prompt system, as the request named it; the initial project
+		// already holds that directory, so a name chosen from it would differ
+		String draftName = DraftDirectory.name(promptSystem);
 		DraftDirectory.restoreReturnedLinks(effects, draftName);
 		Path draft = effects.resolve(draftName);
 		Result outcome = check.validate(output, effects, draft, confirmed.observedSources(), examined.profiles(),

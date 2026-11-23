@@ -259,7 +259,8 @@ public final class TestRevisionTest
 		try
 		{
 			protocol.result(ContractToolSessions.completed(project,
-				directories.add(Files.createTempDirectory("test-revision-initial-"))), examined);
+				directories.add(Files.createTempDirectory("test-revision-initial-"))),
+				ContractToolSessions.PROMPT_SYSTEM, examined);
 			throw new AssertionError("The session-end validation accepted the result");
 		}
 		catch (InvalidProposalException e)
@@ -345,7 +346,8 @@ public final class TestRevisionTest
 		try
 		{
 			protocol.result(ContractToolSessions.completed(project,
-				directories.add(Files.createTempDirectory("test-revision-initial-"))), examined);
+				directories.add(Files.createTempDirectory("test-revision-initial-"))),
+				ContractToolSessions.PROMPT_SYSTEM, examined);
 			throw new AssertionError("The session-end validation accepted the result");
 		}
 		catch (InvalidProposalException e)
@@ -378,7 +380,8 @@ public final class TestRevisionTest
 		try
 		{
 			protocol.result(ContractToolSessions.completed(project,
-				directories.add(Files.createTempDirectory("test-revision-initial-"))), examined);
+				directories.add(Files.createTempDirectory("test-revision-initial-"))),
+				ContractToolSessions.PROMPT_SYSTEM, examined);
 			throw new AssertionError("The session-end validation accepted the result");
 		}
 		catch (InvalidProposalException e)
@@ -417,7 +420,8 @@ public final class TestRevisionTest
 		requireThat(report.exitCode(), "exitCode").isEqualTo(0);
 
 		Result result = protocol.result(ContractToolSessions.completed(project,
-			directories.add(Files.createTempDirectory("test-revision-initial-"))), examined);
+			directories.add(Files.createTempDirectory("test-revision-initial-"))),
+			ContractToolSessions.PROMPT_SYSTEM, examined);
 		Result.Revised revised = (Result.Revised) result;
 		requireThat(revised.proposal().contract().findTest("formatting").orElseThrow().turns().getFirst(), "turn").
 			isEqualTo("Summarize the meeting notes in {{tone}} style.");
@@ -428,6 +432,41 @@ public final class TestRevisionTest
 			contains("Summarize the meeting notes");
 		requireThat(Files.readString(confirmedDraft.resolve(FORMATTING).resolve("scenario.md"), UTF_8),
 			"confirmedScenario").isEqualTo(confirmedScenario);
+	}
+
+	/**
+	 * Verifies that the session-end validation reads the draft directory that the session received and restores its
+	 * links from the declarations that the runner returns beside the project, although the project as the session
+	 * started, which the runner returns as the initial project, already holds that draft directory.
+	 *
+	 * @throws IOException              if a file cannot be read or written
+	 * @throws InvalidProposalException if a proposal is refused
+	 */
+	@Test
+	public void readsDraftThatSessionReceived() throws IOException, InvalidProposalException
+	{
+		// Requirement: R-C26
+		Examination examined = examination();
+		SessionRequest request = protocol.request(ContractToolSessions.PROMPT_SYSTEM, examined);
+		Path session = directories.add(Files.createTempDirectory("test-revision-session-"));
+		Path project = Files.createDirectory(session.resolve("project"));
+		request.files().write(project);
+		// The runner copies the project, with the files that CAT writes, before the session starts
+		Path initialProject = Files.createDirectory(session.resolve("initial-project"));
+		request.files().write(initialProject);
+		ContractContext context = ContractContext.read(json, contextFile(project));
+		// The runner returns the draft directory's link declarations beside the project; this draft has no links
+		Files.createDirectories(session.resolve("project-link-declarations").resolve(context.draft()));
+		String output = DraftFixtures.writeRevision(json, revisedFormatting(_ ->
+		{
+		}), project.resolve(context.draft()), Path.of("CLAUDE.md"), Map.of());
+		Files.writeString(project.resolve(context.proposalFile()), output, UTF_8);
+
+		Result result = protocol.result(ContractToolSessions.completed(project, initialProject),
+			ContractToolSessions.PROMPT_SYSTEM, examined);
+		requireThat(result, "result").isInstanceOf(Result.Revised.class);
+		requireThat(((Result.Revised) result).proposal().contract().findTest("formatting").orElseThrow().turns().
+			getFirst(), "turn").isEqualTo("Summarize the meeting notes in {{tone}} style.");
 	}
 
 	/**
@@ -454,7 +493,8 @@ public final class TestRevisionTest
 			System.lineSeparator());
 		requireThat(report.exitCode(), "exitCode").isEqualTo(0);
 		requireThat(protocol.result(ContractToolSessions.completed(project,
-			directories.add(Files.createTempDirectory("test-revision-initial-"))), examined), "result").
+			directories.add(Files.createTempDirectory("test-revision-initial-"))),
+			ContractToolSessions.PROMPT_SYSTEM, examined), "result").
 			isEqualTo(new Result.Sound("The turns are organic and prove r1."));
 	}
 }

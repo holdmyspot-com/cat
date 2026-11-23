@@ -2577,7 +2577,7 @@ public final class OptimizerCore implements Core
 			TestRevisionProtocol.Result outcome;
 			try
 			{
-				outcome = protocol.result(completed, examined);
+				outcome = protocol.result(completed, staged, examined);
 			}
 			catch (InvalidProposalException e)
 			{
