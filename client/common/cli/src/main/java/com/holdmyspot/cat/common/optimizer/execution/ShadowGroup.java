@@ -20,6 +20,9 @@ import java.util.Set;
  * The group is complete once the frozen judge decided and every candidate either decided or could not produce a
  * usable verdict. A group that the frozen judge's failure abandoned ignores the candidates' results.
  * <p>
+ * A trial whose verdicts are stored, in whole or in part, forms no group: a comparison counts once, when its sessions
+ * ran, so a stored verdict adds no shadowed trial, spot check or agreement.
+ * <p>
  * <b>Thread Safety:</b> This class is not thread-safe. The driver's thread is its only user.
  */
 final class ShadowGroup

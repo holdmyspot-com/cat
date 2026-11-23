@@ -26,12 +26,14 @@ import com.holdmyspot.cat.common.optimizer.campaign.test.Builder;
 import com.holdmyspot.cat.common.optimizer.contract.Assertion;
 import com.holdmyspot.cat.common.optimizer.contract.Cell;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
+import com.holdmyspot.cat.common.optimizer.contract.JudgeProfile;
 import com.holdmyspot.cat.common.optimizer.contract.NearMisses;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.ProposalSchema;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
 import com.holdmyspot.cat.common.optimizer.execution.Driver;
+import com.holdmyspot.cat.common.optimizer.execution.VerdictRecord;
 import com.holdmyspot.cat.common.optimizer.inventory.InventoryScanner;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
@@ -762,6 +764,120 @@ public final class DevelopmentJudgeDriverTest
 	}
 
 	/**
+	 * A trial that takes stored verdicts adds no shadowed trial and no agreement count: only the trials whose
+	 * sessions ran are compared. The frozen judge's verdict and the candidate's verdict for one evidence are two
+	 * records, and the frozen one counts for the trial.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void hitAddsNoShadowedTrial() throws IOException
+	{
+		// Requirement: R-L10
+		Contract contract = withoutFileNames(ContractFixtures.withNearMisses(ContractFixtures.contract()));
+		DevelopmentJudge shadowing = shadowingAt(contract, 290, 0, List.of(), 0, 0);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("shadowing-hits")),
+				developing(contract).judge(TEST, shadowing).judge("plain_list", frozenOnly()).
+					judge("safety", frozenOnly()).window(8).build());
+			harness.candidateJudges(List.of(CHEAP));
+			Fixture fixture = new Fixture(harness);
+			fixture.judges(use ->
+			{
+				if (use.profile().equals(CHEAP))
+					return Verdict.FAIL;
+				return Verdict.PASS;
+			}, (_, _) -> Verdict.PASS);
+			int before = harness.campaign().development().count(TEST).outcomes();
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, state -> state.development().count(TEST).outcomes() >= before + 30);
+				harness.settle(driver);
+			}
+			Campaign campaign = harness.campaign();
+			DevelopmentJudge judge = campaign.judges().get(TEST);
+			int frozenSessions = fixture.uses(TEST, Purpose.DEVELOPMENT, frozen(contract)).size();
+			int candidateSessions = fixture.uses(TEST, Purpose.DEVELOPMENT, CHEAP).size();
+			requireThat(frozenSessions, "frozenSessions").isLessThan(fixture.trials(TEST, Purpose.DEVELOPMENT));
+			requireThat(judge.shadowed() - 290, "addedShadowed").isEqualTo(frozenSessions);
+			requireThat(judge.strict(), "strict").isEqualTo(judge.shadowed() - 290);
+			requireThat(candidateSessions, "candidateSessions").isEqualTo(frozenSessions);
+			requireThat(campaign.development().count(TEST).failures(), "failures").isEqualTo(0);
+			Set<String> frozenTrials = new HashSet<>();
+			Set<String> candidateTrials = new HashSet<>();
+			Set<Verdict> candidateVerdicts = EnumSet.noneOf(Verdict.class);
+			for (VerdictRecord record : harness.store().verdicts(DriverHarness.CAMPAIGN).values())
+			{
+				TrialProfile recordJudge = new TrialProfile(record.judgeModel(), record.judgeEffort());
+				if (recordJudge.equals(CHEAP))
+				{
+					candidateVerdicts.add(record.verdict().verdict());
+					candidateTrials.add(record.trial());
+				}
+				else
+				{
+					requireThat(record.verdict().verdict(), "frozenVerdict").isEqualTo(Verdict.PASS);
+					frozenTrials.add(record.trial());
+				}
+			}
+			requireThat(candidateVerdicts, "candidateVerdicts").contains(Verdict.FAIL);
+			requireThat(frozenTrials, "frozenRecordTrials").containsAll(candidateTrials);
+		}
+	}
+
+	/**
+	 * A development trial that takes the qualified candidate's stored verdicts adds no spot check: the frozen judge
+	 * runs exactly for the spot checks, which all ran sessions.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void hitAddsNoSpotCheck() throws IOException
+	{
+		// Requirement: R-L10
+		Contract contract = withoutFileNames(ContractFixtures.withNearMisses(ContractFixtures.contract()));
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("spot-check-hits")),
+				developing(contract).judge(TEST, qualified(contract)).judge("plain_list", frozenOnly()).
+					judge("safety", frozenOnly()).window(8).build());
+			harness.candidateJudges(List.of(CHEAP));
+			Fixture fixture = new Fixture(harness);
+			fixture.judges(_ -> Verdict.PASS, (_, _) -> Verdict.PASS);
+			int before = harness.campaign().development().count(TEST).outcomes();
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, state -> state.development().count(TEST).outcomes() >= before + 40);
+				harness.settle(driver);
+			}
+			DevelopmentJudge judge = harness.campaign().judges().get(TEST);
+			int frozenSessions = fixture.uses(TEST, Purpose.DEVELOPMENT, frozen(contract)).size();
+			int candidateSessions = fixture.uses(TEST, Purpose.DEVELOPMENT, CHEAP).size();
+			requireThat(judge.spotChecked(), "spotChecked").isEqualTo(frozenSessions);
+			requireThat(frozenSessions + candidateSessions, "sessions").
+				isLessThan(fixture.trials(TEST, Purpose.DEVELOPMENT));
+		}
+	}
+
+	/**
+	 * Returns a contract whose judge template names neither the transcript nor the effects directory, so that the
+	 * verdicts of trials with the same replies and activity are stored under one key.
+	 *
+	 * @param contract the contract
+	 * @return the contract
+	 */
+	private static Contract withoutFileNames(Contract contract)
+	{
+		JudgeProfile judge = contract.judge();
+		JudgeProfile withoutFiles = new JudgeProfile(judge.profile(), judge.prompt().
+			replace("{{effects}}", "(not offered)").replace("{{transcript}}", "(not offered)"), judge.rubric(),
+			judge.decisionRule(), judge.resultSchema());
+		return new Contract(contract.requirements(), contract.tests(), contract.profiles(), withoutFiles,
+			contract.limitations(), contract.minimumPassRate(), contract.salt());
+	}
+
+	/**
 	 * Returns a builder for a confirmed campaign that develops candidate 1 and has met its baseline.
 	 *
 	 * @param contract the contract
@@ -976,6 +1092,19 @@ public final class DevelopmentJudgeDriverTest
 				}
 			}
 			return matches;
+		}
+
+		/**
+		 * Returns the number of trials of a test, of one purpose, whose sessions ended.
+		 *
+		 * @param test the test
+		 * @param purpose the purpose
+		 * @return the number of trials
+		 */
+		private int trials(String test, Purpose purpose)
+		{
+			return (int) trials.values().stream().filter(use -> use.test().equals(test) && use.purpose() == purpose).
+				count();
 		}
 
 		/**

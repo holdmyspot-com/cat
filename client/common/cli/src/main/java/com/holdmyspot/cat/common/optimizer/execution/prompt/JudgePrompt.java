@@ -2,8 +2,6 @@ package com.holdmyspot.cat.common.optimizer.execution.prompt;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import com.holdmyspot.cat.common.optimizer.campaign.FailedAssertion;
-import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
 import com.holdmyspot.cat.common.optimizer.contract.BuiltInToolResult;
 import com.holdmyspot.cat.common.optimizer.contract.JudgeProfile;
 import com.holdmyspot.cat.common.optimizer.contract.JudgedAssertion;
@@ -12,8 +10,8 @@ import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.Requirement;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
 import com.holdmyspot.cat.common.optimizer.evidence.EvidencePrompt;
+import com.holdmyspot.cat.common.optimizer.execution.AssertionVerdict;
 import com.holdmyspot.cat.common.optimizer.execution.JudgeProtocol;
-import com.holdmyspot.cat.common.optimizer.execution.Judgment;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
@@ -168,10 +166,10 @@ public final class JudgePrompt implements JudgeProtocol
 	 * fence, that holds exactly {@code assertions}, as CAT's result schema requires. It holds one item per decided
 	 * assertion, each with exactly its {@code id}, a {@code verdict} of {@code pass} or {@code fail}, a non-blank
 	 * {@code rationale} and a {@code behavior}: {@code null} for a pass, and for a failure one of the behaviors that the
-	 * assertion admits. The rationale lists each assertion's verdict and rationale as the judge wrote it.
+	 * assertion admits. Each decision keeps its rationale as the judge wrote it.
 	 */
 	@Override
-	public Optional<Judgment> judgment(SessionResult.Completed result, List<JudgedAssertion> decided)
+	public Optional<List<AssertionVerdict>> verdicts(SessionResult.Completed result, List<JudgedAssertion> decided)
 	{
 		requireThat(result, "result").isNotNull();
 		requireThat(decided, "decided").isNotNull();
@@ -185,32 +183,16 @@ public final class JudgePrompt implements JudgeProtocol
 		for (JudgedAssertion judged : decided)
 			assertionById.put(judged.assertion().id(), judged);
 		Set<String> named = new HashSet<>();
-		List<FailedAssertion> failures = new ArrayList<>();
-		StringBuilder rationale = new StringBuilder();
+		List<AssertionVerdict> verdicts = new ArrayList<>();
 		for (JsonNode item : items)
 		{
 			Optional<Decided> decision = decision(item, assertionById);
 			if (decision.isEmpty() || !named.add(decision.get().id()))
 				return Optional.empty();
 			Decided assertion = decision.get();
-			if (!rationale.isEmpty())
-				rationale.append('\n');
-			rationale.append("- `").append(assertion.id()).append("`: ");
-			if (assertion.behavior() == null)
-				rationale.append("pass. ");
-			else
-			{
-				rationale.append("fail (").append(assertion.behavior()).append("). ");
-				failures.add(new FailedAssertion(assertion.id(), assertion.behavior()));
-			}
-			rationale.append(assertion.rationale());
+			verdicts.add(new AssertionVerdict(assertion.id(), assertion.behavior(), assertion.rationale()));
 		}
-		Verdict verdict;
-		if (failures.isEmpty())
-			verdict = Verdict.PASS;
-		else
-			verdict = Verdict.FAIL;
-		return Optional.of(new Judgment(verdict, rationale.toString(), failures));
+		return Optional.of(List.copyOf(verdicts));
 	}
 
 	/**

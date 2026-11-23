@@ -1066,6 +1066,16 @@ public final class DriverHarness
 	}
 
 	/**
+	 * Ends one running session with its scripted result.
+	 *
+	 * @param session the session
+	 */
+	public void end(FakeSession session)
+	{
+		session.end(respond(session.request()));
+	}
+
+	/**
 	 * Indicates whether a running session was ended. Ends the oldest one with its scripted result.
 	 *
 	 * @return {@code true} if a session was running

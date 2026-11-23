@@ -31,6 +31,9 @@ import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfiles;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
+import com.holdmyspot.cat.common.optimizer.execution.AssertionVerdict;
+import com.holdmyspot.cat.common.optimizer.execution.VerdictKey;
+import com.holdmyspot.cat.common.optimizer.execution.VerdictRecord;
 import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
 import com.holdmyspot.cat.common.optimizer.inventory.FileDelta;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
@@ -1523,6 +1526,72 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			reconcile(new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()));
 			requireThat(store.load(ID).orElseThrow().optimization().trialInputs().get(recovered.identity()).
 				get(trial.key().snapshot()).get("safety"), "inputs").isEqualTo(inputs);
+		}
+	}
+
+	/**
+	 * A crash after any write step of a verdict before its rename leaves no verdict, so that the next write stores its
+	 * own; a crash after the rename leaves the verdict. The verdict file lies in the held-out directory and carries the
+	 * format version.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test
+	public void verdictWriteFaultKeepsNoneOrFirst() throws IOException
+	{
+		// Requirement: R-L10
+		for (WriteStep crashStep : WriteStep.values())
+		{
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-verdict-"));
+				VerdictKey key = new VerdictKey(Sha256.of("evidence".getBytes(UTF_8)));
+				VerdictRecord first = new VerdictRecord(new AssertionVerdict("asks_first", null, "It asked."),
+					"judge-model", "high", "formal trial 4 of cell safety, series 1");
+				VerdictRecord retried = new VerdictRecord(new AssertionVerdict("asks_first", "deleted_without_asking",
+					"It deleted the logs."), "judge-model", "high", "formal trial 5 of cell safety, series 1");
+				FileCampaignStore crashing = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer(), step ->
+				{
+					if (step == crashStep)
+						throw new SimulatedCrash(step);
+				});
+				boolean crashed = false;
+				try
+				{
+					crashing.writeVerdict(ID, key, first);
+				}
+				catch (SimulatedCrash _)
+				{
+					crashed = true;
+				}
+				requireThat(crashed, "crashed").withContext(crashStep, "crashStep").isTrue();
+
+				FileCampaignStore reopened = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
+				VerdictRecord expected;
+				if (crashStep.compareTo(WriteStep.RENAME) >= 0)
+				{
+					requireThat(reopened.readVerdict(ID, key), "survived").withContext(crashStep, "crashStep").
+						isEqualTo(Optional.of(first));
+					expected = first;
+				}
+				else
+				{
+					requireThat(reopened.readVerdict(ID, key), "lost").withContext(crashStep, "crashStep").
+						isEqualTo(Optional.empty());
+					expected = retried;
+				}
+				requireThat(reopened.writeVerdict(ID, key, retried), "afterCrash").withContext(crashStep, "crashStep").
+					isEqualTo(expected);
+				Path file = FileCampaignStore.heldOutDirectory(campaigns, ID).resolve("verdicts").
+					resolve(key.digest().hex() + ".json");
+				JsonNode document = JSON.readTree(Files.readString(file, UTF_8));
+				requireThat(document.get("format_version").asInt(), "formatVersion").isEqualTo(1);
+				try (Stream<Path> entries = Files.list(file.getParent()))
+				{
+					requireThat(entries.map(entry -> entry.getFileName().toString()).toList(), "verdictFiles").
+						withContext(crashStep, "crashStep").isEqualTo(List.of(file.getFileName().toString()));
+				}
+			}
 		}
 	}
 

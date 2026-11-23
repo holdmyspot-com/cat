@@ -19,6 +19,7 @@ import com.holdmyspot.cat.common.runner.RetainedTrialClaim;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -121,6 +122,23 @@ sealed interface InFlight
 	}
 
 	/**
+	 * A completed trial whose assertions a judge decides, before its judge sessions are chosen.
+	 *
+	 * @param key the logical trial
+	 * @param testCase the trial's test case
+	 * @param evidence the trial session's result
+	 * @param evidenceSection the rendered trial activity and file changes; empty when the frozen judge template does
+	 *   not name it
+	 * @param assertions the assertions of the trial's test that a judge decides
+	 * @param results the results of the test's built-in tools
+	 * @param concurrency the number of trial sessions running immediately after the trial's session started
+	 */
+	record Pending(TrialKey key, DrawnTestCase testCase, SessionResult.Completed evidence, String evidenceSection,
+		List<JudgedAssertion> assertions, List<BuiltInToolResult> results, int concurrency)
+	{
+	}
+
+	/**
 	 * A completed trial session whose built-in tools passed and that waits for, or is in, its judge session.
 	 *
 	 * @param key the logical trial
@@ -135,11 +153,27 @@ sealed interface InFlight
 	 * @param judge the judge that decides the assertions
 	 * @param seat the judge's part in the trial's verdict
 	 * @param group the frozen judge and the candidates that all judge the trial, or {@code null} if one judge decides
+	 * @param recording the stored verdicts that the session's verdicts join, or {@code null} if the trial's evidence has
+	 *   no keys
 	 */
 	record Judging(TrialKey key, DrawnTestCase testCase, SessionResult.Completed evidence,
 		String evidenceSection, List<JudgedAssertion> assertions, List<BuiltInToolResult> results, int attempt,
-		int concurrency, JudgeProfile judge, Seat seat, ShadowGroup group)
+		int concurrency, JudgeProfile judge, Seat seat, ShadowGroup group, Recording recording)
 	{
+		/**
+		 * The stored verdicts of a judged trial and the trials that wait for its judge session.
+		 *
+		 * @param judged every assertion of the trial that a judge decides, in the order of its test
+		 * @param keys the key of each assertion that the session decides, by assertion identifier
+		 * @param stored the stored verdicts that the trial took for its other assertions, by assertion identifier
+		 * @param waiters the trials whose evidence has a key that the session decides, which wait for its verdicts;
+		 *   every attempt of the session shares the list
+		 */
+		record Recording(List<JudgedAssertion> judged, Map<String, VerdictKey> keys,
+			Map<String, VerdictRecord> stored, List<Pending> waiters)
+		{
+		}
+
 		/**
 		 * A judge's part in the trial's verdict.
 		 */
@@ -172,7 +206,7 @@ sealed interface InFlight
 		Judging retry()
 		{
 			return new Judging(key, testCase, evidence, evidenceSection, assertions, results, attempt + 1,
-				concurrency, judge, seat, group);
+				concurrency, judge, seat, group, recording);
 		}
 	}
 

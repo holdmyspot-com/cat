@@ -10,6 +10,8 @@ import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.Header;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.execution.CampaignLock;
+import com.holdmyspot.cat.common.optimizer.execution.VerdictKey;
+import com.holdmyspot.cat.common.optimizer.execution.VerdictRecord;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 
 import java.io.IOException;
@@ -67,6 +69,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	private static final String HELD_OUT = "held_out";
 	private static final String SNAPSHOT = "campaign.json";
 	private static final String TRIALS = "trials";
+	private static final String VERDICTS = "verdicts";
 	private static final String JOURNAL = "delivery.json";
 	private static final String RECORD_SUFFIX = ".json";
 	private static final String RECOVERY_SUFFIX = ".recovery.json";
@@ -442,6 +445,46 @@ public final class FileCampaignStore extends AbstractCampaignStore
 				recoveries.add(readTrialRecoveryFile(campaignId, file, null));
 		}
 		return List.copyOf(recoveries);
+	}
+
+	@Override
+	public Optional<VerdictRecord> readVerdict(String campaignId, VerdictKey key) throws IOException
+	{
+		requireCampaignId(campaignId);
+		requireThat(key, "key").isNotNull();
+		Path file = verdictFile(campaignId, key);
+		if (Files.notExists(file))
+			return Optional.empty();
+		return Optional.of(JsonFiles.read(json, file, VerdictRecordJson::read, MALFORMED));
+	}
+
+	@Override
+	public VerdictRecord writeVerdict(String campaignId, VerdictKey key, VerdictRecord verdict) throws IOException
+	{
+		requireCampaignId(campaignId);
+		requireThat(key, "key").isNotNull();
+		requireThat(verdict, "verdict").isNotNull();
+		Optional<VerdictRecord> stored = readVerdict(campaignId, key);
+		if (stored.isPresent())
+			return stored.get();
+		Path file = verdictFile(campaignId, key);
+		AtomicFiles.createDirectories(file.getParent());
+		if (AtomicFiles.createOnce(file, JsonFiles.write(json, VerdictRecordJson.write(json, verdict)), afterStep))
+			return verdict;
+		return readVerdict(campaignId, key).orElseThrow(() -> new IOException("The verdict " + file +
+			" was created by another writer but cannot be found"));
+	}
+
+	/**
+	 * Returns the file that holds the verdict stored under a key.
+	 *
+	 * @param campaignId the campaign's identifier
+	 * @param key the key
+	 * @return the file
+	 */
+	private Path verdictFile(String campaignId, VerdictKey key)
+	{
+		return heldOutDirectory(campaigns, campaignId).resolve(VERDICTS).resolve(key.digest().hex() + RECORD_SUFFIX);
 	}
 
 	@Override

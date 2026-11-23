@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.PortableFiles;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.function.Consumer;
@@ -19,7 +20,8 @@ import java.util.function.Consumer;
  * <p>
  * A file is replaced by writing the content to a temporary file next to it, forcing that file to the storage device,
  * renaming it over the target and forcing the directory. Readers never read the temporary file, and the next
- * replacement of the same target overwrites a leftover one.
+ * replacement of the same target overwrites a leftover one. A file that is written once is linked to its target
+ * instead, so that the first writer's content stays.
  */
 final class AtomicFiles
 {
@@ -74,6 +76,63 @@ final class AtomicFiles
 		afterStep.accept(WriteStep.RENAME);
 		force(target.getParent());
 		afterStep.accept(WriteStep.SYNC_DIRECTORY);
+	}
+
+	/**
+	 * Creates a file unless it exists, so that a crash leaves either no file or the complete content. The content is
+	 * written to a temporary file of its own and forced to the storage device, then linked to the target, which fails
+	 * if another writer created the target first.
+	 *
+	 * @param target the file
+	 * @param content the file's content
+	 * @param afterStep receives each step after it completes; an exception that it throws stops the write at that
+	 *   point, as a crash would
+	 * @return {@code true} if this call created the file, {@code false} if it existed
+	 * @throws IOException if the file cannot be written
+	 */
+	static boolean createOnce(Path target, byte[] content, Consumer<WriteStep> afterStep) throws IOException
+	{
+		Path temporary = Files.createTempFile(target.getParent(), target.getFileName() + ".", TEMPORARY_SUFFIX);
+		try
+		{
+			try (FileChannel channel = FileChannel.open(temporary, WRITE))
+			{
+				ByteBuffer buffer = ByteBuffer.wrap(content);
+				while (buffer.hasRemaining())
+					channel.write(buffer);
+				afterStep.accept(WriteStep.WRITE_TEMPORARY);
+				channel.force(true);
+				afterStep.accept(WriteStep.SYNC_TEMPORARY);
+			}
+			try
+			{
+				Files.createLink(target, temporary);
+			}
+			catch (FileAlreadyExistsException _)
+			{
+				return false;
+			}
+			catch (UnsupportedOperationException _)
+			{
+				// Without hard links, a move that does not replace the target still refuses an existing file
+				try
+				{
+					Files.move(temporary, target);
+				}
+				catch (FileAlreadyExistsException _)
+				{
+					return false;
+				}
+			}
+			afterStep.accept(WriteStep.RENAME);
+			force(target.getParent());
+			afterStep.accept(WriteStep.SYNC_DIRECTORY);
+			return true;
+		}
+		finally
+		{
+			Files.deleteIfExists(temporary);
+		}
 	}
 
 	/**

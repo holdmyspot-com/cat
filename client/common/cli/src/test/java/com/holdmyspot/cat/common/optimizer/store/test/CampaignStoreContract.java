@@ -73,12 +73,16 @@ import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
 import com.holdmyspot.cat.common.optimizer.contract.test.TierFixtures;
+import com.holdmyspot.cat.common.optimizer.execution.AssertionVerdict;
+import com.holdmyspot.cat.common.optimizer.execution.VerdictKey;
+import com.holdmyspot.cat.common.optimizer.execution.VerdictRecord;
 import com.holdmyspot.cat.common.optimizer.inventory.AuthorityWarning;
 import com.holdmyspot.cat.common.optimizer.inventory.DeliveryChange;
 import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
 import com.holdmyspot.cat.common.optimizer.inventory.Limit;
+import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.port.RateLimitWindow;
 import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
@@ -102,6 +106,11 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import org.testng.annotations.Test;
 
@@ -148,6 +157,106 @@ public abstract class CampaignStoreContract
 			requireThat(Transitions.apply(loaded, new CampaignEvent.ChangeMeasurement(unknown)).pending(),
 				"unacceptedObservation").isInstanceOf(PendingDecision.MeasurementChanged.class);
 		}
+	}
+
+	/**
+	 * A stored verdict survives a reload, and each campaign reads only its own verdicts.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test
+	public void verdictSurvivesReload() throws IOException
+	{
+		// Requirement: R-L10
+		try (StoreFixture fixture = open())
+		{
+			Campaign campaign = new Builder().confirmed().working(1).build();
+			fixture.store().replaceSnapshot(campaign);
+			String id = campaign.header().id();
+			VerdictKey passKey = verdictKey("pass");
+			VerdictKey failKey = verdictKey("fail");
+			VerdictRecord passed = verdict(null, "It asked first.");
+			VerdictRecord failed = verdict("deleted_without_asking", "It deleted the logs.");
+			requireThat(fixture.store().writeVerdict(id, passKey, passed), "storedPass").isEqualTo(passed);
+			requireThat(fixture.store().writeVerdict(id, failKey, failed), "storedFail").isEqualTo(failed);
+
+			CampaignStore reopened = fixture.reopen();
+			requireThat(reopened.readVerdict(id, passKey), "reloadedPass").isEqualTo(Optional.of(passed));
+			requireThat(reopened.readVerdict(id, failKey), "reloadedFail").isEqualTo(Optional.of(failed));
+			requireThat(reopened.readVerdict(id, verdictKey("other")), "missing").isEqualTo(Optional.empty());
+			requireThat(reopened.readVerdict("campaign-2", passKey), "otherCampaign").isEqualTo(Optional.empty());
+		}
+	}
+
+	/**
+	 * The first verdict stored under a key is final: a later one, written in turn or at the same time, is dropped,
+	 * and every writer gets the first.
+	 *
+	 * @throws Exception if the store fails
+	 */
+	@Test
+	public void firstVerdictIsFinal() throws Exception
+	{
+		// Requirement: R-L10
+		try (StoreFixture fixture = open())
+		{
+			Campaign campaign = new Builder().confirmed().working(1).build();
+			fixture.store().replaceSnapshot(campaign);
+			String id = campaign.header().id();
+			VerdictKey key = verdictKey("sequential");
+			VerdictRecord first = verdict(null, "It asked first.");
+			VerdictRecord second = verdict("deleted_without_asking", "It deleted the logs.");
+			fixture.store().writeVerdict(id, key, first);
+			requireThat(fixture.store().writeVerdict(id, key, second), "secondWrite").isEqualTo(first);
+			requireThat(fixture.reopen().readVerdict(id, key), "stored").isEqualTo(Optional.of(first));
+
+			VerdictKey concurrent = verdictKey("concurrent");
+			int writers = 8;
+			CyclicBarrier start = new CyclicBarrier(writers);
+			List<Callable<VerdictRecord>> writes = new ArrayList<>();
+			for (int writer = 0; writer < writers; ++writer)
+			{
+				VerdictRecord own = verdict(null, "Writer " + writer + " passed it.");
+				writes.add(() ->
+				{
+					start.await();
+					return fixture.store().writeVerdict(id, concurrent, own);
+				});
+			}
+			List<VerdictRecord> stored = new ArrayList<>();
+			try (ExecutorService executor = Executors.newFixedThreadPool(writers))
+			{
+				for (Future<VerdictRecord> write : executor.invokeAll(writes))
+					stored.add(write.get());
+			}
+			VerdictRecord winner = fixture.reopen().readVerdict(id, concurrent).orElseThrow();
+			for (VerdictRecord record : stored)
+				requireThat(record, "returnedVerdict").isEqualTo(winner);
+		}
+	}
+
+	/**
+	 * Returns a verdict key.
+	 *
+	 * @param name a name that distinguishes the key
+	 * @return the key
+	 */
+	private static VerdictKey verdictKey(String name)
+	{
+		return new VerdictKey(Sha256.of(name.getBytes(UTF_8)));
+	}
+
+	/**
+	 * Returns a verdict of the frozen judge.
+	 *
+	 * @param behavior  the behavior through which the trial failed, or {@code null} if it passed
+	 * @param rationale the judge's rationale
+	 * @return the verdict
+	 */
+	private static VerdictRecord verdict(String behavior, String rationale)
+	{
+		return new VerdictRecord(new AssertionVerdict("asks_first", behavior, rationale), "judge-model", "high",
+			"development trial 3 of cell safety, series 1");
 	}
 
 	/**

@@ -72,6 +72,7 @@ import com.holdmyspot.cat.common.optimizer.execution.ProcessHandleTerminator;
 import com.holdmyspot.cat.common.optimizer.execution.SliceResult;
 import com.holdmyspot.cat.common.optimizer.execution.SliceRunner;
 import com.holdmyspot.cat.common.optimizer.execution.TrialSelection;
+import com.holdmyspot.cat.common.optimizer.execution.VerdictRecords;
 import com.holdmyspot.cat.common.optimizer.execution.prompt.ApproachRankingPrompt;
 import com.holdmyspot.cat.common.optimizer.execution.prompt.JudgePrompt;
 import com.holdmyspot.cat.common.optimizer.execution.prompt.PromptAuthorPrompt;
@@ -4257,8 +4258,20 @@ public final class OptimizerCore implements Core
 	private GuardPilot guardPilot(Campaign campaign, ForkView fork) throws IOException
 	{
 		SessionPort owner = sessions(campaign);
+		CampaignStore store;
+		try
+		{
+			store = scope.store();
+		}
+		catch (CommandRefusedException e)
+		{
+			// The campaign was read from the store, which this scope keeps open once it has opened it
+			throw new IllegalStateException("The store of campaign " + campaign.header().id() + " is not open", e);
+		}
+		VerdictRecords verdicts = new VerdictRecords(store, campaign.header().id(), campaign.header().harness(),
+			owner.judgeVersion());
 		return new GuardPilot(owner, trialSessions(campaign, owner), fork.workspace(), relativeTarget(campaign),
-			judgePrompt(campaign), schema, scope.json(), campaign.ceiling());
+			judgePrompt(campaign), verdicts, schema, scope.json(), campaign.ceiling());
 	}
 
 	/**

@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.secrets;
 import com.holdmyspot.cat.common.optimizer.contract.ProposalSchema;
 import com.holdmyspot.cat.common.optimizer.execution.GuardPilot;
 import com.holdmyspot.cat.common.optimizer.execution.JudgeProtocol;
+import com.holdmyspot.cat.common.optimizer.execution.VerdictRecords;
 import com.holdmyspot.cat.common.optimizer.port.SessionPort;
 import com.holdmyspot.cat.common.optimizer.port.WorkspacePort;
 
@@ -23,6 +24,7 @@ public interface GuardPilotAccess
 	 * @param workspace stages the control source that the trials work in
 	 * @param target the normalized relative path of the target prompt
 	 * @param judge writes the judge requests and reads their verdicts
+	 * @param verdicts the campaign's stored verdicts
 	 * @param schema writes the definition of each prompt test
 	 * @param json reads and writes the hook configurations
 	 * @param ceiling the maximum number of sessions that run at the same time
@@ -32,5 +34,6 @@ public interface GuardPilotAccess
 	 * @throws IllegalArgumentException if {@code target} is absolute or {@code ceiling} is not positive
 	 */
 	GuardPilot create(SessionPort sessions, WorkspacePort workspace, Path target, JudgeProtocol judge,
-		ProposalSchema schema, JsonMapper json, int ceiling, GuardPilot.DirectoryRemoval directoryRemoval);
+		VerdictRecords verdicts, ProposalSchema schema, JsonMapper json, int ceiling,
+		GuardPilot.DirectoryRemoval directoryRemoval);
 }

@@ -22,6 +22,7 @@ import com.holdmyspot.cat.common.optimizer.contract.ProposalSchema;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
+import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfiles;
 import com.holdmyspot.cat.common.optimizer.contract.TestWorkspace;
 import com.holdmyspot.cat.common.optimizer.contract.UndecidableToolException;
@@ -37,6 +38,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.port.TurnObserver;
 import com.holdmyspot.cat.common.optimizer.port.WorkspacePort;
+import com.holdmyspot.cat.common.optimizer.report.EnumNames;
 import com.holdmyspot.cat.common.runner.RetainedTrialClaim;
 import com.holdmyspot.cat.common.runner.RetainedTrialRequest;
 import com.holdmyspot.cat.common.runner.RetainedTrialResponse;
@@ -50,6 +52,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -143,6 +146,7 @@ public final class GuardPilot
 	private final Path target;
 	private final DirectoryRemoval directoryRemoval;
 	private final JudgeProtocol judge;
+	private final VerdictRecords verdicts;
 	private final ProposalSchema schema;
 	private final JsonMapper json;
 	private final int ceiling;
@@ -154,6 +158,7 @@ public final class GuardPilot
 	 * @param workspace stages the control source that the trials work in
 	 * @param target the normalized relative path of the target prompt
 	 * @param judge writes the judge requests and reads their verdicts
+	 * @param verdicts the campaign's stored verdicts, which the pilot's trials take and write as any trial does
 	 * @param schema writes the definition of each prompt test, whose identity decides whether a stored pilot still
 	 *   applies
 	 * @param json reads and writes the hook configurations from which control trials remove the target's dependents
@@ -162,9 +167,10 @@ public final class GuardPilot
 	 * @throws IllegalArgumentException if {@code target} is absolute or {@code ceiling} is not positive
 	 */
 	public GuardPilot(SessionPort sessions, WorkspacePort workspace, Path target, JudgeProtocol judge,
-		ProposalSchema schema, JsonMapper json, int ceiling)
+		VerdictRecords verdicts, ProposalSchema schema, JsonMapper json, int ceiling)
 	{
-		this(sessions, workspace, target, judge, schema, json, ceiling, TemporaryDirectories::deleteRecursively);
+		this(sessions, workspace, target, judge, verdicts, schema, json, ceiling,
+			TemporaryDirectories::deleteRecursively);
 	}
 
 	/**
@@ -175,6 +181,7 @@ public final class GuardPilot
 	 * @param workspace stages the control source that the trials work in
 	 * @param target the normalized relative path of the target prompt
 	 * @param judge writes the judge requests and reads their verdicts
+	 * @param verdicts the campaign's stored verdicts, which the pilot's trials take and write as any trial does
 	 * @param schema writes the definition of each prompt test
 	 * @param json reads and writes the hook configurations from which control trials remove the target's dependents
 	 * @param ceiling the maximum number of sessions that run at the same time
@@ -182,9 +189,9 @@ public final class GuardPilot
 	 * @throws IllegalArgumentException if {@code target} is absolute or {@code ceiling} is not positive
 	 */
 	public GuardPilot(SessionPort sessions, Map<Harness, SessionPort> evaluators, WorkspacePort workspace,
-		Path target, JudgeProtocol judge, ProposalSchema schema, JsonMapper json, int ceiling)
+		Path target, JudgeProtocol judge, VerdictRecords verdicts, ProposalSchema schema, JsonMapper json, int ceiling)
 	{
-		this(sessions, evaluators, workspace, target, judge, schema, json, ceiling,
+		this(sessions, evaluators, workspace, target, judge, verdicts, schema, json, ceiling,
 			TemporaryDirectories::deleteRecursively);
 	}
 
@@ -195,6 +202,7 @@ public final class GuardPilot
 	 * @param workspace stages the control source that the trials work in
 	 * @param target the normalized relative path of the target prompt
 	 * @param judge writes the judge requests and reads their verdicts
+	 * @param verdicts the campaign's stored verdicts, which the pilot's trials take and write as any trial does
 	 * @param schema writes the definition of each prompt test, whose identity decides whether a stored pilot still
 	 *   applies
 	 * @param json reads and writes the hook configurations from which control trials remove the target's dependents
@@ -204,9 +212,9 @@ public final class GuardPilot
 	 * @throws IllegalArgumentException if {@code target} is absolute or {@code ceiling} is not positive
 	 */
 	private GuardPilot(SessionPort sessions, WorkspacePort workspace, Path target, JudgeProtocol judge,
-		ProposalSchema schema, JsonMapper json, int ceiling, DirectoryRemoval directoryRemoval)
+		VerdictRecords verdicts, ProposalSchema schema, JsonMapper json, int ceiling, DirectoryRemoval directoryRemoval)
 	{
-		this(sessions, Map.of(), workspace, target, judge, schema, json, ceiling, directoryRemoval);
+		this(sessions, Map.of(), workspace, target, judge, verdicts, schema, json, ceiling, directoryRemoval);
 	}
 
 	/**
@@ -217,13 +225,14 @@ public final class GuardPilot
 	 * @param workspace stages the control source that the trials work in
 	 * @param target the normalized relative path of the target prompt
 	 * @param judge writes the judge requests and reads their verdicts
+	 * @param verdicts the campaign's stored verdicts, which the pilot's trials take and write as any trial does
 	 * @param schema writes the definition of each prompt test
 	 * @param json reads and writes the control hook configurations
 	 * @param ceiling the maximum number of sessions that run at the same time
 	 * @param directoryRemoval deletes project directories of passing trials
 	 */
 	private GuardPilot(SessionPort sessions, Map<Harness, SessionPort> evaluators, WorkspacePort workspace,
-		Path target, JudgeProtocol judge, ProposalSchema schema, JsonMapper json, int ceiling,
+		Path target, JudgeProtocol judge, VerdictRecords verdicts, ProposalSchema schema, JsonMapper json, int ceiling,
 		DirectoryRemoval directoryRemoval)
 	{
 		requireThat(sessions, "sessions").isNotNull();
@@ -232,6 +241,7 @@ public final class GuardPilot
 		requireThat(target.isAbsolute(), "target.isAbsolute()").isFalse();
 		requireThat(directoryRemoval, "directoryRemoval").isNotNull();
 		requireThat(judge, "judge").isNotNull();
+		requireThat(verdicts, "verdicts").isNotNull();
 		requireThat(schema, "schema").isNotNull();
 		requireThat(json, "json").isNotNull();
 		requireThat(ceiling, "ceiling").isPositive();
@@ -241,6 +251,7 @@ public final class GuardPilot
 		this.target = target;
 		this.directoryRemoval = directoryRemoval;
 		this.judge = judge;
+		this.verdicts = verdicts;
 		this.schema = schema;
 		this.json = json;
 		this.ceiling = ceiling;
@@ -1243,14 +1254,45 @@ public final class GuardPilot
 	 * @param position the trial's draw position
 	 * @param testCase the trial's test case
 	 * @param trial the trial session's result
-	 * @param judged the assertions that the judge decides
+	 * @param judged the assertions that the judge session decides: those of {@code assertions} without a stored
+	 *   verdict
 	 * @param results the results of the trial's built-in tools
 	 * @param section the rendered trial evidence, or empty if the judge template does not name it
 	 * @param attempt the number of this judge attempt, starting at 1
+	 * @param assertions every judged assertion of the trial, in order
+	 * @param keys the key of each of {@code assertions} by its identifier, or empty if the evidence that the judge's
+	 *   template names cannot be read
+	 * @param stored the stored verdicts of the other assertions, by assertion identifier
 	 */
 	private record JudgeJob(Pilot pilot, int position, DrawnTestCase testCase, SessionResult.Completed trial,
-		List<JudgedAssertion> judged, List<BuiltInToolResult> results, String section, int attempt) implements Job
+		List<JudgedAssertion> judged, List<BuiltInToolResult> results, String section, int attempt,
+		List<JudgedAssertion> assertions, Map<String, VerdictKey> keys, Map<String, VerdictRecord> stored)
+		implements Job
 	{
+		/**
+		 * Returns the next attempt of the judge.
+		 *
+		 * @return the attempt
+		 */
+		JudgeJob retry()
+		{
+			return new JudgeJob(pilot, position, testCase, trial, judged, results, section, attempt + 1, assertions,
+				keys, stored);
+		}
+
+		/**
+		 * Returns the description of the trial that its stored verdicts name.
+		 *
+		 * @return the description
+		 */
+		String trialName()
+		{
+			String name = "pilot trial " + (position + 1) + " of test " + pilot.test.id();
+			Harness evaluator = pilot.conditions.evaluator();
+			if (evaluator == null)
+				return name;
+			return name + ", evaluator " + EnumNames.lowerCase(evaluator);
+		}
 	}
 
 	/**
@@ -1367,7 +1409,10 @@ public final class GuardPilot
 			{
 				while (true)
 				{
+					int decidedBefore = endedTrials();
 					startSessions();
+					if (endedTrials() > decidedBefore)
+						save();
 					if (inFlight.isEmpty())
 						break;
 					Ended ended = awaitEnd();
@@ -1692,6 +1737,14 @@ public final class GuardPilot
 						return;
 					job = new TrialJob(trial.pilot(), trial.position(), trial.testCase(), claim);
 				}
+				else if (job instanceof JudgeJob judging)
+				{
+					// A session that ran since the judge was queued may have stored the verdicts that it needs
+					Optional<JudgeJob> rest = withStoredVerdicts(judging);
+					if (rest.isEmpty())
+						continue;
+					job = rest.get();
+				}
 				SessionRequest request = switch (job)
 				{
 					case TrialJob trial -> trialRequest(trial);
@@ -1779,10 +1832,10 @@ public final class GuardPilot
 			while (candidates.hasNext())
 			{
 				Job job = candidates.next();
-				boolean startable = slice == null || switch (job)
+				boolean startable = switch (job)
 				{
-					case JudgeJob _ -> true;
-					case TrialJob trial -> isAdmitted(trial);
+					case JudgeJob judging -> !waitsForRunningJudge(judging);
+					case TrialJob trial -> slice == null || isAdmitted(trial);
 				};
 				if (startable)
 				{
@@ -1906,7 +1959,86 @@ public final class GuardPilot
 					deleteProjects(completed);
 				return;
 			}
-			queue.addFirst(new JudgeJob(pilot, trial.position(), testCase, completed, judged, results, section, 1));
+			Optional<List<VerdictKey>> keys;
+			try
+			{
+				keys = verdicts.keys(contract.judge(), testCase, judged, completed, section, results);
+			}
+			catch (IOException e)
+			{
+				infrastructureFailed(trial, "The trial's evidence could not be read: " + Driver.describe(e));
+				return;
+			}
+			Map<String, VerdictKey> byId = new LinkedHashMap<>();
+			if (keys.isPresent())
+			{
+				for (int i = 0; i < judged.size(); ++i)
+					byId.put(judged.get(i).assertion().id(), keys.get().get(i));
+			}
+			JudgeJob judging = new JudgeJob(pilot, trial.position(), testCase, completed, judged, results, section, 1,
+				judged, Collections.unmodifiableMap(byId), Map.of());
+			withStoredVerdicts(judging).ifPresent(queue::addFirst);
+		}
+
+		/**
+		 * Takes the stored verdicts of a judged trial. A trial whose assertions all have one is decided by them and
+		 * starts no judge session; otherwise the session decides only the assertions without one.
+		 *
+		 * @param judging the judged trial
+		 * @return the judge session that decides the rest, or empty if the stored verdicts decided the trial
+		 * @throws IOException if the stored verdicts cannot be read
+		 */
+		private Optional<JudgeJob> withStoredVerdicts(JudgeJob judging) throws IOException
+		{
+			if (judging.keys().isEmpty())
+				return Optional.of(judging);
+			Map<String, VerdictRecord> stored = new HashMap<>(judging.stored());
+			List<JudgedAssertion> missing = new ArrayList<>();
+			for (JudgedAssertion assertion : judging.judged())
+			{
+				String id = assertion.assertion().id();
+				Optional<VerdictRecord> found = verdicts.find(judging.keys().get(id));
+				if (found.isPresent())
+					stored.put(id, found.get());
+				else
+					missing.add(assertion);
+			}
+			if (missing.isEmpty())
+			{
+				decided(judging, VerdictRecords.judgment(judging.assertions(), stored, judging.trialName()));
+				return Optional.empty();
+			}
+			return Optional.of(new JudgeJob(judging.pilot(), judging.position(), judging.testCase(), judging.trial(),
+				List.copyOf(missing), judging.results(), judging.section(), judging.attempt(), judging.assertions(),
+				judging.keys(), Map.copyOf(stored)));
+		}
+
+		/**
+		 * Indicates whether a judge session waits for a running one that decides one of its assertions' keys, so that
+		 * it takes that session's verdict instead of deciding the same evidence again.
+		 *
+		 * @param judging the judged trial
+		 * @return {@code true} if a running judge session decides one of the keys of {@code judging}
+		 */
+		private boolean waitsForRunningJudge(JudgeJob judging)
+		{
+			if (judging.keys().isEmpty())
+				return false;
+			Set<VerdictKey> needed = new HashSet<>();
+			for (JudgedAssertion assertion : judging.judged())
+				needed.add(judging.keys().get(assertion.assertion().id()));
+			for (Job running : inFlight.keySet())
+			{
+				if (running instanceof JudgeJob other && !other.keys().isEmpty())
+				{
+					for (JudgedAssertion assertion : other.judged())
+					{
+						if (needed.contains(other.keys().get(assertion.assertion().id())))
+							return true;
+					}
+				}
+			}
+			return false;
 		}
 
 		/**
@@ -1925,13 +2057,13 @@ public final class GuardPilot
 				case null -> sessionFailed(judging, "The judge session failed: " + Driver.describe(failure));
 				case SessionResult.Completed completed ->
 				{
-					Optional<Judgment> judgment = judge.judgment(completed, judging.judged());
-					if (judgment.isEmpty())
+					Optional<List<AssertionVerdict>> decided = judge.verdicts(completed, judging.judged());
+					if (decided.isEmpty())
 					{
 						sessionFailed(judging, "The judge's output does not match its result schema");
 						return;
 					}
-					decided(judging, judgment.get());
+					decided(judging, recorded(judging, decided.get()));
 				}
 				// A rate limit is not a failure of the judge, which reruns once the shared hold ends
 				case SessionResult.RateLimited _ -> queue.addFirst(judging);
@@ -1941,6 +2073,31 @@ public final class GuardPilot
 				case SessionResult.Failed failed -> sessionFailed(judging, failed.reason());
 				case SessionResult.LaunchRefused refused -> stopCancelled(judging, refused.reason());
 			}
+		}
+
+		/**
+		 * Stores the verdicts of a judge session under their keys and returns the trial's judgment. The first verdict
+		 * stored under a key counts, so a verdict that another trial's session stored first replaces this session's.
+		 *
+		 * @param judging the judged trial
+		 * @param decided the session's verdict of each assertion that it decides
+		 * @return the judgment
+		 * @throws IOException if the verdicts cannot be stored
+		 */
+		private Judgment recorded(JudgeJob judging, List<AssertionVerdict> decided) throws IOException
+		{
+			if (judging.keys().isEmpty())
+				return AssertionVerdict.judgment(decided);
+			TrialProfile profile = contract.judge().profile();
+			String trial = judging.trialName();
+			Map<String, VerdictRecord> counted = new HashMap<>(judging.stored());
+			for (AssertionVerdict verdict : decided)
+			{
+				VerdictKey key = judging.keys().get(verdict.assertion());
+				counted.put(verdict.assertion(), verdicts.write(key, new VerdictRecord(verdict, profile.model(),
+					profile.effort(), trial)));
+			}
+			return VerdictRecords.judgment(judging.assertions(), counted, trial);
 		}
 
 		/**
@@ -1958,7 +2115,7 @@ public final class GuardPilot
 			Map<String, Boolean> assertions = new LinkedHashMap<>();
 			for (BuiltInToolResult result : judging.results())
 				assertions.put(result.assertion().id(), result.passed());
-			for (JudgedAssertion assertion : judging.judged())
+			for (JudgedAssertion assertion : judging.assertions())
 			{
 				String id = assertion.assertion().id();
 				assertions.put(id, !failed.contains(id));
@@ -2010,9 +2167,7 @@ public final class GuardPilot
 			switch (job)
 			{
 				case TrialJob trial -> infrastructureFailed(trial, reason);
-				case JudgeJob judging when judging.attempt() < Driver.JUDGE_ATTEMPTS ->
-					queue.addFirst(new JudgeJob(judging.pilot(), judging.position(), judging.testCase(), judging.trial(),
-						judging.judged(), judging.results(), judging.section(), judging.attempt() + 1));
+				case JudgeJob judging when judging.attempt() < Driver.JUDGE_ATTEMPTS -> queue.addFirst(judging.retry());
 				case JudgeJob judging -> infrastructureFailed(judging, "The judge failed " + Driver.JUDGE_ATTEMPTS +
 					" times. Last failure: " + reason);
 			}

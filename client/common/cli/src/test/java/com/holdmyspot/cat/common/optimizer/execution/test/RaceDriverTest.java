@@ -21,7 +21,9 @@ import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
 import com.holdmyspot.cat.common.optimizer.campaign.WorkUnit;
 import com.holdmyspot.cat.common.optimizer.campaign.test.Builder;
+import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
+import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
 import com.holdmyspot.cat.common.optimizer.execution.Driver;
 import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
 import com.holdmyspot.cat.common.optimizer.inventory.FileDelta;
@@ -39,6 +41,9 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.testng.annotations.Test;
 
@@ -64,7 +69,8 @@ public final class RaceDriverTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			DriverHarness harness = racingHarness(cleanup.add(Files.createTempDirectory("race-driver")));
+			DriverHarness harness = racingHarness(cleanup.add(Files.createTempDirectory("race-driver")),
+				ContractFixtures.contract());
 			Campaign initial = harness.campaign();
 			Round round = initial.development().round();
 			Sha256 loser = round.validationAttempts().getFirst().snapshot();
@@ -160,15 +166,48 @@ public final class RaceDriverTest
 	}
 
 	/**
+	 * Race trials take and write verdicts: the racers draw the same test case at each position, so the later racer's
+	 * trial with the same reply takes the verdict of the earlier one.
+	 *
+	 * @throws IOException if the isolated fixture cannot be used
+	 */
+	@Test
+	public void raceTrialsTakeAndWriteRecords() throws IOException
+	{
+		// Requirement: R-L10
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = racingHarness(cleanup.add(Files.createTempDirectory("race-driver")),
+				DriverTest.withoutFileNames(ContractFixtures.contract()));
+			Set<TrialKey> started = ConcurrentHashMap.newKeySet();
+			harness.trials(request ->
+			{
+				started.add(DriverTest.runningTrial(harness, request).key());
+				return harness.passed();
+			});
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, () -> harness.store().verdicts(DriverHarness.CAMPAIGN).values().stream().
+					anyMatch(record -> record.trial().startsWith("race trial ")) &&
+					started.stream().filter(key -> key.purpose() == Purpose.RACE).
+						map(key -> DriverTest.recordedOutcome(harness, key)).flatMap(Optional::stream).
+						anyMatch(outcome -> outcome.verdict() == Verdict.PASS &&
+							outcome.rationale().contains("Recorded verdict of race trial ")));
+			}
+		}
+	}
+
+	/**
 	 * Seeds two accepted contenders one equal-prefix outcome short of non-overlapping Wilson bounds.
 	 *
 	 * @param directory the test-owned directory
+	 * @param contract  the confirmed contract
 	 * @return the driver ports and persisted race
 	 * @throws IOException if the fixture cannot be persisted
 	 */
-	private static DriverHarness racingHarness(Path directory) throws IOException
+	private static DriverHarness racingHarness(Path directory, Contract contract) throws IOException
 	{
-		DriverHarness harness = new DriverHarness(directory, new Builder().confirmed().working(1).
+		DriverHarness harness = new DriverHarness(directory, new Builder().confirmed(contract, 1).working(1).
 			readyBaseline().build());
 		String before = "first\nmiddle\nlast\n";
 		Overlay working = harness.candidate(before);
@@ -176,7 +215,8 @@ public final class RaceDriverTest
 		harness.workspace().changeWorktree(working.snapshot());
 		harness.workspace().supplyFile(DriverHarness.PROMPT, new FileContent(before.getBytes(UTF_8)));
 		DrawnTestCase trigger = Builder.targeted(CELL, "cache");
-		Builder builder = new Builder().confirmed().working(new Candidate(1, working.identity())).readyBaseline().
+		Builder builder = new Builder().confirmed(contract, 1).working(new Candidate(1, working.identity())).
+			readyBaseline().
 			development(CELL, 7, 1).failure(trigger).promptAuthorAttempts(2).ceiling(4).
 			window(WorkUnit.racer(1), 2).window(WorkUnit.racer(2), 2);
 		List<PromptAuthorAttempt> attempts = new ArrayList<>();

@@ -1313,7 +1313,8 @@ public final class OptimizerCoreTest
 		Files.writeString(root.resolve("extra.local.md"), "Local rules.\n");
 		configure(root, NO_PLUGINS);
 		// The core only reads the files of a session other than a trial, so those sessions share one empty set instead of
-		// creating their own. A passing trial's project copies are deleted, so each trial gets its own.
+		// creating their own. A passing trial's project copies are deleted, and a trial's transcript is part of the key
+		// of its stored verdicts, so each trial gets its own.
 		Path transcript = Files.createFile(scratch.resolve("transcript.jsonl"));
 		Path effects = Files.createDirectory(scratch.resolve("effects"));
 		Path initialProject = Files.createDirectory(scratch.resolve("initial-project"));
@@ -1338,7 +1339,7 @@ public final class OptimizerCoreTest
 				SessionResult ended = trialEnd.get().apply(number);
 				if (ended != null)
 					yield ended;
-				yield trialResult(request, scratch.resolve("trial-" + number), transcript);
+				yield trialResult(request, scratch.resolve("trial-" + number));
 			}
 			case JUDGE -> new SessionResult.Completed(transcript, List.of(List.of(judgment(request))), effects,
 				initialProject, "model", null, null, List.of(), "CLAUDE.md", List.of());
@@ -1376,22 +1377,24 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Returns a completed trial session that answered every turn and changed no file.
+	 * Returns a completed trial session that answered every turn and changed no file. Like a harness's, the trial's
+	 * transcript is its own and differs from every other session's, so no trial takes another's stored verdict.
 	 *
 	 * @param request the trial's request
-	 * @param directory a new directory that receives the trial's effects and initial project
-	 * @param transcript the session's transcript
+	 * @param directory a new directory that receives the trial's transcript, effects and initial project
 	 * @return the result
 	 * @throws UncheckedIOException if the directories cannot be created
 	 */
-	private static SessionResult.Completed trialResult(SessionRequest request, Path directory, Path transcript)
+	private static SessionResult.Completed trialResult(SessionRequest request, Path directory)
 	{
 		Path effects = directory.resolve("effects");
 		Path initialProject = directory.resolve("initial-project");
+		Path transcript = directory.resolve("transcript.jsonl");
 		try
 		{
 			Files.createDirectories(effects);
 			Files.createDirectories(initialProject);
+			Files.writeString(transcript, directory.toString() + "\n");
 		}
 		catch (IOException e)
 		{
@@ -3391,13 +3394,12 @@ public final class OptimizerCoreTest
 		TemporaryDirectories cleanup) throws IOException
 	{
 		Path scratch = cleanup.add(Files.createTempDirectory("shared-peer-"));
-		Path transcript = Files.createFile(scratch.resolve("transcript.jsonl"));
 		AtomicInteger sequence = new AtomicInteger();
 		SessionScript peer = new SessionScript(repository.scope().clock(), request ->
 		{
 			requireThat(request.role(), "peerRole").isEqualTo(SessionRole.TRIAL);
 			requireThat(Files.isRegularFile(request.source().resolve(entry)), "peerEntry").isTrue();
-			return trialResult(request, scratch.resolve("trial-" + sequence.incrementAndGet()), transcript);
+			return trialResult(request, scratch.resolve("trial-" + sequence.incrementAndGet()));
 		});
 		peer.derivedSources(sharedPeerSources(target, entry));
 		repository.scope().usePeerArtifact(scratch.resolve("installed-peer"));

@@ -3,6 +3,8 @@ package com.holdmyspot.cat.common.optimizer.store.test;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.Header;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
+import com.holdmyspot.cat.common.optimizer.execution.VerdictKey;
+import com.holdmyspot.cat.common.optimizer.execution.VerdictRecord;
 import com.holdmyspot.cat.common.optimizer.store.AbstractCampaignStore;
 import com.holdmyspot.cat.common.optimizer.store.CampaignStore;
 import com.holdmyspot.cat.common.optimizer.store.DeliveryJournal;
@@ -14,9 +16,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * A {@link CampaignStore} that holds snapshots, trial records and delivery journals in memory.
+ * A {@link CampaignStore} that holds snapshots, trial records, stored verdicts and delivery journals in memory.
  * <p>
  * The driver tests use it instead of {@code FileCampaignStore}, because the file store forces every write to the
  * storage device and a driver test writes thousands of times. The record rules are the real ones, those of
@@ -27,6 +30,7 @@ public final class InMemoryCampaignStore extends AbstractCampaignStore
 	private final Map<String, Campaign> snapshots = new TreeMap<>();
 	private final Map<String, Map<TrialKey, TrialRecord>> records = new HashMap<>();
 	private final Map<String, DeliveryJournal> journals = new HashMap<>();
+	private final Map<String, Map<VerdictKey, VerdictRecord>> verdicts = new ConcurrentHashMap<>();
 
 	/**
 	 * Creates an empty store.
@@ -81,5 +85,35 @@ public final class InMemoryCampaignStore extends AbstractCampaignStore
 	public void replaceJournal(String campaignId, DeliveryJournal journal)
 	{
 		journals.put(campaignId, journal);
+	}
+
+	@Override
+	public Optional<VerdictRecord> readVerdict(String campaignId, VerdictKey key)
+	{
+		Map<VerdictKey, VerdictRecord> campaignVerdicts = verdicts.get(campaignId);
+		if (campaignVerdicts == null)
+			return Optional.empty();
+		return Optional.ofNullable(campaignVerdicts.get(key));
+	}
+
+	@Override
+	public VerdictRecord writeVerdict(String campaignId, VerdictKey key, VerdictRecord verdict)
+	{
+		VerdictRecord stored = verdicts.computeIfAbsent(campaignId, _ -> new ConcurrentHashMap<>()).
+			putIfAbsent(key, verdict);
+		if (stored == null)
+			return verdict;
+		return stored;
+	}
+
+	/**
+	 * Returns the verdicts that a campaign stores.
+	 *
+	 * @param campaignId the campaign's identifier
+	 * @return the verdicts by key
+	 */
+	public Map<VerdictKey, VerdictRecord> verdicts(String campaignId)
+	{
+		return Map.copyOf(verdicts.getOrDefault(campaignId, Map.of()));
 	}
 }

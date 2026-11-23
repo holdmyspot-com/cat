@@ -54,6 +54,25 @@ public final class EvidenceSection
 	}
 
 	/**
+	 * Removes the evidence heading, which names the trial's own directories, so that two trials with the same activity
+	 * and file changes have the same text.
+	 *
+	 * @param section    the rendered evidence
+	 * @param transcript the trial's transcript
+	 * @param effects    the trial's effects directory
+	 * @return the section without its heading, or the original section if it has no matching heading
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public static String withoutPaths(String section, Path transcript, Path effects)
+	{
+		requireThat(section, "section").isNotNull();
+		String heading = paths(transcript, effects);
+		if (!section.startsWith(heading))
+			return section;
+		return section.substring(heading.length());
+	}
+
+	/**
 	 * Returns the heading for an evidence section with the given paths.
 	 *
 	 * @param transcript the transcript file

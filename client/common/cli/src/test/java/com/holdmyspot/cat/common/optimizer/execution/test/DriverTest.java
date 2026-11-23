@@ -117,6 +117,8 @@ import com.holdmyspot.cat.common.optimizer.execution.SliceRunner;
 import com.holdmyspot.cat.common.optimizer.execution.SliceSettings;
 import com.holdmyspot.cat.common.optimizer.execution.SnapshotMismatchException;
 import com.holdmyspot.cat.common.optimizer.execution.Step;
+import com.holdmyspot.cat.common.optimizer.execution.VerdictKey;
+import com.holdmyspot.cat.common.optimizer.execution.VerdictRecord;
 import com.holdmyspot.cat.common.optimizer.execution.fixture.test.FaultingFileChannel;
 import com.holdmyspot.cat.common.optimizer.inventory.Authority;
 import com.holdmyspot.cat.common.optimizer.inventory.AuthorityWarning;
@@ -191,6 +193,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -209,6 +212,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import tools.jackson.databind.json.JsonMapper;
@@ -5957,7 +5961,7 @@ public final class DriverTest
 	 *   that the request staged
 	 * @throws UncheckedIOException if the campaign cannot be read
 	 */
-	private static LogicalTrial runningTrial(DriverHarness harness, SessionRequest request)
+	static LogicalTrial runningTrial(DriverHarness harness, SessionRequest request)
 	{
 		Campaign campaign;
 		try
@@ -6216,7 +6220,7 @@ public final class DriverTest
 	 * @param key the trial
 	 * @return the outcome, or empty if the trial has none yet
 	 */
-	private static Optional<CampaignEvent.Complete> recordedOutcome(DriverHarness harness, TrialKey key)
+	static Optional<CampaignEvent.Complete> recordedOutcome(DriverHarness harness, TrialKey key)
 	{
 		return harness.store().readRecord(DriverHarness.CAMPAIGN, key).map(TrialRecord::outcome);
 	}
@@ -8258,6 +8262,573 @@ public final class DriverTest
 	{
 		return campaign.development().testCaseOutcomes().stream().
 			filter(outcome -> outcome.testCase().testId().equals("plain_list") && outcome.outcomes() > 0).toList();
+	}
+
+	/**
+	 * Trials of one test case that give the same reply start one judge session and get its verdict, although the
+	 * judge would answer every later session the opposite way; a trial whose assertions all have stored verdicts
+	 * starts no session and names the trial whose session made them.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void repeatedEvidenceGetsOneVerdict() throws IOException
+	{
+		// Requirement: R-L10
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+				developing(withoutFileNames(ContractFixtures.contract())).window(8).build());
+			Repeats repeats = new Repeats(harness);
+			int before = developmentOutcomes(harness.campaign());
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, state -> developmentOutcomes(state) >= before + 60);
+				harness.settle(driver);
+			}
+			Campaign campaign = harness.campaign();
+			requireThat(campaign.development().failures(), "failures").isEmpty();
+			requireThat(repeats.sessionsByCase().values().stream().allMatch(count -> count == 1), "oneSessionEach").
+				withContext(repeats.sessionsByCase(), "sessionsByCase").isTrue();
+			requireThat(repeats.trials().size(), "trials").isGreaterThan(repeats.sessionsByCase().size());
+			requireThat(repeats.outcomes(harness, _ -> true).stream().anyMatch(outcome ->
+				outcome.verdict() == Verdict.PASS &&
+					outcome.rationale().contains("Recorded verdict of development trial ")), "hitNamesItsTrial").isTrue();
+			requireThat(harness.store().verdicts(DriverHarness.CAMPAIGN).size(), "records").
+				isGreaterThanOrEqualTo(repeats.sessionsByCase().size());
+		}
+	}
+
+	/**
+	 * Two trials that end together with the same evidence get one judge session, started for the trial whose session
+	 * ended first, and one verdict.
+	 *
+	 * @param reversed whether the trial sessions end in reverse order of their start
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test(dataProvider = "endOrders")
+	public void concurrentTrialWaitsForRunningJudge(boolean reversed) throws IOException
+	{
+		// Requirement: R-L10
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+				developing(withoutFileNames(ContractFixtures.contract())).window(16).build());
+			Repeats repeats = new Repeats(harness);
+			try (Driver driver = harness.open())
+			{
+				driver.step();
+				List<TrialKey> started = runningKeys(harness);
+				List<FakeSession> trials = new ArrayList<>(harness.runningTrials());
+				if (reversed)
+					Collections.reverse(trials);
+				Map<String, Path> firstEnded = new HashMap<>();
+				for (FakeSession trial : trials)
+				{
+					harness.end(trial);
+					Path effects = repeats.lastResult().effects();
+					firstEnded.putIfAbsent(repeats.identity(effects), effects);
+				}
+				requireThat(firstEnded.size(), "distinctCases").isLessThan(trials.size());
+				harness.runUntil(driver, () -> started.stream().allMatch(key ->
+					recordedOutcome(harness, key).isPresent()));
+				for (SessionRequest judge : judgeRequests(harness))
+				{
+					Path effects = judge.readOnly().getFirst();
+					String identity = repeats.identity(effects);
+					if (firstEnded.containsKey(identity))
+						requireThat(effects, "judgedTrial").isEqualTo(firstEnded.get(identity));
+				}
+				for (String identity : firstEnded.keySet())
+					requireThat(repeats.sessionsByCase().get(identity), "sessions").isEqualTo(1);
+				for (TrialKey key : started)
+				{
+					requireThat(recordedOutcome(harness, key).orElseThrow().verdict(), "verdict").
+						isEqualTo(Verdict.PASS);
+				}
+			}
+		}
+	}
+
+	/**
+	 * Returns whether trial sessions end in reverse order of their start.
+	 *
+	 * @return the orders
+	 */
+	@DataProvider
+	public static Object[][] endOrders()
+	{
+		return new Object[][]{{false}, {true}};
+	}
+
+	/**
+	 * A judge session that fails, or whose output does not match the result schema, writes no verdict: the trial that
+	 * waits for it starts its own session, and its valid verdict is the one stored.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void failedJudgeWritesNoRecord() throws IOException
+	{
+		// Requirement: R-L10
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+				developing(withoutFileNames(ContractFixtures.contract())).window(16).build());
+			Repeats repeats = new Repeats(harness);
+			Set<String> failing = ConcurrentHashMap.newKeySet();
+			repeats.failFirst(failing, Driver.JUDGE_ATTEMPTS);
+			try (Driver driver = harness.open())
+			{
+				driver.step();
+				Map<String, List<Path>> byCase = new LinkedHashMap<>();
+				for (FakeSession trial : new ArrayList<>(harness.runningTrials()))
+				{
+					harness.end(trial);
+					Path effects = repeats.lastResult().effects();
+					byCase.computeIfAbsent(repeats.identity(effects), _ -> new ArrayList<>()).add(effects);
+				}
+				String repeated = byCase.entrySet().stream().filter(entry -> entry.getValue().size() >= 2).
+					map(Map.Entry::getKey).findFirst().orElseThrow();
+				failing.add(repeated);
+				harness.runUntil(driver, () -> judgedTrials(harness, repeats, repeated).size() >
+					Driver.JUDGE_ATTEMPTS &&
+					repeats.outcomes(harness, repeated).size() >= byCase.get(repeated).size() - 1);
+
+				// The sessions that failed stored nothing, so the waiting trial found no verdict and ran its own session
+				List<Path> judged = judgedTrials(harness, repeats, repeated);
+				Path first = judged.getFirst();
+				Path second = judged.get(Driver.JUDGE_ATTEMPTS);
+				List<Path> expected = new ArrayList<>(Collections.nCopies(Driver.JUDGE_ATTEMPTS, first));
+				expected.add(second);
+				requireThat(judged, "judgedTrials").isEqualTo(expected);
+				requireThat(second, "second").isNotEqualTo(first);
+				requireThat(byCase.get(repeated), "waitingTrials").contains(second);
+				for (CampaignEvent.Complete outcome : repeats.outcomes(harness, repeated))
+					requireThat(outcome.verdict(), "verdict").isEqualTo(Verdict.PASS);
+				requireThat(harness.store().verdicts(DriverHarness.CAMPAIGN).values().stream().
+					anyMatch(record -> record.verdict().rationale().equals("The first answer.")), "stored").isTrue();
+			}
+		}
+	}
+
+	/**
+	 * Returns the trials of one test case that judge sessions judged.
+	 *
+	 * @param harness the harness
+	 * @param repeats the trials
+	 * @param identity the test case's identity
+	 * @return the effects directory of each judged trial, in the order its session started
+	 */
+	private static List<Path> judgedTrials(DriverHarness harness, Repeats repeats, String identity)
+	{
+		return judgeRequests(harness).stream().map(request -> request.readOnly().getFirst()).
+			filter(effects -> identity.equals(repeats.identity(effects))).toList();
+	}
+
+	/**
+	 * Returns the keys of the trials that run.
+	 *
+	 * @param harness the harness
+	 * @return the keys
+	 * @throws IOException if the campaign cannot be read
+	 */
+	private static List<TrialKey> runningKeys(DriverHarness harness) throws IOException
+	{
+		return harness.campaign().trials().stream().filter(trial -> trial.state() == TrialState.RUNNING).
+			map(LogicalTrial::key).toList();
+	}
+
+	/**
+	 * A later campaign judges again: the stored verdicts of an earlier campaign in the same store are not found.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void laterCampaignJudgesAgain() throws IOException
+	{
+		// Requirement: R-L10
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Campaign campaign = developing(withoutFileNames(ContractFixtures.contract())).window(8).build();
+			DriverHarness earlier = new DriverHarness(cleanup.add(Files.createTempDirectory("earlier")), campaign);
+			Repeats earlierRepeats = new Repeats(earlier);
+			int before = developmentOutcomes(campaign);
+			try (Driver driver = earlier.open())
+			{
+				earlier.runUntil(driver, state -> developmentOutcomes(state) >= before + 30);
+			}
+			Map<VerdictKey, VerdictRecord> records = earlier.store().verdicts(DriverHarness.CAMPAIGN);
+			requireThat(records.isEmpty(), "earlierRecords").isFalse();
+
+			DriverHarness later = new DriverHarness(cleanup.add(Files.createTempDirectory("later")), campaign);
+			for (Map.Entry<VerdictKey, VerdictRecord> entry : records.entrySet())
+				later.store().writeVerdict("campaign-0", entry.getKey(), entry.getValue());
+			Repeats laterRepeats = new Repeats(later);
+			try (Driver driver = later.open())
+			{
+				later.runUntil(driver, state -> developmentOutcomes(state) >= before + 30);
+			}
+			Set<String> completed = laterRepeats.completedCases(later);
+			requireThat(earlierRepeats.sessionsByCase().keySet(), "earlierCases").containsAll(completed);
+			requireThat(laterRepeats.sessionsByCase().keySet(), "laterCases").containsAll(completed);
+			requireThat(later.store().verdicts(DriverHarness.CAMPAIGN).isEmpty(), "laterRecords").isFalse();
+		}
+	}
+
+	/**
+	 * A trial of each purpose that has a judge takes the verdicts stored for its evidence and writes the verdicts of
+	 * its own sessions.
+	 *
+	 * @param purpose the purpose
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test(dataProvider = "recordedPurposes")
+	public void everyPurposeTakesAndWritesRecords(Purpose purpose) throws IOException
+	{
+		// Requirement: R-L10
+		Contract contract = withoutFileNames(ContractFixtures.contract());
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = switch (purpose)
+			{
+				case DEVELOPMENT -> new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+					developing(contract).window(8).build());
+				case BASELINE -> new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+					new Builder().confirmed(contract, 1).working(1).window(8).build());
+				default ->
+				{
+					Builder start = new Builder().confirmed(contract, 1).working(1).readyBaseline();
+					for (String cell : contract.cellIds())
+						start.development(cell, CommitGate.MINIMUM_TRIALS, 0);
+					yield runningAttemptHarness(cleanup, start.certificationAttempt(1).
+						boundaries(Boundaries.paired(contract.cellIds().size())).build());
+				}
+			};
+			Repeats repeats = new Repeats(harness);
+			repeats.replyByPurpose();
+			String name = EnumNames.lowerCase(purpose) + " trial ";
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, () -> repeats.outcomes(harness, purpose).stream().anyMatch(outcome ->
+					outcome.rationale().contains("Recorded verdict of ")) &&
+					harness.store().verdicts(DriverHarness.CAMPAIGN).values().stream().
+						anyMatch(record -> record.trial().startsWith(name)));
+			}
+		}
+	}
+
+	/**
+	 * Targeted trials take and write verdicts as representative trials do: the prompt-author attempts replay one failed
+	 * test case, and the attempts after the first take the verdict of the first replay with the same reply.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void targetedTrialsTakeAndWriteRecords() throws IOException
+	{
+		// Requirement: R-L10
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+				new Builder().confirmed(withoutFileNames(ContractFixtures.contract()), 1).working(1).readyBaseline().
+					build());
+			Set<TrialKey> started = ConcurrentHashMap.newKeySet();
+			harness.trials(request ->
+			{
+				TrialKey key = runningTrial(harness, request).key();
+				started.add(key);
+				return harness.completed("fail in a " + EnumNames.lowerCase(key.purpose()) + " trial",
+					DriverHarness.MODEL);
+			});
+			harness.judges(request -> harness.judged(request, Verdict.FAIL, "It failed."));
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, () -> harness.store().verdicts(DriverHarness.CAMPAIGN).values().stream().
+					anyMatch(record -> record.trial().startsWith("promotion trial ")) &&
+					started.stream().filter(key -> key.purpose() == Purpose.PROMOTION).
+						map(key -> recordedOutcome(harness, key)).flatMap(Optional::stream).
+						anyMatch(outcome -> outcome.rationale().contains("Recorded verdict of promotion trial ")));
+			}
+		}
+	}
+
+	/**
+	 * Returns the purposes of trials that a judge decides.
+	 *
+	 * @return the purposes
+	 */
+	@DataProvider
+	public static Object[][] recordedPurposes()
+	{
+		return new Object[][]{{Purpose.DEVELOPMENT}, {Purpose.BASELINE}, {Purpose.FORMAL}, {Purpose.CONTROL},
+			{Purpose.INCUMBENT}};
+	}
+
+	/**
+	 * A development trial never finds a held-out verdict: with the verdicts of a certification attempt's trials in
+	 * its store, every development trial's verdict comes from a development trial's session.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void developmentNeverFindsHeldOutRecord() throws IOException
+	{
+		// Requirement: R-L10
+		Contract contract = withoutFileNames(ContractFixtures.contract());
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Builder start = new Builder().confirmed(contract, 1).working(1).readyBaseline();
+			for (String cell : contract.cellIds())
+				start.development(cell, CommitGate.MINIMUM_TRIALS, 0);
+			DriverHarness attempt = runningAttemptHarness(cleanup, start.certificationAttempt(1).
+				boundaries(Boundaries.paired(contract.cellIds().size())).build());
+			Repeats attemptRepeats = new Repeats(attempt);
+			try (Driver driver = attempt.open())
+			{
+				attempt.runUntil(driver, () -> attempt.store().verdicts(DriverHarness.CAMPAIGN).size() >= 10);
+			}
+			Map<VerdictKey, VerdictRecord> heldOut = attempt.store().verdicts(DriverHarness.CAMPAIGN);
+
+			DriverHarness development = new DriverHarness(cleanup.add(Files.createTempDirectory("development")),
+				developing(contract).window(8).build());
+			for (Map.Entry<VerdictKey, VerdictRecord> entry : heldOut.entrySet())
+				development.store().writeVerdict(DriverHarness.CAMPAIGN, entry.getKey(), entry.getValue());
+			Repeats repeats = new Repeats(development);
+			int before = developmentOutcomes(development.campaign());
+			try (Driver driver = development.open())
+			{
+				development.runUntil(driver, state -> developmentOutcomes(state) >= before + 40);
+			}
+			requireThat(attemptRepeats.sessionsByCase().isEmpty(), "heldOutSessions").isFalse();
+			for (CampaignEvent.Complete outcome : repeats.outcomes(development, _ -> true))
+			{
+				requireThat(outcome.rationale(), "rationale").doesNotContain("Recorded verdict of formal").
+					doesNotContain("Recorded verdict of control").doesNotContain("Recorded verdict of incumbent");
+			}
+			requireThat(repeats.sessionsByCase().keySet(), "developmentCases").
+				doesNotContainAny(attemptRepeats.sessionsByCase().keySet());
+		}
+	}
+
+	/**
+	 * Returns a contract whose judge template names neither the transcript nor the effects directory, so that the
+	 * verdicts of trials with the same replies and activity are stored under one key.
+	 *
+	 * @param contract the contract
+	 * @return the contract
+	 */
+	static Contract withoutFileNames(Contract contract)
+	{
+		JudgeProfile judge = contract.judge();
+		JudgeProfile withoutFiles = new JudgeProfile(judge.profile(), judge.prompt().
+			replace("{{effects}}", "(not offered)").replace("{{transcript}}", "(not offered)"), judge.rubric(),
+			judge.decisionRule(), judge.resultSchema());
+		return new Contract(contract.requirements(), contract.tests(), contract.profiles(), withoutFiles,
+			contract.limitations(), contract.minimumPassRate(), contract.salt());
+	}
+
+	/**
+	 * Trials that all reply the same way, and a judge that passes the first session of each test case and fails
+	 * every later one.
+	 */
+	private static final class Repeats
+	{
+		private final Map<Path, String> identities = new ConcurrentHashMap<>();
+		private final Map<TrialKey, LogicalTrial> started = new ConcurrentHashMap<>();
+		private final Map<String, Integer> sessions = new ConcurrentHashMap<>();
+		private final Map<String, Integer> invalid = new ConcurrentHashMap<>();
+		private volatile Set<String> failing = Set.of();
+		private volatile int failures;
+		private volatile SessionResult.Completed last;
+		private volatile boolean byPurpose;
+
+		/**
+		 * Scripts the trial and judge sessions of a harness.
+		 *
+		 * @param harness the harness
+		 */
+		Repeats(DriverHarness harness)
+		{
+			harness.trials(request ->
+			{
+				LogicalTrial trial = runningTrial(harness, request);
+				recordStarted(harness);
+				SessionResult.Completed result;
+				if (byPurpose)
+				{
+					result = harness.completed("pass in a " + EnumNames.lowerCase(trial.key().purpose()) + " trial",
+						DriverHarness.MODEL);
+				}
+				else
+					result = harness.passed();
+				identities.put(result.effects(), identityOf(trial));
+				last = result;
+				return result;
+			});
+			harness.judges(request ->
+			{
+				String identity = identity(request.readOnly().getFirst());
+				int count = sessions.merge(identity, 1, Integer::sum);
+				if (failing.contains(identity) && invalid.merge(identity, 1, Integer::sum) <= failures)
+					return harness.judged("{}");
+				if (count == 1 || failing.contains(identity))
+					return harness.judged(request, Verdict.PASS, "The first answer.");
+				return harness.judged(request, Verdict.FAIL, "An opposite answer.");
+			});
+		}
+
+		/**
+		 * Remembers the trials that run, so that the outcomes of trials that have since left the campaign can be read.
+		 *
+		 * @param harness the harness
+		 */
+		private void recordStarted(DriverHarness harness)
+		{
+			try
+			{
+				for (LogicalTrial trial : harness.campaign().trials())
+				{
+					if (trial.state() == TrialState.RUNNING)
+						started.putIfAbsent(trial.key(), trial);
+				}
+			}
+			catch (IOException e)
+			{
+				throw new UncheckedIOException(e);
+			}
+		}
+
+		/**
+		 * Makes each trial's reply name its purpose, so that only trials of one purpose share evidence.
+		 */
+		void replyByPurpose()
+		{
+			this.byPurpose = true;
+		}
+
+		/**
+		 * Makes the first sessions of the given test cases end with output that does not match the result schema.
+		 *
+		 * @param cases the identities of the test cases
+		 * @param count the number of such sessions per test case
+		 */
+		void failFirst(Set<String> cases, int count)
+		{
+			this.failing = cases;
+			this.failures = count;
+		}
+
+		/**
+		 * Returns the result of the trial session that ended last.
+		 *
+		 * @return the result
+		 */
+		SessionResult.Completed lastResult()
+		{
+			return last;
+		}
+
+		/**
+		 * Returns the test case of a trial.
+		 *
+		 * @param effects the trial's effects directory
+		 * @return the test's identifier and the test case
+		 */
+		String identity(Path effects)
+		{
+			return identities.get(effects);
+		}
+
+		/**
+		 * Returns the number of judge sessions of each test case.
+		 *
+		 * @return the sessions by test case
+		 */
+		Map<String, Integer> sessionsByCase()
+		{
+			return Map.copyOf(sessions);
+		}
+
+		/**
+		 * Returns the test case of each trial.
+		 *
+		 * @return the test cases by effects directory
+		 */
+		Map<Path, String> trials()
+		{
+			return Map.copyOf(identities);
+		}
+
+		/**
+		 * Returns the identity of a trial's test case.
+		 *
+		 * @param trial the trial
+		 * @return the test and the test case
+		 */
+		static String identityOf(LogicalTrial trial)
+		{
+			return trial.testCase().testId() + "\n" + trial.testCase().testCase();
+		}
+
+		/**
+		 * Returns the identities of the test cases whose trials have outcomes.
+		 *
+		 * @param harness the harness
+		 * @return the identities
+		 */
+		Set<String> completedCases(DriverHarness harness)
+		{
+			Set<String> cases = new HashSet<>();
+			for (LogicalTrial trial : started.values())
+			{
+				if (recordedOutcome(harness, trial.key()).isPresent())
+					cases.add(identityOf(trial));
+			}
+			return cases;
+		}
+
+		/**
+		 * Returns the recorded outcomes of the trials that match a condition.
+		 *
+		 * @param harness   the harness
+		 * @param condition selects the trials
+		 * @return the outcomes
+		 */
+		List<CampaignEvent.Complete> outcomes(DriverHarness harness, Predicate<LogicalTrial> condition)
+		{
+			List<CampaignEvent.Complete> outcomes = new ArrayList<>();
+			for (LogicalTrial trial : started.values())
+			{
+				if (condition.test(trial))
+					recordedOutcome(harness, trial.key()).ifPresent(outcomes::add);
+			}
+			return outcomes;
+		}
+
+		/**
+		 * Returns the recorded outcomes of the trials of one purpose.
+		 *
+		 * @param harness the harness
+		 * @param purpose the purpose
+		 * @return the outcomes
+		 */
+		List<CampaignEvent.Complete> outcomes(DriverHarness harness, Purpose purpose)
+		{
+			return outcomes(harness, trial -> trial.key().purpose() == purpose);
+		}
+
+		/**
+		 * Returns the recorded outcomes of the trials of one test case.
+		 *
+		 * @param harness  the harness
+		 * @param identity the test case's identity
+		 * @return the outcomes
+		 */
+		List<CampaignEvent.Complete> outcomes(DriverHarness harness, String identity)
+		{
+			return outcomes(harness, trial -> identityOf(trial).equals(identity));
+		}
 	}
 
 	/**

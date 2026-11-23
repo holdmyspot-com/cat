@@ -5,6 +5,8 @@ import com.holdmyspot.cat.common.optimizer.campaign.CampaignEvent;
 import com.holdmyspot.cat.common.optimizer.campaign.Header;
 import com.holdmyspot.cat.common.optimizer.campaign.LogicalTrial;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
+import com.holdmyspot.cat.common.optimizer.execution.VerdictKey;
+import com.holdmyspot.cat.common.optimizer.execution.VerdictRecord;
 
 import java.io.IOException;
 import java.util.List;
@@ -176,4 +178,30 @@ public interface CampaignStore
 	 * @throws IOException if the journal cannot be read or written
 	 */
 	void writeJournal(String campaignId, DeliveryJournal journal) throws IOException;
+
+	/**
+	 * Reads the verdict stored under a key of a campaign.
+	 *
+	 * @param campaignId the campaign's identifier
+	 * @param key the key of a judged assertion's evidence
+	 * @return the verdict, or empty if the campaign stores none under the key
+	 * @throws NullPointerException if any argument is null
+	 * @throws IllegalArgumentException if {@code campaignId} is not a single path segment
+	 * @throws IOException if the verdict cannot be read or is malformed
+	 */
+	Optional<VerdictRecord> readVerdict(String campaignId, VerdictKey key) throws IOException;
+
+	/**
+	 * Stores a verdict under a key of a campaign unless the campaign already stores one under it: the first verdict
+	 * stored under a key is final, and a later one is dropped.
+	 *
+	 * @param campaignId the campaign's identifier
+	 * @param key the key of a judged assertion's evidence
+	 * @param verdict the verdict
+	 * @return the verdict that the key holds afterwards: {@code verdict}, or the verdict that was stored first
+	 * @throws NullPointerException if any argument is null
+	 * @throws IllegalArgumentException if {@code campaignId} is not a single path segment
+	 * @throws IOException if the verdict cannot be read or written
+	 */
+	VerdictRecord writeVerdict(String campaignId, VerdictKey key, VerdictRecord verdict) throws IOException;
 }

@@ -8,6 +8,8 @@ import com.holdmyspot.cat.common.optimizer.campaign.Header;
 import com.holdmyspot.cat.common.optimizer.campaign.Lifecycle;
 import com.holdmyspot.cat.common.optimizer.campaign.LogicalTrial;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
+import com.holdmyspot.cat.common.optimizer.execution.VerdictKey;
+import com.holdmyspot.cat.common.optimizer.execution.VerdictRecord;
 
 import java.io.IOException;
 import java.util.List;
@@ -120,5 +122,17 @@ public final class JudgeRecordingStore implements CampaignStore
 	public void writeJournal(String campaignId, DeliveryJournal journal) throws IOException
 	{
 		delegate.writeJournal(campaignId, journal);
+	}
+
+	@Override
+	public Optional<VerdictRecord> readVerdict(String campaignId, VerdictKey key) throws IOException
+	{
+		return delegate.readVerdict(campaignId, key);
+	}
+
+	@Override
+	public VerdictRecord writeVerdict(String campaignId, VerdictKey key, VerdictRecord verdict) throws IOException
+	{
+		return delegate.writeVerdict(campaignId, key, verdict);
 	}
 }

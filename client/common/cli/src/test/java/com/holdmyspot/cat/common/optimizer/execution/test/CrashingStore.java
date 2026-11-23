@@ -7,6 +7,8 @@ import com.holdmyspot.cat.common.optimizer.campaign.CampaignEvent;
 import com.holdmyspot.cat.common.optimizer.campaign.Header;
 import com.holdmyspot.cat.common.optimizer.campaign.LogicalTrial;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
+import com.holdmyspot.cat.common.optimizer.execution.VerdictKey;
+import com.holdmyspot.cat.common.optimizer.execution.VerdictRecord;
 import com.holdmyspot.cat.common.optimizer.store.CampaignStore;
 import com.holdmyspot.cat.common.optimizer.store.DeliveryJournal;
 import com.holdmyspot.cat.common.optimizer.store.TrialSession;
@@ -174,6 +176,20 @@ public final class CrashingStore implements CampaignStore
 	{
 		requireAlive();
 		delegate.writeJournal(campaignId, journal);
+	}
+
+	@Override
+	public Optional<VerdictRecord> readVerdict(String campaignId, VerdictKey key) throws IOException
+	{
+		requireAlive();
+		return delegate.readVerdict(campaignId, key);
+	}
+
+	@Override
+	public VerdictRecord writeVerdict(String campaignId, VerdictKey key, VerdictRecord verdict) throws IOException
+	{
+		requireAlive();
+		return delegate.writeVerdict(campaignId, key, verdict);
 	}
 
 	/**

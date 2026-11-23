@@ -81,6 +81,7 @@ import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveredTest;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult;
 import com.holdmyspot.cat.common.optimizer.execution.InFlight.Judging;
+import com.holdmyspot.cat.common.optimizer.execution.InFlight.Pending;
 import com.holdmyspot.cat.common.optimizer.execution.InFlight.Triaging;
 import com.holdmyspot.cat.common.optimizer.execution.SessionEvents.Event;
 import com.holdmyspot.cat.common.optimizer.execution.prompt.ValuesPrompt;
@@ -108,6 +109,7 @@ import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
 import com.holdmyspot.cat.common.optimizer.port.TurnObserver.Progress;
 import com.holdmyspot.cat.common.optimizer.port.UnreachableReference;
 import com.holdmyspot.cat.common.optimizer.report.CertifiedEnvironment;
+import com.holdmyspot.cat.common.optimizer.report.EnumNames;
 import com.holdmyspot.cat.common.optimizer.report.ReportEvidence;
 import com.holdmyspot.cat.common.optimizer.report.ReportStatus;
 import com.holdmyspot.cat.common.optimizer.report.Status;
@@ -131,6 +133,8 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -496,7 +500,7 @@ public final class Driver implements AutoCloseable
 		Instant now = context.clock().instant();
 		for (Event event : events.drain())
 			handle(event, now);
-		discardRemovedTrials();
+		discardRemovedTrials(now);
 		if (!context.settings().background() && context.interrupts().isInterruptedAfter(sliceStart))
 		{
 			interrupted = true;
@@ -531,7 +535,7 @@ public final class Driver implements AutoCloseable
 		refreshEvaluatorHolds(now);
 		boolean started = startTriages(now);
 		started |= startJudges(now);
-		discardRemovedTrials();
+		discardRemovedTrials(now);
 		boolean canResume = cancellationEnd == null && now.isBefore(deadline) && isAdmissible() &&
 			campaign.throttle().allowsAdmission(now);
 		started |= recoverTrials(now, canResume);
@@ -1028,7 +1032,8 @@ public final class Driver implements AutoCloseable
 				return;
 			section = rendered.get();
 		}
-		queueJudging(trial, completed, section, judged, results);
+		queueJudging(new Pending(trial.key(), testCase, completed, section, judged, results, trial.concurrency()),
+			now);
 	}
 
 	/**
@@ -1097,21 +1102,23 @@ public final class Driver implements AutoCloseable
 	 * Each shadowed candidate of the test judges the trial next to the frozen judge if the trial is not a development
 	 * trial, or if it is one and the development trials that the test is expected to run before the next
 	 * certification attempt can bring the candidate to qualification.
+	 * <p>
+	 * The deciding judge's stored verdicts of the trial's evidence replace its session: a trial whose assertions all
+	 * have one completes with them, and no candidate judges it. A trial whose missing verdicts a queued or running
+	 * session of another trial decides waits for that session and then looks again. Otherwise the deciding judge
+	 * decides the missing assertions, alone if any assertion has a stored verdict.
 	 *
-	 * @param trial the trial session
-	 * @param completed the trial session's result
-	 * @param section the rendered trial evidence, or an empty string if the frozen judge template does not name it
-	 * @param judged the assertions to decide
-	 * @param results the results of the test's built-in tools
+	 * @param pending the completed trial
+	 * @param now the current time
+	 * @throws IOException if the evidence, the store or the worktree cannot be read or written
 	 */
-	private void queueJudging(InFlight.Trial trial, SessionResult.Completed completed, String section,
-		List<JudgedAssertion> judged, List<BuiltInToolResult> results)
+	private void queueJudging(Pending pending, Instant now) throws IOException
 	{
 		JudgeProfile frozen = campaign.contract().judge();
-		String test = trial.testCase().testId();
+		String test = pending.testCase().testId();
 		DevelopmentJudge state = campaign.judges().get(test);
-		boolean development = trial.key().purpose() == Purpose.DEVELOPMENT ||
-			trial.key().purpose() == Purpose.RACE;
+		boolean development = pending.key().purpose() == Purpose.DEVELOPMENT ||
+			pending.key().purpose() == Purpose.RACE;
 		JudgeProfile decider = frozen;
 		Judging.Seat seat = Judging.Seat.FROZEN_ALONE;
 		ShadowGroup group = null;
@@ -1150,15 +1157,236 @@ public final class Driver implements AutoCloseable
 				}
 			}
 		}
-		judgingQueue.add(new Judging(trial.key(), trial.testCase(), completed, section, judged, results, 1,
-			trial.concurrency(), decider, seat, group));
-		if (group != null)
+		List<JudgedAssertion> judged = pending.assertions();
+		Optional<Map<String, VerdictKey>> keys = keys(decider, pending, judged);
+		if (keys.isEmpty())
 		{
-			for (TrialProfile candidate : group.candidates())
+			queueSessions(pending, judged, decider, seat, group, null);
+			return;
+		}
+		VerdictRecords verdicts = verdicts();
+		Map<String, VerdictRecord> stored = new HashMap<>();
+		Map<String, VerdictKey> missingKeys = new LinkedHashMap<>();
+		List<JudgedAssertion> missing = new ArrayList<>();
+		for (JudgedAssertion assertion : judged)
+		{
+			String id = assertion.assertion().id();
+			VerdictKey key = keys.get().get(id);
+			Optional<VerdictRecord> found = verdicts.find(key);
+			if (found.isPresent())
+				stored.put(id, found.get());
+			else
 			{
-				judgingQueue.add(new Judging(trial.key(), trial.testCase(), completed, section, judged, results, 1,
-					trial.concurrency(), withProfile(frozen, candidate), Judging.Seat.CANDIDATE_OF_GROUP, group));
+				missing.add(assertion);
+				missingKeys.put(id, key);
 			}
+		}
+		Judging.Seat alone;
+		if (seat == Judging.Seat.CANDIDATE_ALONE)
+			alone = seat;
+		else
+			alone = Judging.Seat.FROZEN_ALONE;
+		if (missing.isEmpty())
+		{
+			// Every assertion has a stored verdict, so no judge session runs and no candidate is compared
+			Judging hit = new Judging(pending.key(), pending.testCase(), pending.evidence(), pending.evidenceSection(),
+				judged, pending.results(), 1, pending.concurrency(), decider, alone, null,
+				new Judging.Recording(judged, Map.of(), stored, new ArrayList<>()));
+			judged(hit, merged(hit, stored), decider.profile(), List.of(), now);
+			return;
+		}
+		Optional<Judging> running = judgingOf(missingKeys.values());
+		if (running.isPresent())
+		{
+			running.get().recording().waiters().add(pending);
+			return;
+		}
+		if (!stored.isEmpty())
+		{
+			// A candidate is compared only with a frozen verdict of the whole trial
+			group = null;
+			seat = alone;
+		}
+		queueSessions(pending, missing, decider, seat, group, new Judging.Recording(judged, missingKeys, stored,
+			new ArrayList<>()));
+	}
+
+	/**
+	 * Queues the judge sessions of a trial: the deciding judge's, and those of the group's candidates.
+	 *
+	 * @param pending the completed trial
+	 * @param assertions the assertions that the sessions decide
+	 * @param decider the judge whose verdict counts
+	 * @param seat the deciding judge's part in the trial's verdict
+	 * @param group the frozen judge and the candidates that all judge the trial, or {@code null} if one judge decides
+	 * @param recording the deciding judge's stored verdicts, or {@code null} if the trial's evidence has no keys
+	 * @throws IOException if the evidence cannot be read
+	 */
+	private void queueSessions(Pending pending, List<JudgedAssertion> assertions, JudgeProfile decider,
+		Judging.Seat seat, ShadowGroup group, Judging.Recording recording) throws IOException
+	{
+		judgingQueue.add(new Judging(pending.key(), pending.testCase(), pending.evidence(), pending.evidenceSection(),
+			assertions, pending.results(), 1, pending.concurrency(), decider, seat, group, recording));
+		if (group == null)
+			return;
+		JudgeProfile frozen = campaign.contract().judge();
+		for (TrialProfile candidate : group.candidates())
+		{
+			JudgeProfile judge = withProfile(frozen, candidate);
+			judgingQueue.add(new Judging(pending.key(), pending.testCase(), pending.evidence(),
+				pending.evidenceSection(), assertions, pending.results(), 1, pending.concurrency(), judge,
+				Judging.Seat.CANDIDATE_OF_GROUP, group, newRecording(judge, pending, assertions)));
+		}
+	}
+
+	/**
+	 * Returns the record of the verdicts that a judge's session writes, without looking up stored verdicts.
+	 *
+	 * @param judge the judge
+	 * @param pending the completed trial
+	 * @param assertions the assertions that the session decides
+	 * @return the record, or {@code null} if the trial's evidence has no keys
+	 * @throws IOException if the evidence cannot be read
+	 */
+	private Judging.Recording newRecording(JudgeProfile judge, Pending pending, List<JudgedAssertion> assertions)
+		throws IOException
+	{
+		Optional<Map<String, VerdictKey>> keys = keys(judge, pending, assertions);
+		return keys.map(byId -> new Judging.Recording(assertions, byId, Map.of(), new ArrayList<>())).orElse(null);
+	}
+
+	/**
+	 * Returns the keys of a trial's judged assertions under a judge.
+	 *
+	 * @param judge the judge
+	 * @param pending the completed trial
+	 * @param assertions the assertions
+	 * @return the key of each assertion by its identifier, or empty if the evidence that the judge's template names
+	 *   cannot be read
+	 * @throws IOException if the evidence cannot be read
+	 */
+	private Optional<Map<String, VerdictKey>> keys(JudgeProfile judge, Pending pending,
+		List<JudgedAssertion> assertions) throws IOException
+	{
+		Optional<List<VerdictKey>> keys = verdicts().keys(judge, pending.testCase(), assertions, pending.evidence(),
+			pending.evidenceSection(), pending.results());
+		if (keys.isEmpty())
+			return Optional.empty();
+		Map<String, VerdictKey> byId = new LinkedHashMap<>();
+		for (int i = 0; i < assertions.size(); ++i)
+			byId.put(assertions.get(i).assertion().id(), keys.get().get(i));
+		return Optional.of(byId);
+	}
+
+	/**
+	 * Returns the campaign's stored verdicts.
+	 *
+	 * @return the verdicts
+	 */
+	private VerdictRecords verdicts()
+	{
+		return new VerdictRecords(context.store(), campaign.header().id(), campaign.header().harness(),
+			context.sessions().judgeVersion());
+	}
+
+	/**
+	 * Returns the queued or running judge session that decides any of the keys, for a trial whose verdicts it would
+	 * store.
+	 *
+	 * @param keys the keys
+	 * @return the session's judged trial, or empty if none decides them
+	 */
+	private Optional<Judging> judgingOf(Collection<VerdictKey> keys)
+	{
+		List<Judging> candidates = new ArrayList<>(judgingQueue);
+		for (InFlight session : inFlight.values())
+		{
+			if (session instanceof InFlight.Judge judge)
+				candidates.add(judge.judging());
+		}
+		for (Judging judging : candidates)
+		{
+			if (judging.recording() != null && !isAbandoned(judging) &&
+				findRunningTrial(judging.key()).isPresent() &&
+				!Collections.disjoint(judging.recording().keys().values(), keys))
+			{
+				return Optional.of(judging);
+			}
+		}
+		return Optional.empty();
+	}
+
+	/**
+	 * Stores the verdicts of a judge session, unless verdicts are stored under their keys already, and returns the
+	 * trial's judgment from the verdicts that count: for each assertion, the first verdict stored under its key.
+	 *
+	 * @param judging the judged trial
+	 * @param decided the session's verdicts
+	 * @return the judgment
+	 * @throws IOException if the store cannot be read or written
+	 */
+	private Judgment recorded(Judging judging, List<AssertionVerdict> decided) throws IOException
+	{
+		Judging.Recording recording = judging.recording();
+		if (recording == null)
+			return AssertionVerdict.judgment(decided);
+		VerdictRecords verdicts = verdicts();
+		TrialProfile profile = judging.judge().profile();
+		String trial = trialName(judging.key());
+		Map<String, VerdictRecord> counted = new HashMap<>(recording.stored());
+		for (AssertionVerdict verdict : decided)
+		{
+			VerdictKey key = recording.keys().get(verdict.assertion());
+			counted.put(verdict.assertion(), verdicts.write(key, new VerdictRecord(verdict, profile.model(),
+				profile.effort(), trial)));
+		}
+		return merged(judging, counted);
+	}
+
+	/**
+	 * Returns a trial's judgment from the verdict of each of its assertions. A verdict that another trial's session
+	 * made names that trial.
+	 *
+	 * @param judging the judged trial
+	 * @param counted the verdict that counts for each assertion, by assertion identifier
+	 * @return the judgment
+	 */
+	private static Judgment merged(Judging judging, Map<String, VerdictRecord> counted)
+	{
+		return VerdictRecords.judgment(judging.recording().judged(), counted, trialName(judging.key()));
+	}
+
+	/**
+	 * Returns the description of a trial that its stored verdicts name.
+	 *
+	 * @param key the logical trial
+	 * @return the description
+	 */
+	private static String trialName(TrialKey key)
+	{
+		return EnumNames.lowerCase(key.purpose()) + " trial " + key.sequence() + " of cell " + key.cell() +
+			", series " + key.series();
+	}
+
+	/**
+	 * Lets the trials that wait for a judge session look for their verdicts again, once the session has stored its
+	 * verdicts or can store none.
+	 *
+	 * @param judging the judged trial
+	 * @param now the current time
+	 * @throws IOException if the evidence, the store or the worktree cannot be read or written
+	 */
+	private void release(Judging judging, Instant now) throws IOException
+	{
+		Judging.Recording recording = judging.recording();
+		if (recording == null || recording.waiters().isEmpty())
+			return;
+		List<Pending> waiters = List.copyOf(recording.waiters());
+		recording.waiters().clear();
+		for (Pending waiter : waiters)
+		{
+			if (findRunningTrial(waiter.key()).isPresent())
+				queueJudging(waiter, now);
 		}
 	}
 
@@ -1283,7 +1511,10 @@ public final class Driver implements AutoCloseable
 		{
 			Judging judging = judgingQueue.removeFirst();
 			if (findRunningTrial(judging.key()).isEmpty() || isAbandoned(judging))
+			{
+				release(judging, now);
 				continue;
+			}
 			started = true;
 			SessionRequest request = context.judge().request(judging.judge(), judging.testCase(),
 				judging.evidence(), judging.assertions(), judging.results(), judging.evidenceSection());
@@ -1316,17 +1547,22 @@ public final class Driver implements AutoCloseable
 		throws IOException
 	{
 		if (findRunningTrial(judging.key()).isEmpty() || isAbandoned(judging))
+		{
+			release(judging, now);
 			return;
+		}
 		String reason;
 		switch (result)
 		{
 			case null -> reason = "The judge session failed: " + describe(failure);
 			case SessionResult.Completed completed ->
 			{
-				Optional<Judgment> judgment = context.judge().judgment(completed, judging.assertions());
-				if (judgment.isPresent())
+				Optional<List<AssertionVerdict>> verdicts = context.judge().verdicts(completed, judging.assertions());
+				if (verdicts.isPresent())
 				{
-					decided(judging, judgment.get(), now);
+					// Only a result that matches the result schema stores verdicts
+					decided(judging, recorded(judging, verdicts.get()), now);
+					release(judging, now);
 					return;
 				}
 				reason = "The judge's output does not match its result schema";
@@ -1491,11 +1727,21 @@ public final class Driver implements AutoCloseable
 				ShadowGroup group = new ShadowGroup(frozen.profile(), List.of(judging.judge().profile()), true,
 					false);
 				group.recordUnusable(judging.judge().profile());
+				// The frozen judge decides the whole trial, including the assertions whose candidate verdicts were stored
+				List<JudgedAssertion> judged;
+				if (judging.recording() == null)
+					judged = judging.assertions();
+				else
+					judged = judging.recording().judged();
+				Pending pending = new Pending(judging.key(), judging.testCase(), judging.evidence(),
+					judging.evidenceSection(), judged, judging.results(), judging.concurrency());
 				judgingQueue.add(new Judging(judging.key(), judging.testCase(), judging.evidence(),
-					judging.evidenceSection(), judging.assertions(), judging.results(), 1, judging.concurrency(), frozen,
-					Judging.Seat.FROZEN_OF_GROUP, group));
+					judging.evidenceSection(), judged, judging.results(), 1, judging.concurrency(), frozen,
+					Judging.Seat.FROZEN_OF_GROUP, group, newRecording(frozen, pending, judged)));
 			}
 		}
+		// The trials that waited for the failed session look again, and run their own
+		release(judging, now);
 	}
 
 	/**
@@ -3208,7 +3454,11 @@ public final class Driver implements AutoCloseable
 					if (!trialRequests.containsKey(trial.key()))
 						abandoned.add(trial.key());
 				}
-				case InFlight.Judge judge -> abandoned.add(judge.judging().key());
+				case InFlight.Judge judge ->
+				{
+					abandoned.add(judge.judging().key());
+					abandoned.addAll(waiters(judge.judging()));
+				}
 				case InFlight.Triage triage -> abandoned.add(triage.triaging().key());
 				// The prompt author copy is cleaned up by interrupt(); prompt authors have no logical trial to queue.
 				case InFlight.PromptAuthor _, InFlight.Values _, InFlight.Ranking _, InFlight.NearMiss _ ->
@@ -3229,7 +3479,10 @@ public final class Driver implements AutoCloseable
 			}
 		}
 		for (Judging judging : judgingQueue)
+		{
 			abandoned.add(judging.key());
+			abandoned.addAll(waiters(judging));
+		}
 		for (Triaging triaging : triageQueue)
 			abandoned.add(triaging.key());
 		inFlight.clear();
@@ -3253,13 +3506,18 @@ public final class Driver implements AutoCloseable
 	/**
 	 * Interrupts the trial, judge and triage sessions whose logical trial the campaign discarded, and drops the
 	 * judges and triages that wait for such a trial. Their trials have no outcome to record, so no failure is
-	 * recorded either. Every session is interrupted even if interrupting one fails.
+	 * recorded either. The trials that waited for a dropped judge session look for their verdicts again. Every session
+	 * is interrupted even if interrupting one fails.
 	 *
-	 * @throws IOException if a session cannot be interrupted
+	 * @param now the current time
+	 * @throws IOException if a session cannot be interrupted, or the evidence, the store or the worktree cannot be read
+	 *   or written
 	 */
-	private void discardRemovedTrials() throws IOException
+	private void discardRemovedTrials(Instant now) throws IOException
 	{
-		judgingQueue.removeIf(judging -> isRemoved(judging.key()));
+		List<Judging> discarded = new ArrayList<>(judgingQueue.stream().filter(judging -> isRemoved(judging.key())).
+			toList());
+		judgingQueue.removeAll(discarded);
 		triageQueue.removeIf(triaging -> isRemoved(triaging.key()));
 		IOException failure = null;
 		for (Iterator<InFlight> sessions = inFlight.values().iterator(); sessions.hasNext();)
@@ -3274,6 +3532,8 @@ public final class Driver implements AutoCloseable
 			};
 			if (key == null || !isRemoved(key))
 				continue;
+			if (session instanceof InFlight.Judge judge)
+				discarded.add(judge.judging());
 			// The session's late result is ignored
 			sessions.remove();
 			try
@@ -3288,8 +3548,24 @@ public final class Driver implements AutoCloseable
 					failure.addSuppressed(e);
 			}
 		}
+		// The trials that waited for a discarded trial's judge session look again, and run their own
+		for (Judging judging : discarded)
+			release(judging, now);
 		if (failure != null)
 			throw failure;
+	}
+
+	/**
+	 * Returns the trials that wait for a judge session.
+	 *
+	 * @param judging the judged trial
+	 * @return the waiting trials
+	 */
+	private static List<TrialKey> waiters(Judging judging)
+	{
+		if (judging.recording() == null)
+			return List.of();
+		return judging.recording().waiters().stream().map(Pending::key).toList();
 	}
 
 	/**

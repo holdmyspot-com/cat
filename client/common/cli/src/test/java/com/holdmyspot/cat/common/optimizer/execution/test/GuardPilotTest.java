@@ -29,16 +29,19 @@ import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfiles;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
 import com.holdmyspot.cat.common.optimizer.contract.test.TierFixtures;
+import com.holdmyspot.cat.common.optimizer.execution.AssertionVerdict;
 import com.holdmyspot.cat.common.optimizer.execution.Driver;
 import com.holdmyspot.cat.common.optimizer.execution.GuardPilot;
 import com.holdmyspot.cat.common.optimizer.execution.SnapshotMismatchException;
 import com.holdmyspot.cat.common.optimizer.execution.JudgeProtocol;
-import com.holdmyspot.cat.common.optimizer.execution.Judgment;
 import com.holdmyspot.cat.common.optimizer.execution.PilotResult;
 import com.holdmyspot.cat.common.optimizer.execution.PilotSlice;
 import com.holdmyspot.cat.common.optimizer.execution.PilotTrial;
 import com.holdmyspot.cat.common.optimizer.execution.PilotTrialRecovery;
 import com.holdmyspot.cat.common.optimizer.execution.SliceSettings;
+import com.holdmyspot.cat.common.optimizer.execution.VerdictKey;
+import com.holdmyspot.cat.common.optimizer.execution.VerdictRecord;
+import com.holdmyspot.cat.common.optimizer.execution.VerdictRecords;
 import com.holdmyspot.cat.common.optimizer.execution.prompt.JudgePrompt;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
@@ -55,6 +58,7 @@ import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeHostInterruptSignal;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort.FakeSession;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeWorkspacePort;
+import com.holdmyspot.cat.common.optimizer.store.test.InMemoryCampaignStore;
 import com.holdmyspot.cat.common.secrets.GuardPilotSecrets;
 import com.holdmyspot.cat.common.runner.HarnessCapacity.Hold;
 import com.holdmyspot.cat.common.runner.RetainedTrialClaim;
@@ -136,6 +140,10 @@ public final class GuardPilotTest
 	private static final List<String> CLASS_NAMES = List.of("same_day", "crosses_midnight",
 		"arrives_exactly_at_midnight", "leaves_at_midnight", "spans_two_midnights", "starts_before_dawn",
 		"ends_after_dusk", "crosses_noon", "spans_a_week", "same_minute", "reverses_direction");
+	/**
+	 * The identifier of the campaign whose verdicts the pilot takes and writes.
+	 */
+	private static final String CAMPAIGN = "pilot-campaign";
 	private final JsonMapper json = JsonMapper.builder().build();
 
 	/**
@@ -333,6 +341,47 @@ public final class GuardPilotTest
 				requireThat(trial.boundaryClass(), "trial.boundaryClass()").
 					isEqualTo(classByTarget.get(trial.values().get("target")));
 			}
+		}
+	}
+
+	/**
+	 * The pilot's trials take and write stored verdicts as a campaign's trials do: the trials whose test case and reply
+	 * repeat start one judge session, and the later ones take its verdict and name the trial that made it.
+	 *
+	 * @throws IOException          if the test directory cannot be used
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void pilotTakesAndWritesRecords() throws IOException, InterruptedException
+	{
+		// Requirement: R-L10
+		Contract contract = DriverTest.withoutFileNames(TierFixtures.tieredContract());
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-records"));
+			SessionScript sessions = new SessionScript(directory, _ -> "pass");
+			InMemoryCampaignStore store = new InMemoryCampaignStore();
+			Map<String, PilotResult> pilots = pilot(sessions, workspace(directory), 4, verdicts(store)).run(contract,
+				List.of(), control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(1));
+
+			long distinct = 0;
+			for (PromptTest test : contract.tests())
+			{
+				List<PilotTrial> trials = pilots.get(test.id()).trials();
+				requireThat(trials.size(), "trials").isEqualTo(GuardPilot.TRIALS);
+				distinct += trials.stream().map(PilotTrial::values).distinct().count();
+				for (PilotTrial trial : trials)
+					requireThat(trial.assertions().containsValue(false), "failed").isFalse();
+			}
+			requireThat(distinct, "distinctTestCases").isLessThan(2L * GuardPilot.TRIALS);
+			requireThat((long) sessions.requests(SessionRole.JUDGE).size(), "judgeSessions").isEqualTo(distinct);
+			requireThat(pilots.values().stream().flatMap(pilot -> pilot.trials().stream()).
+				anyMatch(trial -> trial.record().contains("Recorded verdict of pilot trial ")), "hitNamesItsTrial").
+				isTrue();
+			Map<VerdictKey, VerdictRecord> records = store.verdicts(CAMPAIGN);
+			requireThat(records.isEmpty(), "records").isFalse();
+			for (VerdictRecord record : records.values())
+				requireThat(record.trial(), "recordTrial").startsWith("pilot trial ");
 		}
 	}
 
@@ -2383,8 +2432,34 @@ public final class GuardPilotTest
 	 */
 	private GuardPilot pilot(SessionScript sessions, FakeWorkspacePort workspace, int ceiling)
 	{
-		return new GuardPilot(sessions.port(), workspace, PROMPT, sessions.judge(), new ProposalSchema(json), json,
-			ceiling);
+		return pilot(sessions, workspace, ceiling, verdicts(new InMemoryCampaignStore()));
+	}
+
+	/**
+	 * Returns a pilot that takes and writes the verdicts of a store.
+	 *
+	 * @param sessions the session port
+	 * @param workspace the workspace port
+	 * @param ceiling the maximum number of simultaneous sessions
+	 * @param verdicts the stored verdicts
+	 * @return the pilot
+	 */
+	private GuardPilot pilot(SessionScript sessions, FakeWorkspacePort workspace, int ceiling,
+		VerdictRecords verdicts)
+	{
+		return new GuardPilot(sessions.port(), workspace, PROMPT, sessions.judge(), verdicts,
+			new ProposalSchema(json), json, ceiling);
+	}
+
+	/**
+	 * Returns the stored verdicts of the pilot's campaign.
+	 *
+	 * @param store the store that holds them
+	 * @return the verdicts
+	 */
+	private static VerdictRecords verdicts(InMemoryCampaignStore store)
+	{
+		return new VerdictRecords(store, CAMPAIGN, Harness.CLAUDE, 1);
 	}
 
 	/**
@@ -2398,7 +2473,7 @@ public final class GuardPilotTest
 	private GuardPilot sharedPilot(SessionScript owner, SessionScript peer, FakeWorkspacePort workspace)
 	{
 		return new GuardPilot(owner.port(), Map.of(Harness.CLAUDE, owner.port(), Harness.CODEX, peer.port()),
-			workspace, PROMPT, owner.judge(), new ProposalSchema(json), json, 4);
+			workspace, PROMPT, owner.judge(), verdicts(new InMemoryCampaignStore()), new ProposalSchema(json), json, 4);
 	}
 
 	/**
@@ -2428,7 +2503,7 @@ public final class GuardPilotTest
 		GuardPilot.DirectoryRemoval removal)
 	{
 		return GuardPilotSecrets.getGuardPilotAccess().create(sessions.port(), workspace, PROMPT, sessions.judge(),
-			new ProposalSchema(json), json, ceiling, removal);
+			verdicts(new InMemoryCampaignStore()), new ProposalSchema(json), json, ceiling, removal);
 	}
 
 	/**
@@ -2752,9 +2827,10 @@ public final class GuardPilotTest
 				}
 
 				@Override
-				public Optional<Judgment> judgment(SessionResult.Completed result, List<JudgedAssertion> decided)
+				public Optional<List<AssertionVerdict>> verdicts(SessionResult.Completed result,
+					List<JudgedAssertion> decided)
 				{
-					return judgePrompt.judgment(result, decided);
+					return judgePrompt.verdicts(result, decided);
 				}
 			};
 		}

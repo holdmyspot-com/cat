@@ -51,5 +51,20 @@ public interface JudgeProtocol
 	 *   does not admit
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	Optional<Judgment> judgment(SessionResult.Completed result, List<JudgedAssertion> decided);
+	default Optional<Judgment> judgment(SessionResult.Completed result, List<JudgedAssertion> decided)
+	{
+		return verdicts(result, decided).map(AssertionVerdict::judgment);
+	}
+
+	/**
+	 * Extracts the verdict, rationale and behavior of each assertion from a judge session.
+	 *
+	 * @param result the judge session's result
+	 * @param decided the assertions that the judge decided
+	 * @return the decision of each assertion, in the order that the judge listed them, or empty if the output does not
+	 *   match the judge's result schema, does not decide each assertion of {@code decided} exactly once, decides another
+	 *   assertion, or names a behavior that its assertion does not admit
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	Optional<List<AssertionVerdict>> verdicts(SessionResult.Completed result, List<JudgedAssertion> decided);
 }

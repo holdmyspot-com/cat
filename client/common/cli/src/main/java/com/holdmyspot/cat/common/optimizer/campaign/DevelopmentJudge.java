@@ -33,7 +33,9 @@ import java.util.Set;
  * judge also judges join the same counts, and a bound above its limit returns the test to the frozen judge for the
  * rest of the campaign.
  * <p>
- * A trial counts once for each kind of disagreement it shows, however many assertions disagree in it.
+ * A trial counts once for each kind of disagreement it shows, however many assertions disagree in it. A trial that
+ * takes stored verdicts starts no comparison, so it is no shadowed trial or spot check and adds no agreement; a
+ * candidate therefore qualifies on distinct judgments, not on repeated ones.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  *
