@@ -11,6 +11,7 @@ import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.port.RateLimitWindow;
 import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
 
+import com.holdmyspot.cat.common.runner.AuthenticationEvidence;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -135,6 +136,12 @@ final class TestSessions extends RunnerSessions
 	public HostLogin hostLogin()
 	{
 		return HostLogin.UNKNOWN;
+	}
+
+	@Override
+	public Optional<AuthenticationEvidence> authentication()
+	{
+		return Optional.empty();
 	}
 
 	@Override

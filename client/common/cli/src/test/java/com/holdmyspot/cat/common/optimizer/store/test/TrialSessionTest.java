@@ -27,7 +27,7 @@ public final class TrialSessionTest
 		Instant startedAt = Instant.parse("2026-10-05T12:00:05Z");
 		Instant endedAt = Instant.parse("2026-10-05T12:00:00Z");
 		TrialSession session = new TrialSession(startedAt, endedAt, 1, Throttle.NONE, List.of(), HostLogin.API_KEY,
-			null, CommandSummary.UNKNOWN);
+			null, CommandSummary.UNKNOWN, null);
 		requireThat(session.startedAt(), "startedAt").isEqualTo(startedAt);
 		requireThat(session.endedAt(), "endedAt").isEqualTo(endedAt);
 	}

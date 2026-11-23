@@ -1,7 +1,9 @@
 package com.holdmyspot.cat.claude.optimizer.test;
 
+import com.holdmyspot.cat.claude.runner.test.SourceHomes;
 import com.holdmyspot.cat.common.JvmScope;
 
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 
 import com.holdmyspot.cat.common.fakes.test.Yielding;
@@ -379,10 +381,16 @@ public final class ClaudeSessionsContractTest
 				TemporaryDirectories cleanup = new TemporaryDirectories();
 				cleanup.add(root);
 				RecordedClaude claude = new RecordedClaude(List.of());
-				return new RecordedSubject(cleanup, port(jvm, root, (_, _, _) ->
-				{
-					throw new AssertionError("Login classification must not start a session");
-				}), root, claude);
+				Path home = SourceHomes.create(root, "home");
+				SourceHomes.storedLogin(home);
+				ClaudeSessions port = ClaudeSessionsSecrets.getClaudeSessionsAccess().newClaudeSessions(
+					new RunnerSessions.Settings(jvm, root, root.resolve("results"), List::of, false,
+						Map.of(Platform.current().homeVariable(), home.toString()), root, HarnessCapacity.unlimited(),
+						Clock.systemUTC(), Yielding.fileReplacer()), (_, _, _) ->
+					{
+						throw new AssertionError("Login classification must not start a session");
+					}, List.of());
+				return new RecordedSubject(cleanup, port, root, claude);
 			}).reportsTheHostLoginWithoutASession();
 		}
 	}
@@ -983,8 +991,8 @@ public final class ClaudeSessionsContractTest
 		@Override
 		public Set<HostLogin> acceptableLogins()
 		{
-			// The test-owned configuration directory holds no credential file and the environment selects no API key
-			return Set.of(HostLogin.UNKNOWN);
+			// The only check that asks for the login gives the port a source home whose only credential is a stored login
+			return Set.of(HostLogin.SUBSCRIPTION);
 		}
 
 		@Override

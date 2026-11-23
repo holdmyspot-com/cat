@@ -14,6 +14,7 @@ import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.TestToolScope;
 import com.holdmyspot.cat.claude.runner.ClaudeRunner;
+import com.holdmyspot.cat.claude.runner.test.SourceHomes;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
@@ -257,7 +258,8 @@ public final class ClaudeSessionStartHookTest
 				sessionFolder.resolve("requested-results"), sessionFolder.resolve("request-session"),
 				SessionRequestAccess.Shell.POSIX);
 			Map<String, String> sessionEnvironment = ClaudeRunner.processEnvironment(runner, Map.of("PATH", ""),
-				HarnessDependencyCaches.NONE, sessionFolder.resolve("missing-settings.json"), sessionFolder, access);
+				HarnessDependencyCaches.NONE, sessionFolder.resolve("missing-settings.json"), sessionFolder, access,
+				SourceHomes.keyHelper(sessionFolder));
 			Map<String, String> environment = new HashMap<>();
 			sessionEnvironment.forEach((name, value) ->
 			{

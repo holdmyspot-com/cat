@@ -28,6 +28,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionPort;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 
+import com.holdmyspot.cat.common.runner.AuthenticationEvidence;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -304,6 +305,12 @@ public final class DriverInterruptReplayContract
 		public boolean reportsExitStatus()
 		{
 			return scripted.reportsExitStatus();
+		}
+
+		@Override
+		public Optional<AuthenticationEvidence> authentication() throws IOException
+		{
+			return scripted.authentication();
 		}
 
 		@Override

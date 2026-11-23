@@ -131,11 +131,19 @@ public final class RequestArchive
 		"read_only_evidence", "deny_read", "instruction_files", "session_role", "tool_output_token_limit", "agent",
 		TrialPluginInput.PROVENANCE_FIELD, ResultProjectLinks.FIELD);
 	/**
+	 * The manifest field that names the source home whose harness folders hold the requested session's credential.
+	 */
+	private static final String HOME = "home";
+	/**
+	 * The manifest field that declares the class of login that the source home's gateway bills.
+	 */
+	private static final String LOGIN_CLASS = "gateway_login_class";
+	/**
 	 * The manifest fields that a session's request server reads and the nested session's runner refuses, because the
 	 * nested session's runner chooses them for the sessions that it starts.
 	 */
 	private static final Set<String> SERVED_FIELDS = Set.of("agent", "session_requests", "request_depth",
-		"capacity_wait", "max_concurrency");
+		"capacity_wait", "max_concurrency", HOME, LOGIN_CLASS);
 	private static final Set<PosixFilePermission> FILE_MODE = PosixFilePermissions.fromString("rw-r--r--");
 	private static final Set<PosixFilePermission> PROGRAM_MODE = PosixFilePermissions.fromString("rwxr-xr-x");
 	/**
@@ -1304,13 +1312,16 @@ public final class RequestArchive
 		Optional<String> resultProjectLinks = optionalText(value, ResultProjectLinks.FIELD);
 		if (resultProjectLinks.isPresent() && !ResultProjectLinks.isDirectoryName(resultProjectLinks.get()))
 			throw new IOException(ResultProjectLinks.FIELD + " must name one project directory");
+		AuthenticationOptions authentication = new AuthenticationOptions(
+			optionalText(value, HOME).map(AuthenticationOptions::parseHome),
+			optionalText(value, LOGIN_CLASS).map(AuthenticationOptions::parseLoginClass), false);
 		return new LaunchRequest(harness, project, plugins, prompts, model, effort, flag(value, "session_transcripts"),
 			flag(value, "install_cat"), extraPermissions(value), streamed, conversation, workspace, evidence,
 			absolutePaths(value, "deny_read"), optionalText(value, "instruction_files"), optionalText(value, "session_role"),
 			toolOutputTokenLimit, turnCopy, agent,
 			nonNegative(value, "session_requests").orElse(0), nonNegative(value, "request_depth").orElse(0),
 			nonNegative(value, "capacity_wait"), positive(value, "max_concurrency"), flag(value, "held_out"), resume,
-			claim, resultProjectLinks.map(Path::of));
+			claim, resultProjectLinks.map(Path::of), authentication);
 	}
 
 	/**
@@ -1653,6 +1664,9 @@ public final class RequestArchive
 	 *                           request that starts a session; a request that resumes one has no {@code project}
 	 * @param retainedTrialClaim the required checkpoint of a guarded trial resume, or empty for another launch
 	 * @param resultProjectLinks the name of a project directory whose link declarations are needed in the result
+	 * @param authentication     the requester's choice of the source home and gateway login class; only a request to a
+	 *                           session's request server makes one, and a request that makes none chooses the
+	 *                           runner's own home folder
 	 */
 	record LaunchRequest(String harness, Path project, List<TrialPluginInput> plugins, List<String> prompts, String model,
 		String effort, boolean sessionTranscripts, boolean installCat, ExtraPermissions extraPermissions,
@@ -1661,7 +1675,8 @@ public final class RequestArchive
 		Optional<Integer> toolOutputTokenLimit, boolean turnCopy, Optional<String> agent, int sessionRequests,
 		int requestDepth,
 		Optional<Integer> capacityWait, Optional<Integer> maximumConcurrency, boolean heldOut, Optional<String> resume,
-		Optional<RetainedTrialClaim> retainedTrialClaim, Optional<Path> resultProjectLinks)
+		Optional<RetainedTrialClaim> retainedTrialClaim, Optional<Path> resultProjectLinks,
+		AuthenticationOptions authentication)
 	{
 	}
 

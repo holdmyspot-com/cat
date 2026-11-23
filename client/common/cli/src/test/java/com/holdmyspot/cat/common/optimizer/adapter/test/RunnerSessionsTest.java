@@ -22,6 +22,7 @@ import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFile;
 import com.holdmyspot.cat.common.optimizer.port.FollowUp;
+import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.port.LoadedSources;
 import com.holdmyspot.cat.common.optimizer.port.PluginBase;
 import com.holdmyspot.cat.common.optimizer.port.SessionHandle;
@@ -30,6 +31,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.port.TurnObserver;
 import com.holdmyspot.cat.common.optimizer.proposal.DraftDirectory;
+import com.holdmyspot.cat.common.runner.AuthenticationOptions;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
 import com.holdmyspot.cat.common.runner.LaunchRefusedException;
@@ -517,6 +519,51 @@ public final class RunnerSessionsTest
 				requireThat(ScriptedHarness.optionValue(noReasoning, "--model"), "noReasoningModel").isEqualTo("model-b");
 				requireThat(ScriptedHarness.optionValue(noReasoning, "--effort"), "noReasoningEffort").
 					isEqualTo(TrialProfile.NO_REASONING);
+			}
+		}
+	}
+
+	/**
+	 * Verifies that every session that the command's port starts receives the command's source home and gateway login
+	 * class as its runner's options, so that the session takes its credential from that source home.
+	 *
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
+	 */
+	@Test(timeOut = 120_000)
+	public void passesSourceHomeToEverySession()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			// Requirement: R-I14
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				Path home = Files.createDirectories(root.resolve("source-home"));
+				Path results = root.resolve("results");
+				List<List<String>> arguments = new CopyOnWriteArrayList<>();
+				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, results, results, List::of, false,
+					Map.of(), results, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer(),
+					Optional.empty(), null, new AuthenticationOptions(Optional.of(home), Optional.of(HostLogin.API_KEY),
+					false));
+				TestSessions sessions = new TestSessions(settings, (options, input, output) ->
+				{
+					arguments.add(options);
+					ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--results")), TestSessions.HARNESS,
+						List.of(Turn.replies("ok")), input, output);
+				});
+
+				await(sessions.start(request(new TrialProfile("model-a", "high"), source, List.of(), "trial")));
+
+				requireThat(arguments.size(), "arguments.size()").isEqualTo(1);
+				requireThat(ScriptedHarness.optionValue(arguments.getFirst(), "--home"), "home").
+					isEqualTo(home.toString());
+				requireThat(ScriptedHarness.optionValue(arguments.getFirst(), "--gateway-login-class"), "loginClass").
+					isEqualTo("api_key");
 			}
 		}
 	}

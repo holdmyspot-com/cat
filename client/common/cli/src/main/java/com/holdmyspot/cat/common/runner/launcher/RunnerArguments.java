@@ -56,6 +56,13 @@ public final class RunnerArguments
 	 * The runner option that names the Git author email of the copied project.
 	 */
 	public static final String GIT_EMAIL_OPTION = "--git-email";
+	/**
+	 * The runner option that a nested session's runner passes to the runner of each session that its session requests,
+	 * beside its own launch's source home and gateway login class. The requested session's runner then takes them from
+	 * its parent runner rather than from a requester, so it does not check them against its bound: that bound is the
+	 * nested session's policy, which denies the nested session's commands the source home's secret files by design.
+	 */
+	public static final String INHERITED_SOURCE_HOME_OPTION = "--inherited-source-home";
 
 	/**
 	 * Prevents construction.

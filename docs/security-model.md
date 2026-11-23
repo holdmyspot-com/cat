@@ -257,24 +257,54 @@ unregister the plugin: it removes everything else and reports `uninstalled` with
 
 ## Runners' isolation
 
-CAT's `claude-runner` and `codex-runner` start an isolated Claude Code or Codex session with your login. Both plugins
-hold both launchers, so a session in either harness can run either harness.
+CAT's `claude-runner` and `codex-runner` start an isolated Claude Code or Codex session, which authenticates as
+"Login" describes. Both plugins hold both launchers, so a session in either harness can run either harness.
 
 ### Login
 
-A Codex session gets a copy of your Codex login. A Claude session uses your own Claude Code login, not a copy: its
-Claude Code keeps its own settings and reads and refreshes your login where your own Claude Code keeps it, which is
-the folder that `CLAUDE_SECURESTORAGE_CONFIG_DIR` names when your environment sets it, or else your Claude
-configuration folder (`CLAUDE_CONFIG_DIR`, or else `.claude` in your home folder), or on macOS the Keychain. The
-sessions that a session requests use it too. A copy would stop working as soon as your own session, or another copy,
-refreshed the login, which can happen in the middle of a turn. The commands that a session runs cannot read your login
-file in that folder.
+A Codex session gets a copy of your Codex login.
 
-When the environment that starts Claude Code sets `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY` or
-`ANTHROPIC_AUTH_TOKEN`, there or in the `env` of your Claude settings, `claude-runner` passes it to the session and to
-the sessions that it requests. When none is set and you have not logged in, `claude-runner` on Linux and macOS refuses
-the run before it starts the session, with status 2, and asks you to log in with `/login`. On Windows it starts the
-run, because Claude Code may keep your login in the Windows Credential Manager, where `claude-runner` cannot look.
+A Claude session uses the credential of a source home. The source home is the folder that a launch names with
+`--home <dir>`, an absolute path, or else your home folder. Its Claude folder is `<dir>/.claude` with `--home`, and
+otherwise the folder that `CLAUDE_CONFIG_DIR` names when the environment that starts the runner sets it, or else
+`.claude` in your home folder. The session takes only these parts of that folder, and Claude Code chooses among them
+in its own order:
+
+- the `apiKeyHelper` setting of `settings.json`, which the session runs with the source home as its home folder;
+- the `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY` and `CLAUDE_CODE_OAUTH_TOKEN` entries of the
+  `env` setting of `settings.json`, which go into the environment of the session's Claude Code process and into no
+  file. When a token is among them, the runner has Claude Code keep the tokens from the commands and hooks that the
+  session runs;
+- the stored login, `.credentials.json`, which `/login` writes. The session does not copy it: its Claude Code reads
+  and refreshes it in place. A copy would stop working as soon as your own Claude Code, or another session, refreshed
+  the login, which can happen in the middle of a turn. On macOS, Claude Code keeps a `/login` login in the Keychain
+  instead of that file, and the runner does not find it there: a source home whose only credential is such a login
+  is refused.
+
+No hook, permission, plugin, MCP server or other setting of the source home reaches the session. The session takes
+none of `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `CLAUDE_CODE_OAUTH_TOKEN` and
+`CLAUDE_SECURESTORAGE_CONFIG_DIR` from the environment that starts the runner, and a project or managed settings file
+whose `env` sets one of them, or that sets `apiKeyHelper`, refuses the session. Every Claude session that a session
+requests, directly or through a session of the other harness, uses the same source home; a launch inside a nested
+session cannot name another one.
+
+When the source home's `env` sets `ANTHROPIC_BASE_URL`, the session sends its requests to that gateway, and CAT cannot
+tell from the gateway which kind of login it bills. The launch then names it with
+`--gateway-login-class subscription` or `--gateway-login-class api_key`, and CAT records that class for the session.
+
+Each source file that holds a secret must be a regular file, not a symbolic link, whose mode grants its group and
+other users nothing, such as after `chmod go= <file>`. These files are the stored login, a `settings.json` whose `env`
+holds a token, and a file that the `apiKeyHelper` command names by an absolute path or a `~/` path. The session that
+starts the runner must also be allowed to read each file that the runner reads in the source home, so that a launch
+never uses a credential that its requester could not read. The commands and file tools of the session, and of every
+session that it requests, cannot read the files that hold a secret.
+
+Before it starts the session, and with status 2, `claude-runner` refuses a source home whose Claude folder holds none
+of the parts above, a relative or missing `--home`, a gateway without `--gateway-login-class`, a source `env` that
+selects another provider or profile (`CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX`, `CLAUDE_CODE_USE_FOUNDRY`
+or `ANTHROPIC_PROFILE`), and a secret file that fails the checks above. Its message names the file, the option or
+the setting, and never quotes a secret. The session's `session.json`, its receipt and each response record the source
+home, the names of the parts that the session took and the login class, never their values.
 
 ### The request server
 

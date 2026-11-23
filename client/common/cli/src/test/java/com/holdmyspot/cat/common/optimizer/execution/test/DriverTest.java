@@ -173,6 +173,7 @@ import com.holdmyspot.cat.common.optimizer.store.TrialRecovery;
 import com.holdmyspot.cat.common.optimizer.store.TrialRecord;
 import com.holdmyspot.cat.common.optimizer.store.TrialSession;
 import com.holdmyspot.cat.common.optimizer.cli.test.GitlessForks;
+import com.holdmyspot.cat.common.runner.AuthenticationEvidence;
 import com.holdmyspot.cat.common.runner.HarnessCapacity.Hold;
 import com.holdmyspot.cat.common.runner.RetainedTrialClaim;
 import com.holdmyspot.cat.common.runner.RetainedTrialRequest;
@@ -3941,7 +3942,7 @@ public final class DriverTest
 				Throttle frozen = new Throttle(Instant.EPOCH, 2, 0, 2);
 				requireThat(recordedSessions(harness), "sessions").isEqualTo(List.of(new TrialSession(
 					DriverHarness.START, DriverHarness.START.plus(Duration.ofMinutes(3)), 2, frozen, windows,
-					HostLogin.SUBSCRIPTION, usage, commands)));
+					HostLogin.SUBSCRIPTION, usage, commands, null)));
 				requireThat(harness.campaign().optimization().commands(), "commands").isEqualTo(Map.of(
 					Purpose.DEVELOPMENT, Map.of(0, new CommandCounts(1, 1, 1, 1, 1))));
 			}
@@ -3975,9 +3976,66 @@ public final class DriverTest
 
 				requireThat(recordedSessions(harness), "sessions").isEqualTo(List.of(new TrialSession(
 					DriverHarness.START, DriverHarness.START.plus(Duration.ofMinutes(1)), 1,
-					new Throttle(resetsAt, 1, 0, 1), windows, HostLogin.API_KEY, null, CommandSummary.UNKNOWN)));
+					new Throttle(resetsAt, 1, 0, 1), windows, HostLogin.API_KEY, null, CommandSummary.UNKNOWN, null)));
 				requireThat(harness.campaign().optimization().commands(), "commands").isEmpty();
 			}
+		}
+	}
+
+	/**
+	 * Verifies that each trial session's record holds the authentication that its harness's sessions use, the source
+	 * home, the copied parts and the class of login, and that a campaign resumed by a command that names another source
+	 * home proceeds: its later sessions record the new source home, while its earlier trial keeps its session record and
+	 * every trial keeps the campaign's measurement identity, which the source home is not part of.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void trialSessionsRecordAuthentication() throws IOException
+	{
+		// Requirement: R-I14
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("trial-authentication")),
+				developing().window(2).build(), HostLogin.API_KEY);
+			AuthenticationEvidence first = new AuthenticationEvidence(Path.of("/homes/first"), List.of("apiKeyHelper"),
+				HostLogin.API_KEY);
+			AuthenticationEvidence second = new AuthenticationEvidence(Path.of("/homes/second"),
+				List.of("ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN"), HostLogin.SUBSCRIPTION);
+			harness.sessions().supplyAuthentication(first);
+			try (Driver driver = harness.open())
+			{
+				driver.step();
+				harness.runningTrials().getFirst().end(harness.passed());
+				driver.step();
+			}
+			List<TrialSession> before = recordedSessions(harness);
+			requireThat(before.size(), "before.size()").isEqualTo(1);
+			requireThat(before.getFirst().authentication(), "firstAuthentication").isEqualTo(first);
+			LogicalTrial earlier = null;
+			for (LogicalTrial trial : harness.campaign().trials())
+			{
+				if (!harness.crashingStore().trialSessions(trial.key()).isEmpty())
+					earlier = trial;
+			}
+			requireThat(earlier, "earlier").isNotNull();
+
+			harness.sessions().supplyAuthentication(second);
+			try (Driver driver = harness.open())
+			{
+				driver.step();
+				harness.runningTrials().getFirst().end(harness.passed());
+				driver.step();
+			}
+
+			List<TrialSession> after = recordedSessions(harness);
+			requireThat(after, "after").contains(before.getFirst());
+			requireThat(after.stream().map(TrialSession::authentication).toList(), "authentications").
+				contains(second);
+			requireThat(harness.crashingStore().trialSessions(earlier.key()).getFirst(), "earlierSession").
+				isEqualTo(before.getFirst());
+			for (LogicalTrial trial : harness.campaign().trials())
+				requireThat(trial.identity(), "identity").isEqualTo(earlier.identity());
 		}
 	}
 
@@ -7475,6 +7533,12 @@ public final class DriverTest
 		}
 
 		@Override
+		public Optional<AuthenticationEvidence> authentication() throws IOException
+		{
+			return delegate.authentication();
+		}
+
+		@Override
 		public HostLogin hostLogin() throws IOException
 		{
 			return delegate.hostLogin();
@@ -7596,6 +7660,12 @@ public final class DriverTest
 			public List<Path> resultsFolders()
 			{
 				return delegate.resultsFolders();
+			}
+
+			@Override
+			public Optional<AuthenticationEvidence> authentication() throws IOException
+			{
+				return delegate.authentication();
 			}
 
 			@Override
@@ -7753,6 +7823,12 @@ public final class DriverTest
 			public List<Path> resultsFolders()
 			{
 				return delegate.resultsFolders();
+			}
+
+			@Override
+			public Optional<AuthenticationEvidence> authentication() throws IOException
+			{
+				return delegate.authentication();
 			}
 
 			@Override

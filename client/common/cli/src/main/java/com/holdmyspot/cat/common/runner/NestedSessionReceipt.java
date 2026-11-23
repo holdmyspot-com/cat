@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.PortablePaths;
 import java.io.IOException;
@@ -37,10 +38,16 @@ public final class NestedSessionReceipt
 	private static final String BASE_NAME = "retained_project_parent";
 	private static final String PROJECT_NAME = "project";
 	private static final String BRIDGE_TRANSCRIPT = "artifacts/bridge-transcript.jsonl";
+	/**
+	 * The size of the largest nested-session manifest whose authentication record a receipt copies.
+	 */
+	private static final int MAXIMUM_MANIFEST_BYTES = 1_048_576;
 
 
 	/**
-	 * Writes one portable receipt after verifying that its referenced artifacts are retained in the nested session.
+	 * Writes one portable receipt after verifying that its referenced artifacts are retained in the nested session. The
+	 * receipt also records the authentication that the nested session's harness used, as its {@code session.json}
+	 * records it.
 	 *
 	 * @param json the operation-owned JSON mapper
 	 * @param replacer replaces files atomically
@@ -101,6 +108,15 @@ public final class NestedSessionReceipt
 		receipt.put(PATH_BASE, BASE_NAME);
 		receipt.put(RETAINED_PROJECT, PortablePaths.text(base.relativize(result.retainedProject())));
 		receipt.put(RAW_RESULT, relative(base, result.rawResult(), RAW_RESULT));
+		// The receipt names the credential that the session used, as session.json records it, never a value
+		Path manifest = base.resolve("session.json");
+		if (Files.isRegularFile(manifest))
+		{
+			JsonNode authentication = json.readTree(BoundedInput.readUtf8(manifest, MAXIMUM_MANIFEST_BYTES,
+				"nested session manifest")).path(AuthenticationEvidence.FIELD);
+			if (!authentication.isMissingNode())
+				receipt.set(AuthenticationEvidence.FIELD, AuthenticationEvidence.fromJson(authentication).toJson(json));
+		}
 		if (!result.sessionTranscripts().isEmpty())
 		{
 			ArrayNode copies = receipt.putArray(SESSION_TRANSCRIPTS);
@@ -200,6 +216,7 @@ public final class NestedSessionReceipt
 		supported.add(SESSION_TRANSCRIPTS);
 		supported.add(REQUESTED_SESSIONS);
 		supported.add(SKIPPED_COPY_PATHS);
+		supported.add(AuthenticationEvidence.FIELD);
 		Set<String> unsupported = new HashSet<>(names);
 		unsupported.removeAll(supported);
 		if (!names.containsAll(required) || !unsupported.isEmpty())

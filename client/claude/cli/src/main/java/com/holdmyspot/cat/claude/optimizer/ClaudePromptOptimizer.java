@@ -24,6 +24,6 @@ public final class ClaudePromptOptimizer
 	 */
 	public static void main(String[] args)
 	{
-		PromptOptimizerCli.main(args, () -> new ClaudeOptimizerCommandScope(Pause::sleeping));
+		PromptOptimizerCli.main(args, authentication -> new ClaudeOptimizerCommandScope(Pause::sleeping, authentication));
 	}
 }

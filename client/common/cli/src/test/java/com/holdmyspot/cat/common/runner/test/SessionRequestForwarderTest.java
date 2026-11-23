@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.optimizer.adapter.Bridge;
 import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessEvaluationResult;
+import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
 import com.holdmyspot.cat.common.runner.LaunchRefusedException;
 import com.holdmyspot.cat.common.runner.NestedSession;
@@ -966,6 +967,81 @@ public final class SessionRequestForwarderTest
 	}
 
 	/**
+	 * Supplies the options that choose a session's credential, which the parent runner chooses inside a nested session.
+	 *
+	 * @return each option with its argument
+	 */
+	@DataProvider
+	public Object[][] sourceHomeOptions()
+	{
+		return new Object[][]{{List.of("--home", "/home/alice")}, {List.of("--gateway-login-class", "api_key")}};
+	}
+
+	/**
+	 * Verifies that a launch inside a nested session that names the source home or the gateway login class is refused
+	 * with the refusal status before it packs a request: the nested session's runner, which runs with the user's
+	 * permissions, would otherwise read files that the session chose.
+	 *
+	 * @param option the option and its argument
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test(dataProvider = "sourceHomeOptions")
+	public void refusesSourceHomeInNestedSession(List<String> option) throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			// Requirement: R-I14
+			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "forward-")).
+				toRealPath());
+			List<String> arguments = new ArrayList<>(List.of("--project", fixture.project.toString(), "--model",
+				"model-a", "--effort", "effort-a"));
+			arguments.addAll(option);
+			StringWriter errors = new StringWriter();
+
+			int status = HarnessRunnerOptions.refusingInvalidArguments(() -> fixture.forward("harness-a",
+				arguments.toArray(String[]::new), new StringReader(RECORDS), new ByteArrayOutputStream(), "completed"),
+				new PrintWriter(errors, true));
+
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").contains(option.getFirst()).contains("parent runner");
+			try (Stream<Path> files = Files.list(fixture.requests))
+			{
+				requireThat(files.count(), "requests").isEqualTo(0);
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a launch outside a nested session sends its source home and gateway login class to the session's
+	 * request server inside its request.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void sendsSourceHomeToRequestServer() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			// Requirement: R-I14
+			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "forward-")).
+				toRealPath());
+			Path home = Files.createDirectories(fixture.root.resolve("source-home"));
+
+			int status = fixture.forwardServed("harness-a", new String[]{"--project", fixture.project.toString(),
+				"--model", "model-a", "--effort", "effort-a", "--home", home.toString(), "--gateway-login-class",
+				"subscription"}, new StringReader(RECORDS), new ByteArrayOutputStream(), "completed");
+
+			requireThat(status, "status").isEqualTo(0);
+			JsonNode request = JsonMapper.builder().build().readTree(fixture.entries.get("request.json"));
+			requireThat(request.path("home").asString(""), "home").isEqualTo(home.toString());
+			requireThat(request.path("gateway_login_class").asString(""), "gatewayLoginClass").
+				isEqualTo("subscription");
+		}
+	}
+
+	/**
 	 * Supplies options that no runner accepts, each with its arguments.
 	 *
 	 * @return each option with its arguments
@@ -1151,6 +1227,41 @@ public final class SessionRequestForwarderTest
 				else if (pauses[0] > 3)
 					throw new AssertionError("The response was published");
 			}, output, new PrintWriter(errors, true));
+		}
+
+		/**
+		 * Forwards a launch to a session's request server, outside a nested session, while the fake server answers it.
+		 *
+		 * @param harness the launcher's harness
+		 * @param args    the launcher's arguments
+		 * @param input   the launcher's standard input
+		 * @param output  the launcher's standard output
+		 * @param outcome the response status
+		 * @return the forwarder's exit status
+		 * @throws IOException if forwarding fails
+		 */
+		int forwardServed(String harness, String[] args, StringReader input, ByteArrayOutputStream output,
+			String outcome) throws IOException
+		{
+			int[] pauses = {0};
+			return SessionRequestForwarder.forward(SessionRequestForwarder.Route.SERVER, harness, args, input, requests,
+				root.resolve("results"), () ->
+				{
+					pauses[0] += 1;
+					Path response = responseDirectory();
+					if (pauses[0] == 1)
+					{
+						readRequest();
+						Files.createDirectories(response);
+						Files.writeString(response.resolve("transcript.jsonl"), TRANSCRIPT);
+						JsonMapper json = JsonMapper.builder().build();
+						json.writeValue(response.resolve("response.json").toFile(), json.createObjectNode().
+							put("status", outcome).put("reason", "").
+							put("transcript", response.resolve("transcript.jsonl").toString()));
+					}
+					else if (pauses[0] > 3)
+						throw new AssertionError("The response was published");
+				}, output, new PrintWriter(errors, true));
 		}
 
 		/**

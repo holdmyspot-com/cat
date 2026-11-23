@@ -32,6 +32,7 @@ public final class CodexPromptOptimizer
 				"Contract tools must run inside the contract author's sandbox."));
 			return;
 		}
-		PromptOptimizerCli.main(args, () -> new CodexOptimizerCommandScope(Pause::sleeping));
+		PromptOptimizerCli.main(args, authentication -> new CodexOptimizerCommandScope(Pause::sleeping,
+			authentication));
 	}
 }

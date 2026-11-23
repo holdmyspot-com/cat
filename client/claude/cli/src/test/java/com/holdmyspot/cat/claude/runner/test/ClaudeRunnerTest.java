@@ -6,16 +6,22 @@ import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.claude.installer.Integration;
+import com.holdmyspot.cat.claude.runner.ClaudeAuthentication;
 import com.holdmyspot.cat.claude.runner.ClaudeConnectionSettings;
 import com.holdmyspot.cat.claude.runner.ClaudeProcess;
 import com.holdmyspot.cat.claude.runner.ClaudeRunner;
+import com.holdmyspot.cat.claude.runner.ClaudeRunnerCli;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.optimizer.port.HostLogin;
+import com.holdmyspot.cat.common.runner.AuthenticationOptions;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.HarnessProcess;
 import com.holdmyspot.cat.common.runner.HarnessProcessResult;
+import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
 import com.holdmyspot.cat.common.runner.NestedSession;
 import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
@@ -29,22 +35,24 @@ import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Stream;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
-import static org.testng.Assert.expectThrows;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Tests {@link ClaudeRunner}.
@@ -55,6 +63,12 @@ public final class ClaudeRunnerTest
 	 * Reads and writes the fixtures' settings and install records.
 	 */
 	private static final JsonMapper JSON = JsonMapper.builder().build();
+	/**
+	 * The variables that select a Claude credential or the login store that Claude Code reads, which only the source
+	 * home's files decide for a session.
+	 */
+	private static final List<String> CREDENTIAL_VARIABLES = List.of("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
+		"ANTHROPIC_BASE_URL", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_SECURESTORAGE_CONFIG_DIR");
 	/**
 	 * The Claude Code variables that decide whether and how a session starts subagents.
 	 */
@@ -80,33 +94,6 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
-	 * Verifies that the Claude process environment does not ask Claude Code to scrub the environment and sandbox
-	 * paths of its commands, even if the caller's environment does, so that the session's settings do not depend on
-	 * the caller.
-	 *
-	 * @throws IOException if the environment cannot be built
-	 */
-	@Test
-	public void doesNotScrubSubprocessEnvironment() throws IOException
-	{
-		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
-			TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory("cat-claude-process-environment-"));
-			Map<String, String> environment = new HashMap<>();
-			environment.put("PATH", "");
-			environment.put("ANTHROPIC_API_KEY", "credential");
-			environment.put("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB", "1");
-
-			Map<String, String> result = ClaudeRunner.processEnvironment(scope, environment,
-				HarnessDependencyCaches.NONE, home.resolve("missing-settings.json"), home, null);
-
-			requireThat(result.keySet(), "variables").doesNotContain("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB");
-			requireThat(result.get("ANTHROPIC_API_KEY"), "ANTHROPIC_API_KEY").isEqualTo("credential");
-		}
-	}
-
-	/**
 	 * Verifies that the Claude process environment marks the session as a nested session, even when the caller's settings
 	 * file sets the marker's variable otherwise, so that the session's commands send their sessions to the nested
 	 * session's runner.
@@ -127,61 +114,29 @@ public final class ClaudeRunnerTest
 			environment.put("PATH", "");
 
 			Map<String, String> result = ClaudeRunner.processEnvironment(scope, environment,
-				HarnessDependencyCaches.NONE, settings, home, null);
+				HarnessDependencyCaches.NONE, settings, home, null, SourceHomes.keyHelper(home));
 
 			requireThat(result.get(HarnessEnvironment.NESTED_SESSION_VARIABLE), "marker").isEqualTo("1");
 		}
 	}
 
 	/**
-	 * Verifies that a Claude child needs the model host that the caller's settings name and the shared caches, and
-	 * no login file, even though the caller's Claude configuration directory holds one: the child copies none.
+	 * Verifies that a Claude child needs the shared dependency caches of the caller's home folder, which it writes.
 	 *
 	 * @throws IOException if the fixture or the report cannot be built
 	 */
 	@Test
-	public void childNeedsModelHostAndCachesButNoLogin() throws IOException
+	public void childNeedsSharedCaches() throws IOException
 	{
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory("cat-claude-child-needs-")).toRealPath();
-			Path configuration = Files.createDirectory(home.resolve(".claude"));
-			Files.writeString(configuration.resolve("settings.json"), """
-				{"env": {"ANTHROPIC_BASE_URL": "https://Gateway.Example:8443/v1"}}
-				""");
-			Files.writeString(configuration.resolve(".credentials.json"), "{}");
 			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString());
 
-			ChildNeedsReport needs = ClaudeRunner.childNeeds(scope, environment);
+			ChildNeedsReport needs = ClaudeRunner.childNeeds(scope, environment, SourceHomes.keyHelper(home));
 
-			requireThat(needs.hosts(), "hosts").isEqualTo(Set.of("gateway.example"));
 			requireThat(needs.writes(), "writes").isEqualTo(List.of(home.resolve(".npm"), home.resolve(".m2")));
-			requireThat(needs.logins(), "logins").isEmpty();
-		}
-	}
-
-	/**
-	 * Verifies that a Claude child whose caller's environment holds an authentication variable needs no login file.
-	 *
-	 * @throws IOException if the fixture or the report cannot be built
-	 */
-	@Test
-	public void childWithApiKeyNeedsNoLogin() throws IOException
-	{
-		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
-			TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory("cat-claude-child-needs-")).toRealPath();
-			Path configuration = Files.createDirectory(home.resolve(".claude"));
-			Files.writeString(configuration.resolve(".credentials.json"), "{}");
-			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
-				"ANTHROPIC_API_KEY", "fake-api-key");
-
-			ChildNeedsReport needs = ClaudeRunner.childNeeds(scope, environment);
-
-			requireThat(needs.logins(), "logins").isEmpty();
-			requireThat(needs.hosts(), "hosts").isEqualTo(Set.of("api.anthropic.com"));
 		}
 	}
 
@@ -204,7 +159,7 @@ public final class ClaudeRunnerTest
 				environment.put(variable, "parent-" + variable);
 
 			Map<String, String> result = ClaudeRunner.processEnvironment(scope, environment,
-				HarnessDependencyCaches.NONE, home.resolve("missing-settings.json"), home, null);
+				HarnessDependencyCaches.NONE, home.resolve("missing-settings.json"), home, null, SourceHomes.keyHelper(home));
 
 			for (String variable : SUBAGENT_VARIABLES)
 				requireThat(result.get(variable), variable).isEqualTo("parent-" + variable);
@@ -238,7 +193,7 @@ public final class ClaudeRunnerTest
 			environment.put("CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS", "5");
 
 			Map<String, String> result = ClaudeRunner.processEnvironment(scope, environment,
-				HarnessDependencyCaches.NONE, settings, home, null);
+				HarnessDependencyCaches.NONE, settings, home, null, SourceHomes.keyHelper(home));
 
 			requireThat(result.get("CLAUDE_CODE_SUBAGENT_MODEL"), "settingsOnly").isEqualTo("settings-model");
 			requireThat(result.get("CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS"), "processWins").isEqualTo("5");
@@ -266,641 +221,11 @@ public final class ClaudeRunnerTest
 			environment.put("CLAUDE_CODE_EFFORT_LEVEL", "high");
 
 			Map<String, String> result = ClaudeRunner.processEnvironment(scope, environment,
-				HarnessDependencyCaches.NONE, settings, home, null);
+				HarnessDependencyCaches.NONE, settings, home, null, SourceHomes.keyHelper(home));
 
 			requireThat(result.keySet(), "variables").doesNotContainAny(SUBAGENT_VARIABLES).
 				doesNotContain("CLAUDE_CODE_EFFORT_LEVEL").doesNotContain("CLAUDE_CODE_DISABLE_TERMINAL_TITLE");
 		}
-	}
-
-	/**
-	 * Verifies that each Claude authentication variable alone lets a nested session start, even though neither the user's
-	 * Claude configuration directory nor the macOS Keychain holds a login, and that the runner then asks the Keychain
-	 * nothing, because the session authenticates through the variable.
-	 *
-	 * @param variable the authentication variable
-	 * @throws IOException if the fixture cannot be built
-	 */
-	@Test(dataProvider = "authenticationVariables")
-	public void acceptsEachLoginVariable(String variable) throws IOException
-	{
-		FakeKeychain keychain = new FakeKeychain(FakeKeychain.NOT_FOUND);
-		try (TestJvmScope build = new TestJvmScope();
-			TestJvmScope jvm = keychain.scope(build.temporaryDirectory());
-			TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-claude-login-")).
-				toRealPath();
-
-			ClaudeRunner.requireLogin(jvm, Map.of("PATH", "", Platform.MACOS_ARM64.homeVariable(), home.toString(),
-				variable, "fake-token"), Platform.MACOS_ARM64);
-
-			requireThat(keychain.commands(), "commands").isEmpty();
-		}
-	}
-
-	/**
-	 * Verifies that a variable that the caller's Claude settings file sets in its {@code env} lets a nested session
-	 * start, as the session receives it from there.
-	 *
-	 * @throws IOException if the fixture cannot be built
-	 */
-	@Test
-	public void acceptsLoginVariableFromSettings() throws IOException
-	{
-		FakeKeychain keychain = new FakeKeychain(FakeKeychain.NOT_FOUND);
-		try (TestJvmScope build = new TestJvmScope();
-			TestJvmScope jvm = keychain.scope(build.temporaryDirectory());
-			TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-claude-login-")).
-				toRealPath();
-			Files.writeString(Files.createDirectory(home.resolve(".claude")).resolve("settings.json"), """
-				{"env": {"CLAUDE_CODE_OAUTH_TOKEN": "fake-token"}}
-				""");
-
-			ClaudeRunner.requireLogin(jvm, Map.of("PATH", "", Platform.MACOS_ARM64.homeVariable(), home.toString()),
-				Platform.MACOS_ARM64);
-
-			requireThat(keychain.commands(), "commands").isEmpty();
-		}
-	}
-
-	/**
-	 * Verifies that a nested session on Linux or macOS is refused, with a reason that tells the user to log in to Claude
-	 * Code with {@code /login} and names the user's Claude configuration directory, when no authentication variable holds
-	 * a value and the user's login store holds no login: the configuration directory holds no {@code .credentials.json}
-	 * and, on macOS, the Keychain holds no login item. The directory is the one that {@code CLAUDE_CONFIG_DIR} names when
-	 * it is set, even though {@code .claude} in the home directory then holds a login file.
-	 *
-	 * @param platform    the platform whose login store the runner checks
-	 * @param configured  whether the caller's environment names the configuration directory in
-	 *                    {@code CLAUDE_CONFIG_DIR}
-	 * @param environment the rest of the caller's environment, without a usable authentication variable
-	 * @throws IOException if the fixture cannot be built
-	 */
-	@Test(dataProvider = "environmentsWithoutLogin")
-	public void refusesSessionWithoutLogin(Platform platform, boolean configured, Map<String, String> environment)
-		throws IOException
-	{
-		FakeKeychain keychain = new FakeKeychain(FakeKeychain.NOT_FOUND);
-		try (TestJvmScope build = new TestJvmScope();
-			TestJvmScope jvm = keychain.scope(build.temporaryDirectory());
-			TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-claude-login-")).
-				toRealPath();
-			Path configuration = Files.createDirectory(home.resolve(".claude"));
-			Map<String, String> caller = new HashMap<>(environment);
-			caller.put(platform.homeVariable(), home.toString());
-			if (configured)
-			{
-				Files.writeString(configuration.resolve(".credentials.json"), "{}");
-				configuration = Files.createDirectory(home.resolve("claude-config"));
-				caller.put("CLAUDE_CONFIG_DIR", configuration.toString());
-			}
-			Path loginDirectory = configuration;
-
-			SessionRefusedException refusal = expectThrows(SessionRefusedException.class, () ->
-				ClaudeRunner.requireLogin(jvm, caller, platform));
-
-			requireThat(refusal.getMessage(), "message").contains("/login").contains(loginDirectory.toString()).
-				doesNotContain("setup-token");
-		}
-	}
-
-	/**
-	 * Verifies that a nested session on Linux or macOS is refused, naming the directory of the user's login store, when
-	 * the caller's {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} selects a login store that holds no login, although {@code
-	 * CLAUDE_CONFIG_DIR} names a directory that holds a login file: the store is the directory that the variable names,
-	 * or, when its value is empty, {@code .claude} in the home directory, whose Keychain item on macOS has no hash in its
-	 * name. The user's own Claude Code uses that store, and so does the session's.
-	 *
-	 * @param platform the platform whose login store the runner checks
-	 * @param named    whether the caller's {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} names a directory, rather than
-	 *                 being empty
-	 * @throws IOException if the fixture cannot be built
-	 */
-	@Test(dataProvider = "loginStorePlatforms")
-	public void refusesSessionWithoutLoginInUserStore(Platform platform, boolean named) throws IOException
-	{
-		FakeKeychain keychain = new FakeKeychain(FakeKeychain.NOT_FOUND);
-		try (TestJvmScope build = new TestJvmScope();
-			TestJvmScope jvm = keychain.scope(build.temporaryDirectory());
-			TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-claude-login-")).
-				toRealPath();
-			Path defaultDirectory = Files.createDirectory(home.resolve(".claude"));
-			Path configured = Files.createDirectory(home.resolve("claude-config"));
-			Files.writeString(configured.resolve(".credentials.json"), "{}");
-			Map<String, String> caller = new HashMap<>();
-			caller.put("PATH", "");
-			caller.put("USER", "alice");
-			caller.put(platform.homeVariable(), home.toString());
-			caller.put("CLAUDE_CONFIG_DIR", configured.toString());
-			Path loginDirectory = defaultDirectory;
-			if (named)
-			{
-				Files.writeString(defaultDirectory.resolve(".credentials.json"), "{}");
-				loginDirectory = Files.createDirectory(home.resolve("login-store"));
-				caller.put("CLAUDE_SECURESTORAGE_CONFIG_DIR", loginDirectory.toString());
-			}
-			else
-				caller.put("CLAUDE_SECURESTORAGE_CONFIG_DIR", "");
-			Path expectedDirectory = loginDirectory;
-
-			SessionRefusedException refusal = expectThrows(SessionRefusedException.class, () ->
-				ClaudeRunner.requireLogin(jvm, caller, platform));
-
-			requireThat(refusal.getMessage(), "message").contains("/login").contains(expectedDirectory.toString());
-			int lookups = 0;
-			if (platform == Platform.MACOS_ARM64)
-				lookups = 1;
-			requireThat(keychain.commands().size(), "lookups").isEqualTo(lookups);
-		}
-	}
-
-	/**
-	 * Verifies that a nested session starts without an authentication variable when the directory that the caller's
-	 * {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} names holds Claude Code's login file, although neither the directory
-	 * that {@code CLAUDE_CONFIG_DIR} names nor {@code .claude} in the home directory holds one, because the user's
-	 * Claude Code and the session's use the login there.
-	 *
-	 * @param platform the platform whose login store the runner checks
-	 * @throws IOException if the fixture cannot be built
-	 */
-	@Test(dataProvider = "fileLoginPlatforms")
-	public void acceptsLoginFileInUserLoginStore(Platform platform) throws IOException
-	{
-		FakeKeychain keychain = new FakeKeychain(FakeKeychain.NOT_FOUND);
-		try (TestJvmScope build = new TestJvmScope();
-			TestJvmScope jvm = keychain.scope(build.temporaryDirectory());
-			TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-claude-login-")).
-				toRealPath();
-			Files.createDirectory(home.resolve(".claude"));
-			Path configured = Files.createDirectory(home.resolve("claude-config"));
-			Path store = Files.createDirectory(home.resolve("login-store"));
-			Files.writeString(store.resolve(".credentials.json"), "{}");
-
-			ClaudeRunner.requireLogin(jvm, Map.of("PATH", "", platform.homeVariable(), home.toString(),
-				"CLAUDE_CONFIG_DIR", configured.toString(), "CLAUDE_SECURESTORAGE_CONFIG_DIR", store.toString()),
-				platform);
-
-			requireThat(keychain.commands(), "commands").isEmpty();
-		}
-	}
-
-	/**
-	 * Verifies that a nested session on Windows starts without an authentication variable although the user's Claude
-	 * configuration directory holds no login file, because Claude Code may keep the login in the Windows Credential
-	 * Manager, so the runner cannot tell that no login exists.
-	 *
-	 * @param configured whether the caller's environment names the configuration directory in
-	 *                   {@code CLAUDE_CONFIG_DIR}
-	 * @throws IOException if the fixture cannot be built
-	 */
-	@Test(dataProvider = "configurationChoices")
-	public void startsSessionOnWindowsWithoutLoginFile(boolean configured) throws IOException
-	{
-		FakeKeychain keychain = new FakeKeychain(FakeKeychain.NOT_FOUND);
-		try (TestJvmScope build = new TestJvmScope();
-			TestJvmScope jvm = keychain.scope(build.temporaryDirectory());
-			TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-claude-login-")).
-				toRealPath();
-			Map<String, String> caller = new HashMap<>();
-			caller.put("PATH", "");
-			caller.put(Platform.WINDOWS_X64.homeVariable(), home.toString());
-			Files.createDirectory(home.resolve(".claude"));
-			if (configured)
-				caller.put("CLAUDE_CONFIG_DIR", Files.createDirectory(home.resolve("claude-config")).toString());
-
-			ClaudeRunner.requireLogin(jvm, caller, Platform.WINDOWS_X64);
-
-			requireThat(keychain.commands(), "commands").isEmpty();
-		}
-	}
-
-	/**
-	 * Verifies that a nested session starts without an authentication variable when the user's Claude configuration
-	 * directory holds Claude Code's login file, {@code .credentials.json}, whether the directory is {@code .claude} in
-	 * the home directory or the one that {@code CLAUDE_CONFIG_DIR} names, because the session's Claude Code uses the
-	 * user's login there.
-	 *
-	 * @param platform   the platform whose login store the runner checks
-	 * @param configured whether the caller's environment names the configuration directory in
-	 *                   {@code CLAUDE_CONFIG_DIR}
-	 * @throws IOException if the fixture cannot be built
-	 */
-	@Test(dataProvider = "loginDirectories")
-	public void acceptsUserLoginFile(Platform platform, boolean configured) throws IOException
-	{
-		FakeKeychain keychain = new FakeKeychain(FakeKeychain.NOT_FOUND);
-		try (TestJvmScope build = new TestJvmScope();
-			TestJvmScope jvm = keychain.scope(build.temporaryDirectory());
-			TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-claude-login-")).
-				toRealPath();
-			Map<String, String> caller = new HashMap<>();
-			caller.put("PATH", "");
-			caller.put(platform.homeVariable(), home.toString());
-			Path configuration = home.resolve(".claude");
-			if (configured)
-			{
-				configuration = home.resolve("claude-config");
-				caller.put("CLAUDE_CONFIG_DIR", configuration.toString());
-			}
-			Files.writeString(Files.createDirectory(configuration).resolve(".credentials.json"), "{}");
-
-			ClaudeRunner.requireLogin(jvm, caller, platform);
-		}
-	}
-
-	/**
-	 * Verifies that on macOS a nested session starts without an authentication variable or login file when the Keychain
-	 * holds the user's Claude Code login item, and that the runner only asks whether the item exists, without {@code -w},
-	 * so that the Keychain reveals no secret: the item's account is the user's name, and its service is {@code Claude
-	 * Code-credentials}, followed, when a variable names the directory of the login store, by {@code -} and the first
-	 * eight hexadecimal digits of the SHA-256 hash of that directory in Unicode normalization form C. The caller's {@code
-	 * CLAUDE_SECURESTORAGE_CONFIG_DIR} names the store, or, when it is unset, {@code CLAUDE_CONFIG_DIR} does; an empty
-	 * {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} names none.
-	 *
-	 * @param configured the caller's value of {@code CLAUDE_CONFIG_DIR}, or an empty string if it sets none
-	 * @param store      the caller's value of {@code CLAUDE_SECURESTORAGE_CONFIG_DIR}, or {@code null} if it sets
-	 *                   none
-	 * @param service    the Keychain service of the user's login item
-	 * @throws IOException if the fixture cannot be built
-	 */
-	@Test(dataProvider = "keychainServices")
-	public void acceptsKeychainLogin(String configured, String store, String service) throws IOException
-	{
-		FakeKeychain keychain = new FakeKeychain(FakeKeychain.FOUND);
-		try (TestJvmScope build = new TestJvmScope();
-			TestJvmScope jvm = keychain.scope(build.temporaryDirectory());
-			TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-claude-login-")).
-				toRealPath();
-			Map<String, String> caller = new HashMap<>();
-			caller.put("PATH", "");
-			caller.put("HOME", home.toString());
-			caller.put("USER", "alice");
-			if (!configured.isEmpty())
-				caller.put("CLAUDE_CONFIG_DIR", configured);
-			if (store != null)
-				caller.put("CLAUDE_SECURESTORAGE_CONFIG_DIR", store);
-
-			ClaudeRunner.requireLogin(jvm, caller, Platform.MACOS_ARM64);
-
-			requireThat(keychain.commands(), "commands").isEqualTo(List.of(List.of("/usr/bin/security",
-				"find-generic-password", "-a", "alice", "-s", service)));
-		}
-	}
-
-	/**
-	 * Verifies that on macOS the runner looks up the Keychain item of a user whose name Claude Code does not use as
-	 * an account, because it holds a character other than an ASCII letter, a digit, {@code .}, {@code _} or
-	 * {@code -}, under the account {@code claude-code-user}, as Claude Code stores it.
-	 *
-	 * @throws IOException if the fixture cannot be built
-	 */
-	@Test
-	public void looksUpKeychainLoginOfUnusualUserName() throws IOException
-	{
-		FakeKeychain keychain = new FakeKeychain(FakeKeychain.FOUND);
-		try (TestJvmScope build = new TestJvmScope();
-			TestJvmScope jvm = keychain.scope(build.temporaryDirectory());
-			TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-claude-login-")).
-				toRealPath();
-
-			ClaudeRunner.requireLogin(jvm, Map.of("PATH", "", "HOME", home.toString(), "USER", "Alice Smith"),
-				Platform.MACOS_ARM64);
-
-			requireThat(keychain.commands(), "commands").isEqualTo(List.of(List.of("/usr/bin/security",
-				"find-generic-password", "-a", "claude-code-user", "-s", "Claude Code-credentials")));
-		}
-	}
-
-	/**
-	 * Verifies that on macOS a nested session starts when the Keychain answers neither that it holds the login item nor
-	 * that it holds none, as when the Keychain is locked: the runner refuses a nested session only when it knows that
-	 * there is no login, and the session's Claude Code then reports what keeps it from the login.
-	 *
-	 * @throws IOException if the fixture cannot be built
-	 */
-	@Test
-	public void startsSessionWhenKeychainCannotTell() throws IOException
-	{
-		// errSecInteractionNotAllowed, which security reports while the Keychain is locked
-		FakeKeychain keychain = new FakeKeychain(36);
-		try (TestJvmScope build = new TestJvmScope();
-			TestJvmScope jvm = keychain.scope(build.temporaryDirectory());
-			TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-claude-login-")).
-				toRealPath();
-
-			ClaudeRunner.requireLogin(jvm, Map.of("PATH", "", "HOME", home.toString(), "USER", "alice"),
-				Platform.MACOS_ARM64);
-
-			requireThat(keychain.commands().size(), "commands").isEqualTo(1);
-		}
-	}
-
-	/**
-	 * Returns the variables that each authenticate a Claude session.
-	 *
-	 * @return the variable names
-	 */
-	@DataProvider
-	public static Object[][] authenticationVariables()
-	{
-		return new Object[][]
-		{
-			{"CLAUDE_CODE_OAUTH_TOKEN"},
-			{"ANTHROPIC_API_KEY"},
-			{"ANTHROPIC_AUTH_TOKEN"}
-		};
-	}
-
-	/**
-	 * Returns platforms, whether the caller names its Claude configuration directory, and caller environments that
-	 * hold no usable authentication variable.
-	 *
-	 * @return the platforms, choices and environments
-	 */
-	@DataProvider
-	public static Object[][] environmentsWithoutLogin()
-	{
-		Map<String, String> blank = Map.of("PATH", "", "CLAUDE_CODE_OAUTH_TOKEN", "", "ANTHROPIC_API_KEY", " ");
-		return new Object[][]
-		{
-			{Platform.LINUX_X64, false, Map.of("PATH", "")},
-			{Platform.LINUX_X64, false, blank},
-			{Platform.LINUX_X64, true, Map.of("PATH", "")},
-			{Platform.MACOS_ARM64, false, Map.of("PATH", "", "USER", "alice")},
-			{Platform.MACOS_ARM64, true, blank}
-		};
-	}
-
-	/**
-	 * Returns platforms and whether the caller names its Claude configuration directory.
-	 *
-	 * @return the platforms and choices
-	 */
-	@DataProvider
-	public static Object[][] loginDirectories()
-	{
-		return new Object[][]
-		{
-			{Platform.LINUX_X64, false},
-			{Platform.LINUX_X64, true},
-			{Platform.WINDOWS_X64, false},
-			{Platform.WINDOWS_X64, true},
-			{Platform.MACOS_ARM64, false},
-			{Platform.MACOS_ARM64, true}
-		};
-	}
-
-	/**
-	 * Returns values of {@code CLAUDE_CONFIG_DIR} and {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} and the Keychain
-	 * service of the login item that Claude Code stores for each, including the same directory name in Unicode
-	 * normalization forms D and C.
-	 *
-	 * @return the values and services
-	 */
-	@DataProvider
-	public static Object[][] keychainServices()
-	{
-		return new Object[][]
-		{
-			{"", null, "Claude Code-credentials"},
-			{"/Users/alice/claude-config", null, "Claude Code-credentials-1ab0976d"},
-			{"/Users/alice/claude-café", null, "Claude Code-credentials-347c1370"},
-			{"/Users/alice/claude-café", null, "Claude Code-credentials-347c1370"},
-			{"/Users/alice/claude-config", "", "Claude Code-credentials"},
-			{"", "/Users/alice/claude-config", "Claude Code-credentials-1ab0976d"},
-			{"/Users/alice/other-config", "/Users/alice/claude-config", "Claude Code-credentials-1ab0976d"}
-		};
-	}
-
-	/**
-	 * Returns the platforms whose runner refuses a nested session that it knows to have no login, and whether the
-	 * caller's {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} names a directory.
-	 *
-	 * @return the platforms and choices
-	 */
-	@DataProvider
-	public static Object[][] loginStorePlatforms()
-	{
-		return new Object[][]
-		{
-			{Platform.LINUX_X64, true},
-			{Platform.LINUX_X64, false},
-			{Platform.MACOS_ARM64, true},
-			{Platform.MACOS_ARM64, false}
-		};
-	}
-
-	/**
-	 * Returns the platforms.
-	 *
-	 * @return the platforms
-	 */
-	@DataProvider
-	public static Object[][] fileLoginPlatforms()
-	{
-		return new Object[][]
-		{
-			{Platform.LINUX_X64},
-			{Platform.WINDOWS_X64},
-			{Platform.MACOS_ARM64}
-		};
-	}
-
-	/**
-	 * Returns whether the caller's environment names its Claude configuration directory.
-	 *
-	 * @return the choices
-	 */
-	@DataProvider
-	public static Object[][] configurationChoices()
-	{
-		return new Object[][]
-		{
-			{false},
-			{true}
-		};
-	}
-
-	/**
-	 * Verifies that the Claude process environment points the session's Claude Code at the login store of the user's
-	 * own Claude Code, through {@code CLAUDE_SECURESTORAGE_CONFIG_DIR}, while its configuration directory stays the
-	 * nested session's own: the store is the directory that the caller's non-empty {@code
-	 * CLAUDE_SECURESTORAGE_CONFIG_DIR} names, or else, when that variable is unset, the one that its {@code
-	 * CLAUDE_CONFIG_DIR} names, each as written there; otherwise it is the default store, which on macOS an empty value
-	 * selects, because only that value selects the Keychain item of the user's default store, and elsewhere {@code
-	 * .claude} in the caller's home directory. The session therefore uses and refreshes the user's own Claude login, and
-	 * its settings stay its own.
-	 *
-	 * @param configured the caller's value of {@code CLAUDE_CONFIG_DIR} below the fixture's folder, or an empty
-	 *                   string if it sets none
-	 * @param store      the caller's value of {@code CLAUDE_SECURESTORAGE_CONFIG_DIR}, below the fixture's folder
-	 *                   unless it is empty, or {@code null} if it sets none
-	 * @param expected   the session's value of {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} below the fixture's folder, or
-	 *                   {@code null} for the default store
-	 * @throws IOException if the environment cannot be built
-	 */
-	@Test(dataProvider = "userConfigurations")
-	public void sharesUserLoginWithSession(String configured, String store, String expected) throws IOException
-	{
-		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
-			TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-claude-shared-login-")).toRealPath();
-			Path userHome = Files.createDirectory(root.resolve("user"));
-			Path sessionHome = Files.createDirectory(root.resolve("session-home"));
-			Map<String, String> environment = new HashMap<>();
-			environment.put("PATH", "");
-			environment.put(Platform.current().homeVariable(), userHome.toString());
-			if (!configured.isEmpty())
-				environment.put("CLAUDE_CONFIG_DIR", root + configured);
-			if (store != null && store.isEmpty())
-				environment.put("CLAUDE_SECURESTORAGE_CONFIG_DIR", "");
-			else if (store != null)
-				environment.put("CLAUDE_SECURESTORAGE_CONFIG_DIR", root + store);
-			String loginStore;
-			if (expected != null)
-				loginStore = root + expected;
-			else if (Platform.current().isLinux() || Platform.current().isWindows())
-				loginStore = userHome.resolve(".claude").toString();
-			else
-				loginStore = "";
-
-			Map<String, String> result = ClaudeRunner.processEnvironment(scope, environment,
-				HarnessDependencyCaches.NONE, root.resolve("missing-settings.json"), sessionHome, null);
-
-			requireThat(result.get("CLAUDE_SECURESTORAGE_CONFIG_DIR"), "loginStore").isEqualTo(loginStore);
-			requireThat(result.get("CLAUDE_CONFIG_DIR"), "configurationDirectory").
-				isEqualTo(sessionHome.resolve(".claude").toString());
-		}
-	}
-
-	/**
-	 * Verifies that the Claude process environment states the class of the user's login in {@code CAT_HOST_LOGIN},
-	 * because the session's commands, among them the prompt optimizer, cannot read the login file: {@code subscription}
-	 * when the login store holds a subscription login, {@code api_key} when the environment selects an API key, and
-	 * {@code unknown} when there is no login. The caller's own {@code CAT_HOST_LOGIN} decides nothing.
-	 *
-	 * @param login       what the user has: {@code "subscription"}, {@code "api key"}, or {@code "none"}
-	 * @param callerClaim the caller's value of {@code CAT_HOST_LOGIN}, or {@code null} if it sets none
-	 * @param expected    the session's value of {@code CAT_HOST_LOGIN}
-	 * @throws IOException if the environment cannot be built
-	 */
-	@Test(dataProvider = "hostLogins")
-	public void statesTheLoginClassToTheSession(String login, String callerClaim, String expected)
-		throws IOException
-	{
-		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
-			TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-claude-login-class-")).toRealPath();
-			Path store = Files.createDirectory(root.resolve("store"));
-			Path sessionHome = Files.createDirectory(root.resolve("session-home"));
-			Map<String, String> environment = new HashMap<>();
-			environment.put("PATH", "");
-			environment.put(Platform.current().homeVariable(), root.resolve("user").toString());
-			environment.put("CLAUDE_SECURESTORAGE_CONFIG_DIR", store.toString());
-			if (login.equals("subscription"))
-			{
-				Files.writeString(store.resolve(".credentials.json"),
-					"{\"claudeAiOauth\":{\"accessToken\":\"placeholder\"}}");
-			}
-			else if (login.equals("api key"))
-				environment.put("ANTHROPIC_API_KEY", "placeholder");
-			if (callerClaim != null)
-				environment.put("CAT_HOST_LOGIN", callerClaim);
-
-			Map<String, String> result = ClaudeRunner.processEnvironment(scope, environment,
-				HarnessDependencyCaches.NONE, root.resolve("missing-settings.json"), sessionHome, null);
-
-			requireThat(result.get("CAT_HOST_LOGIN"), "hostLogin").isEqualTo(expected);
-		}
-	}
-
-	/**
-	 * Returns what the user has, the caller's own {@code CAT_HOST_LOGIN}, and the value that the session receives.
-	 *
-	 * @return the values
-	 */
-	@DataProvider
-	public static Object[][] hostLogins()
-	{
-		return new Object[][]
-		{
-			{"subscription", null, "subscription"},
-			{"api key", null, "api_key"},
-			{"none", null, "unknown"},
-			{"subscription", "api_key", "subscription"},
-			{"none", "subscription", "unknown"}
-		};
-	}
-
-	/**
-	 * Verifies that the Claude process environment names a login store that the caller's
-	 * {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} names by a relative path as an absolute path, because the session's
-	 * Claude Code runs in another working directory.
-	 *
-	 * @throws IOException if the environment cannot be built
-	 */
-	@Test
-	public void namesRelativeLoginStoreAbsolutely() throws IOException
-	{
-		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
-			TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-claude-shared-login-")).toRealPath();
-			Path sessionHome = Files.createDirectory(root.resolve("session-home"));
-			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(),
-				root.resolve("user").toString(), "CLAUDE_SECURESTORAGE_CONFIG_DIR", "login-store");
-
-			Map<String, String> result = ClaudeRunner.processEnvironment(scope, environment,
-				HarnessDependencyCaches.NONE, root.resolve("missing-settings.json"), sessionHome, null);
-
-			Path loginStore = Path.of(result.get("CLAUDE_SECURESTORAGE_CONFIG_DIR"));
-			requireThat(loginStore.isAbsolute(), "loginStore.isAbsolute()").isTrue();
-			requireThat(loginStore.getFileName().toString(), "loginStore.getFileName()").isEqualTo("login-store");
-		}
-	}
-
-	/**
-	 * Returns values of {@code CLAUDE_CONFIG_DIR} and {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} below a folder,
-	 * including one that ends in a name separator, and the session's value of
-	 * {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} below the folder, or {@code null} for the default store.
-	 *
-	 * @return the values
-	 */
-	@DataProvider
-	public static Object[][] userConfigurations()
-	{
-		String configured = File.separator + "claude-config";
-		String store = File.separator + "login-store";
-		return new Object[][]
-		{
-			{"", null, null},
-			{configured, null, configured},
-			{configured + File.separator, null, configured + File.separator},
-			{"", store, store},
-			{configured, store, store},
-			{configured, "", null}
-		};
 	}
 
 	/**
@@ -952,30 +277,6 @@ public final class ClaudeRunnerTest
 				for (Path grant : grants)
 					requireThat(login.startsWith(grant), login + ".startsWith(" + grant + ")").isFalse();
 			}
-		}
-	}
-
-	/**
-	 * Verifies that the Claude process environment passes the OAuth token to the session, so that the session and
-	 * the sessions that its commands request authenticate through it.
-	 *
-	 * @throws IOException if the environment cannot be built
-	 */
-	@Test
-	public void passesOauthTokenToSession() throws IOException
-	{
-		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
-			TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory("cat-claude-oauth-token-"));
-			Map<String, String> environment = new HashMap<>();
-			environment.put("PATH", "");
-			environment.put("CLAUDE_CODE_OAUTH_TOKEN", "fake-token");
-
-			Map<String, String> result = ClaudeRunner.processEnvironment(scope, environment,
-				HarnessDependencyCaches.NONE, home.resolve("missing-settings.json"), home, null);
-
-			requireThat(result.get("CLAUDE_CODE_OAUTH_TOKEN"), "token").isEqualTo("fake-token");
 		}
 	}
 
@@ -1972,5 +1273,471 @@ public final class ClaudeRunnerTest
 	{
 		ClaudeRunner.SandboxWatch watch = new ClaudeRunner.SandboxWatch(claude, JsonMapper.builder().build());
 		return watch.guard(new ClaudeProcess(new TestHarnessRunnerScope(), watch.process()));
+	}
+
+	/**
+	 * Verifies that the session's Claude process receives none of the values that the runner's environment and the
+	 * runner's own settings file give the credential variables and the login store's variable, nor the runner's request
+	 * to scrub its commands' environment, so that only the source home's files decide the session's credential, while
+	 * the runner's subagent settings still reach it.
+	 *
+	 * @throws IOException if the fixture or the environment cannot be built
+	 */
+	@Test
+	public void sessionTakesNoRunnerCredential() throws IOException
+	{
+		// Requirement: R-I14
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-source-environment-")).toRealPath();
+			Path source = SourceHomes.create(root, "source");
+			SourceHomes.settings(source, """
+				{"apiKeyHelper": "printf key"}
+				""");
+			Path runnerHome = SourceHomes.create(root, "runner");
+			Map<String, String> environment = new HashMap<>();
+			environment.put("PATH", "");
+			environment.put(Platform.current().homeVariable(), runnerHome.toString());
+			environment.put("CLAUDE_CODE_SUBAGENT_MODEL", "haiku");
+			// The source puts no token in the environment, so Claude Code is not asked to scrub its commands' environment
+			environment.put("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB", "1");
+			ObjectNode settingsEnv = JSON.createObjectNode();
+			for (String variable : CREDENTIAL_VARIABLES)
+			{
+				environment.put(variable, "runner-" + variable);
+				settingsEnv.put(variable, "settings-" + variable);
+			}
+			Path runnerSettings = Files.writeString(runnerHome.resolve(".claude/settings.json"),
+				JSON.writeValueAsString(JSON.createObjectNode().set("env", settingsEnv)));
+			ClaudeAuthentication authentication = ClaudeAuthentication.read(JSON, named(source, null), environment,
+				Platform.current());
+
+			Map<String, String> result = ClaudeRunner.processEnvironment(scope, environment,
+				HarnessDependencyCaches.NONE, runnerSettings, root.resolve("session-home"), null, authentication);
+
+			for (String variable : CREDENTIAL_VARIABLES)
+			{
+				requireThat(result.values(), "values").doesNotContain("runner-" + variable).
+					doesNotContain("settings-" + variable);
+			}
+			requireThat(result.get("CLAUDE_SECURESTORAGE_CONFIG_DIR"), "loginStore").
+				isEqualTo(source.resolve(".claude").toString());
+			requireThat(result.get("CLAUDE_CODE_SUBAGENT_MODEL"), "subagentModel").isEqualTo("haiku");
+			requireThat(result.keySet(), "variables").doesNotContain("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB");
+		}
+	}
+
+	/**
+	 * Verifies that a token in the source's settings reaches the session's Claude process, which then asks Claude Code
+	 * to keep it from every command and hook, and that the process states the token's class of login.
+	 *
+	 * @param variable the token's variable
+	 * @param expected the class that {@code CAT_HOST_LOGIN} states
+	 * @throws IOException if the fixture or the environment cannot be built
+	 */
+	@Test(dataProvider = "sourceTokens")
+	public void passesSourceTokenWithScrub(String variable, String expected) throws IOException
+	{
+		// Requirement: R-I14
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-source-token-")).toRealPath();
+			Path source = SourceHomes.create(root, "source");
+			SourceHomes.settings(source, """
+				{"env": {"%s": "%s"}}
+				""".formatted(variable, SourceHomes.SECRET));
+
+			Map<String, String> result = sessionEnvironment(scope, root, source, null);
+
+			requireThat(result.get(variable), variable).isEqualTo(SourceHomes.SECRET);
+			requireThat(result.get("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"), "scrub").isEqualTo("1");
+			requireThat(result.get("CAT_HOST_LOGIN"), "hostLogin").isEqualTo(expected);
+			requireThat(result.get("CLAUDE_SECURESTORAGE_CONFIG_DIR"), "loginStore").
+				isEqualTo(source.resolve(".claude").toString());
+		}
+	}
+
+	/**
+	 * Returns the token variables that select a credential directly, with the class of login that each selects.
+	 *
+	 * @return the variables and classes
+	 */
+	@DataProvider
+	public static Object[][] sourceTokens()
+	{
+		return new Object[][]
+		{
+			{"ANTHROPIC_API_KEY", "api_key"},
+			{"CLAUDE_CODE_OAUTH_TOKEN", "subscription"}
+		};
+	}
+
+	/**
+	 * Verifies that a gateway's token and base URL in the source's settings both reach the session's Claude process,
+	 * with the scrub, and that the process states the class of login that the launch declares.
+	 *
+	 * @param declared the declared class
+	 * @throws IOException if the fixture or the environment cannot be built
+	 */
+	@Test(dataProvider = "loginClasses")
+	public void passesGatewayWithDeclaredClass(String declared) throws IOException
+	{
+		// Requirement: R-I14
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-source-gateway-")).toRealPath();
+			Path source = SourceHomes.create(root, "source");
+			SourceHomes.settings(source, """
+				{"env": {"ANTHROPIC_AUTH_TOKEN": "%s", "ANTHROPIC_BASE_URL": "https://gateway.example"}}
+				""".formatted(SourceHomes.SECRET));
+
+			Map<String, String> result = sessionEnvironment(scope, root, source, declared);
+
+			requireThat(result.get("ANTHROPIC_AUTH_TOKEN"), "token").isEqualTo(SourceHomes.SECRET);
+			requireThat(result.get("ANTHROPIC_BASE_URL"), "baseUrl").isEqualTo("https://gateway.example");
+			requireThat(result.get("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"), "scrub").isEqualTo("1");
+			requireThat(result.get("CAT_HOST_LOGIN"), "hostLogin").isEqualTo(declared);
+		}
+	}
+
+	/**
+	 * Returns the classes of login that a launch may declare for a gateway.
+	 *
+	 * @return the classes
+	 */
+	@DataProvider
+	public static Object[][] loginClasses()
+	{
+		return new Object[][]{{"subscription"}, {"api_key"}};
+	}
+
+	/**
+	 * Verifies that a source whose only credential is an {@code apiKeyHelper} gives the session's Claude process no
+	 * token and no scrub, and the class {@code api_key}.
+	 *
+	 * @throws IOException if the fixture or the environment cannot be built
+	 */
+	@Test
+	public void keyHelperGivesNoToken() throws IOException
+	{
+		// Requirement: R-I14
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-source-helper-")).toRealPath();
+			Path source = SourceHomes.create(root, "source");
+			SourceHomes.settings(source, """
+				{"apiKeyHelper": "printf key"}
+				""");
+
+			Map<String, String> result = sessionEnvironment(scope, root, source, null);
+
+			for (String variable : List.of("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN",
+				"CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"))
+			{
+				requireThat(result.keySet(), "variables").doesNotContain(variable);
+			}
+			requireThat(result.get("CAT_HOST_LOGIN"), "hostLogin").isEqualTo("api_key");
+			requireThat(result.get("CLAUDE_SECURESTORAGE_CONFIG_DIR"), "loginStore").
+				isEqualTo(source.resolve(".claude").toString());
+		}
+	}
+
+	/**
+	 * Verifies that a source whose only credential is the stored login gives the class {@code subscription} and that
+	 * the session shares the source's login store rather than receiving a copy of the login in its home.
+	 *
+	 * @throws IOException if the fixture or the environment cannot be built
+	 */
+	@Test
+	public void storedLoginIsSharedNotCopied() throws IOException
+	{
+		// Requirement: R-I14
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-source-login-")).toRealPath();
+			Path source = SourceHomes.create(root, "source");
+			SourceHomes.storedLogin(source);
+
+			Map<String, String> result = sessionEnvironment(scope, root, source, null);
+
+			requireThat(result.get("CAT_HOST_LOGIN"), "hostLogin").isEqualTo("subscription");
+			requireThat(result.get("CLAUDE_SECURESTORAGE_CONFIG_DIR"), "loginStore").
+				isEqualTo(source.resolve(".claude").toString());
+			requireThat(Files.exists(root.resolve("session-home/.claude/.credentials.json")), "copied").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that a Claude child needs the host of the source's base URL, or Anthropic's API host when the source
+	 * names none, whatever host the runner's own {@code ANTHROPIC_BASE_URL} names, and the source files that its runner
+	 * reads, which the request server checks against the requester's policy.
+	 *
+	 * @throws IOException if the fixture or the report cannot be built
+	 */
+	@Test
+	public void childNeedsSourceModelHost() throws IOException
+	{
+		// Requirement: R-I14
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-source-child-needs-")).toRealPath();
+			Path runnerHome = SourceHomes.create(root, "runner");
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(),
+				runnerHome.toString(), "ANTHROPIC_BASE_URL", "https://runner.example");
+
+			Path gateway = SourceHomes.create(root, "gateway");
+			Path gatewaySettings = SourceHomes.settings(gateway, """
+				{"env": {"ANTHROPIC_AUTH_TOKEN": "%s", "ANTHROPIC_BASE_URL": "https://Gateway.Example:8443/v1"}}
+				""".formatted(SourceHomes.SECRET));
+			ChildNeedsReport gatewayNeeds = ClaudeRunner.childNeeds(scope, environment, ClaudeAuthentication.read(JSON,
+				named(gateway, "api_key"), environment, Platform.current()));
+			requireThat(gatewayNeeds.hosts(), "gatewayHosts").isEqualTo(Set.of("gateway.example"));
+			requireThat(gatewayNeeds.logins(), "gatewayLogins").contains(gatewaySettings);
+
+			Path helper = SourceHomes.create(root, "helper");
+			SourceHomes.settings(helper, """
+				{"apiKeyHelper": "printf key"}
+				""");
+			ChildNeedsReport helperNeeds = ClaudeRunner.childNeeds(scope, environment, ClaudeAuthentication.read(JSON,
+				named(helper, null), environment, Platform.current()));
+			requireThat(helperNeeds.hosts(), "helperHosts").isEqualTo(Set.of("api.anthropic.com"));
+		}
+	}
+
+	/**
+	 * Verifies that the session's settings hold the source's {@code apiKeyHelper}, wrapped so that it runs with the
+	 * source home as its home folder, and its helper lifetime, but none of the source's hooks, permissions, plugins or
+	 * MCP servers; that a POSIX shell that runs the wrapped helper with another home folder prints the key that the
+	 * helper reads from {@code ~/key}; and that no element of the session's command holds the key.
+	 *
+	 * @throws IOException          if the fixture, the settings or the shell's output cannot be read or written
+	 * @throws InterruptedException if the test is interrupted while the shell runs
+	 */
+	@Test
+	public void copiesOnlyWrappedKeyHelper() throws IOException, InterruptedException
+	{
+		// Requirement: R-I14
+		try (TestJvmScope jvm = new TestJvmScope();
+			HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-source-settings-")).
+				toRealPath();
+			Path source = SourceHomes.create(root, "source");
+			SourceHomes.secret(source.resolve("key"));
+			SourceHomes.settings(source, """
+				{
+				  "apiKeyHelper": "cat ~/key",
+				  "env": {"CLAUDE_CODE_API_KEY_HELPER_TTL_MS": "60000"},
+				  "hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "echo source-hook"}]}]},
+				  "permissions": {"deny": ["Bash(source-denial:*)"], "allow": ["Bash(source-grant:*)"]},
+				  "enabledPlugins": {"source-plugin@source-marketplace": true},
+				  "mcpServers": {"source-server": {"command": "source-server"}}
+				}
+				""");
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(),
+				SourceHomes.create(root, "runner").toString());
+			ClaudeAuthentication authentication = ClaudeAuthentication.read(JSON, named(source, null), environment,
+				Platform.current());
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("results"),
+				Clock.systemUTC(), Yielding.fileReplacer());
+			NestedSession nestedSession = manager.create("claude");
+			Path project = Files.createDirectories(nestedSession.directory().resolve("project/.git")).getParent();
+			Path settingsFile = nestedSession.directory().resolve("home/.claude/settings.json");
+
+			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), settingsFile,
+				nestedSession.directory().resolve("claude"), nestedSession.directory().resolve("home"), List.of(),
+				nestedSession.directory(), List.of(), List.of(), "", null, project, nestedSession.directory(), null,
+				ExtraPermissions.NONE, "api.anthropic.com", "", true, List.of(), authentication);
+
+			JsonNode settings = JSON.readTree(Files.readString(settingsFile));
+			String helper = settings.path("apiKeyHelper").asString("");
+			requireThat(helper, "helper").contains("cat ~/key").contains(source.toString());
+			requireThat(settings.path("env").path("CLAUDE_CODE_API_KEY_HELPER_TTL_MS").asString(""), "ttl").
+				isEqualTo("60000");
+			for (String setting : List.of("hooks", "enabledPlugins", "mcpServers"))
+				requireThat(settings.has(setting), setting).isFalse();
+			requireThat(settings.toString(), "settings").doesNotContain("source-denial").doesNotContain("source-grant");
+
+			Path otherHome = Files.createDirectories(root.resolve("other-home"));
+			ProcessBuilder shell = new ProcessBuilder("sh", "-c", helper).redirectErrorStream(true);
+			shell.environment().put("HOME", otherHome.toString());
+			try (Process process = shell.start())
+			{
+				String printed = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+				requireThat(process.waitFor(), "status").isZero();
+				requireThat(printed, "printed").isEqualTo(SourceHomes.SECRET);
+			}
+
+			List<String> command = ClaudeRunner.command("claude", "haiku", "low", "", List.of(),
+				nestedSession.directory().resolve("home/.claude/projects"), List.of());
+			for (String element : command)
+				requireThat(element, "element").doesNotContain(SourceHomes.SECRET);
+		}
+	}
+
+	/**
+	 * Verifies that each source file that holds a secret is denied to the session's commands and file tools, through
+	 * {@code sandbox.filesystem.denyRead} and a {@code Read} rule in {@code permissions.deny}, and stays in the denied
+	 * reads that the session's runner passes to every session that the session requests.
+	 *
+	 * @throws IOException if the fixture or the settings cannot be built
+	 */
+	@Test
+	public void deniesSourceSecretFiles() throws IOException
+	{
+		// Requirement: R-I14
+		try (TestJvmScope jvm = new TestJvmScope();
+			HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-source-denials-")).
+				toRealPath();
+			Path source = SourceHomes.create(root, "source");
+			Path key = SourceHomes.secret(source.resolve("key"));
+			Path login = SourceHomes.storedLogin(source);
+			Path sourceSettings = SourceHomes.settings(source, """
+				{"apiKeyHelper": "cat ~/key", "env": {"CLAUDE_CODE_OAUTH_TOKEN": "%s"}}
+				""".formatted(SourceHomes.SECRET));
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(),
+				SourceHomes.create(root, "runner").toString());
+			ClaudeAuthentication authentication = ClaudeAuthentication.read(JSON, named(source, null), environment,
+				Platform.current());
+			HarnessRunnerOptions options = authentication.withDeniedReads(ClaudeRunnerCli.options(new String[]{
+				"--artifact", root.resolve("artifact").toString(), "--results", root.resolve("results").toString(),
+				"--model", "haiku", "--effort", "low"}, HarnessTemporaryRoot.withoutSession("no session")));
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("results"),
+				Clock.systemUTC(), Yielding.fileReplacer());
+			NestedSession nestedSession = manager.create("claude");
+			manager.snapshotProject(nestedSession);
+			Path project = Files.createDirectories(nestedSession.directory().resolve("project/.git")).getParent();
+			Path settingsFile = nestedSession.directory().resolve("home/.claude/settings.json");
+			List<Path> deniedReads = ClaudeRunner.sessionDeniedReads(manager, nestedSession, List.of(),
+				options.deniedReads(), environment);
+
+			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), settingsFile,
+				nestedSession.directory().resolve("claude"), nestedSession.directory().resolve("home"), List.of(),
+				nestedSession.directory(), deniedReads, List.of(), "", null, project, nestedSession.directory(), null,
+				ExtraPermissions.NONE, "api.anthropic.com", "", true, List.of(), authentication);
+
+			List<Path> secrets = List.of(key, login, sourceSettings);
+			requireThat(options.deniedReads(), "requestedSessionDenials").containsAll(secrets);
+			JsonNode settings = JSON.readTree(Files.readString(settingsFile));
+			List<String> denyRead = new ArrayList<>();
+			for (JsonNode path : settings.path("sandbox").path("filesystem").path("denyRead"))
+				denyRead.add(path.asString());
+			List<String> denyRules = new ArrayList<>();
+			for (JsonNode rule : settings.path("permissions").path("deny"))
+				denyRules.add(rule.asString());
+			for (Path secret : secrets)
+			{
+				requireThat(denyRead, "denyRead").contains(secret.toString());
+				requireThat(denyRules, "denyRules").contains("Read(/" + ClaudeConnectionSettings.rulePath(secret) + ")");
+			}
+		}
+	}
+
+	/**
+	 * Verifies that the files that the runner writes into a nested session's folder before its harness starts, other
+	 * than the session's own settings, which hold the wrapped key helper, hold no secret of the source home, and that
+	 * neither does the command that {@code session.json} records, while {@code session.json} records the source home,
+	 * the names of the copied parts and the class of login.
+	 *
+	 * @throws IOException if the fixture, the settings or the records cannot be read or written
+	 */
+	@Test
+	public void recordsAuthenticationWithoutSecrets() throws IOException
+	{
+		// Requirement: R-I14
+		try (TestJvmScope jvm = new TestJvmScope();
+			HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-source-records-")).
+				toRealPath();
+			Path source = SourceHomes.create(root, "source");
+			SourceHomes.secret(source.resolve("key"));
+			SourceHomes.storedLogin(source);
+			SourceHomes.settings(source, """
+				{"apiKeyHelper": "cat ~/key", "env": {"ANTHROPIC_API_KEY": "%s", "CLAUDE_CODE_OAUTH_TOKEN": "%s"}}
+				""".formatted(SourceHomes.SECRET, SourceHomes.SECRET));
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(),
+				SourceHomes.create(root, "runner").toString());
+			ClaudeAuthentication authentication = ClaudeAuthentication.read(JSON, named(source, null), environment,
+				Platform.current());
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("results"),
+				Clock.systemUTC(), Yielding.fileReplacer());
+			NestedSession nestedSession = manager.create("claude");
+			Path project = Files.createDirectories(nestedSession.directory().resolve("project/.git")).getParent();
+			Path settingsFile = nestedSession.directory().resolve("home/.claude/settings.json");
+			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), settingsFile,
+				nestedSession.directory().resolve("claude"), nestedSession.directory().resolve("home"), List.of(),
+				nestedSession.directory(), List.of(), List.of(), "", null, project, nestedSession.directory(), null,
+				ExtraPermissions.NONE, "api.anthropic.com", "", true, List.of(), authentication);
+			List<String> command = ClaudeRunner.command("claude", "haiku", "low", "", List.of(),
+				nestedSession.directory().resolve("home/.claude/projects"), List.of());
+
+			manager.initialize(nestedSession, root.resolve("artifact"), project, "claude_stream_json", command,
+				authentication.evidence());
+
+			JsonNode manifest = JSON.readTree(Files.readString(nestedSession.directory().resolve("session.json")));
+			JsonNode recorded = manifest.path("authentication");
+			requireThat(recorded.path("home").asString(""), "home").isEqualTo(source.toString());
+			List<String> parts = new ArrayList<>();
+			for (JsonNode part : recorded.path("parts"))
+				parts.add(part.asString());
+			requireThat(parts, "parts").containsAll(List.of("ANTHROPIC_API_KEY", "apiKeyHelper",
+				"CLAUDE_CODE_OAUTH_TOKEN", ".credentials.json"));
+			requireThat(recorded.path("login_class").asString(""), "loginClass").isEqualTo("api_key");
+			try (Stream<Path> files = Files.walk(nestedSession.directory()))
+			{
+				for (Path file : files.filter(Files::isRegularFile).filter(file -> !file.equals(settingsFile)).toList())
+					requireThat(Files.readString(file), file.toString()).doesNotContain(SourceHomes.SECRET);
+			}
+			requireThat(manifest.path("harness_command").asString(""), "command").doesNotContain(SourceHomes.SECRET);
+		}
+	}
+
+	/**
+	 * Returns the environment of a session's Claude process whose credential comes from a source home, for a runner
+	 * whose own home folder holds no Claude authentication.
+	 *
+	 * @param scope    the runner's scope
+	 * @param root     the test's folder
+	 * @param source   the source home
+	 * @param declared the class of login that the launch declares, or {@code null} for none
+	 * @return the environment
+	 * @throws IOException if the source home or the environment cannot be read
+	 */
+	private static Map<String, String> sessionEnvironment(HarnessRunnerScope scope, Path root, Path source,
+		String declared) throws IOException
+	{
+		Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(),
+			SourceHomes.create(root, "runner").toString());
+		ClaudeAuthentication authentication = ClaudeAuthentication.read(JSON, named(source, declared), environment,
+			Platform.current());
+		return ClaudeRunner.processEnvironment(scope, environment, HarnessDependencyCaches.NONE,
+			root.resolve("missing-settings.json"), root.resolve("session-home"), null, authentication);
+	}
+
+	/**
+	 * Returns the choice of a launch that names a source home.
+	 *
+	 * @param source   the source home
+	 * @param declared the class of login that the launch declares, or {@code null} for none
+	 * @return the choice
+	 */
+	private static AuthenticationOptions named(Path source, String declared)
+	{
+		Optional<HostLogin> loginClass = Optional.empty();
+		if (declared != null)
+			loginClass = Optional.of(AuthenticationOptions.parseLoginClass(declared));
+		return new AuthenticationOptions(Optional.of(source), loginClass, false);
 	}
 }

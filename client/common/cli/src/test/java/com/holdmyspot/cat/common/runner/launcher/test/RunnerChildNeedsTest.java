@@ -23,6 +23,7 @@ import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static org.testng.Assert.expectThrows;
 
 /**
  * Tests that a request server learns a child's needs from the runner of the child's harness, and refuses a child
@@ -72,6 +73,40 @@ public final class RunnerChildNeedsTest
 				Set.of("model.example")));
 			requireThat(started, "started").isEqualTo(List.of(List.of("codex", request.toString(),
 				ChildNeedsReport.OPTION + " " + request.resolve(ChildNeedsReport.FILE_NAME))));
+		}
+	}
+
+	/**
+	 * Verifies that a child whose runner reads a source file that the requesting session's sandbox denies it reading is
+	 * refused, naming the file and the read denial that covers it, so that a launch never uses a credential that its
+	 * requester may not read; and that a source file outside every read denial is accepted.
+	 *
+	 * @throws IOException   if the fixture cannot be created
+	 * @throws PolicyRefusal if the readable source file is refused
+	 */
+	@Test
+	public void refusesSourceFileThatRequesterMayNotRead() throws IOException, PolicyRefusal
+	{
+		// Requirement: R-I14
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-request-")).toRealPath();
+			Path request = Files.createDirectory(root.resolve("request"));
+			Path secrets = Files.createDirectories(root.resolve("source/secrets"));
+			Path denied = Files.writeString(secrets.resolve("key"), "key");
+			Path readable = Files.writeString(root.resolve("source/settings.json"), "{}");
+			ParentPolicy bound = new ParentPolicy(true, List.of(root), List.of(), List.of(secrets), List.of(),
+				HostAccess.listed(Set.of("model.example")), false, List.of());
+
+			PolicyRefusal refusal = expectThrows(PolicyRefusal.class, () -> RunnerChildNeeds.needs("harness-a",
+				new ChildNeedsReport(List.of(), Set.of("model.example"), List.of(readable, denied)),
+				request.resolve("session"), List.of(), bound));
+			requireThat(refusal.reason(), "reason").contains(denied.toString());
+			// The denied folder's path begins the file's, so the denial is named only if it remains without the file's
+			requireThat(refusal.reason().replace(denied.toString(), ""), "denial").contains(secrets.toString());
+
+			RunnerChildNeeds.needs("harness-a", new ChildNeedsReport(List.of(), Set.of("model.example"),
+				List.of(readable)), request.resolve("session"), List.of(), bound);
 		}
 	}
 

@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
@@ -233,11 +234,37 @@ public record ParentPolicy(boolean sandboxed, List<Path> writeRoots, List<Path> 
 	 */
 	public boolean mayRead(Path file) throws IOException
 	{
+		return readDenial(file).isEmpty();
+	}
+
+	/**
+	 * Returns the read denial that keeps the parent's commands from reading a file, so that a refusal can name the
+	 * setting that the user must change.
+	 *
+	 * @param file the absolute path of the file
+	 * @return the resolved read denial that holds {@code file}, or that {@code file} holds, when no re-allowance holds
+	 *   the file; empty if the parent's commands may read the file, which they always may when the parent is not
+	 *   sandboxed
+	 * @throws NullPointerException     if {@code file} is null
+	 * @throws IllegalArgumentException if {@code file} is not absolute
+	 * @throws IOException              if a symbolic link in a path cannot be read, or a path follows more than 40 links
+	 */
+	public Optional<Path> readDenial(Path file) throws IOException
+	{
 		requireThat(file, "file").isNotNull();
 		if (!file.isAbsolute())
 			throw new IllegalArgumentException("file must be absolute: " + file);
-		return !sandboxed || readsWhole(RealPaths.resolve(file), RealPaths.resolveAll(readDenials),
-			RealPaths.resolveAll(readReallowances));
+		if (!sandboxed)
+			return Optional.empty();
+		Path resolved = RealPaths.resolve(file);
+		if (RealPaths.isInsideAny(resolved, RealPaths.resolveAll(readReallowances)))
+			return Optional.empty();
+		for (Path denial : RealPaths.resolveAll(readDenials))
+		{
+			if (denial.startsWith(resolved) || resolved.startsWith(denial))
+				return Optional.of(denial);
+		}
+		return Optional.empty();
 	}
 
 	/**

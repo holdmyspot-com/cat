@@ -121,6 +121,7 @@ import com.holdmyspot.cat.common.optimizer.store.TrialRecovery;
 import com.holdmyspot.cat.common.optimizer.store.TrialSession;
 import com.holdmyspot.cat.common.optimizer.workspace.ControlSource;
 import com.holdmyspot.cat.common.optimizer.workspace.LinkReport;
+import com.holdmyspot.cat.common.runner.AuthenticationEvidence;
 import com.holdmyspot.cat.common.runner.RetainedTrialClaim;
 import com.holdmyspot.cat.common.runner.RetainedTrialRequest;
 import com.holdmyspot.cat.common.runner.RetainedTrialResponse;
@@ -195,6 +196,12 @@ public final class Driver implements AutoCloseable
 	 * How each evaluation harness authenticates, classified when the driver opened.
 	 */
 	private final Map<Harness, HostLogin> evaluatorLogins;
+	/**
+	 * The authentication that each evaluation harness's sessions take from the command's source home, read when the
+	 * driver opened, for each harness whose port reports one. A resumed campaign may name another source home, so each
+	 * trial session's record holds the authentication of the driver that ended it.
+	 */
+	private final Map<Harness, AuthenticationEvidence> evaluatorAuthentications;
 	private final SessionEvents events = new SessionEvents();
 	private final Map<Long, InFlight> inFlight = new LinkedHashMap<>();
 	private final Map<TrialKey, TrialRecovery> trialRequests;
@@ -244,9 +251,10 @@ public final class Driver implements AutoCloseable
 	 * @param recovery the reconciled campaign and the launches that the broker still owns
 	 * @param sliceStart when the slice started
 	 * @param evaluatorLogins how each trial evaluator authenticates
+	 * @param evaluatorAuthentications the authentication of each trial evaluator whose port reports one
 	 */
 	private Driver(DriverContext context, CampaignLock lock, Reconciler.Recovery recovery, Instant sliceStart,
-		Map<Harness, HostLogin> evaluatorLogins)
+		Map<Harness, HostLogin> evaluatorLogins, Map<Harness, AuthenticationEvidence> evaluatorAuthentications)
 	{
 		this.context = context;
 		this.lock = lock;
@@ -257,6 +265,7 @@ public final class Driver implements AutoCloseable
 		this.deadline = context.settings().deadline(sliceStart);
 		this.graceEnd = context.settings().graceEnd(sliceStart);
 		this.evaluatorLogins = Map.copyOf(evaluatorLogins);
+		this.evaluatorAuthentications = Map.copyOf(evaluatorAuthentications);
 	}
 
 	/**
@@ -361,13 +370,18 @@ public final class Driver implements AutoCloseable
 			Instant now = context.clock().instant();
 			Campaign campaign = load(context, campaignId);
 			Map<Harness, HostLogin> logins = Map.of();
+			Map<Harness, AuthenticationEvidence> authentications = Map.of();
 			if (runningSlice)
-				logins = evaluatorLogins(context, campaign.header());
+			{
+				Map<Harness, SessionPort> ports = evaluatorPorts(context, campaign.header());
+				logins = evaluatorLogins(ports);
+				authentications = evaluatorAuthentications(ports);
+			}
 			Reconciler.Recovery recovery = Reconciler.reconcile(context, campaign, now);
 			Instant began = now;
 			if (sliceStart != null)
 				began = sliceStart;
-			return new Driver(context, lock, recovery, began, logins);
+			return new Driver(context, lock, recovery, began, logins, authentications);
 		}
 		catch (IOException | RuntimeException e)
 		{
@@ -379,24 +393,52 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Looks up the login types for the trial evaluators the campaign selected.
+	 * Returns the ports of the trial evaluators that the campaign selected.
 	 *
 	 * @param context the driver's context with the evaluator ports
 	 * @param header the campaign's header with the selected evaluators
-	 * @return the login type for each selected evaluator
-	 * @throws IOException if the ports do not match the selection or a required login file cannot be read
+	 * @return the port of each selected evaluator
+	 * @throws IOException if the ports do not match the selection
 	 */
-	private static Map<Harness, HostLogin> evaluatorLogins(DriverContext context, Header header) throws IOException
+	private static Map<Harness, SessionPort> evaluatorPorts(DriverContext context, Header header) throws IOException
 	{
 		Map<Harness, SessionPort> ports = context.evaluationSessions();
 		if (ports.isEmpty())
 			ports = Map.of(header.harness(), context.sessions());
 		if (!header.evaluationHarnesses().equals(ports.keySet()))
 			throw new IOException("Evaluator session ports do not match the campaign's evaluation harnesses");
+		return ports;
+	}
+
+	/**
+	 * Looks up the login types of trial evaluators.
+	 *
+	 * @param ports the port of each evaluator
+	 * @return the login type for each evaluator
+	 * @throws IOException if a required login file cannot be read
+	 */
+	private static Map<Harness, HostLogin> evaluatorLogins(Map<Harness, SessionPort> ports) throws IOException
+	{
 		Map<Harness, HostLogin> logins = new EnumMap<>(Harness.class);
 		for (Map.Entry<Harness, SessionPort> port : ports.entrySet())
 			logins.put(port.getKey(), port.getValue().hostLogin());
 		return logins;
+	}
+
+	/**
+	 * Looks up the authentication that the sessions of trial evaluators take from the command's source home.
+	 *
+	 * @param ports the port of each evaluator
+	 * @return the authentication of each evaluator whose port reports one
+	 * @throws IOException if a source home refuses the sessions' launches or cannot be read
+	 */
+	private static Map<Harness, AuthenticationEvidence> evaluatorAuthentications(Map<Harness, SessionPort> ports)
+		throws IOException
+	{
+		Map<Harness, AuthenticationEvidence> authentications = new EnumMap<>(Harness.class);
+		for (Map.Entry<Harness, SessionPort> port : ports.entrySet())
+			port.getValue().authentication().ifPresent(evidence -> authentications.put(port.getKey(), evidence));
+		return authentications;
 	}
 
 	/**
@@ -927,9 +969,11 @@ public final class Driver implements AutoCloseable
 			usage = completed.usage();
 			commands = trialPort(trial.key().cell()).readEvidence(completed.transcript()).commands();
 		}
-		HostLogin login = evaluatorLogins.get(evaluatorOf(trial.key().cell()));
+		Harness evaluator = evaluatorOf(trial.key().cell());
+		HostLogin login = evaluatorLogins.get(evaluator);
+		AuthenticationEvidence authentication = evaluatorAuthentications.get(evaluator);
 		context.store().writeTrialSession(campaignId, trial.key(), new TrialSession(trial.startedAt(), now,
-			trial.concurrency(), campaign.throttle(), windows, login, usage, commands));
+			trial.concurrency(), campaign.throttle(), windows, login, usage, commands, authentication));
 		if (result instanceof SessionResult.Completed)
 			record(new CampaignEvent.ObserveCommands(trial.key(), commands));
 	}

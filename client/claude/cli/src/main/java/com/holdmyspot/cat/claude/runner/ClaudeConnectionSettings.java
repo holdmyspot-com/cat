@@ -40,8 +40,9 @@ import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * Supplies the allow-listed Claude variables that a nested Claude process inherits, its connection variables and
- * its subagent settings, from the parent process and its settings file.
+ * Supplies the allow-listed Claude variables that a nested Claude process inherits, its subagent settings, from the
+ * parent process and its settings file, and writes the settings of an isolated Claude instance. A nested session's
+ * credential comes from its source home instead, as {@link ClaudeAuthentication} reads it.
  */
 public final class ClaudeConnectionSettings
 {
@@ -132,24 +133,23 @@ public final class ClaudeConnectionSettings
 	 */
 	private static final String RULE_PATH_SYNTAX = "\\[]*?!";
 	/**
-	 * The variables that a nested Claude process takes from its parent: the connection variables, and the variables
-	 * that decide whether and how a session starts subagents, such as how many nested session at once, how deeply they
-	 * nest, which model and effort they use, and whether the built-in, fork, plan, workflow and team agents are offered.
-	 * A nested session therefore starts subagents the way its parent does. Claude Code has no other setting for this: it
-	 * reads these from its environment, where a user sets them directly or through a settings file's {@code env}.
+	 * The variables that a nested Claude process takes from its parent: those that decide whether and how a session
+	 * starts subagents, such as how many run at once, how deeply they nest, which model and effort they use, and whether
+	 * the built-in, fork, plan, workflow and team agents are offered. A nested session therefore starts subagents the way
+	 * its parent does. Claude Code has no other setting for this: it reads these from its environment, where a user sets
+	 * them directly or through a settings file's {@code env}.
 	 */
-	private static final Set<String> INHERITED_VARIABLES = Set.of("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
-		"ANTHROPIC_BASE_URL", "CLAUDE_CODE_OAUTH_TOKEN",
-		"CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS", "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH", "CLAUDE_CODE_SUBAGENT_MODEL",
-		"CLAUDE_CODE_SUBAGENT_MODEL_FORCE", "CLAUDE_CODE_SUBAGENT_EFFORT", "CLAUDE_CODE_FORK_SUBAGENT",
-		"CLAUDE_CODE_DISABLE_EXPLORE_PLAN_AGENTS", "CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS",
+	private static final Set<String> INHERITED_VARIABLES = Set.of("CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS",
+		"CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH", "CLAUDE_CODE_SUBAGENT_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL_FORCE",
+		"CLAUDE_CODE_SUBAGENT_EFFORT", "CLAUDE_CODE_FORK_SUBAGENT", "CLAUDE_CODE_DISABLE_EXPLORE_PLAN_AGENTS",
+		"CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS",
 		"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "CLAUDE_CODE_PLAN_V2_AGENT_COUNT",
 		"CLAUDE_CODE_PLAN_V2_EXPLORE_AGENT_COUNT", "CLAUDE_CODE_WORKFLOW_MAX_CONCURRENT_AGENTS",
 		"CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL");
 
 	/**
-	 * Copies the parent's connection variables and subagent settings from the parent process into an isolated
-	 * environment. A variable that the parent does not set stays unset.
+	 * Copies the parent's subagent settings from the parent process into an isolated environment. A variable that the
+	 * parent does not set stays unset.
 	 *
 	 * @param source      the parent process environment
 	 * @param destination the mutable isolated process environment
@@ -160,9 +160,9 @@ public final class ClaudeConnectionSettings
 	}
 
 	/**
-	 * Copies the connection variables and subagent settings that a host Claude settings file sets in its {@code env}
-	 * into an isolated process environment, except those that the environment already holds, so that a value from the
-	 * parent process wins over the settings file's.
+	 * Copies the subagent settings that a host Claude settings file sets in its {@code env} into an isolated process
+	 * environment, except those that the environment already holds, so that a value from the parent process wins over
+	 * the settings file's.
 	 *
 	 * @param json        the JSON mapper that reads the settings file
 	 * @param source      the host settings file
@@ -453,10 +453,57 @@ public final class ClaudeConnectionSettings
 	}
 
 	/**
+	 * Writes settings for an isolated Claude instance without a source home's authentication, as
+	 * {@link #writeIsolatedSettings(HarnessRunnerScope, Path, Path, Path, Path, List, Path, List, List, String,
+	 * SessionRequestAccess, Path, Path, ChildPolicy, ExtraPermissions, String, String, boolean, List,
+	 * ClaudeAuthentication)} does.
+	 *
+	 * @param scope                    services shared for the runner process lifetime
+	 * @param source                   the host Claude settings file
+	 * @param destination              the isolated Claude settings file
+	 * @param claudeTemporaryDirectory the CAT-owned directory for Claude temporary files
+	 * @param claudeHome               the CAT-owned home directory for the isolated Claude process
+	 * @param dependencyCaches         the parent's shared dependency caches that the isolated instance may write
+	 * @param isolationRoot            the directory above which the isolated instance loads no instruction file
+	 * @param deniedReads              the existing files and directories that the isolated instance must not read
+	 * @param readOnlyEvidence         the completed evidence directories and files that the isolated instance reads
+	 * @param instructionFilesMode     the choice of which instruction files load, or an empty string to keep the
+	 *                                 parent's choice
+	 * @param requestAccess            the session's access to requested sessions, or {@code null} if it may request
+	 *                                 none
+	 * @param project                  the instance's project, or {@code null} if the instance has none
+	 * @param sessionFolder            the instance's session folder
+	 * @param bound                    the policy that bounds the instance's, or {@code null} if nothing bounds it
+	 * @param extraPermissions         the writes and hosts that the instance's commands need beyond what Claude Code
+	 *                                 needs
+	 * @param modelHost                the host of the instance's model provider
+	 * @param promptCacheTtl           the lifetime of the instance's prompt cache, or an empty string
+	 * @param sandboxed                {@code true} if Claude Code confines the instance's commands in a sandbox
+	 * @param tools                    the only tools that the instance's model is offered, or none if it is offered
+	 *                                 every tool
+	 * @return the instance's sandbox policy
+	 * @throws IOException if settings I/O fails or the session is refused
+	 */
+	public static ChildPolicy writeIsolatedSettings(HarnessRunnerScope scope, Path source, Path destination,
+		Path claudeTemporaryDirectory, Path claudeHome, List<Path> dependencyCaches, Path isolationRoot,
+		List<Path> deniedReads, List<Path> readOnlyEvidence, String instructionFilesMode,
+		SessionRequestAccess requestAccess, Path project, Path sessionFolder, ChildPolicy bound,
+		ExtraPermissions extraPermissions, String modelHost, String promptCacheTtl, boolean sandboxed,
+		List<String> tools)
+		throws IOException
+	{
+		return writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory, claudeHome, dependencyCaches,
+			isolationRoot, deniedReads, readOnlyEvidence, instructionFilesMode, requestAccess, project, sessionFolder, bound,
+			extraPermissions, modelHost, promptCacheTtl, sandboxed, tools, null);
+	}
+
+	/**
 	 * Writes settings for an isolated Claude instance, as
 	 * {@link #writeIsolatedSettings(HarnessRunnerScope, Path, Path, Path, Path, List, Path, List, String,
 	 * SessionRequestAccess, Path, Path, ChildPolicy, ExtraPermissions, String)} does, except that the settings also set
-	 * the lifetime of the instance's prompt cache when {@code promptCacheTtl} is not empty. Claude Code's
+	 * the lifetime of the instance's prompt cache when {@code promptCacheTtl} is not empty, and hold the source home's
+	 * {@code apiKeyHelper}, wrapped, and its key lifetime, as {@link ClaudeAuthentication#addTo} adds them, and no other
+	 * setting of the source home. Claude Code's
 	 * {@code promptCacheTtl} setting alone switches every cache write to that lifetime, so the settings set no
 	 * environment variable for it.
 	 * <p>
@@ -502,6 +549,8 @@ public final class ClaudeConnectionSettings
 	 *                                 {@code false} if the instance runs without one
 	 * @param tools                    the only tools that the instance's model is offered, or none if it is offered
 	 *                                 every tool
+	 * @param authentication           the source home's authentication, or {@code null} for an instance that takes no
+	 *                                 setting from a source home
 	 * @return the instance's sandbox policy
 	 * @throws NullPointerException     if {@code readOnlyEvidence}, {@code instructionFilesMode},
 	 *                                  {@code sessionFolder}, {@code extraPermissions}, {@code modelHost},
@@ -519,7 +568,7 @@ public final class ClaudeConnectionSettings
 		List<Path> deniedReads, List<Path> readOnlyEvidence, String instructionFilesMode,
 		SessionRequestAccess requestAccess, Path project, Path sessionFolder, ChildPolicy bound,
 		ExtraPermissions extraPermissions, String modelHost, String promptCacheTtl, boolean sandboxed,
-		List<String> tools)
+		List<String> tools, ClaudeAuthentication authentication)
 		throws IOException
 	{
 		requireThat(readOnlyEvidence, "readOnlyEvidence").isNotNull();
@@ -560,6 +609,8 @@ public final class ClaudeConnectionSettings
 			putSandbox(settings, policy, implicitWrites);
 		if (!promptCacheTtl.isEmpty())
 			settings.put("promptCacheTtl", promptCacheTtl);
+		if (authentication != null)
+			authentication.addTo(settings);
 		copyPermissionRestrictions(parentSettings.path("permissions"), settings);
 		if (instructionFilesMode.isEmpty())
 			copyInstructionFilesMode(parentSettings, settings);
@@ -840,7 +891,9 @@ public final class ClaudeConnectionSettings
 	 * excludes commands from it or weakens it; lets commands write a path outside the policy's writable paths, or
 	 * read a path that the policy denies; lets commands reach a host outside the policy's, listen on local addresses
 	 * when the policy does not, use local sockets, or use a proxy of its own; adds a directory that the policy does
-	 * not let commands write; or lets the file tools edit outside the policy's writable paths.
+	 * not let commands write; or lets the file tools edit outside the policy's writable paths. A setting that would
+	 * replace the credential that the session takes from its source home, an {@code env} entry of one of
+	 * {@link ClaudeAuthentication#CREDENTIAL_VARIABLES} or {@code apiKeyHelper}, is refused the same way.
 	 *
 	 * @param json   the JSON mapper
 	 * @param files  the settings files; a path that is not a regular file is skipped
@@ -873,11 +926,41 @@ public final class ClaudeConnectionSettings
 			}
 			if (!settings.isObject())
 				return Optional.of(refusal(file, "its content", "is not a JSON object, so CAT cannot tell what it allows"));
+			Optional<String> credential = credentialSetting(file, settings);
+			if (credential.isPresent())
+				return credential;
 			Optional<String> widening = new WideningSettings(file, settings, policy, home.toAbsolutePath()).find();
 			if (widening.isPresent())
 				return widening;
 		}
 		return Optional.empty();
+	}
+
+	/**
+	 * Looks for a setting that would replace the credential of a session's source home in a settings file that Claude
+	 * Code loads beside the session's own: an {@code env} entry of one of
+	 * {@link ClaudeAuthentication#CREDENTIAL_VARIABLES}, or {@code apiKeyHelper}.
+	 *
+	 * @param file     the settings file
+	 * @param settings the file's JSON object
+	 * @return why the first such setting is refused, naming the file and the setting, or an empty value if the file sets
+	 *   none
+	 */
+	private static Optional<String> credentialSetting(Path file, JsonNode settings)
+	{
+		List<String> settingNames = new ArrayList<>();
+		for (String variable : new TreeSet<>(ClaudeAuthentication.CREDENTIAL_VARIABLES))
+		{
+			if (settings.path("env").has(variable))
+				settingNames.add("env." + variable);
+		}
+		if (settings.has("apiKeyHelper"))
+			settingNames.add("apiKeyHelper");
+		if (settingNames.isEmpty())
+			return Optional.empty();
+		return Optional.of("Claude Code would load the settings file " + file + ", whose " + settingNames.getFirst() +
+			" would replace the credential that the session takes from its source home, so CAT does not start the " +
+			"session. Remove the setting from that file");
 	}
 
 	/**

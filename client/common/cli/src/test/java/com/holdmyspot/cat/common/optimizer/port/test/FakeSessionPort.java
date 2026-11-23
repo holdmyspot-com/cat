@@ -14,6 +14,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionPort;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 
+import com.holdmyspot.cat.common.runner.AuthenticationEvidence;
 import java.io.IOException;
 import java.nio.file.FileSystems;
 import java.nio.file.Path;
@@ -71,6 +72,10 @@ public class FakeSessionPort implements SessionPort
 	private final String heldOutExposure;
 	private final List<Path> resultsFolders;
 	private final Map<Path, SessionEvidence> evidence = new HashMap<>();
+	/**
+	 * The authentication that {@link #authentication()} reports, or {@code null} for none.
+	 */
+	private AuthenticationEvidence authentication;
 	private final Set<Path> readTranscripts = new HashSet<>();
 	/**
 	 * The installed copies that {@link #installedPlugins(String)} reports for each plugin name, in installation order.
@@ -291,6 +296,28 @@ public class FakeSessionPort implements SessionPort
 	public HostLogin hostLogin()
 	{
 		return login;
+	}
+
+	@Override
+	public Optional<AuthenticationEvidence> authentication()
+	{
+		synchronized (this)
+		{
+			return Optional.ofNullable(authentication);
+		}
+	}
+
+	/**
+	 * Sets the authentication that the port's sessions use from now on, as {@link #authentication()} reports it.
+	 *
+	 * @param evidence the authentication, or {@code null} for none
+	 */
+	public void supplyAuthentication(AuthenticationEvidence evidence)
+	{
+		synchronized (this)
+		{
+			authentication = evidence;
+		}
 	}
 
 	@Override

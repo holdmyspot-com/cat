@@ -295,7 +295,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			reopened.writeTrialRecovery(ID, ended);
 			Instant started = Instant.parse("2026-10-01T12:00:00Z");
 			reopened.writeTrialSession(ID, key, new TrialSession(started, started.plusSeconds(40), 1,
-				new Throttle(started, 1, 0, 1), List.of(), HostLogin.API_KEY, null, CommandSummary.UNKNOWN));
+				new Throttle(started, 1, 0, 1), List.of(), HostLogin.API_KEY, null, CommandSummary.UNKNOWN, null));
 			reopened.writeOutcome(ID, complete(key, Verdict.PASS));
 
 			CampaignStore restarted = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
@@ -2110,7 +2110,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			store.writeAssignment(ID, trial);
 			store.writeTrialSession(ID, trial.key(), new TrialSession(expired, expired.plusSeconds(40), 8,
 				new Throttle(expired, 1, 0, 1), List.of(new RateLimitWindow(0.80, null)), HostLogin.API_KEY, null,
-				new CommandSummary(Duration.ofSeconds(3), 0)));
+				new CommandSummary(Duration.ofSeconds(3), 0), null));
 			store.replaceSnapshot(original);
 
 			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");

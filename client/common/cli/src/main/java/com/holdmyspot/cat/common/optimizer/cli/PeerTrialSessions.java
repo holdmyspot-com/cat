@@ -14,6 +14,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionHandle;
 import com.holdmyspot.cat.common.optimizer.port.SessionPort;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.TurnObserver;
+import com.holdmyspot.cat.common.runner.AuthenticationEvidence;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.RetainedNestedSessionClient;
 import com.holdmyspot.cat.common.runner.RetainedTrialClaim;
@@ -139,6 +140,12 @@ public final class PeerTrialSessions implements SessionPort
 	public boolean reportsExitStatus()
 	{
 		return metadata.runtime().reportsExitStatus();
+	}
+
+	@Override
+	public Optional<AuthenticationEvidence> authentication()
+	{
+		return Optional.empty();
 	}
 
 	@Override

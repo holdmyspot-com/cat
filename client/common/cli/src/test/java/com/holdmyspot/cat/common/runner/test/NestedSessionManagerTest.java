@@ -17,6 +17,8 @@ import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.optimizer.port.HostLogin;
+import com.holdmyspot.cat.common.runner.AuthenticationEvidence;
 import com.holdmyspot.cat.common.runner.HarnessProcessResult;
 import com.holdmyspot.cat.common.runner.HarnessProcessTermination;
 import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
@@ -24,6 +26,7 @@ import com.holdmyspot.cat.common.runner.NestedSession;
 import com.holdmyspot.cat.common.runner.NestedSessionLaunch;
 import com.holdmyspot.cat.common.runner.NestedSessionLock;
 import com.holdmyspot.cat.common.runner.NestedSessionManager;
+import com.holdmyspot.cat.common.runner.NestedSessionReceipt;
 import com.holdmyspot.cat.common.runner.ProcessHandleLiveness;
 import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
 import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
@@ -441,6 +444,45 @@ public final class NestedSessionManagerTest
 			requireThat(Files.readString(hostLogin), "hostLogin").isEqualTo("host login");
 			requireThat(Files.readString(nestedSession.directory().resolve("session.json")),
 				"manifest").contains("harness failed");
+		}
+	}
+
+	/**
+	 * Verifies that a nested session's {@code session.json} and its receipt record the authentication that its harness
+	 * uses, the source home, the names of the copied parts and the class of login, and that the record stays through the
+	 * nested session's later lifecycle records.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void recordsAuthentication() throws IOException
+	{
+		// Requirement: R-I14
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-results-"));
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root, Clock.systemUTC(),
+				Yielding.fileReplacer());
+			NestedSession nestedSession = manager.create("harness");
+			AuthenticationEvidence evidence = new AuthenticationEvidence(root.resolve("source-home"),
+				List.of("ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN"), HostLogin.SUBSCRIPTION);
+			JsonMapper json = JsonMapper.builder().build();
+
+			manager.initialize(nestedSession, root.resolve("artifact"), root.resolve("project"), "transport",
+				List.of("harness", "--model", "model-a"), evidence);
+			manager.recordHarnessSession(nestedSession, "session-a");
+			Path transcript = Files.writeString(Files.createDirectories(nestedSession.directory().resolve("artifacts")).
+				resolve("bridge.jsonl"), "bridge");
+			Path receipt = root.resolve("receipt.json");
+			NestedSessionReceipt.write(json, Yielding.fileReplacer(), receipt, nestedSession, transcript, List.of());
+
+			JsonNode manifest = json.readTree(Files.readString(nestedSession.directory().resolve("session.json")));
+			requireThat(AuthenticationEvidence.fromJson(manifest.path(AuthenticationEvidence.FIELD)), "manifest").
+				isEqualTo(evidence);
+			JsonNode receiptDocument = json.readTree(Files.readString(receipt));
+			requireThat(AuthenticationEvidence.fromJson(receiptDocument.path(AuthenticationEvidence.FIELD)), "receipt").
+				isEqualTo(evidence);
 		}
 	}
 

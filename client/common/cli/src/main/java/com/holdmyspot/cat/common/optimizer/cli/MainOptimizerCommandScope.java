@@ -21,6 +21,7 @@ import com.holdmyspot.cat.common.optimizer.workspace.Forks;
 import com.holdmyspot.cat.common.optimizer.workspace.GitForks;
 import com.holdmyspot.cat.common.optimizer.workspace.GitWorktreeRegistrar;
 import com.holdmyspot.cat.common.optimizer.workspace.WorktreeRefusedException;
+import com.holdmyspot.cat.common.runner.AuthenticationOptions;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessMarkers;
@@ -70,6 +71,11 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	private final Path configurationDirectory;
 	private final Path directory;
 	private final List<Path> loaderConfiguration;
+	/**
+	 * The command's choice of the source home and gateway login class, which every session that the scope's ports
+	 * start receives.
+	 */
+	private final AuthenticationOptions authentication;
 	private final Reference<RandomGenerator> random = LazyReference.create(RandomGenerator::getDefault);
 	private final Reference<FileReplacer> fileReplacer;
 	private final Object forksLock = new Object();
@@ -91,11 +97,13 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	 * @param loaderConfiguration    the files, relative to the project, that decide which prompt files the harness
 	 *                               loads
 	 * @param waiting                how the process waits between the attempts of a retried operation
+	 * @param authentication         the command's choice of the source home and gateway login class, which every
+	 *                               session that the scope's ports start receives
 	 * @throws NullPointerException     if any argument is null
 	 */
 	protected MainOptimizerCommandScope(Harness harness, HarnessSandbox trialSandbox, SessionHarness sessionHarness,
 		HarnessMarkers markers, Map<String, String> environment, Path configurationDirectory, Path directory,
-		List<Path> loaderConfiguration, Waiting waiting)
+		List<Path> loaderConfiguration, Waiting waiting, AuthenticationOptions authentication)
 	{
 		super(new MainJvmScope(environment, waiting));
 		this.fileReplacer = LazyReference.create(() -> FileReplacer.retrying(waiting));
@@ -115,6 +123,19 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 		this.configurationDirectory = configurationDirectory;
 		this.directory = directory;
 		this.loaderConfiguration = List.copyOf(loaderConfiguration);
+		requireThat(authentication, "authentication").isNotNull();
+		this.authentication = authentication;
+	}
+
+	/**
+	 * Returns the command's choice of the source home and gateway login class, which every session that the scope's
+	 * ports start receives.
+	 *
+	 * @return the choice
+	 */
+	protected final AuthenticationOptions authentication()
+	{
+		return authentication;
 	}
 
 
@@ -167,7 +188,7 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 		ensureOpen();
 		RunnerSessions.Settings settings = new RunnerSessions.Settings(this, plugin(), results, List::of, true,
 			environment, configurationDirectory, HarnessCapacity.unlimited(), clock(), fileReplacer(),
-			Optional.of(ProjectRuleLoader.rulesDirectory(home())), project);
+			Optional.of(ProjectRuleLoader.rulesDirectory(home())), project, authentication);
 		return evaluatorSessions(settings, (_, _, _) ->
 		{
 			throw new IOException("Metadata inspection cannot start a session");
@@ -233,7 +254,7 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 		ensureOpen();
 		RunnerSessions.Settings settings = new RunnerSessions.Settings(this, plugin(), launch.results(),
 			launch::heldOut, true, environment, configurationDirectory, evaluatorCapacity(harness), clock(),
-			fileReplacer(), Optional.of(ProjectRuleLoader.rulesDirectory(home())), launch.project());
+			fileReplacer(), Optional.of(ProjectRuleLoader.rulesDirectory(home())), launch.project(), authentication);
 		Bridge bridge = RunnerSessions.evaluatorBridge(settings, harness.commandName(), launch.route(), launch.requests());
 		return evaluatorSessions(settings, bridge);
 	}

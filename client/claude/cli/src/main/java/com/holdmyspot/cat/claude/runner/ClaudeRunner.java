@@ -4,18 +4,15 @@ import static com.holdmyspot.cat.claude.ClaudePluginInfo.HARNESS_ID;
 
 import com.holdmyspot.cat.claude.ClaudeConfiguration;
 import com.holdmyspot.cat.claude.installer.Integration;
-import com.holdmyspot.cat.claude.optimizer.Credentials;
 import com.holdmyspot.cat.claude.optimizer.InstalledPlugins;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.FileReplacer;
-import com.holdmyspot.cat.common.JvmScope;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.Waiting;
-import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.runner.AbstractHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.HarnessArtifact;
 import com.holdmyspot.cat.common.runner.HarnessCommand;
@@ -53,20 +50,15 @@ import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.lang.ProcessBuilder.Redirect;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.text.Normalizer;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HexFormat;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -87,22 +79,11 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class ClaudeRunner
 {
-	private static final Set<String> AUTHENTICATION_VARIABLES = Set.of("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
-		"CLAUDE_CODE_OAUTH_TOKEN");
 	/**
-	 * The variable that names the Claude configuration directory whose login store Claude Code uses, in place of
-	 * the one that {@code CLAUDE_CONFIG_DIR} names.
+	 * The variable with which a caller asks Claude Code to remove credentials from its commands' environment, which the
+	 * session's environment sets only from the source home's authentication.
 	 */
-	private static final String LOGIN_STORE_VARIABLE = "CLAUDE_SECURESTORAGE_CONFIG_DIR";
-	/**
-	 * How long the macOS {@code security} program may take to tell whether the Keychain holds a login item.
-	 */
-	private static final Duration KEYCHAIN_WAIT = Duration.ofSeconds(10);
-	/**
-	 * The status of {@code security find-generic-password} when the Keychain holds no such item
-	 * ({@code errSecItemNotFound}).
-	 */
-	private static final int KEYCHAIN_ITEM_NOT_FOUND = 44;
+	private static final String SCRUB_VARIABLE = "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB";
 	/**
 	 * The path of a Claude plugin's manifest, relative to the plugin directory.
 	 */
@@ -172,6 +153,8 @@ public final class ClaudeRunner
 	 *   project, its installed plugins and its session store; the runner writes its settings again under the current
 	 *   bound, runs the session under {@code model} and {@code effort} whatever {@code agent} names, and records no end
 	 *   if the session cannot start.
+	 * @param authentication the credential that the session takes from the launch's source home, which a resumed
+	 *   session takes from the resuming launch's source home
 	 * @return the live nested session
 	 * @throws SessionRefusedException if the session's sandbox would not confine it as its policy requires: its
 	 *   bound does not let it write what Claude Code writes outside the session's session folder, which the bound always
@@ -185,9 +168,11 @@ public final class ClaudeRunner
 		ClaudeAgentDefinition agent, boolean installCat, List<Path> readOnlyEvidence,
 		List<Path> deniedReads, String instructionFilesMode, boolean sessionTranscripts, int sessionRequests,
 		ChildPolicy bound, Consumer<ChildPolicy> policyListener, String gitName, String gitEmail,
-		ExtraPermissions extraPermissions, ClaudeSessionRole role, String resumedSession) throws IOException
+		ExtraPermissions extraPermissions, ClaudeSessionRole role, String resumedSession,
+		ClaudeAuthentication authentication) throws IOException
 	{
 		requireThat(policyListener, "policyListener").isNotNull();
+		requireThat(authentication, "authentication").isNotNull();
 		requireThat(extraPermissions, "extraPermissions").isNotNull();
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(project, "project").isNotNull();
@@ -242,15 +227,15 @@ public final class ClaudeRunner
 			SessionRequestAccess requestAccess = SessionRequestAccess.allowing(nestedSession, artifactRoot, sessionRequests,
 				Platform.current(), SessionRequestAccess.Shell.POSIX).orElse(null);
 			Map<String, String> isolatedEnvironment = processEnvironment(scope, environment, caches,
-				hostConfiguration.resolve("settings.json"), isolatedProcessHome, requestAccess);
+				hostConfiguration.resolve("settings.json"), isolatedProcessHome, requestAccess, authentication);
 			Path worktree = nestedSession.directory().resolve("project");
 			ChildPolicy policy = ClaudeConnectionSettings.writeIsolatedSettings(scope,
 				hostConfiguration.resolve("settings.json"), isolatedConfiguration.resolve("settings.json"),
 				claudeTemporaryDirectory, isolatedProcessHome, caches.directories(), nestedSession.directory(),
 				sessionDeniedReads(manager, nestedSession, readOnlyEvidence, deniedReads, environment, requestAccess),
 				readOnlyEvidence, instructionFilesMode, requestAccess, worktree, nestedSession.directory(), bound,
-				extraPermissions, ClaudeConnectionSettings.modelHost(isolatedEnvironment), promptCacheTtl(role),
-				sandboxed(role), tools(role));
+				extraPermissions, authentication.modelHost(), promptCacheTtl(role), sandboxed(role), tools(role),
+				authentication);
 			requireNoWidening(scope, Platform.current(), worktree, policy, isolatedProcessHome);
 			policyListener.accept(policy);
 			// The copied project already has its owned baseline. A second initial commit
@@ -292,7 +277,8 @@ public final class ClaudeRunner
 				readOnlyEvidence, tools(role));
 			if (resumes)
 				command = resumed(command, resumedSession);
-			manager.initialize(nestedSession, artifact, project, "claude_stream_json", command);
+			manager.initialize(nestedSession, artifact, project, "claude_stream_json", command,
+				authentication.evidence());
 			lock = manager.acquireLock(nestedSession);
 			Path projectDirectory = null;
 			HarnessSessionTranscripts transcripts = null;
@@ -515,67 +501,57 @@ public final class ClaudeRunner
 
 	/**
 	 * Returns the environment of a nested session's Claude process. It holds the caller's generic operating-system
-	 * variables, its Claude connection variables and its settings for starting subagents, each from its environment or
-	 * else its Claude settings, so that the session starts subagents the way the caller does, and the shared dependency
-	 * caches; the nested session's home as the home directory and its {@code .claude} as Claude's configuration
-	 * directory; in {@code CLAUDE_SECURESTORAGE_CONFIG_DIR}, the login store of the user's own Claude Code, so that the
-	 * session's Claude Code uses and refreshes the user's own Claude login there while its settings stay the nested
-	 * session's: the directory that the caller's non-empty {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} names, or else, when
-	 * that variable is unset, the one that its non-blank {@code CLAUDE_CONFIG_DIR} names, each as it is written if it is
-	 * absolute or else made absolute; otherwise, on macOS, an empty value, which selects the Keychain item of Claude
-	 * Code's default store; otherwise {@code .claude} in the caller's home directory; and the request for Claude's
-	 * session state events, which the turn boundary depends on. CAT's hooks then find Claude's configuration directory
-	 * through the home directory, as {@code .claude} in it.
+	 * variables and its settings for starting subagents, each from its environment or else its Claude settings, so that
+	 * the session starts subagents the way the caller does, and the shared dependency caches; the nested session's home
+	 * as the home directory and its {@code .claude} as Claude's configuration directory; the variables of the source
+	 * home's authentication, as {@link ClaudeAuthentication#environment()} lists them; and the request for Claude's
+	 * session state events, which the turn boundary depends on.
 	 * <p>
-	 * {@code CAT_HOST_LOGIN} states the class of the user's login, {@code subscription}, {@code api_key} or
-	 * {@code unknown}, as {@link Credentials#classify} classifies the environment's authentication variables and
-	 * the login store's file, because the session's commands cannot read that file. The caller's own value is never
-	 * inherited. The class is all that the variable carries: no value of a variable or of the login file is read.
-	 * <p>
-	 * The environment never sets {@code CLAUDE_CODE_SUBPROCESS_ENV_SCRUB}, so Claude Code passes its credentials and
-	 * its configuration directory's variable to the commands and hooks that it starts. Claude Code keeps the project's
-	 * {@code .git/worktrees} read-only in its sandbox whether or not that mode is set, so the session's commands
-	 * register no worktree; the prompt optimizer's registration operations run outside the sandbox. The caller's
-	 * value of the variable is not inherited, because the environment copies only generic operating-system variables,
-	 * Claude's connection variables and its subagent settings from the caller's environment.
+	 * The session's credential comes only from the source home: the environment holds none of the caller's values of
+	 * {@link ClaudeAuthentication#CREDENTIAL_VARIABLES}, from its environment or its Claude settings, and none of its
+	 * {@code CLAUDE_CODE_SUBPROCESS_ENV_SCRUB} or {@code CAT_HOST_LOGIN}. The source home's {@code .claude} folder is the
+	 * session's login store, so that the session's Claude Code reads and refreshes that folder's stored login in place,
+	 * while the session's own settings stay the nested session's. When the source puts a token into the environment, the
+	 * environment also asks Claude Code to keep every credential, and its configuration directory's variable, from the
+	 * commands and hooks that it starts; CAT's hooks then find Claude's configuration directory through the home
+	 * directory, as {@code .claude} in it. Claude Code keeps the project's {@code .git/worktrees} read-only in its
+	 * sandbox whether or not that is asked, so the session's commands register no worktree; the prompt optimizer's
+	 * registration operations run outside the sandbox.
 	 *
-	 * @param scope        services shared for the runner process lifetime
-	 * @param environment  the caller's environment
-	 * @param caches       the shared dependency caches
-	 * @param hostSettings the caller's Claude settings file
-	 * @param processHome   the nested session's isolated home
-	 * @param requestAccess the session's access to requested sessions, whose variables the environment adds, or
-	 *                      {@code null} if the session may request none
+	 * @param scope          services shared for the runner process lifetime
+	 * @param environment    the caller's environment
+	 * @param caches         the shared dependency caches
+	 * @param hostSettings   the caller's Claude settings file
+	 * @param processHome    the nested session's isolated home
+	 * @param requestAccess  the session's access to requested sessions, whose variables the environment adds, or
+	 *                       {@code null} if the session may request none
+	 * @param authentication the credential that the session takes from the launch's source home
 	 * @return the environment, which the caller may change
 	 * @throws NullPointerException if any of the arguments other than {@code requestAccess} are null
 	 * @throws IOException          if the settings file cannot be read
 	 */
 	public static Map<String, String> processEnvironment(HarnessRunnerScope scope, Map<String, String> environment,
-		HarnessDependencyCaches caches, Path hostSettings, Path processHome, SessionRequestAccess requestAccess)
-		throws IOException
+		HarnessDependencyCaches caches, Path hostSettings, Path processHome, SessionRequestAccess requestAccess,
+		ClaudeAuthentication authentication) throws IOException
 	{
 		requireThat(scope, "scope").isNotNull();
 		requireThat(environment, "environment").isNotNull();
 		requireThat(caches, "caches").isNotNull();
 		requireThat(hostSettings, "hostSettings").isNotNull();
 		requireThat(processHome, "processHome").isNotNull();
+		requireThat(authentication, "authentication").isNotNull();
 		Map<String, String> isolatedEnvironment = new HashMap<>(HarnessEnvironment.scrub(environment));
 		ClaudeProcessEnvironment.removeUnavailablePathEntries(isolatedEnvironment);
 		ClaudeConnectionSettings.copyProcessEnvironment(environment, isolatedEnvironment);
 		isolatedEnvironment.putAll(caches.environment());
 		ClaudeConnectionSettings.copy(scope.json(), hostSettings, isolatedEnvironment);
+		// A credential that the caller's environment held would otherwise outrank the source home's, or bill another
+		// login than the one that the user's own Claude Code in the source home uses
+		isolatedEnvironment.keySet().removeAll(ClaudeAuthentication.CREDENTIAL_VARIABLES);
+		isolatedEnvironment.remove(SCRUB_VARIABLE);
 		HarnessEnvironment.setHomeDirectory(isolatedEnvironment, processHome);
 		isolatedEnvironment.put("CLAUDE_CONFIG_DIR", processHome.resolve(".claude").toString());
-		// A copy of the user's login in the nested session would stop working, even in the middle of a turn, once the
-		// user's session or another nested session refreshed the login, because a refresh replaces the refresh token. The
-		// session's Claude Code therefore reads and refreshes the user's own login in the user's login store.
-		String store = loginStore(environment, Platform.current());
-		isolatedEnvironment.put(LOGIN_STORE_VARIABLE, store);
-		// The session's commands cannot read the login file, so the runner, which can, tells them its class. Only the
-		// key names of the login file are read, and the variable carries the class alone.
-		HostLogin login = Credentials.classify(loginDirectory(store, environment, Platform.current()),
-			isolatedEnvironment, scope.json());
-		isolatedEnvironment.put(Credentials.HOST_LOGIN_VARIABLE, Credentials.hostLoginValue(login));
+		isolatedEnvironment.putAll(authentication.environment());
 		// The turn boundary in ClaudeProcess depends on Claude's session_state_changed lines. Set it after
 		// copying the caller's settings so that no inherited value turns it off.
 		ClaudeProcessEnvironment.requestSessionStateEvents(isolatedEnvironment);
@@ -590,40 +566,26 @@ public final class ClaudeRunner
 
 	/**
 	 * Returns what a Claude child session needs beyond its session folder, as a request server asks for it before it
-	 * starts the child: the shared dependency caches, which the child writes, and the host of the model provider that
-	 * the child's Claude Code connects to, which its commands reach. It needs no login file in its home, because the
-	 * child's Claude Code uses the user's own Claude login, or a variable that {@link #requireLogin} accepts, and the
-	 * runner copies no login file.
+	 * starts the child: the shared dependency caches, which the child writes, the host of the model provider that the
+	 * child's Claude Code connects to, which its commands reach, and the source files that hold the child's credential,
+	 * which the requesting session must be allowed to read.
 	 *
-	 * @param scope       services shared for the runner process lifetime
-	 * @param environment the caller's environment
+	 * @param scope          services shared for the runner process lifetime
+	 * @param environment    the caller's environment
+	 * @param authentication the credential that the child takes from the launch's source home
 	 * @return the needs
-	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IOException              if a cache cannot be used, the caller's settings file cannot be read, or the model
-	 *                                  provider's base URL names no host
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if a cache cannot be used
 	 */
-	public static ChildNeedsReport childNeeds(HarnessRunnerScope scope, Map<String, String> environment)
-		throws IOException
+	public static ChildNeedsReport childNeeds(HarnessRunnerScope scope, Map<String, String> environment,
+		ClaudeAuthentication authentication) throws IOException
 	{
 		requireThat(scope, "scope").isNotNull();
 		requireThat(environment, "environment").isNotNull();
+		requireThat(authentication, "authentication").isNotNull();
 		HarnessDependencyCaches caches = HarnessDependencyCache.verify(environment);
-		Path hostConfiguration = claudeConfigDirectory(environment, Platform.current());
-		// The isolated home only gives the environment's home variables a value here; nothing is written to it
-		Map<String, String> isolatedEnvironment = processEnvironment(scope, environment, caches,
-			hostConfiguration.resolve("settings.json"), hostConfiguration.toAbsolutePath(), null);
-		String modelHost;
-		try
-		{
-			modelHost = ClaudeConnectionSettings.modelHost(isolatedEnvironment);
-		}
-		catch (IllegalArgumentException e)
-		{
-			// The caller's environment names a model provider that no session can reach, so what its session needs is
-			// unknown, as when a cache cannot be used
-			throw new IOException(e.getMessage(), e);
-		}
-		return new ChildNeedsReport(caches.directories(), Set.of(modelHost), List.of());
+		return new ChildNeedsReport(caches.directories(), Set.of(authentication.modelHost()),
+			authentication.sourceFiles());
 	}
 
 	/**
@@ -631,11 +593,11 @@ public final class ClaudeRunner
 	 * every file and directory under the results folder except the session's project, link-targets directory, home,
 	 * Claude temporary directory and evidence, and every harness's login and configuration files in the session's home
 	 * and in the user's home, as {@link SessionCommandLimits#harnessFiles(Map, Platform)} names them. The runner puts no
-	 * login file in the session's home: the session's Claude Code uses the user's own Claude login, whose login file the
-	 * session's commands cannot read; on macOS the login is a Keychain item instead, which Claude Code's sandbox lets
-	 * commands reach through the `security` program, as in the user's own session, and a session that a command requests
-	 * through CAT's runner uses it too. A Claude process that a command starts directly has a login only through a
-	 * variable that the commands receive. The session therefore cannot read the runner's records of its own nested
+	 * login file in the session's home: the session's Claude Code takes its credential from the source home, whose files
+	 * that hold a secret the caller denies the session through {@code deniedReads}, as
+	 * {@link ClaudeAuthentication#withDeniedReads} adds them. No command receives a credential in its environment, so a
+	 * Claude process that a command starts directly has none. The session therefore cannot read the runner's records of
+	 * its own nested
 	 * session or of any other nested session, the workspace files of any nested session, any login file, such as the
 	 * user's own Claude and Codex logins, or a configuration that would let a harness started from a command reach the
 	 * model provider. A denied directory that holds the session's project, home, Claude temporary directory, link-targets
@@ -830,99 +792,6 @@ public final class ClaudeRunner
 	}
 
 	/**
-	 * Returns the value of {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} that makes a session's Claude Code use the login
-	 * store of the user's own Claude Code, which the caller's environment selects. The value is
-	 * <ul>
-	 *   <li>the caller's non-empty {@code CLAUDE_SECURESTORAGE_CONFIG_DIR}, or else its non-blank
-	 *   {@code CLAUDE_CONFIG_DIR}, as it is written if it is absolute, or else made absolute;</li>
-	 *   <li>otherwise, on macOS, an empty value;</li>
-	 *   <li>otherwise {@code .claude} in the caller's home directory, made absolute.</li>
-	 * </ul>
-	 *
-	 * @param environment the caller's environment
-	 * @param platform    the platform whose home variable names the caller's home directory
-	 * @return the value
-	 */
-	private static String loginStore(Map<String, String> environment, Platform platform)
-	{
-		assert environment != null;
-		assert platform != null;
-		String store = environment.get(LOGIN_STORE_VARIABLE);
-		if (store == null)
-		{
-			store = environment.get("CLAUDE_CONFIG_DIR");
-			if (store != null && store.isBlank())
-				store = "";
-		}
-		if (store != null && !store.isEmpty())
-		{
-			// On macOS, Claude Code names the Keychain item of a named store after a hash of the variable's text, which
-			// Path would change by dropping a trailing separator or a repeated one. The platform, not the JVM's file
-			// system, decides whether a text is absolute: a JVM on Windows does not take "/Users/alice" as absolute.
-			boolean absolute;
-			if (platform.isWindows())
-				absolute = Path.of(store).isAbsolute();
-			else
-				absolute = store.startsWith("/");
-			if (absolute)
-				return store;
-			return Path.of(store).toAbsolutePath().toString();
-		}
-		// The user's Claude Code keeps the login of its default store in the Keychain item without a hash in its name,
-		// which only an empty value selects. The session's refreshes then take its own lock, which is safe: a refresh
-		// that loses the race does not clear the winner's login, because Claude Code clears a stored login only while
-		// it still holds the refresh token that failed.
-		if (isMacOs(platform))
-			return "";
-		return defaultLoginDirectory(environment, platform).toString();
-	}
-
-	/**
-	 * Returns the directory of the user's login store.
-	 *
-	 * @param store       the value of {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} that the session receives
-	 * @param environment the caller's environment
-	 * @param platform    the platform whose home variable names the caller's home directory
-	 * @return the directory that {@code store} names, or else {@code .claude} in the caller's home directory, which
-	 *         is where the default store keeps its login file when {@code store} is empty
-	 */
-	private static Path loginDirectory(String store, Map<String, String> environment, Platform platform)
-	{
-		assert store != null;
-		assert environment != null;
-		assert platform != null;
-		if (store.isEmpty())
-			return defaultLoginDirectory(environment, platform);
-		return Path.of(store);
-	}
-
-	/**
-	 * Returns the Claude configuration directory of the user's login store when no variable names one.
-	 *
-	 * @param environment the caller's environment
-	 * @param platform    the platform whose home variable names the caller's home directory
-	 * @return {@code .claude} in the caller's home directory, made absolute
-	 */
-	private static Path defaultLoginDirectory(Map<String, String> environment, Platform platform)
-	{
-		assert environment != null;
-		assert platform != null;
-		return ClaudeConfiguration.resolveDirectory(homeDirectory(environment, platform), null).toAbsolutePath();
-	}
-
-	/**
-	 * Indicates whether a platform is macOS, whose Claude Code keeps its login in the Keychain.
-	 *
-	 * @param platform the platform
-	 * @return {@code true} for macOS
-	 */
-	private static boolean isMacOs(Platform platform)
-	{
-		assert platform != null;
-		return !platform.isLinux() && !platform.isWindows();
-	}
-
-	/**
 	 * Derives the non-repository CAT user-rule directory from the parent process's harness home directory.
 	 *
 	 * @param environment the parent process environment
@@ -953,158 +822,6 @@ public final class ClaudeRunner
 		{
 			return e;
 		}
-	}
-
-	/**
-	 * Refuses a nested session that no Claude login could authenticate. A session of a nested session authenticates
-	 * through {@code CLAUDE_CODE_OAUTH_TOKEN}, {@code ANTHROPIC_API_KEY} or {@code ANTHROPIC_AUTH_TOKEN} when the
-	 * caller's environment or else the caller's Claude settings file sets one of them, as {@link #processEnvironment}
-	 * passes them to the session, and otherwise through the user's own Claude login, in the user's login store, which
-	 * {@link #processEnvironment} names to the session's Claude Code. The store's directory is the one that the caller's
-	 * non-empty {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} names, or else, when that variable is unset, the one that its
-	 * non-blank {@code CLAUDE_CONFIG_DIR} names, or else {@code .claude} in the caller's home directory.
-	 * <p>
-	 * The nested session is refused only when none of those variables is set and the store certainly holds no login: on
-	 * Linux the directory holds no {@code .credentials.json}, and on macOS it holds none and the Keychain holds no item
-	 * of Claude Code's login for the store. On Windows no nested session is refused for lack of a login, because Claude
-	 * Code may keep the login in the Windows Credential Manager, which the check cannot ask. The check only asks whether
-	 * a login exists; it reads no login.
-	 * <p>
-	 * On macOS the check asks the {@code security} program for the item, without {@code -w}, so that the Keychain
-	 * reveals no secret. The item's account is the user's name, or {@code claude-code-user} when the name holds a
-	 * character other than an ASCII letter, a digit, {@code .}, {@code _} or {@code -}; its service is
-	 * {@code Claude Code-credentials}, followed, when a variable names the store's directory, by {@code -} and the
-	 * first eight hexadecimal digits of the SHA-256 hash, in Unicode normalization form C, of the directory that
-	 * {@link #processEnvironment} names. Claude Code names the item so. A Keychain that answers neither that it
-	 * holds the item nor that it holds none, such as a locked one, refuses nothing: the session's Claude Code then
-	 * reports what keeps it from the login.
-	 *
-	 * @param scope       the services that read the caller's Claude settings file and start the {@code security}
-	 *                    program
-	 * @param environment the caller's environment
-	 * @param platform    the platform whose login store holds the user's login
-	 * @throws NullPointerException    if any of the arguments are null
-	 * @throws SessionRefusedException if no login could authenticate the nested session; the message tells the user to
-	 *                                 log in to Claude Code with {@code /login} and names the directory of the user's
-	 *                                 login store
-	 * @throws IOException             if the caller's Claude settings file cannot be read, or the {@code security}
-	 *                                 program cannot be started or does not end in time
-	 */
-	public static void requireLogin(JvmScope scope, Map<String, String> environment, Platform platform)
-		throws IOException
-	{
-		requireThat(scope, "scope").isNotNull();
-		requireThat(environment, "environment").isNotNull();
-		requireThat(platform, "platform").isNotNull();
-		Map<String, String> authentication = new HashMap<>();
-		ClaudeConnectionSettings.copyProcessEnvironment(environment, authentication);
-		ClaudeConnectionSettings.copy(scope.json(),
-			claudeConfigDirectory(environment, platform).resolve("settings.json"), authentication);
-		boolean authenticated = AUTHENTICATION_VARIABLES.stream().map(authentication::get).anyMatch(value ->
-			value != null && !value.isBlank());
-		if (authenticated || platform.isWindows())
-			return;
-
-		String store = loginStore(environment, platform);
-		Path directory = loginDirectory(store, environment, platform);
-		if (Files.exists(directory.resolve(".credentials.json")))
-			return;
-		if (isMacOs(platform) && !keychainLacksLogin(scope, environment, store))
-			return;
-		throw new SessionRefusedException("CAT does not start the session: no Claude login can authenticate it. A " +
-			"session that CAT starts uses the Claude Code login of the user who starts it, and Claude Code holds no " +
-			"login for the Claude configuration directory " + directory + ". Log in to Claude Code with /login, then " +
-			"start the session again.");
-	}
-
-	/**
-	 * Returns whether the macOS Keychain answers that it holds no item of Claude Code's login, as
-	 * {@link #requireLogin} names the item. The {@code security} program only reports whether the item exists,
-	 * because the command names no {@code -w}, and its output is discarded.
-	 *
-	 * @param scope       the services that start the {@code security} program
-	 * @param environment the caller's environment
-	 * @param store       the value of {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} that the session receives
-	 * @return {@code true} if the Keychain holds no such item; {@code false} if it holds one, or does not tell
-	 * @throws IOException if the {@code security} program cannot be started, does not end within
-	 *                     {@link #KEYCHAIN_WAIT}, or the wait is interrupted
-	 */
-	private static boolean keychainLacksLogin(JvmScope scope, Map<String, String> environment, String store)
-		throws IOException
-	{
-		assert scope != null;
-		assert environment != null;
-		assert store != null;
-		ProcessBuilder builder = new ProcessBuilder("/usr/bin/security", "find-generic-password", "-a",
-			keychainAccount(environment), "-s", keychainService(store)).redirectOutput(Redirect.DISCARD).
-			redirectError(Redirect.DISCARD);
-		try (Process process = scope.executableFiles().run(builder))
-		{
-			boolean ended;
-			try
-			{
-				ended = process.waitFor(KEYCHAIN_WAIT.toMillis(), TimeUnit.MILLISECONDS);
-			}
-			catch (InterruptedException e)
-			{
-				process.destroyForcibly();
-				Thread.currentThread().interrupt();
-				throw new IOException("Interrupted while asking the macOS Keychain for a Claude Code login", e);
-			}
-			if (!ended)
-			{
-				process.destroyForcibly();
-				throw new IOException("The macOS security program did not tell within " + KEYCHAIN_WAIT.toSeconds() +
-					" seconds whether the Keychain holds a Claude Code login");
-			}
-			return process.exitValue() == KEYCHAIN_ITEM_NOT_FOUND;
-		}
-	}
-
-	/**
-	 * Returns the account of the user's Claude Code login item in the macOS Keychain, as Claude Code names it: the
-	 * value of {@code USER}, or else the name of the user who runs the JVM, or {@code claude-code-user} if that name
-	 * holds a character other than an ASCII letter, a digit, {@code .}, {@code _} or {@code -}.
-	 *
-	 * @param environment the caller's environment
-	 * @return the account
-	 */
-	private static String keychainAccount(Map<String, String> environment)
-	{
-		assert environment != null;
-		String user = environment.get("USER");
-		if (user == null || user.isEmpty())
-			user = System.getProperty("user.name");
-		if (user.matches("[a-zA-Z0-9._-]+"))
-			return user;
-		return "claude-code-user";
-	}
-
-	/**
-	 * Returns the service of the Claude Code login item in the macOS Keychain that a session's Claude Code uses, as
-	 * Claude Code names it: {@code Claude Code-credentials}, followed, when the session's
-	 * {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} is not empty, by {@code -} and the first eight hexadecimal digits of
-	 * the SHA-256 hash of its value in Unicode normalization form C.
-	 *
-	 * @param store the value of {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} that the session receives
-	 * @return the service
-	 */
-	private static String keychainService(String store)
-	{
-		assert store != null;
-		if (store.isEmpty())
-			return "Claude Code-credentials";
-		MessageDigest sha256;
-		try
-		{
-			sha256 = MessageDigest.getInstance("SHA-256");
-		}
-		catch (NoSuchAlgorithmException e)
-		{
-			throw new AssertionError("Every Java platform implements SHA-256", e);
-		}
-		byte[] hash = sha256.digest(Normalizer.normalize(store, Normalizer.Form.NFC).getBytes(UTF_8));
-		return "Claude Code-credentials-" + HexFormat.of().formatHex(hash, 0, 4);
 	}
 
 	/**

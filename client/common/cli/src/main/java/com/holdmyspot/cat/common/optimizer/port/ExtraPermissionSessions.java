@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.port;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
+import com.holdmyspot.cat.common.runner.AuthenticationEvidence;
 import com.holdmyspot.cat.common.runner.RetainedTrialClaim;
 import com.holdmyspot.cat.common.runner.RetainedTrialRequest;
 import com.holdmyspot.cat.common.runner.RetainedTrialResponse;
@@ -99,6 +100,12 @@ public final class ExtraPermissionSessions implements SessionPort
 	public boolean reportsExitStatus()
 	{
 		return delegate.reportsExitStatus();
+	}
+
+	@Override
+	public Optional<AuthenticationEvidence> authentication() throws IOException
+	{
+		return delegate.authentication();
 	}
 
 	@Override

@@ -158,7 +158,7 @@ public final class CodexPromptOptimizerTest
 			String[] args = {"evaluator-info", "installed-plugins", project.toString(), "docs@fixture"};
 			try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
 			{
-				int exit = PromptOptimizerCli.run(args, () ->
+				int exit = PromptOptimizerCli.run(args, _ ->
 					CodexOptimizerCommandScopeSecrets.getCodexOptimizerCommandScopeAccess().
 						newCodexOptimizerCommandScope(Map.of("CODEX_HOME", codexHome.toString()), home, project,
 							home.resolve("artifact"), Yielding.waiting()), ZoneOffset.UTC, out);
@@ -209,7 +209,7 @@ public final class CodexPromptOptimizerTest
 				ByteArrayOutputStream bytes = new ByteArrayOutputStream();
 				try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
 				{
-					int exit = PromptOptimizerCli.run(args.toArray(String[]::new), () ->
+					int exit = PromptOptimizerCli.run(args.toArray(String[]::new), _ ->
 						CodexOptimizerCommandScopeSecrets.getCodexOptimizerCommandScopeAccess().
 							newCodexOptimizerCommandScope(inherited, home, project, root.resolve("artifact"),
 								Yielding.waiting()), ZoneOffset.UTC, out);

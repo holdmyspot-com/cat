@@ -536,6 +536,18 @@ public final class Commands
 	 */
 	public boolean startsSessions(List<String> args)
 	{
+		return mayStartSessions(args);
+	}
+
+	/**
+	 * Indicates whether arguments name a command that may start sessions, without a scope.
+	 *
+	 * @param args the arguments, starting with the command's name
+	 * @return {@code false} if the arguments are invalid, or name a command that starts no session
+	 * @throws NullPointerException if {@code args} is null
+	 */
+	static boolean mayStartSessions(List<String> args)
+	{
 		return sessionStartingCommand(args).isPresent();
 	}
 
@@ -546,14 +558,14 @@ public final class Commands
 	 * @return the parsed command, or empty for invalid input and commands that cannot start sessions
 	 * @throws NullPointerException if {@code args} is null
 	 */
-	Optional<Command> sessionStartingCommand(List<String> args)
+	static Optional<Command> sessionStartingCommand(List<String> args)
 	{
 		requireThat(args, "args").isNotNull();
 		if (isHelpRequest(args) || isContractTool(args))
 			return Optional.empty();
 		try
 		{
-			Command command = parse(args);
+			Command command = parseArguments(args);
 			if (canStartTrial(command))
 				return Optional.of(command);
 		}

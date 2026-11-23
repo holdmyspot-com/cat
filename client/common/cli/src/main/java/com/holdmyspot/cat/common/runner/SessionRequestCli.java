@@ -45,9 +45,11 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * turn {@code n} of the conversation in {@code <folder>}, as {@link ConversationReply#print} describes, and exits
  * with that method's status, so that it also serves as the check of a wait for the turn to end.
  * <p>
- * Inside a nested session, the command writes its requests for the nested session's runner. Outside a nested session, a
- * harness session's command writes them for the session's {@link RequestServer}, and is refused when no request server
- * serves the session.
+ * Inside a nested session, the command writes its requests for the nested session's runner, which chooses the source
+ * home and gateway login class of the requested session, so a request that names {@code --home} or
+ * {@code --gateway-login-class} is refused with status 2 before it is written. Outside a nested session, a harness
+ * session's command writes them for the session's {@link RequestServer}, and is refused when no request server serves
+ * the session.
  */
 public final class SessionRequestCli
 {
@@ -66,7 +68,8 @@ public final class SessionRequestCli
 			System.out.println("Usage: request-session --harness <name> --project <dir> " +
 				"(--prompt <file> [--prompt <file>]... [--wait <seconds>] | --conversation <folder>) " +
 				"[--plugin <dir>]... --model <name> --effort <level> " +
-				"[--install-cat] [--session-transcripts] [--extra-permissions <file>] | " +
+				"[--install-cat] [--session-transcripts] [--extra-permissions <file>] " +
+				"[--home <dir>] [--gateway-login-class <subscription|api_key>] | " +
 				"--await <id> [--wait <seconds>] | --reply <folder> --turn <n> [--status-only]");
 			return;
 		}
@@ -102,9 +105,11 @@ public final class SessionRequestCli
 		}
 		SessionRequestAccess.Shell shell = SessionRequestAccess.Shell.valueOf(
 			System.getenv(SessionRequestAccess.SHELL_VARIABLE));
-		int status = execute(args, Path.of(directory), shell, Clock.systemUTC(),
-			Pause.sleeping(Duration.ofMillis(100)),
-			new PrintWriter(System.out, true, StandardCharsets.UTF_8));
+		String[] requestArgs = args;
+		int status = HarnessRunnerOptions.refusingInvalidArguments(() -> execute(requestArgs, Path.of(directory), shell,
+			Clock.systemUTC(), Pause.sleeping(Duration.ofMillis(100)),
+			new PrintWriter(System.out, true, StandardCharsets.UTF_8)),
+			new PrintWriter(System.err, true, StandardCharsets.UTF_8));
 		System.exit(status);
 	}
 
@@ -381,6 +386,23 @@ public final class SessionRequestCli
 				}
 				case "--project" -> request.put("project", Path.of(value).toAbsolutePath().toString());
 				case "--harness", "--model", "--effort" -> request.put(option.substring(2), value);
+				case AuthenticationOptions.HOME_OPTION, AuthenticationOptions.LOGIN_CLASS_OPTION ->
+				{
+					// Inside a nested session, the nested session's runner, which runs with the user's permissions, would
+					// otherwise read files that the session chose
+					if (limits.equals(RequestLimits.IN_NESTED_SESSION))
+					{
+						throw new InvalidArgumentsException("Inside a nested session, the parent runner chooses " + option +
+							" for the sessions it starts. Run the request again without " + option + ".");
+					}
+					if (option.equals(AuthenticationOptions.HOME_OPTION))
+						request.put("home", AuthenticationOptions.parseHome(value).toString());
+					else
+					{
+						request.put("gateway_login_class",
+							AuthenticationOptions.classValue(AuthenticationOptions.parseLoginClass(value)));
+					}
+				}
 				case Conversation.OPTION -> conversation = Path.of(value).toAbsolutePath();
 				case ExtraPermissions.OPTION ->
 				{

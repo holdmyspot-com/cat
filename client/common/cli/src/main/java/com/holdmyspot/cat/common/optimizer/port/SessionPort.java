@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.common.optimizer.port;
 
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
+import com.holdmyspot.cat.common.runner.AuthenticationEvidence;
 import com.holdmyspot.cat.common.runner.RetainedTrialClaim;
 import com.holdmyspot.cat.common.runner.RetainedTrialRequest;
 import com.holdmyspot.cat.common.runner.RetainedTrialResponse;
@@ -141,6 +142,17 @@ public interface SessionPort
 	 * @throws IOException if the credential file exists but cannot be read
 	 */
 	HostLogin hostLogin() throws IOException;
+
+	/**
+	 * Returns the authentication that this harness's sessions use, as each session's runner records it: the source home,
+	 * the names of the settings and files that the runner copies from it or shares with the session, and the class of
+	 * the login that the harness selects. It names no secret value.
+	 *
+	 * @return the authentication, or empty if the sessions' runner chooses it without this port, as inside a nested
+	 *   session, whose runner passes on its own launch's source home
+	 * @throws IOException if the source home refuses the sessions' launches or cannot be read
+	 */
+	Optional<AuthenticationEvidence> authentication() throws IOException;
 
 	/**
 	 * Returns the hooks of a plugin that sessions of this harness do not run because the user has not approved them

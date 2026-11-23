@@ -436,6 +436,37 @@ public final class RunnerLaunchersTest
 	}
 
 	/**
+	 * Verifies that the bundled rule on running a harness tells an agent outside a nested session which home folder's
+	 * credential a launch uses, that it names another one with {@code --home <dir>} and a gateway's login class with
+	 * {@code --gateway-login-class} only as its task or the user states them, and tells an agent inside a nested session
+	 * that the parent runner chooses both, so that it passes neither.
+	 *
+	 * @throws IOException if the rule cannot be read
+	 */
+	@Test
+	public void runnerRuleNamesSourceHomeOptions() throws IOException
+	{
+		// Requirement: R-I14
+		List<URL> rules = resources(HARNESS_RUNNERS_RULE);
+		requireThat(rules, "rules").size().isEqualTo(1);
+		String rule = read(rules.getFirst()).replaceAll("\\s+", " ");
+		int inside = rule.indexOf("### Inside a nested session");
+		int outside = rule.indexOf("### Outside a nested session");
+		int conversations = rule.indexOf("### Conversations");
+		requireThat(inside, "inside").isNotNegative();
+		requireThat(outside, "outside").isGreaterThan(inside);
+		requireThat(conversations, "conversations").isGreaterThan(outside);
+		requireThat(rule.substring(inside, outside), "insideSection").
+			contains("The parent runner chooses the results folder, the artifact, the limits and the credential").
+			contains("`--home`").contains("`--gateway-login-class`");
+		requireThat(rule.substring(outside, conversations), "outsideSection").
+			contains("`--home <dir>`").contains("`--gateway-login-class <subscription|api_key>`").
+			contains("`CLAUDE_CONFIG_DIR`").
+			contains("ask the user which kind of login the gateway bills").
+			doesNotContain("is available on `PATH` and authenticated");
+	}
+
+	/**
 	 * Verifies that the bundled rule on running a harness tells an agent how to hold a conversation with a new
 	 * session through any launcher: to keep the launcher running with {@code --conversation <folder>}, to append its
 	 * turn, interrupt and end messages to the folder's {@code to-child.jsonl}, that {@code from-child.jsonl} holds the

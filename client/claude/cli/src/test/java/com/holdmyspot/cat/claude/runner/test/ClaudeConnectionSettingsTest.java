@@ -18,6 +18,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -159,43 +160,32 @@ public final class ClaudeConnectionSettingsTest
 	}
 
 	/**
-	 * Preserves the process connection endpoint over settings without copying unrelated host configuration.
-	 *
-	 * @throws IOException if fixture I/O fails
+	 * Verifies that the parent process's Claude credential variables and configuration directory reach no nested
+	 * Claude process, whose credential comes from its source home, while the parent's subagent settings do.
 	 */
 	@Test
-	public void preservesProcessConnectionEndpoint() throws IOException
+	public void copiesNoProcessCredential()
 	{
-		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
-			TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path settings = cleanup.add(Files.createTempFile("cat-claude-process-endpoint-", ".json"));
-			Files.writeString(settings, """
-				{"env":{"ANTHROPIC_BASE_URL":"https://settings.example"}}
-				""");
-			Map<String, String> environment = new HashMap<>();
-			ClaudeConnectionSettings.copyProcessEnvironment(Map.of(
-				"ANTHROPIC_BASE_URL", "https://process.example",
-				"ANTHROPIC_AUTH_TOKEN", "process-token",
-				"CLAUDE_CONFIG_DIR", "/host/configuration"), environment);
-			ClaudeConnectionSettings.copy(scope.json(), settings, environment);
-
-			requireThat(environment.get("ANTHROPIC_BASE_URL"), "processEndpoint").
-				isEqualTo("https://process.example");
-			requireThat(environment.get("ANTHROPIC_AUTH_TOKEN"), "processAuthentication").
-				isEqualTo("process-token");
-			requireThat(environment.containsKey("CLAUDE_CONFIG_DIR"), "hostConfiguration").isFalse();
-		}
+		// Requirement: R-I14
+		Map<String, String> environment = new HashMap<>();
+		ClaudeConnectionSettings.copyProcessEnvironment(Map.of(
+			"ANTHROPIC_BASE_URL", "https://process.example",
+			"ANTHROPIC_AUTH_TOKEN", "process-token",
+			"CLAUDE_CONFIG_DIR", "/host/configuration",
+			"CLAUDE_CODE_SUBAGENT_MODEL", "haiku"), environment);
+		requireThat(environment, "environment").isEqualTo(Map.of("CLAUDE_CODE_SUBAGENT_MODEL", "haiku"));
 	}
 
 	/**
-	 * Verifies host settings add only missing allow-listed connection variables.
+	 * Verifies that host settings add only the missing subagent settings, and none of their credential variables or
+	 * unrelated settings.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
 	@Test
-	public void copiesOnlyMissingConnectionVariables() throws IOException
+	public void copiesOnlyMissingSubagentSettings() throws IOException
 	{
+		// Requirement: R-I14
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -205,17 +195,16 @@ public final class ClaudeConnectionSettingsTest
 				  "env": {
 				    "ANTHROPIC_AUTH_TOKEN": "settings-token",
 				    "ANTHROPIC_BASE_URL": "https://gateway.example",
+				    "CLAUDE_CODE_SUBAGENT_MODEL": "settings-model",
+				    "CLAUDE_CODE_SUBAGENT_EFFORT": "low",
 				    "UNRELATED_SETTING": "must-not-copy"
 				  }
 				}
 				""");
-			Map<String, String> environment = new HashMap<>(Map.of("ANTHROPIC_AUTH_TOKEN", "process-token"));
-
+			Map<String, String> environment = new HashMap<>(Map.of("CLAUDE_CODE_SUBAGENT_MODEL", "process-model"));
 			ClaudeConnectionSettings.copy(scope.json(), settings, environment);
-
-			requireThat(environment.get("ANTHROPIC_AUTH_TOKEN"), "processToken").isEqualTo("process-token");
-			requireThat(environment.get("ANTHROPIC_BASE_URL"), "configuredBaseUrl").isEqualTo("https://gateway.example");
-			requireThat(environment.containsKey("UNRELATED_SETTING"), "unrelatedSetting").isFalse();
+			requireThat(environment, "environment").isEqualTo(Map.of("CLAUDE_CODE_SUBAGENT_MODEL", "process-model",
+				"CLAUDE_CODE_SUBAGENT_EFFORT", "low"));
 		}
 	}
 
@@ -1313,6 +1302,56 @@ public final class ClaudeConnectionSettingsTest
 				root.resolve("missing.json")), policy, sessionFolder.resolve("home"));
 
 			requireThat(refusal, "refusal").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that a project or managed settings file that sets one of the credential variables in its {@code env},
+	 * or sets {@code apiKeyHelper}, is refused, naming the file and the setting: Claude Code would load it beside the
+	 * session's own settings and replace the source home's credential. One that sets an unrelated {@code env} variable
+	 * is accepted.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void refusesCredentialSettings() throws IOException
+	{
+		// Requirement: R-I14
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-credential-settings-")).toRealPath();
+			Path sessionFolder = Files.createDirectories(root.resolve("session"));
+			ChildPolicy policy = new ChildPolicy(List.of(sessionFolder), List.of(), List.of(), List.of(),
+				Set.of("api.example"), false);
+			Map<String, String> settings = new LinkedHashMap<>();
+			for (String variable : List.of("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL",
+				"CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_SECURESTORAGE_CONFIG_DIR"))
+			{
+				settings.put("env." + variable, """
+					{"env": {"%s": "value"}}
+					""".formatted(variable));
+			}
+			settings.put("apiKeyHelper", """
+				{"apiKeyHelper": "printf key"}
+				""");
+			for (Map.Entry<String, String> entry : settings.entrySet())
+			{
+				Path file = Files.writeString(root.resolve("settings.json"), entry.getValue());
+
+				Optional<String> refusal = ClaudeConnectionSettings.findWidening(scope.json(), List.of(file), policy,
+					sessionFolder.resolve("home"));
+
+				requireThat(refusal, entry.getKey()).isPresent();
+				requireThat(refusal.get(), entry.getKey()).contains(file.toString()).contains(entry.getKey());
+			}
+
+			Path unrelated = Files.writeString(root.resolve("unrelated.json"), """
+				{"env": {"CLAUDE_CODE_MAX_OUTPUT_TOKENS": "4096"}}
+				""");
+			Optional<String> accepted = ClaudeConnectionSettings.findWidening(scope.json(), List.of(unrelated), policy,
+				sessionFolder.resolve("home"));
+			requireThat(accepted, "unrelated").isEmpty();
 		}
 	}
 

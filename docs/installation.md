@@ -204,12 +204,19 @@ These go in `rules/cat-installer.rules` and `config.toml` in the harness home.
 
 ## Let sessions run CAT's runners
 
-CAT's `claude-runner` and `codex-runner` start an isolated Claude Code or Codex session with your login. They need no
-configuration, but the session that starts them needs a login and a working sandbox:
+CAT's `claude-runner` and `codex-runner` start an isolated Claude Code or Codex session. They need no configuration,
+but the session that starts them needs a credential and a working sandbox:
 
-- Log in to Claude Code with `/login`. A Claude session uses your login in place, and its commands cannot read the
-  login file. When `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` is set, the runner uses that
-  instead. On Linux and macOS it refuses to start with neither.
+- A Claude session uses the Claude credential in your Claude folder, the one that `CLAUDE_CONFIG_DIR` names when it is
+  set, or else `.claude` in your home folder: your `/login` login, or an `apiKeyHelper` or a token in the `env` of its
+  `settings.json`. To bill another credential, such as an API key, have the agent name another home folder with
+  `--home <dir>`, whose `.claude/settings.json` holds, for example, only an `apiKeyHelper`. When the credential sends
+  its requests to a gateway through `ANTHROPIC_BASE_URL`, tell the agent the kind of login that the gateway bills,
+  which it passes as `--gateway-login-class subscription` or `--gateway-login-class api_key`. Each file that holds the
+  credential must be readable by you alone, such as after `chmod go= <file>`, and the session's commands cannot read
+  it. The runner refuses to start a session without such a credential. On macOS, it does not find a `/login` login,
+  which Claude Code keeps in the Keychain, so use an `apiKeyHelper` or a token there. "Login" in the
+  [security model](security-model.md#login) gives the details.
 - A Codex session that a runner starts reaches its model, so Codex's sandbox needs network access on. On Linux,
   `codex-runner` also needs bubblewrap (`bwrap`) on your `PATH`.
 

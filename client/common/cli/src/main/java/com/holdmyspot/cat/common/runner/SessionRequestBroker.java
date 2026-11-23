@@ -36,6 +36,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.stream.Stream;
 import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.SerializationFeature;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
@@ -67,6 +68,10 @@ public final class SessionRequestBroker implements Closeable
 	 * The maximum bytes the broker reads from a requested runner's stderr.
 	 */
 	private static final int MAXIMUM_RUNNER_DIAGNOSTIC_BYTES = 65_536;
+	/**
+	 * The size of the largest receipt whose authentication record a response copies.
+	 */
+	private static final int MAXIMUM_RECEIPT_BYTES = 1_048_576;
 	/** The directory in a response that holds the request's extracted inputs. */
 	static final String INPUTS = "inputs";
 	/**
@@ -1443,7 +1448,8 @@ public final class SessionRequestBroker implements Closeable
 	}
 
 	/**
-	 * Atomically publishes a terminal response that contains paths rather than evidence content.
+	 * Atomically publishes a terminal response that contains paths rather than evidence content, and the authentication
+	 * that the child's harness used, as the child's receipt records it, which names no secret.
 	 *
 	 * @param id the request id
 	 * @param harness the requested harness, empty for an unparsed request
@@ -1461,11 +1467,39 @@ public final class SessionRequestBroker implements Closeable
 		for (String name : List.of("transcript.jsonl", "receipt.json"))
 			if (Files.isRegularFile(directory.resolve(name)))
 				response.put(name.substring(0, name.indexOf('.')), directory.resolve(name).toString());
+		Optional<ObjectNode> authentication = authentication(directory.resolve("receipt.json"));
+		authentication.ifPresent(evidence -> response.set(AuthenticationEvidence.FIELD, evidence));
 		if (Files.isDirectory(directory.resolve("session-transcripts")))
 			response.put("session_transcripts", directory.resolve("session-transcripts").toString());
 		if (Files.isDirectory(directory.resolve(RESULTS_COPY), LinkOption.NOFOLLOW_LINKS))
 			response.put(RESULTS_COPY_FIELD, directory.resolve(RESULTS_COPY).toString());
 		SessionRequestCli.write(json, directory.resolve("response.json"), response);
+	}
+
+	/**
+	 * Returns the authentication that a child's receipt records.
+	 *
+	 * @param receipt the child's receipt
+	 * @return the receipt's authentication record, or empty if the child wrote no receipt or the receipt records none
+	 *   that can be read
+	 */
+	private Optional<ObjectNode> authentication(Path receipt)
+	{
+		if (!Files.isRegularFile(receipt, LinkOption.NOFOLLOW_LINKS))
+			return Optional.empty();
+		try
+		{
+			JsonNode recorded = json.readTree(BoundedInput.readUtf8(receipt, MAXIMUM_RECEIPT_BYTES, "receipt")).
+				path(AuthenticationEvidence.FIELD);
+			if (recorded.isMissingNode())
+				return Optional.empty();
+			return Optional.of(AuthenticationEvidence.fromJson(recorded).toJson(json));
+		}
+		catch (IOException | JacksonException _)
+		{
+			// The response's receipt path still leads the requester to whatever the child wrote
+			return Optional.empty();
+		}
 	}
 
 	/**
@@ -1964,7 +1998,9 @@ public final class SessionRequestBroker implements Closeable
 		 * for the CAT plugin that the parent's commands run, as {@link #resultsDenials(Path, Path)} does, and, while the
 		 * parent's request depth leaves a level below the child, lets the child request as many sessions as the
 		 * parent, one level less deep; otherwise it may request none. A resume adds the parent's current denials to
-		 * those fixed at the child's start.
+		 * those fixed at the child's start. The child, of either harness, takes its credential from the source home and
+		 * gateway login class of the parent's own launch, never from the nested session's isolated home, as passed on
+		 * from the parent runner rather than chosen by the requesting session.
 		 *
 		 * @param request       the request
 		 * @param resultsFolder the request's results folder
@@ -1990,6 +2026,7 @@ public final class SessionRequestBroker implements Closeable
 				if (childDepth > 0)
 					arguments.addAll(List.of("--request-depth", String.valueOf(childDepth)));
 			}
+			arguments.addAll(options.authentication().inheritedArguments());
 			return (base, directory) ->
 			{
 				List<String> child = new ArrayList<>(base);

@@ -26,6 +26,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.port.UnreachableReference;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
+import com.holdmyspot.cat.common.runner.AuthenticationOptions;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.PluginManifest;
@@ -1663,10 +1664,12 @@ public abstract class RunnerSessions implements SessionPort
 	 *   none
 	 * @param hostProject the project of the host session that starts the sessions, whose files no session may read
 	 *   except those of its own nested session and the evidence that it reads, or {@code null} to deny no project's files
+	 * @param authentication the command's choice of the source home whose harness folders hold every session's
+	 *   credential, and of the class of login that a gateway bills, which every session's runner receives
 	 */
 	public record Settings(JvmScope scope, Path artifact, Path resultsFolder, HeldOutPaths heldOut, boolean installCat,
 		Map<String, String> environment, Path configurationDirectory, HarnessCapacity capacity, Clock clock,
-		FileReplacer replacer, Optional<Path> userRules, Path hostProject)
+		FileReplacer replacer, Optional<Path> userRules, Path hostProject, AuthenticationOptions authentication)
 	{
 		/**
 		 * Creates settings.
@@ -1687,6 +1690,7 @@ public abstract class RunnerSessions implements SessionPort
 		 * @param hostProject the project of the host session that starts the sessions, whose files no session may
 		 *   read except those of its own nested session and the evidence that it reads, or {@code null} to deny no
 		 *   project's files
+		 * @param authentication the command's choice of source home and gateway login class
 		 * @throws NullPointerException if any argument other than {@code hostProject} is null
 		 * @throws IllegalArgumentException if {@code resultsFolder} or {@code hostProject} are not absolute, or
 		 *   {@code resultsFolder} is a file system root
@@ -1712,6 +1716,39 @@ public abstract class RunnerSessions implements SessionPort
 				hostProject = hostProject.normalize();
 			}
 			environment = Map.copyOf(environment);
+			requireThat(authentication, "authentication").isNotNull();
+		}
+
+		/**
+		 * Creates settings for a command that names no source home and declares no gateway login class, so that every
+		 * session takes its credential from the runner's own home folder.
+		 *
+		 * @param scope the process scope borrowed for this adapter
+		 * @param artifact the complete harness artifact that the runner validates and installs
+		 * @param resultsFolder the absolute directory that holds the session folders of sessions of the development part
+		 * @param heldOut lists, when each session starts, the campaigns' held-out directories
+		 * @param installCat whether the user's sessions of the harness load CAT from the artifact, so that the files
+		 *   that load in production include CAT's rules; trials install CAT only when a trial plugin is CAT
+		 * @param environment the host environment that the runner scrubs for the session
+		 * @param configurationDirectory the host's harness configuration directory, which holds the login
+		 * @param capacity the shared capacity from which every session takes one permit
+		 * @param clock the clock for time limits
+		 * @param replacer replaces files in the nested session directories
+		 * @param userRules the directory of the user's CAT rules, which trials that install CAT load, or empty if they
+		 *   load none
+		 * @param hostProject the project of the host session that starts the sessions, whose files no session may
+		 *   read except those of its own nested session and the evidence that it reads, or {@code null} to deny no
+		 *   project's files
+		 * @throws NullPointerException if any argument other than {@code hostProject} is null
+		 * @throws IllegalArgumentException if {@code resultsFolder} or {@code hostProject} are not absolute, or
+		 *   {@code resultsFolder} is a file system root
+		 */
+		public Settings(JvmScope scope, Path artifact, Path resultsFolder, HeldOutPaths heldOut, boolean installCat,
+			Map<String, String> environment, Path configurationDirectory, HarnessCapacity capacity, Clock clock,
+			FileReplacer replacer, Optional<Path> userRules, Path hostProject)
+		{
+			this(scope, artifact, resultsFolder, heldOut, installCat, environment, configurationDirectory, capacity,
+				clock, replacer, userRules, hostProject, AuthenticationOptions.DEFAULT);
 		}
 
 		/**
@@ -1738,7 +1775,7 @@ public abstract class RunnerSessions implements SessionPort
 			FileReplacer replacer, Optional<Path> userRules)
 		{
 			this(scope, artifact, resultsFolder, heldOut, installCat, environment, configurationDirectory, capacity,
-				clock, replacer, userRules, null);
+				clock, replacer, userRules, null, AuthenticationOptions.DEFAULT);
 		}
 
 		/**

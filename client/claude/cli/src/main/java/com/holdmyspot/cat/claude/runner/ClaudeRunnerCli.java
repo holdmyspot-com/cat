@@ -14,6 +14,7 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionHarness;
 import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.Waiting;
+import com.holdmyspot.cat.common.runner.AuthenticationOptions;
 import com.holdmyspot.cat.common.runner.HarnessArtifact;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessCapacityWaitExpiredException;
@@ -53,6 +54,7 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -97,10 +99,11 @@ public final class ClaudeRunnerCli
 	 * Every other launch goes along its route, as {@link #launch(String[], Map, Waiting, Reader, OutputStream,
 	 * PrintWriter)} describes, and the launcher exits with the launch's status.
 	 * <p>
-	 * With {@value ChildNeedsReport#OPTION} and a file, it writes what a Claude child session needs to that file, as
-	 * {@link ClaudeRunner#childNeeds(HarnessRunnerScope, Map)} reports it, for the request server that asks before
-	 * it starts the child, and starts nothing. When it cannot determine them, it prints the reason and exits with status
-	 * {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS}.
+	 * With {@value ChildNeedsReport#OPTION} and a file, optionally followed by the launch's
+	 * {@value AuthenticationOptions#HOME_OPTION} and {@value AuthenticationOptions#LOGIN_CLASS_OPTION}, it writes what a
+	 * Claude child session with that source home needs to that file, as {@link #reportChildNeeds} reports it, for the
+	 * request server that asks before it starts the child, and starts nothing. When it cannot determine them, it prints
+	 * the reason and exits with status {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS}.
 	 *
 	 * @param args the command's options
 	 * @throws IOException if runner startup, the harness, or bridge I/O fails
@@ -122,7 +125,7 @@ public final class ClaudeRunnerCli
 			System.out.println(HarnessArtifact.validate(Path.of(args[1]), Path.of(".claude-plugin/plugin.json")));
 			return;
 		}
-		if (args.length == 2 && args[0].equals(ChildNeedsReport.OPTION))
+		if (args.length >= 2 && args[0].equals(ChildNeedsReport.OPTION))
 		{
 			if (!MARKERS.running(environment).isEmpty())
 			{
@@ -130,9 +133,12 @@ public final class ClaudeRunnerCli
 				System.exit(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
 			}
 			int status;
+			String[] needsArgs = args;
 			try (HarnessRunnerScope scope = new MainHarnessRunnerScope(environment, Pause::sleeping))
 			{
-				status = reportChildNeeds(scope, environment, Path.of(args[1]), errors());
+				status = HarnessRunnerOptions.refusingInvalidArguments(() -> reportChildNeeds(scope, environment,
+					Path.of(needsArgs[1]), AuthenticationOptions.parseAlone(Arrays.copyOfRange(needsArgs, 2, needsArgs.length)),
+					errors()), errors());
 			}
 			if (status != 0)
 				System.exit(status);
@@ -145,29 +151,33 @@ public final class ClaudeRunnerCli
 	}
 
 	/**
-	 * Writes what a Claude child session needs to a file, as
-	 * {@link ClaudeRunner#childNeeds(HarnessRunnerScope, Map)} reports it, or refuses when it cannot be determined.
+	 * Writes what a Claude child session with a launch's source home needs to a file, as
+	 * {@link ClaudeRunner#childNeeds(HarnessRunnerScope, Map, ClaudeAuthentication)} reports it, or refuses when it
+	 * cannot be determined or the source home would refuse the launch, as {@link ClaudeAuthentication#read} decides.
 	 *
-	 * @param scope       the process scope
-	 * @param environment the caller's environment
-	 * @param file        the file to write
-	 * @param errors      receives the reason, as one line, when the needs cannot be determined
+	 * @param scope          the process scope
+	 * @param environment    the caller's environment
+	 * @param file           the file to write
+	 * @param authentication the launch's choice of source home and gateway login class
+	 * @param errors         receives the reason, as one line, when the needs cannot be determined
 	 * @return {@code 0} if the needs were written, or {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} if they
-	 *   cannot be determined, in which case no file is written
+	 *   cannot be determined or the source home refuses the launch, in which case no file is written
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IOException          if the file cannot be written
 	 */
 	public static int reportChildNeeds(HarnessRunnerScope scope, Map<String, String> environment, Path file,
-		PrintWriter errors) throws IOException
+		AuthenticationOptions authentication, PrintWriter errors) throws IOException
 	{
 		requireThat(scope, "scope").isNotNull();
 		requireThat(environment, "environment").isNotNull();
 		requireThat(file, "file").isNotNull();
+		requireThat(authentication, "authentication").isNotNull();
 		requireThat(errors, "errors").isNotNull();
 		ChildNeedsReport needs;
 		try
 		{
-			needs = ClaudeRunner.childNeeds(scope, environment);
+			needs = ClaudeRunner.childNeeds(scope, environment, ClaudeAuthentication.read(scope.json(), authentication,
+				environment, Platform.current()));
 		}
 		catch (IOException e)
 		{
@@ -386,6 +396,10 @@ public final class ClaudeRunnerCli
 	 * Every session starts through one of them, so a launch without it is refused before it takes a capacity slot or
 	 * creates a nested session. A session that the bounded session requests is bounded in turn by the bounded session's
 	 * policy.
+	 * <p>
+	 * The session takes its credential from the launch's source home, which the runner reads first, before it reads a
+	 * resumed nested session, takes a capacity slot or creates a nested session. The source files that hold a secret join
+	 * the launch's denied reads, so that neither the session nor any session that it requests may read them.
 	 *
 	 * @param process            the process scope, whose lock coordinator and waiting the bridge uses
 	 * @param workingDirectory   the directory from which the command was invoked
@@ -396,9 +410,11 @@ public final class ClaudeRunnerCli
 	 * @param capacityForMaximum creates the shared harness capacity for the {@code --max-concurrency} value that the
 	 *                           command selected
 	 * @throws NullPointerException    if any argument is null
-	 * @throws SessionRefusedException if the launch names no {@code --policy-bound}, the environment holds no Claude
-	 *                                 login that a nested session can use, as {@link ClaudeRunner#requireLogin} decides,
-	 *                                 or the session's sandbox would not confine it as its policy requires
+	 * @throws SessionRefusedException if the launch's source home would refuse the launch, as
+	 *                                 {@link ClaudeAuthentication#read} decides; if the launch names no
+	 *                                 {@code --policy-bound}; if the launch chose its source home itself and its bound
+	 *                                 denies reading a source file, as {@link ClaudeAuthentication#requireReadable}
+	 *                                 decides; or if the session's sandbox would not confine it as its policy requires
 	 * @throws InvalidArgumentsException if the file of extra permissions that the launch names is missing or invalid
 	 * @throws IOException             if the policy bound cannot be read, or runner startup, the harness, or bridge
 	 *                                 I/O fails
@@ -415,18 +431,25 @@ public final class ClaudeRunnerCli
 		try (ToolScope scope = ToolScope.forSession(workingDirectory, environment, SessionHarness.installed(),
 			process.waiting()))
 		{
+			// The source home decides before anything else, so that a refused launch reads no nested session
+			AuthenticationOptions authenticationOptions = AuthenticationOptions.parse(args);
+			ClaudeAuthentication authentication = ClaudeAuthentication.read(scope.json(), authenticationOptions,
+				environment, Platform.current());
 			// A runner that continues a nested session's harness session takes the options that the nested session's start
 			// fixed from the nested session
 			args = NestedSessionLaunch.resumedArguments(scope.json(), HARNESS_ID, args);
-			HarnessRunnerOptions options = options(args, HarnessTemporaryRoot.from(scope));
+			HarnessRunnerOptions options = authentication.withDeniedReads(options(args, HarnessTemporaryRoot.from(scope)));
 			ClaudeAgentDefinition agent = loadAgent(options.catArtifact(ClaudeRunner.MANIFEST), agentName(args));
 			List<Path> readOnlyEvidence = readOnlyEvidence(args);
 			String instructionFilesMode = instructionFilesMode(args);
 			Optional<ClaudeSessionRole> role = sessionRole(args);
 			ChildPolicy bound = policyBound(scope.json(), options);
+			// A nested session's runner passes on its own launch's source home, whose secret files the nested session's
+			// policy, and so the bound, denies by design
+			if (!authenticationOptions.inherited())
+				authentication.requireReadable(bound);
 			ExtraPermissions extraPermissions = HarnessRunnerOptions.readExtraPermissions(scope.json(),
 				options.extraPermissions());
-			ClaudeRunner.requireLogin(process, environment, Platform.current());
 			FileReplacer replacer = FileReplacer.retrying(process.waiting());
 			NestedSessionManager opened = NestedSessionManager.openResultsFolder(process.fileLocks(), options.resultsFolder(),
 				Clock.systemUTC(), replacer, options.slotId(),
@@ -439,7 +462,7 @@ public final class ClaudeRunnerCli
 				if (!options.capacityHeld())
 					capacity = capacityForMaximum.apply(options.maximumConcurrency());
 				serve(scope, options, agent, readOnlyEvidence, instructionFilesMode, role, bound, extraPermissions, manager,
-					input, output, environment, replacer, capacity);
+					input, output, environment, replacer, capacity, authentication);
 			}
 			finally
 			{
@@ -484,6 +507,7 @@ public final class ClaudeRunnerCli
 	 * @param environment host environment
 	 * @param replacer replaces the receipt
 	 * @param capacity the shared harness capacity, or {@code null} if the requester holds the session's slot
+	 * @param authentication the credential that the session takes from the launch's source home
 	 * @throws IOException if bridge execution or retained-evidence writing fails
 	 */
 	private static void serve(ToolScope scope, HarnessRunnerOptions options, ClaudeAgentDefinition agent,
@@ -492,7 +516,7 @@ public final class ClaudeRunnerCli
 		ExtraPermissions extraPermissions, NestedSessionManager manager,
 		Reader input, Writer output,
 		Map<String, String> environment, FileReplacer replacer,
-		HarnessCapacity capacity) throws IOException
+		HarnessCapacity capacity, ClaudeAuthentication authentication) throws IOException
 	{
 		assert options != null;
 		assert instructionFilesMode != null;
@@ -511,7 +535,7 @@ public final class ClaudeRunnerCli
 				options.workspace(), trialPlugins, manager, "claude", environment, options.model(), options.effort(),
 				agent, options.installCat(), readOnlyEvidence, options.deniedReads(), instructionFilesMode,
 				options.sessionTranscripts(), options.sessionRequests(), bound, policy::set, options.gitName(),
-				options.gitEmail(), extraPermissions, role.orElse(null), options.resumeSlot());
+				options.gitEmail(), extraPermissions, role.orElse(null), options.resumeSlot(), authentication);
 			HarnessRunnerBridge.serve(starter, manager, options, scope.json(), replacer, input, output,
 				(harness, arguments, directory) -> requestedRunner(scope, options.artifact(), harness, environment).
 					start(PolicyBoundFile.boundArguments(scope.json(), arguments, directory, policy.get()), directory,

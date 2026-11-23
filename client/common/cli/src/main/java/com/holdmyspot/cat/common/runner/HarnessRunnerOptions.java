@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -65,13 +66,16 @@ import tools.jackson.databind.json.JsonMapper;
  *   {@code null} for a runner that starts a session
  * @param pluginInputs the plugin directories to install beside CAT, with their optional source installation IDs
  * @param resultProjectLinks the project directory whose link declarations the turn copy includes, or {@code null}
+ * @param authentication the launch's choice of the source home whose harness folders hold the session's credential,
+ *   and of the class of login that a gateway bills
  */
 public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFolder, String model, String effort,
 	Path output, Path receipt, boolean sessionTranscripts, boolean installCat, int maximumConcurrency,
 	List<Path> deniedReads, List<Path> readOnlyEvidence, Path workspace, int sessionRequests,
 	Duration capacityWait, int requestDepth, Path input, Path conversation, Path policyBound, boolean capacityHeld,
 	String gitName, String gitEmail, Path extraPermissions, Path turnCopy, boolean continueAfterFailedTurn,
-	String slotId, String resumeSlot, List<TrialPluginInput> pluginInputs, Path resultProjectLinks)
+	String slotId, String resumeSlot, List<TrialPluginInput> pluginInputs, Path resultProjectLinks,
+	AuthenticationOptions authentication)
 {
 	/**
 	 * The reasoning effort that selects no reasoning, for every model. Each runner passes it to its harness as that
@@ -113,7 +117,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 		this(artifact, project, resultsFolder, model, effort, output, receipt, sessionTranscripts, installCat,
 			maximumConcurrency, deniedReads, readOnlyEvidence, workspace, sessionRequests, capacityWait, requestDepth,
 			input, conversation, policyBound, capacityHeld, gitName, gitEmail, extraPermissions, turnCopy,
-			continueAfterFailedTurn, slotId, resumeSlot, TrialPluginInput.unbound(plugins), null);
+			continueAfterFailedTurn, slotId, resumeSlot, TrialPluginInput.unbound(plugins), null,
+			AuthenticationOptions.DEFAULT);
 	}
 
 	/**
@@ -185,6 +190,17 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 			{
 				options.capacityHeld = true;
 				index += 1;
+				continue;
+			}
+			if (option.equals(RunnerArguments.INHERITED_SOURCE_HOME_OPTION))
+			{
+				index += 1;
+				continue;
+			}
+			if (option.equals(AuthenticationOptions.HOME_OPTION) || option.equals(AuthenticationOptions.LOGIN_CLASS_OPTION))
+			{
+				// AuthenticationOptions.parse reads them
+				index += 2;
 				continue;
 			}
 			if (option.equals(RunnerArguments.CONTINUE_AFTER_FAILED_TURN_OPTION))
@@ -337,6 +353,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 				RunnerArguments.RESUME_SLOT_OPTION + " and " + RunnerArguments.STARTUP_PERMIT_OPTION);
 		}
 		requireProfile(harness, model, effort);
+		AuthenticationOptions authentication = AuthenticationOptions.parse(args);
 		Path resultsFolder = temporaryRoot.resultsFolder(explicitResultsFolder);
 		return new HarnessRunnerOptions(options.artifact, project, resultsFolder, model, effort, options.output,
 			options.receipt, options.sessionTranscripts, options.installCat, options.maximumConcurrency,
@@ -344,7 +361,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 			options.capacityWait, options.requestDepth, options.input, options.conversation, options.policyBound,
 			options.capacityHeld, options.gitName, options.gitEmail, options.extraPermissions,
 			options.turnCopy, options.continueAfterFailedTurn, options.slotId, options.resumeSlot, options.plugins,
-			options.resultProjectLinks);
+			options.resultProjectLinks, authentication);
 	}
 
 	/**
@@ -704,7 +721,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 			"[--session-transcripts] [--install-cat] [--held-out] [--max-concurrency <1..16>] " +
 			"[--deny-read <path>]... [--read-only-evidence <path>]... [--workspace <path>] [--plugin <path>]... " +
 			"[--session-requests <count>] [--request-depth <levels>] [--input <file> | --conversation <folder>] " +
-			"[--capacity-wait <seconds>] [--extra-permissions <file>] [--slot-id <id>]";
+			"[--capacity-wait <seconds>] [--extra-permissions <file>] [--slot-id <id>] [--home <dir>] " +
+			"[--gateway-login-class <subscription|api_key>]";
 	}
 
 	/**
@@ -744,6 +762,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 	 * @param resumeSlot the harness session that the runner continues in the slot's nested session, or {@code null} for a
 	 *   runner that starts a session
 	 * @param pluginInputs the trial plugin inputs, which the isolated harness home installs under their manifest names
+	 * @param resultProjectLinks the project directory whose link declarations the turn copy includes, or {@code null}
+	 * @param authentication the launch's choice of the source home and of the gateway login class
 	 * @throws NullPointerException if any of the arguments are null, other than {@code output}, {@code receipt},
 	 *   {@code workspace}, {@code capacityWait}, {@code input}, {@code conversation}, {@code policyBound},
 	 *   {@code gitName}, {@code gitEmail}, {@code extraPermissions}, {@code turnCopy}, {@code slotId} and
@@ -778,6 +798,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 		}
 		readOnlyEvidence = List.copyOf(readOnlyEvidence);
 		pluginInputs = List.copyOf(pluginInputs);
+		requireThat(authentication, "authentication").isNotNull();
 		requireThat(sessionRequests, "sessionRequests").isNotNegative();
 		if (capacityWait != null)
 			requireThat(capacityWait, "capacityWait").isGreaterThan(Duration.ZERO);
@@ -793,6 +814,27 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 			if (slotId == null)
 				throw new IllegalArgumentException("resumeSlot requires slotId");
 		}
+	}
+
+	/**
+	 * Returns these options with more files and directories that the session, and every session that it requests, must
+	 * not read.
+	 *
+	 * @param denied the absolute files and directories to deny, after the ones that the options already deny
+	 * @return the options, each path denied once
+	 * @throws NullPointerException     if {@code denied} is null or contains null
+	 * @throws IllegalArgumentException if a path in {@code denied} is not absolute
+	 */
+	public HarnessRunnerOptions withDeniedReads(List<Path> denied)
+	{
+		requireThat(denied, "denied").isNotNull();
+		Set<Path> all = new LinkedHashSet<>(deniedReads);
+		all.addAll(denied);
+		return new HarnessRunnerOptions(artifact, project, resultsFolder, model, effort, output, receipt,
+			sessionTranscripts, installCat, maximumConcurrency, List.copyOf(all), readOnlyEvidence, workspace,
+			sessionRequests, capacityWait, requestDepth, input, conversation, policyBound, capacityHeld, gitName, gitEmail,
+			extraPermissions, turnCopy, continueAfterFailedTurn, slotId, resumeSlot, pluginInputs, resultProjectLinks,
+			authentication);
 	}
 
 	/**

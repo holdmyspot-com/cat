@@ -6,6 +6,7 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
+import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.NestedSession;
 import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.RequestArchive;
@@ -735,6 +736,56 @@ public final class SessionRequestCliTest
 				}
 			}
 		}
+	}
+
+	/**
+	 * Verifies that a request inside a nested session that names the source home or the gateway login class is refused
+	 * with the refusal status before it packs a request, naming the option: the nested session's runner chooses them for
+	 * the sessions that it starts.
+	 *
+	 * @param option the option and its argument
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test(dataProvider = "sourceHomeOptions")
+	public void refusesSourceHomeOptions(List<String> option) throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			// Requirement: R-I14
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "source-home-")).toRealPath();
+			Path requests = Files.createDirectory(root.resolve("requests"));
+			Path project = Files.createDirectory(root.resolve("project"));
+			Path prompt = Files.writeString(root.resolve("prompt"), "prompt bytes");
+			List<String> arguments = new ArrayList<>(List.of("--harness", "harness-a", "--project", project.toString(),
+				"--prompt", prompt.toString(), "--model", "model-a", "--effort", "effort-a"));
+			arguments.addAll(option);
+			StringWriter errors = new StringWriter();
+
+			int status = HarnessRunnerOptions.refusingInvalidArguments(() -> SessionRequestCli.execute(
+				arguments.toArray(String[]::new), requests, new ManualClock(Instant.EPOCH), () ->
+				{
+					throw new AssertionError("The request was published");
+				}, new PrintWriter(new StringWriter())), new PrintWriter(errors, true));
+
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").contains(option.getFirst()).contains("parent runner");
+			try (Stream<Path> files = Files.list(requests))
+			{
+				requireThat(files.count(), "requests").isEqualTo(0);
+			}
+		}
+	}
+
+	/**
+	 * Supplies the options that choose a session's credential, which the parent runner chooses inside a nested session.
+	 *
+	 * @return each option with its argument
+	 */
+	@DataProvider
+	public Object[][] sourceHomeOptions()
+	{
+		return new Object[][]{{List.of("--home", "/home/alice")}, {List.of("--gateway-login-class", "api_key")}};
 	}
 
 	/**

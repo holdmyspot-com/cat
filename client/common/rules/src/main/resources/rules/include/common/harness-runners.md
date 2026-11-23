@@ -10,6 +10,10 @@
 - Give every launch and every session request the model and the effort that its task names, or that the agent
 	chooses from the values the harness lists when its task names none, without asking the user or holding back the
 	launch for want of them.
+- Authenticate every new session with the credential that the user chose: for a launch outside a nested session, the
+	home folder and the gateway's login class that its task or the user names, or else the user's own home folder; for a
+	session that a nested session starts, the choice of the launch that started the nested session. Report a refused
+	credential with its reason instead of choosing a login class or changing the user's files.
 - Relay each turn's reply from the runner's transcript without reading the whole transcript.
 - Let a nested session run either harness through the same launchers, or through the session-request launcher that its
 	command environment names, without a login or a sandbox exception.
@@ -105,8 +109,8 @@ field gives how many sessions this nested session may request, `requests_used` h
 refuses every further request that does not resume a session: do not make one, and report that this nested session may
 request no further session.
 
-The parent runner chooses the results folder, the artifact and the limits, so pass a runner launcher only these options,
-which do not include `--agent`:
+The parent runner chooses the results folder, the artifact, the limits and the credential that each session uses, so
+pass a runner launcher only these options, which do not include `--agent`, `--home` or `--gateway-login-class`:
 
 ```text
 --project <project> --input <records> --model <model> --effort <effort> [--plugin <plugin>]...
@@ -157,7 +161,8 @@ failure, report the reason and do not launch. `<harness>-runner` runs that same 
 
 Before a launch, require all of these exact prerequisites:
 
-- The harness's command, `claude` for Claude Code or `codex` for Codex, is available on `PATH` and authenticated.
+- The harness's command, `claude` for Claude Code or `codex` for Codex, is available on `PATH`, and for Codex,
+	authenticated. The launcher checks the credential of a Claude Code launch, as described below.
 - `<runner>` exists.
 - For Claude Code only: running `<runner>` with the arguments `--verify-artifact <artifact>` succeeds, and the
 	requested profile is supported.
@@ -177,6 +182,18 @@ The launcher always copies the session's results, its project, artifacts and rec
 `nested-sessions` in CAT_TEMP when you pass no `--results`. This results copy is the folder `<harness>/<session ID>`
 there, named by the ID that the `session_id` record reports (see "Resuming a session"). Delete that results copy once
 nothing needs it.
+
+Every Claude Code session that the launch starts, and every one that its sessions request, uses the credential of a
+source home: the `apiKeyHelper` and the credential entries of `env` in the `settings.json` of the home folder's
+`.claude` folder, and that folder's stored login. Without `--home`, the source home is your own home folder, and its
+Claude folder is the one that `CLAUDE_CONFIG_DIR` names when it is set. Pass `--home <dir>`, with an absolute path,
+only when your task or the user names another home folder to bill, such as one whose `.claude/settings.json` holds
+only an `apiKeyHelper`. Pass `--gateway-login-class <subscription|api_key>` only with the kind of login that your task
+or the user says the gateway bills; never choose it yourself. When the launcher refuses a launch because the source
+home's credential sends its requests to a gateway, and names `--gateway-login-class`, ask the user which kind of login
+the gateway bills, then launch again with it. Report any other refusal of the source home to the user, such as one
+that holds no Claude credential or a secret file that other users may read, and do not read, copy or change the source
+home's files yourself.
 
 Pass `--session-transcripts` only when your task needs the session's own transcript. The runner then
 copies every transcript of the session, subagents' included, into `artifacts/session-transcripts` in its session
@@ -200,7 +217,8 @@ status `2` instead, report its reason to the user and do not launch, unless the 
 already serves this session.
 
 Never pass `--policy-bound`, `--capacity-held`, `--child-needs`, `--git-name`, `--git-email`,
-`--continue-after-failed-turn`, `--slot-id`, `--resume-slot`, `--inherited-deny-read` or `--startup-permit`: only
+`--continue-after-failed-turn`, `--slot-id`, `--resume-slot`, `--inherited-deny-read`, `--inherited-source-home` or
+`--startup-permit`: only
 CAT itself passes them, and the launcher refuses them. The launcher
 exits with `0` when the session completed, `75` when no capacity was free, `2` when CAT refused to start the session,
 and `1` otherwise, and prints the reason for any status other than `0`. When the reason says that no request server serves this session, start it as above and launch again. Report any

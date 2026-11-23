@@ -7,9 +7,11 @@ import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.git.Git;
+import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.workspace.GitWorktreeRegistrar;
 import com.holdmyspot.cat.common.optimizer.workspace.WorktreeRefusedException;
 import com.holdmyspot.cat.common.optimizer.workspace.WorktreeRegistrar;
+import com.holdmyspot.cat.common.runner.AuthenticationEvidence;
 import com.holdmyspot.cat.common.runner.HarnessEvaluationResult;
 import com.holdmyspot.cat.common.runner.HarnessProcessLiveness;
 import com.holdmyspot.cat.common.runner.HarnessProcessResult;
@@ -213,6 +215,83 @@ public final class SessionRequestBrokerTest
 				broker.scan();
 				requireThat(fixture.await("second").path("reason").asString(), "limit").
 					isEqualTo(SessionRequestAccess.limitReason(1));
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a nested session's runner starts the session that its session requests, of either harness, with the
+	 * source home and the gateway login class of its own launch, marked as passed on so that the child does not check
+	 * them against the nested session's policy, and never with the nested session's isolated home; that a child that
+	 * refuses a source home lacking its harness's authentication answers the request with the refusal and the reason
+	 * that names the files it read; and that a completed child's response records the authentication that its harness
+	 * used, naming no secret.
+	 *
+	 * @throws IOException if the fixture cannot be created or a request cannot be served
+	 */
+	@Test
+	public void passesSourceHomeToEveryChild() throws IOException
+	{
+		FileLocks fileLocks = new FileLocks();
+		// Requirement: R-I14
+		try (Fixture fixture = new Fixture("--session-requests", "3", "--home", "/source/home", "--gateway-login-class",
+			"api_key"))
+		{
+			Map<String, List<String>> started = new ConcurrentHashMap<>();
+			AtomicReference<FakeHarnessCli> child = new AtomicReference<>();
+			AuthenticationEvidence evidence = new AuthenticationEvidence(Path.of("/source/home"),
+				List.of("apiKeyHelper"), HostLogin.API_KEY);
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.nestedSession, fixture.manager,
+				fixture.options, (harness, options, directory) ->
+				{
+					started.put(harness, options);
+					if (harness.equals("codex"))
+					{
+						Files.writeString(directory.resolve(RequestedSessionStarter.ERROR_FILE), "The source home " +
+							"/source/home holds no codex authentication: the runner read /source/home/.codex/auth.json" +
+							System.lineSeparator());
+						FakeHarnessCli process = new FakeHarnessCli(exitOnCompleteRecord(fixture.json, child),
+							HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+						child.set(process);
+						return process;
+					}
+					NestedSessionManager manager = new NestedSessionManager(fileLocks, Path.of(option(options, "--results")),
+						Clock.systemUTC(), Yielding.fileReplacer());
+					NestedSession nestedSession = manager.create("claude");
+					manager.initialize(nestedSession, fixture.root, fixture.project, "transport", List.of("claude"),
+						evidence);
+					manager.recordHarnessSession(nestedSession, CHILD_SESSION);
+					Path transcript = Files.writeString(Path.of(option(options, "--output")), "bridge");
+					NestedSessionReceipt.write(fixture.json, Yielding.fileReplacer(), Path.of(option(options, "--receipt")),
+						nestedSession, transcript, List.of());
+					FakeHarnessCli process = new FakeHarnessCli(exitOnCompleteRecord(fixture.json, child), 0);
+					child.set(process);
+					return process;
+				}))
+			{
+				fixture.request("claude-request");
+				fixture.writeRequest("codex-request", fixture.document().put("harness", "codex"));
+				broker.scan();
+				JsonNode claude = fixture.await("claude-request");
+				JsonNode codex = fixture.await("codex-request");
+
+				requireThat(claude.path("status").asString(), "claudeStatus").withContext(claude, "response").
+					isEqualTo("completed");
+				requireThat(AuthenticationEvidence.fromJson(claude.path(AuthenticationEvidence.FIELD)), "evidence").
+					isEqualTo(evidence);
+				requireThat(codex.path("status").asString(), "codexStatus").isEqualTo("refused");
+				requireThat(codex.path("reason").asString(), "codexReason").contains("/source/home/.codex/auth.json");
+				Path nestedHome = fixture.nestedSession.directory().resolve("home");
+				for (String harness : List.of("claude", "codex"))
+				{
+					List<String> arguments = started.get(harness);
+					requireThat(arguments, harness).isNotNull();
+					requireThat(option(arguments, "--home"), harness + ".home").isEqualTo("/source/home");
+					requireThat(option(arguments, "--gateway-login-class"), harness + ".loginClass").isEqualTo("api_key");
+					requireThat(arguments, harness).contains("--inherited-source-home");
+					for (String argument : arguments)
+						requireThat(argument, harness + ".argument").doesNotContain(nestedHome.toString());
+				}
 			}
 		}
 	}

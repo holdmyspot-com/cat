@@ -8,6 +8,7 @@ import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.port.RateLimitWindow;
 import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
 
+import com.holdmyspot.cat.common.runner.AuthenticationEvidence;
 import java.time.Instant;
 import java.util.List;
 
@@ -25,9 +26,13 @@ import java.util.List;
  * @param usage the token counts that the harness reported for the session, or {@code null} if it reported none
  * @param commands how long the session's longest shell command ran and how many empty results its agents received
  *   from commands that were still running, each unknown if the harness's records do not show it
+ * @param authentication the credential that the session's runner took from the command's source home, which is not
+ *   part of the campaign's measurement identity, so that a resumed campaign may name another; or {@code null} if the
+ *   session's runner chose it without the command, as inside a nested session
  */
 public record TrialSession(Instant startedAt, Instant endedAt, int concurrency, Throttle throttle,
-	List<RateLimitWindow> windows, HostLogin login, TokenUsage usage, CommandSummary commands)
+	List<RateLimitWindow> windows, HostLogin login, TokenUsage usage, CommandSummary commands,
+	AuthenticationEvidence authentication)
 {
 	/**
 	 * Creates a session record.
@@ -42,7 +47,10 @@ public record TrialSession(Instant startedAt, Instant endedAt, int concurrency, 
 	 * @param usage the token counts that the harness reported for the session, or {@code null} if it reported none
 	 * @param commands how long the session's longest shell command ran and how many empty results its agents received
 	 *   from commands that were still running, each unknown if the harness's records do not show it
-	 * @throws NullPointerException if any argument other than {@code usage} is null, or {@code windows} contains null
+	 * @param authentication the credential that the session's runner took from the command's source home, or
+	 *   {@code null} if the session's runner chose it without the command
+	 * @throws NullPointerException if any of the arguments other than {@code usage} and {@code authentication} are
+	 *   null, or if {@code windows} contains null
 	 * @throws IllegalArgumentException if {@code concurrency} is less than 1
 	 */
 	public TrialSession

@@ -4,6 +4,9 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.CommandLineArguments;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.runner.AuthenticationOptions;
+import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
+import java.util.ArrayList;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
@@ -26,10 +29,12 @@ public final class PromptOptimizerCli
 		/**
 		 * Opens one command scope, whose ownership transfers to the caller.
 		 *
+		 * @param authentication the command's choice of the source home and gateway login class that every session
+		 *                       that the scope starts receives
 		 * @return the open command scope
 		 * @throws IOException if the harness environment cannot supply the scope
 		 */
-		AbstractOptimizerCommandScope open() throws IOException;
+		AbstractOptimizerCommandScope open(AuthenticationOptions authentication) throws IOException;
 	}
 
 	/**
@@ -61,6 +66,11 @@ public final class PromptOptimizerCli
 	 * Opens a scope, runs a command and closes the scope; renders creation failures as command failures. A contract
 	 * tool runs without a scope, since it needs no campaign and no harness, inside a contract author session's
 	 * sandbox.
+	 * <p>
+	 * A command that starts sessions may name {@value AuthenticationOptions#HOME_OPTION} and
+	 * {@value AuthenticationOptions#LOGIN_CLASS_OPTION} anywhere after its name; the scope passes them to every session
+	 * that the command starts, so that each takes its credential from that source home. A command that starts no
+	 * session and names one of them is refused as invalid input before a scope opens.
 	 *
 	 * @param args the command and its arguments
 	 * @param factory opens the selected harness's command scope
@@ -80,7 +90,29 @@ public final class PromptOptimizerCli
 			return Commands.executeContractTool(JsonMapper.builder().build(), arguments, out);
 		boolean evaluatorInfo = !arguments.isEmpty() && arguments.getFirst().equals(EvaluatorInfo.COMMAND);
 		boolean evaluatorTrial = arguments.size() == 1 && arguments.getFirst().equals(EvaluatorTrial.COMMAND);
-		try (AbstractOptimizerCommandScope scope = factory.open())
+		AuthenticationOptions authentication = AuthenticationOptions.DEFAULT;
+		if (!evaluatorInfo && !evaluatorTrial)
+		{
+			try
+			{
+				authentication = AuthenticationOptions.parse(args);
+			}
+			catch (InvalidArgumentsException e)
+			{
+				out.println(Commands.statusMessage(JsonMapper.builder().build(), "refused", e.getMessage()));
+				return 2;
+			}
+			arguments = withoutAuthenticationOptions(arguments);
+			if (!authentication.equals(AuthenticationOptions.DEFAULT) && !Commands.mayStartSessions(arguments))
+			{
+				out.println(Commands.statusMessage(JsonMapper.builder().build(), "refused",
+					AuthenticationOptions.HOME_OPTION + " and " + AuthenticationOptions.LOGIN_CLASS_OPTION + " choose the " +
+					"credential of the sessions that a command starts, and this command starts none. Run it again " +
+					"without them."));
+				return 2;
+			}
+		}
+		try (AbstractOptimizerCommandScope scope = factory.open(authentication))
 		{
 			if (evaluatorInfo)
 				return EvaluatorInfo.run(scope, arguments, out);
@@ -124,7 +156,7 @@ public final class PromptOptimizerCli
 		{
 			Optional<String> refusal = scope.noHarnessRefusal();
 			if (refusal.isEmpty())
-				refusal = nestedRefusal(scope, commands, args);
+				refusal = nestedRefusal(scope, args);
 			if (refusal.isPresent())
 			{
 				out.println(Commands.statusMessage(scope.json(), "refused", refusal.get()));
@@ -139,14 +171,12 @@ public final class PromptOptimizerCli
 	 * guarded resume after the nested session spends its allowance.
 	 *
 	 * @param scope the command's scope
-	 * @param commands the command parser
 	 * @param args the launcher's arguments
 	 * @return the launch refusal, or empty if the command may run
 	 */
-	private static Optional<String> nestedRefusal(AbstractOptimizerCommandScope scope, Commands commands,
-		List<String> args)
+	private static Optional<String> nestedRefusal(AbstractOptimizerCommandScope scope, List<String> args)
 	{
-		Optional<Command> parsed = commands.sessionStartingCommand(args);
+		Optional<Command> parsed = Commands.sessionStartingCommand(args);
 		if (parsed.isEmpty())
 			return Optional.empty();
 		Optional<String> refusal = scope.nestedSessionRefusal();
@@ -158,6 +188,30 @@ public final class PromptOptimizerCli
 		if (command instanceof Command.Run run && scope.hasRecoverableTrial(run.campaign()))
 			return Optional.empty();
 		return refusal;
+	}
+
+	/**
+	 * Returns a command's arguments without the options that choose its sessions' credential.
+	 *
+	 * @param arguments the command and its arguments
+	 * @return the arguments without {@value AuthenticationOptions#HOME_OPTION},
+	 *   {@value AuthenticationOptions#LOGIN_CLASS_OPTION} and their values
+	 */
+	private static List<String> withoutAuthenticationOptions(List<String> arguments)
+	{
+		List<String> result = new ArrayList<>();
+		for (int index = 0; index < arguments.size(); ++index)
+		{
+			String argument = arguments.get(index);
+			if (argument.equals(AuthenticationOptions.HOME_OPTION) ||
+				argument.equals(AuthenticationOptions.LOGIN_CLASS_OPTION))
+			{
+				index += 1;
+				continue;
+			}
+			result.add(argument);
+		}
+		return result;
 	}
 
 	/**

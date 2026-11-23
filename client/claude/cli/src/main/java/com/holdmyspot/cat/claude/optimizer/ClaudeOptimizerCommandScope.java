@@ -20,6 +20,7 @@ import com.holdmyspot.cat.common.optimizer.cli.MainOptimizerCommandScope;
 import com.holdmyspot.cat.common.optimizer.port.HostInterruptSignal;
 import com.holdmyspot.cat.common.optimizer.port.ProfileInventory;
 import com.holdmyspot.cat.common.optimizer.port.SessionPort;
+import com.holdmyspot.cat.common.runner.AuthenticationOptions;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.claude.runner.ClaudeConnectionSettings;
 import com.holdmyspot.cat.claude.runner.ClaudeRunnerCli;
@@ -52,7 +53,8 @@ public final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 			public ClaudeOptimizerCommandScope newClaudeOptimizerCommandScope(Map<String, String> environment, Path home,
 				Path directory, Path artifact, Waiting waiting)
 			{
-				return new ClaudeOptimizerCommandScope(environment, home, directory, artifact, waiting);
+				return new ClaudeOptimizerCommandScope(environment, home, directory, artifact, waiting,
+					AuthenticationOptions.DEFAULT);
 			}
 
 			@Override
@@ -80,13 +82,14 @@ public final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 	 *
 	 * @param waiting how the process waits between the attempts of a retried operation; the launcher supplies
 	 *   {@code Pause::sleeping}
+	 * @param authentication the command's choice of the source home and gateway login class
 	 * @throws IOException if the environment does not set the platform's home variable
 	 */
-	ClaudeOptimizerCommandScope(Waiting waiting) throws IOException
+	ClaudeOptimizerCommandScope(Waiting waiting, AuthenticationOptions authentication) throws IOException
 	{
 		this(Platform.current().environment(System.getenv()), home(Platform.current().environment(System.getenv())),
 			Path.of("").toAbsolutePath(),
-			PluginDirectory.of(ClaudeOptimizerCommandScope.class), waiting);
+			PluginDirectory.of(ClaudeOptimizerCommandScope.class), waiting, authentication);
 	}
 
 	/**
@@ -97,10 +100,11 @@ public final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 	 * @param directory   the working directory
 	 * @param artifact    the complete Claude artifact that nested sessions install
 	 * @param waiting     how the process waits between the attempts of a retried operation
+	 * @param authentication the command's choice of the source home and gateway login class
 	 * @throws NullPointerException if any argument is null
 	 */
 	ClaudeOptimizerCommandScope(Map<String, String> environment, Path home, Path directory, Path artifact,
-		Waiting waiting)
+		Waiting waiting, AuthenticationOptions authentication)
 	{
 		requireThat(environment, "environment").isNotNull();
 		requireThat(home, "home").isNotNull();
@@ -108,7 +112,7 @@ public final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 		Path configurationDirectory = ClaudeConfiguration.resolveDirectory(home,
 			environment.get("CLAUDE_CONFIG_DIR"));
 		super(Harness.CLAUDE, ClaudeSessionSandbox::refusal, ClaudeSessionHarness.HARNESS, ClaudeRunnerCli.MARKERS,
-			environment, configurationDirectory, directory, LOADER_CONFIGURATION, waiting);
+			environment, configurationDirectory, directory, LOADER_CONFIGURATION, waiting, authentication);
 		this.environment = Map.copyOf(environment);
 		this.artifact = artifact;
 		this.configurationDirectory = configurationDirectory;
@@ -220,7 +224,7 @@ public final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 			environment, configurationDirectory, HarnessCapacity.forHome(jvm.fileLocks(), home, HARNESS_ID,
 				HarnessCapacity.MAXIMUM_CONCURRENCY, jvm.waiting()), clock, replacer,
 			Optional.of(ProjectRuleLoader.rulesDirectory(home)),
-			hostProject);
+			hostProject, authentication());
 		return new ClaudeSessions(settings, retainedTrials());
 	}
 

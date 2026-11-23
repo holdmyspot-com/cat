@@ -1107,6 +1107,84 @@ public final class RequestServerTest
 	}
 
 	/**
+	 * Verifies that the server passes the source home and the gateway login class of a launch's request to the runner
+	 * that it asks for the child's needs and to the runner that starts the session, as the launch's own choice, which the
+	 * runner checks against its bound.
+	 *
+	 * @throws IOException          if the fixture cannot be created or a request cannot be served
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = 60_000)
+	public void passesSourceHomeToRunner() throws IOException, InterruptedException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			// Requirement: R-I14
+			Path source = Files.createDirectories(fixture.root.resolve("source-home"));
+			AtomicReference<List<String>> started = new AtomicReference<>();
+			AtomicReference<FakeHarnessCli> child = new AtomicReference<>();
+			fixture.child = arguments ->
+			{
+				started.set(arguments);
+				Files.writeString(Path.of(option(arguments, "--receipt")), "{}");
+				FakeHarnessCli process = new FakeHarnessCli(exitOnCompleteRecord(fixture.json, child));
+				child.set(process);
+				return process;
+			};
+			try (Fixture.Running server = fixture.start())
+			{
+				JsonNode response = server.request(fixture.manifest().put("home", source.toString()).
+					put("gateway_login_class", "api_key"));
+
+				requireThat(response.path("status").asString(), "status").withContext(response, "response").
+					isEqualTo("completed");
+				requireThat(option(started.get(), "--home"), "home").isEqualTo(source.toString());
+				requireThat(option(started.get(), "--gateway-login-class"), "loginClass").isEqualTo("api_key");
+				requireThat(started.get(), "arguments").doesNotContain("--inherited-source-home");
+				List<String> needs = fixture.needsArguments.getLast();
+				requireThat(option(needs, "--home"), "needsHome").isEqualTo(source.toString());
+				requireThat(option(needs, "--gateway-login-class"), "needsLoginClass").isEqualTo("api_key");
+			}
+		}
+	}
+
+	/**
+	 * Verifies that the server refuses a launch whose runner reads a source file that the requesting session's sandbox
+	 * denies it reading, before it starts the session, naming the file and the denial: a session may use only a
+	 * credential that it may read.
+	 *
+	 * @throws IOException          if the fixture cannot be created or a request cannot be served
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = 60_000)
+	public void refusesSourceFileThatRequesterMayNotRead() throws IOException, InterruptedException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			// Requirement: R-I14
+			Path source = Files.createDirectories(fixture.root.resolve("source-home/.claude")).getParent();
+			Path settings = Files.writeString(source.resolve(".claude/settings.json"), "{}");
+			fixture.needsLogins = List.of(settings);
+			fixture.policy = new FakeParentPolicySource("Claude Code", new ParentPolicy(true, List.of(fixture.project),
+				List.of(), List.of(source), List.of(), HostAccess.listed(Set.of(MODEL_HOST)), false, List.of()));
+			fixture.child = _ ->
+			{
+				throw new AssertionError("The server started a session for a refused request");
+			};
+			try (Fixture.Running server = fixture.start())
+			{
+				JsonNode response = server.request(fixture.manifest().put("home", source.toString()));
+
+				requireThat(response.path("status").asString(), "status").isEqualTo("refused");
+				String reason = response.path("reason").asString();
+				requireThat(reason, "reason").contains(settings.toString());
+				// The denied folder's path begins the file's, so the denial is named only if it remains without the file's
+				requireThat(reason.replace(settings.toString(), ""), "denial").contains(source.toString());
+			}
+		}
+	}
+
+	/**
 	 * Verifies that the server refuses a request that carries a bound or another option that only CAT's own starters
 	 * pass, without starting a session.
 	 *
@@ -1511,7 +1589,7 @@ public final class RequestServerTest
 		private final Path transcript;
 		private final FakeProcessTable processes = new FakeProcessTable();
 		private final ProcessIdentity harness;
-		private final FakeParentPolicySource policy;
+		private FakeParentPolicySource policy;
 		private Optional<String> hostRefusal = Optional.empty();
 		private Set<String> running = Set.of("claude");
 		private Optional<PolicyRefusal> sessionRefusal = Optional.empty();
@@ -1519,6 +1597,14 @@ public final class RequestServerTest
 		private Pause pause = Thread::yield;
 		private Optional<Path> peer = Optional.empty();
 		private final AtomicInteger needsCalls = new AtomicInteger();
+		/**
+		 * The options of each runner that the server asks for a child's needs, in the order that it asks.
+		 */
+		private final List<List<String>> needsArguments = new CopyOnWriteArrayList<>();
+		/**
+		 * The files that the runner reports reading for the child's credential.
+		 */
+		private List<Path> needsLogins = List.of();
 		private final AtomicInteger peerSelections = new AtomicInteger();
 		private Child child = _ ->
 		{
@@ -1619,7 +1705,8 @@ public final class RequestServerTest
 				if (arguments.getFirst().equals(ChildNeedsReport.OPTION))
 				{
 					needsCalls.incrementAndGet();
-					new ChildNeedsReport(List.of(), Set.of(MODEL_HOST), List.of()).write(json, Path.of(arguments.get(1)));
+					needsArguments.add(List.copyOf(arguments));
+					new ChildNeedsReport(List.of(), Set.of(MODEL_HOST), needsLogins).write(json, Path.of(arguments.get(1)));
 					return new ExitedProcess(new ProcessBuilder(), 0, "", "");
 				}
 				return child.start(arguments);

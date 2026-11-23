@@ -3410,7 +3410,7 @@ public final class OptimizerCoreTest
 			try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
 			{
 				List<String> args = builder.command().subList(1, builder.command().size());
-				int exit = PromptOptimizerCli.run(args.toArray(String[]::new), () -> new TestOptimizerCommandScope<>(
+				int exit = PromptOptimizerCli.run(args.toArray(String[]::new), _ -> new TestOptimizerCommandScope<>(
 					Harness.CODEX, repository.root(), Set.of(target, entry), _ -> peer.port()), ZoneOffset.UTC, out);
 				requireThat(exit, "metadataExit").isEqualTo(0);
 			}

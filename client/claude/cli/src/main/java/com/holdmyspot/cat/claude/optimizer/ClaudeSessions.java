@@ -4,7 +4,11 @@ import static com.holdmyspot.cat.claude.ClaudePluginInfo.HARNESS_ID;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.claude.runner.ClaudeAuthentication;
 import com.holdmyspot.cat.claude.runner.ClaudeRunnerCli;
+import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.runner.AuthenticationEvidence;
+import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.RetainedNestedSessionClient;
 import com.holdmyspot.cat.claude.runner.ClaudeSessionRole;
 import com.holdmyspot.cat.common.optimizer.adapter.Bridge;
@@ -288,9 +292,35 @@ public final class ClaudeSessions extends RunnerSessions
 			"Remove the setting and run `start` again.");
 	}
 
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * Outside a nested session, the authentication is the one that the runner takes from the command's source home, as
+	 * {@link ClaudeAuthentication} reads it. Inside a nested session, the nested session's runner passes on its own
+	 * launch's source home, which the nested session's commands may not read, so the port reports none.
+	 */
+	@Override
+	public Optional<AuthenticationEvidence> authentication() throws IOException
+	{
+		Map<String, String> environment = settings().environment();
+		if (environment.containsKey(HarnessEnvironment.NESTED_SESSION_VARIABLE))
+			return Optional.empty();
+		return Optional.of(ClaudeAuthentication.read(JsonMapper.builder().build(), settings().authentication(),
+			environment, Platform.current()).evidence());
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * Outside a nested session, the class is that of the credential that the command's source home selects. Inside a
+	 * nested session, it is the class that the nested session's runner states in {@code CAT_HOST_LOGIN}.
+	 */
 	@Override
 	public HostLogin hostLogin() throws IOException
 	{
+		Optional<AuthenticationEvidence> authentication = authentication();
+		if (authentication.isPresent())
+			return authentication.get().loginClass();
 		return Credentials.classify(settings().configurationDirectory(), settings().environment(),
 			JsonMapper.builder().build());
 	}

@@ -8,6 +8,7 @@ import com.holdmyspot.cat.codex.CommandShell;
 import com.holdmyspot.cat.codex.layout.CodexInstallation;
 import com.holdmyspot.cat.codex.runner.CodexConnectionConfiguration;
 import com.holdmyspot.cat.codex.runner.CodexRunnerCli;
+import com.holdmyspot.cat.common.runner.AuthenticationEvidence;
 import com.holdmyspot.cat.common.runner.RetainedNestedSessionClient;
 import com.holdmyspot.cat.codex.secrets.CodexSessionsAccess;
 import com.holdmyspot.cat.codex.secrets.CodexSessionsSecrets;
@@ -153,6 +154,12 @@ public final class CodexSessions extends RunnerSessions
 	public boolean reportsExitStatus()
 	{
 		return true;
+	}
+
+	@Override
+	public Optional<AuthenticationEvidence> authentication()
+	{
+		return Optional.empty();
 	}
 
 	@Override

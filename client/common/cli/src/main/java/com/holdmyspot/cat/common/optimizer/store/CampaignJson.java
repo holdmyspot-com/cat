@@ -33,6 +33,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.Minimality;
 import com.holdmyspot.cat.common.optimizer.evidence.CommandSummary;
 import com.holdmyspot.cat.common.optimizer.inventory.FileDelta;
 import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
+import com.holdmyspot.cat.common.runner.AuthenticationEvidence;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Base64;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
@@ -1243,15 +1244,18 @@ final class CampaignJson
 			node.putNull(EMPTY_RUNNING_RESULTS);
 		else
 			node.put(EMPTY_RUNNING_RESULTS, emptyRunning.intValue());
+		if (session.authentication() != null)
+			node.set(AuthenticationEvidence.FIELD, session.authentication().toJson(json));
 		return node;
 	}
 
 	/**
 	 * Reads the record of a finished trial session. A record written before sessions recorded how their commands ran
-	 * has neither command value, so both are unknown.
+	 * has neither command value, so both are unknown. A record without an authentication object names no source home.
 	 *
 	 * @param node the document
 	 * @return the session's record
+	 * @throws IllegalArgumentException if the record's authentication object is malformed
 	 */
 	private static TrialSession readSession(JsonNode node)
 	{
@@ -1262,9 +1266,22 @@ final class CampaignJson
 		JsonNode usageNode = nullable(node, TOKEN_USAGE);
 		if (usageNode != null)
 			usage = readTokenUsage(usageNode);
+		AuthenticationEvidence authentication = null;
+		JsonNode authenticationNode = node.path(AuthenticationEvidence.FIELD);
+		if (!authenticationNode.isMissingNode())
+		{
+			try
+			{
+				authentication = AuthenticationEvidence.fromJson(authenticationNode);
+			}
+			catch (IOException e)
+			{
+				throw new IllegalArgumentException(AuthenticationEvidence.FIELD + ": " + e.getMessage(), e);
+			}
+		}
 		return new TrialSession(instant(node, "started_at"), instant(node, "ended_at"), integer(node, "concurrency"),
 			readThrottle(field(node, "throttle")), windows, constant(node, "login", HostLogin.class), usage,
-			readCommands(node));
+			readCommands(node), authentication);
 	}
 
 	/**

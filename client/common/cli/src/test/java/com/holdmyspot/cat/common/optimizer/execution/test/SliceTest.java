@@ -32,6 +32,7 @@ import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort.FakeSession
 import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort;
 import com.holdmyspot.cat.common.optimizer.report.ReportStatus;
 import com.holdmyspot.cat.common.optimizer.report.Status;
+import com.holdmyspot.cat.common.runner.AuthenticationEvidence;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -505,6 +506,12 @@ public final class SliceTest
 		public List<String> installedPluginNames() throws IOException
 		{
 			return delegate.installedPluginNames();
+		}
+
+		@Override
+		public Optional<AuthenticationEvidence> authentication() throws IOException
+		{
+			return delegate.authentication();
 		}
 
 		@Override

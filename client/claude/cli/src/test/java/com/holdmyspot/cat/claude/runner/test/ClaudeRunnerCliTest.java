@@ -14,6 +14,8 @@ import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
+import com.holdmyspot.cat.common.optimizer.port.HostLogin;
+import com.holdmyspot.cat.common.runner.AuthenticationOptions;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessCapacityWaitExpiredException;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
@@ -40,6 +42,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.testng.annotations.DataProvider;
@@ -65,11 +68,6 @@ public final class ClaudeRunnerCliTest
 	 * The identifier of the Claude Code session that runs the launcher.
 	 */
 	private static final String SESSION_ID = "5d2c8e4a-7b1f-4c3d-9e6a-1f2b3c4d5e6f";
-	/**
-	 * The environment of a launch that holds a Claude login, which a nested session requires before it takes a capacity
-	 * slot.
-	 */
-	private static final Map<String, String> LOGIN = Map.of("CLAUDE_CODE_OAUTH_TOKEN", "fake-token");
 
 	/**
 	 * Creates the test.
@@ -108,7 +106,7 @@ public final class ClaudeRunnerCliTest
 					"5", "--model", "sonnet", "--effort", "low", "--policy-bound", policyBound(root).toString()};
 				try (HarnessCapacity.Permit _ = capacity.acquire())
 				{
-					ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), LOGIN,
+					ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), sourceHome(root),
 						_ -> capacity);
 					throw new AssertionError("The bridge did not give up waiting for capacity");
 				}
@@ -198,7 +196,7 @@ public final class ClaudeRunnerCliTest
 			"--effort", "low", "--policy-bound", policyBound(root).toString()};
 		try
 		{
-			ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), LOGIN, _ ->
+			ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), sourceHome(root), _ ->
 			{
 				throw new IllegalStateException("Capacity requested");
 			});
@@ -247,7 +245,7 @@ public final class ClaudeRunnerCliTest
 				{
 					// Taking capacity comes before starting Claude, so a refusal that takes none starts no session
 					ClaudeRunnerCli.serve(jvm, root, args.toArray(String[]::new), new StringReader(""), new StringWriter(),
-						Map.of(), _ ->
+						sourceHome(root), _ ->
 						{
 							throw new AssertionError("The launch took a capacity slot");
 						});
@@ -297,7 +295,7 @@ public final class ClaudeRunnerCliTest
 				try
 				{
 					ClaudeRunnerCli.serve(jvm, root, args.toArray(String[]::new), new StringReader(""), new StringWriter(),
-						Map.of(), _ ->
+						sourceHome(root), _ ->
 						{
 							throw new AssertionError("The launch took a capacity slot");
 						});
@@ -345,7 +343,7 @@ public final class ClaudeRunnerCliTest
 					"--results", root.resolve("results").toString(), "--agent", AGENT};
 				try
 				{
-					ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(),
+					ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), sourceHome(root),
 						_ ->
 					{
 						throw new AssertionError("The launch took a capacity slot");
@@ -621,7 +619,7 @@ public final class ClaudeRunnerCliTest
 				"--effort", "low"};
 			try
 			{
-				ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(), _ ->
+				ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), sourceHome(root), _ ->
 				{
 					throw new AssertionError("The launch took a capacity slot");
 				});
@@ -654,7 +652,7 @@ public final class ClaudeRunnerCliTest
 				"--effort", "low", "--policy-bound", bound.toString()};
 			try
 			{
-				ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(), _ ->
+				ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), sourceHome(root), _ ->
 				{
 					throw new AssertionError("The launch took a capacity slot");
 				});
@@ -688,7 +686,7 @@ public final class ClaudeRunnerCliTest
 				extra.toString()};
 
 			InvalidArgumentsException refusal = expectThrows(InvalidArgumentsException.class, () ->
-				ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(), _ ->
+				ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), sourceHome(root), _ ->
 				{
 					throw new AssertionError("The launch took a capacity slot");
 				}));
@@ -714,9 +712,11 @@ public final class ClaudeRunnerCliTest
 			Path home = Files.createDirectory(root.resolve("home"));
 			Path configuration = Files.createDirectory(home.resolve(".claude"));
 			Path input = root.resolve("missing-input.jsonl");
+			SourceHomes.settings(home, """
+				{"apiKeyHelper": "printf key"}
+				""");
 			Map<String, String> environment = Map.of(Platform.current().homeVariable(), home.toString(),
-				"CLAUDE_CONFIG_DIR", configuration.toString(), "CLAUDE_CODE_OAUTH_TOKEN",
-				LOGIN.get("CLAUDE_CODE_OAUTH_TOKEN"));
+				"CLAUDE_CONFIG_DIR", configuration.toString());
 			String[] args = {"--artifact", root.resolve("artifact").toString(), "--project",
 				root.resolve("project").toString(), "--results", root.resolve("results").toString(), "--model", "sonnet",
 				"--effort", "low", "--policy-bound", policyBound(root).toString(), "--capacity-held", "--input",
@@ -789,141 +789,6 @@ public final class ClaudeRunnerCliTest
 
 
 	/**
-	 * Verifies that a launch whose environment holds no Claude authentication variable is refused on Linux and
-	 * macOS when the user's login store holds no login, here neither {@code .credentials.json} in the user's Claude
-	 * configuration directory nor, on macOS, the Keychain's login item: the reason tells the user to log in to Claude
-	 * Code with {@code /login} and names the directory, and the launch creates no nested session and takes no capacity
-	 * slot. On Windows, where Claude Code may keep the login in the Windows Credential Manager, the runner cannot tell
-	 * that no login exists, and the launch goes on to take a capacity slot.
-	 *
-	 * @throws IOException if the test filesystem cannot be used
-	 */
-	@Test
-	public void refusesLaunchWithoutLogin() throws IOException
-	{
-		FakeKeychain keychain = new FakeKeychain(FakeKeychain.NOT_FOUND);
-		try (TestJvmScope build = new TestJvmScope();
-			TestJvmScope jvm = keychain.scope(build.temporaryDirectory());
-			TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-home-")).toRealPath();
-			Path configuration = Files.createDirectory(home.resolve(".claude"));
-			Path project = Files.createDirectory(home.resolve("project"));
-			String[] args = {"--artifact", home.resolve("artifact").toString(), "--project", project.toString(),
-				"--results", home.resolve("results").toString(), "--model", "sonnet", "--effort", "low",
-				PolicyBoundFile.OPTION, policyBound(home).toString()};
-			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
-				"USER", "alice");
-
-			if (Platform.current().isWindows())
-			{
-				IllegalStateException taken = expectThrows(IllegalStateException.class, () ->
-					ClaudeRunnerCli.serve(jvm, home, args, new StringReader(""), new StringWriter(), environment, _ ->
-					{
-						throw new IllegalStateException("capacity");
-					}));
-				requireThat(taken.getMessage(), "message").isEqualTo("capacity");
-			}
-			else
-			{
-				SessionRefusedException refusal = expectThrows(SessionRefusedException.class, () ->
-					ClaudeRunnerCli.serve(jvm, home, args, new StringReader(""), new StringWriter(), environment, _ ->
-					{
-						throw new AssertionError("The launch took a capacity slot");
-					}));
-				requireThat(refusal.getMessage(), "message").contains("/login").contains(configuration.toString());
-				requireThat(Files.exists(home.resolve("results")), "resultsFolderExists").isFalse();
-			}
-		}
-	}
-
-	/**
-	 * Verifies that a launch of a session in this process whose environment holds no authentication variable is not
-	 * refused for lack of a login when the user's Claude configuration directory holds Claude Code's login file, so
-	 * that its nested session goes on to start, as far as a test without a CAT artifact goes.
-	 *
-	 * @throws IOException if the test filesystem cannot be used
-	 */
-	@Test
-	public void startsLaunchWithUserLoginFile() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory("runner-home-")).toRealPath();
-			Files.writeString(Files.createDirectory(home.resolve(".claude")).resolve(".credentials.json"), "{}");
-			Path project = Files.createDirectory(home.resolve("project"));
-			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString());
-			StringWriter errors = new StringWriter();
-
-			IOException failure = expectThrows(IOException.class, () ->
-				ClaudeRunnerCli.launch(new String[]{"--project", project.toString(), "--results",
-					home.resolve("results").toString(), "--model", "sonnet", "--effort", "low", "--capacity-held",
-					PolicyBoundFile.OPTION, policyBound(home).toString()}, environment, Yielding.waiting(),
-					new StringReader(""), new ByteArrayOutputStream(), new PrintWriter(errors, true),
-					() -> home.resolve("plugin"), () ->
-					{
-						throw new AssertionError("No session's tool scope is opened");
-					}));
-
-			// The session starts and fails only because the test runs no CAT artifact
-			requireThat(failure, "failure").isNotInstanceOf(SessionRefusedException.class);
-			requireThat(failure.getMessage(), "message").doesNotContain("Log in to Claude Code with /login");
-			requireThat(errors.toString(), "errors").isEmpty();
-		}
-	}
-
-	/**
-	 * Verifies that a launch of a session in this process that holds an authentication variable is not refused for
-	 * lack of a login, so that its nested session goes on to start, as far as a test without a CAT artifact goes.
-	 *
-	 * @param variable the authentication variable
-	 * @throws IOException if the test filesystem cannot be used
-	 */
-	@Test(dataProvider = "authenticationVariables")
-	public void startsLaunchWithLoginVariable(String variable) throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory("runner-home-")).toRealPath();
-			Path project = Files.createDirectory(home.resolve("project"));
-			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
-				variable, "fake-token");
-			StringWriter errors = new StringWriter();
-
-			IOException failure = expectThrows(IOException.class, () ->
-				ClaudeRunnerCli.launch(new String[]{"--project", project.toString(), "--results",
-					home.resolve("results").toString(), "--model", "sonnet", "--effort", "low", "--capacity-held",
-					PolicyBoundFile.OPTION, policyBound(home).toString()}, environment, Yielding.waiting(),
-					new StringReader(""), new ByteArrayOutputStream(), new PrintWriter(errors, true),
-					() -> home.resolve("plugin"), () ->
-					{
-						throw new AssertionError("No session's tool scope is opened");
-					}));
-
-			// The session starts and fails only because the test runs no CAT artifact
-			requireThat(failure, "failure").isNotInstanceOf(SessionRefusedException.class);
-			requireThat(failure.getMessage(), "message").doesNotContain("Log in to Claude Code with /login");
-			requireThat(errors.toString(), "errors").isEmpty();
-		}
-	}
-
-	/**
-	 * Returns the variables that each authenticate a Claude session.
-	 *
-	 * @return the variable names
-	 */
-	@DataProvider
-	public static Object[][] authenticationVariables()
-	{
-		return new Object[][]
-		{
-			{"CLAUDE_CODE_OAUTH_TOKEN"},
-			{"ANTHROPIC_API_KEY"},
-			{"ANTHROPIC_AUTH_TOKEN"}
-		};
-	}
-
-	/**
 	 * Verifies that a launch that no harness session runs, such as one in a terminal or a script, is refused with the
 	 * refusal status and a message that says to run the launcher from a Claude Code or Codex session, and starts
 	 * nothing.
@@ -955,7 +820,7 @@ public final class ClaudeRunnerCliTest
 
 	/**
 	 * Verifies that the runner that a request server asks for a child's needs writes them to the file it is given
-	 * and exits with status 0, and, when its model provider's base URL names no host, writes no file and exits with the
+	 * and exits with status 0, and, when the source's base URL names no host, writes no file and exits with the
 	 * refusal status after one line that names the setting, without a stack trace.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
@@ -969,9 +834,10 @@ public final class ClaudeRunnerCliTest
 			Path home = cleanup.add(Files.createTempDirectory("runner-home-")).toRealPath();
 			Path report = home.resolve("needs.json");
 			StringWriter errors = new StringWriter();
-			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString());
+			Map<String, String> environment = sourceHome(home);
 
-			int status = ClaudeRunnerCli.reportChildNeeds(scope, environment, report, new PrintWriter(errors, true));
+			int status = ClaudeRunnerCli.reportChildNeeds(scope, environment, report, AuthenticationOptions.DEFAULT,
+				new PrintWriter(errors, true));
 
 			requireThat(status, "status").isZero();
 			requireThat(ChildNeedsReport.read(scope.json(), report).hosts(), "hosts").isEqualTo(Set.of(
@@ -979,15 +845,18 @@ public final class ClaudeRunnerCliTest
 			requireThat(errors.toString(), "errors").isEmpty();
 
 			Path refused = home.resolve("refused.json");
-			Map<String, String> noHost = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
-				"ANTHROPIC_BASE_URL", "file:///no-host");
+			Path noHost = SourceHomes.create(home, "no-host");
+			Path settings = SourceHomes.settings(noHost, """
+				{"env": {"ANTHROPIC_BASE_URL": "file:///no-host", "ANTHROPIC_AUTH_TOKEN": "token"}}
+				""");
 
-			status = ClaudeRunnerCli.reportChildNeeds(scope, noHost, refused, new PrintWriter(errors, true));
+			status = ClaudeRunnerCli.reportChildNeeds(scope, environment, refused, new AuthenticationOptions(
+				Optional.of(noHost), Optional.of(HostLogin.API_KEY), false), new PrintWriter(errors, true));
 
 			requireThat(status, "refusedStatus").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
 			requireThat(Files.exists(refused), "refusedWritten").isFalse();
-			requireThat(errors.toString().strip(), "refusal").isEqualTo(
-				"ANTHROPIC_BASE_URL names no host: file:///no-host");
+			requireThat(errors.toString().strip(), "refusal").contains("env.ANTHROPIC_BASE_URL").
+				contains(settings.toString()).contains("names no host").doesNotContain("\n");
 		}
 	}
 
@@ -1134,5 +1003,439 @@ public final class ClaudeRunnerCliTest
 		Files.writeString(agents.resolve(AGENT + ".md"), "---\nname: " + AGENT + "\n" + frontmatter +
 			"---\nReview the change.\n");
 		return artifact;
+	}
+
+	/**
+	 * Verifies that a launch whose source home holds no Claude authentication is refused with the refusal status before
+	 * it creates a nested session, naming the files that the runner read, although the runner's own environment and
+	 * home folder hold a credential: only the source home's files decide.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void refusesSourceHomeWithoutAuthentication() throws IOException
+	{
+		// Requirement: R-I14
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("source-home-")).toRealPath();
+			Path source = SourceHomes.create(root, "source");
+			SourceHomes.settings(source, """
+				{"permissions": {"deny": []}}
+				""");
+			Path runnerHome = SourceHomes.create(root, "runner");
+			SourceHomes.storedLogin(runnerHome);
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(),
+				runnerHome.toString(), "ANTHROPIC_API_KEY", SourceHomes.SECRET);
+			StringWriter errors = new StringWriter();
+
+			int status = launchWithAuthentication(root, List.of("--home", source.toString()), environment, errors);
+
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").contains(source.resolve(".claude/settings.json").toString()).
+				contains(source.resolve(".claude/.credentials.json").toString()).doesNotContain(SourceHomes.SECRET);
+			requireThat(Files.exists(root.resolve("results")), "resultsFolderExists").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that a launch whose {@code --home} names a relative path, or an absolute path that is not a folder, is
+	 * refused with the refusal status before it creates a nested session, naming the option.
+	 *
+	 * @param relative {@code true} to name a relative path, {@code false} to name a missing absolute folder
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test(dataProvider = "relativeOrMissing")
+	public void refusesInvalidSourceHome(boolean relative) throws IOException
+	{
+		// Requirement: R-I14
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("source-home-")).toRealPath();
+			Path runnerHome = SourceHomes.create(root, "runner");
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(),
+				runnerHome.toString(), "ANTHROPIC_API_KEY", SourceHomes.SECRET);
+			String home;
+			if (relative)
+				home = "relative/home";
+			else
+				home = root.resolve("missing").toString();
+			StringWriter errors = new StringWriter();
+
+			int status = launchWithAuthentication(root, List.of("--home", home), environment, errors);
+
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").contains("--home").contains(home);
+			requireThat(Files.exists(root.resolve("results")), "resultsFolderExists").isFalse();
+		}
+	}
+
+	/**
+	 * Returns whether a source home is named by a relative path rather than by a missing absolute one.
+	 *
+	 * @return the choices
+	 */
+	@DataProvider
+	public static Object[][] relativeOrMissing()
+	{
+		return new Object[][]{{true}, {false}};
+	}
+
+	/**
+	 * Verifies that a launch whose source settings send requests to {@code ANTHROPIC_BASE_URL} and that declares no
+	 * class of login is refused with the refusal status, naming {@code --gateway-login-class} and the settings file,
+	 * and that the message holds none of the source's secrets.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void refusesBaseUrlWithoutLoginClass() throws IOException
+	{
+		// Requirement: R-I14
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("source-home-")).toRealPath();
+			Path source = SourceHomes.create(root, "source");
+			Path settings = SourceHomes.settings(source, """
+				{"env": {"ANTHROPIC_BASE_URL": "https://gateway.example", "ANTHROPIC_AUTH_TOKEN": "%s"}}
+				""".formatted(SourceHomes.SECRET));
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(),
+				SourceHomes.create(root, "runner").toString(), "ANTHROPIC_API_KEY", SourceHomes.SECRET);
+			StringWriter errors = new StringWriter();
+
+			int status = launchWithAuthentication(root, List.of("--home", source.toString()), environment, errors);
+
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").contains("--gateway-login-class").contains(settings.toString()).
+				doesNotContain(SourceHomes.SECRET);
+			requireThat(Files.exists(root.resolve("results")), "resultsFolderExists").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that a launch that declares a class of login other than {@code subscription} and {@code api_key} is
+	 * refused with the refusal status, naming {@code --gateway-login-class}.
+	 *
+	 * @param loginClass the declared class
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test(dataProvider = "invalidLoginClasses")
+	public void refusesInvalidLoginClass(String loginClass) throws IOException
+	{
+		// Requirement: R-I14
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("source-home-")).toRealPath();
+			Path source = SourceHomes.create(root, "source");
+			SourceHomes.settings(source, """
+				{"apiKeyHelper": "printf key"}
+				""");
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(),
+				SourceHomes.create(root, "runner").toString(), "ANTHROPIC_API_KEY", SourceHomes.SECRET);
+			StringWriter errors = new StringWriter();
+
+			int status = launchWithAuthentication(root, List.of("--home", source.toString(), "--gateway-login-class",
+				loginClass), environment, errors);
+
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").contains("--gateway-login-class").contains(loginClass);
+			requireThat(Files.exists(root.resolve("results")), "resultsFolderExists").isFalse();
+		}
+	}
+
+	/**
+	 * Returns values of {@code --gateway-login-class} that name no class that a gateway bills.
+	 *
+	 * @return the values
+	 */
+	@DataProvider
+	public static Object[][] invalidLoginClasses()
+	{
+		return new Object[][]{{"unknown"}, {"API_KEY"}, {"oauth"}};
+	}
+
+	/**
+	 * Verifies that a launch whose source settings select a credential that the runner does not copy, a cloud provider
+	 * or a profile, is refused with the refusal status, naming the setting and the settings file: the session would
+	 * otherwise bill another credential than the user's own Claude Code.
+	 *
+	 * @param variable the {@code env} variable that selects the credential
+	 * @param value    its value
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test(dataProvider = "uncopiedCredentials")
+	public void refusesUncopiedCredentialSetting(String variable, String value) throws IOException
+	{
+		// Requirement: R-I14
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("source-home-")).toRealPath();
+			Path source = SourceHomes.create(root, "source");
+			Path settings = SourceHomes.settings(source, """
+				{"apiKeyHelper": "printf key", "env": {"%s": "%s"}}
+				""".formatted(variable, value));
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(),
+				SourceHomes.create(root, "runner").toString(), "ANTHROPIC_API_KEY", SourceHomes.SECRET);
+			StringWriter errors = new StringWriter();
+
+			int status = launchWithAuthentication(root, List.of("--home", source.toString()), environment, errors);
+
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").contains(variable).contains(settings.toString());
+			requireThat(Files.exists(root.resolve("results")), "resultsFolderExists").isFalse();
+		}
+	}
+
+	/**
+	 * Returns source {@code env} settings that select a credential that the runner does not copy.
+	 *
+	 * @return the variables and their values
+	 */
+	@DataProvider
+	public static Object[][] uncopiedCredentials()
+	{
+		return new Object[][]{{"CLAUDE_CODE_USE_BEDROCK", "1"}, {"ANTHROPIC_PROFILE", "work"}};
+	}
+
+	/**
+	 * Verifies that a launch that continues a nested session's harness session takes the source home's checks before it
+	 * reads the nested session, so that a source home without Claude authentication is refused the same way.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void resumedLaunchTakesSourceHomeChecks() throws IOException
+	{
+		// Requirement: R-I14
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("source-home-")).toRealPath();
+			Path source = SourceHomes.create(root, "source");
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(),
+				SourceHomes.create(root, "runner").toString(), "ANTHROPIC_API_KEY", SourceHomes.SECRET);
+			StringWriter errors = new StringWriter();
+
+			int status = launchWithAuthentication(root, List.of("--home", source.toString(), "--slot-id",
+				NestedSessionManager.newSlotId(Clock.systemUTC()), "--resume-slot", SESSION_ID), environment, errors);
+
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").contains(source.resolve(".claude/settings.json").toString());
+		}
+	}
+
+	/**
+	 * Verifies that the runner that a request server asks for a child's needs takes the source home's checks, so that
+	 * a source home without Claude authentication refuses the report with the refusal status, naming the files that
+	 * the runner read, and writes no report.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void childNeedsTakeSourceHomeChecks() throws IOException
+	{
+		// Requirement: R-I14
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("source-home-")).toRealPath();
+			Path source = SourceHomes.create(root, "source");
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(),
+				SourceHomes.create(root, "runner").toString(), "ANTHROPIC_API_KEY", SourceHomes.SECRET);
+			Path report = root.resolve("needs.json");
+			StringWriter errors = new StringWriter();
+
+			int status = ClaudeRunnerCli.reportChildNeeds(scope, environment, report, new AuthenticationOptions(
+				Optional.of(source), Optional.empty(), false), new PrintWriter(errors, true));
+
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").contains(source.resolve(".claude/settings.json").toString());
+			requireThat(Files.exists(report), "reportWritten").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that without {@code --home} the runner's own home folder is the source home, and that the runner's
+	 * {@code CLAUDE_CONFIG_DIR} then names the source's Claude folder, as for the user's own Claude Code; and that with
+	 * {@code --home} that variable changes nothing. Each source here holds no authentication, so the refusal names the
+	 * files that the runner read.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void choosesSourceClaudeFolder() throws IOException
+	{
+		// Requirement: R-I14
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("source-home-")).toRealPath();
+			Path runnerHome = SourceHomes.create(root, "runner");
+			Path configured = Files.createDirectories(root.resolve("configured"));
+			Path named = SourceHomes.create(root, "named");
+
+			StringWriter defaultErrors = new StringWriter();
+			int status = launchWithAuthentication(root, List.of(), Map.of("PATH", "",
+				Platform.current().homeVariable(), runnerHome.toString()), defaultErrors);
+			requireThat(status, "defaultStatus").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(defaultErrors.toString(), "defaultErrors").contains(
+				runnerHome.resolve(".claude/settings.json").toString());
+
+			StringWriter configuredErrors = new StringWriter();
+			status = launchWithAuthentication(root, List.of(), Map.of("PATH", "", Platform.current().homeVariable(),
+				runnerHome.toString(), "CLAUDE_CONFIG_DIR", configured.toString()), configuredErrors);
+			requireThat(status, "configuredStatus").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(configuredErrors.toString(), "configuredErrors").
+				contains(configured.resolve("settings.json").toString()).
+				doesNotContain(runnerHome.resolve(".claude").toString());
+
+			StringWriter namedErrors = new StringWriter();
+			status = launchWithAuthentication(root, List.of("--home", named.toString()), Map.of("PATH", "",
+				Platform.current().homeVariable(), runnerHome.toString(), "CLAUDE_CONFIG_DIR", configured.toString()),
+				namedErrors);
+			requireThat(status, "namedStatus").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(namedErrors.toString(), "namedErrors").contains(named.resolve(".claude/settings.json").toString()).
+				doesNotContain(configured.toString());
+		}
+	}
+
+	/**
+	 * Verifies that a launch whose source home holds only an {@code apiKeyHelper} goes on to start its session although
+	 * the Claude folder holds no login and the environment no credential, which the runner's earlier login check refused,
+	 * as far as a test without a CAT artifact goes.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void startsLaunchWithOnlyKeyHelper() throws IOException
+	{
+		// Requirement: R-I14
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("source-home-")).toRealPath();
+			Path home = SourceHomes.create(root, "runner");
+			SourceHomes.secret(home.resolve("key"));
+			SourceHomes.settings(home, """
+				{"apiKeyHelper": "cat ~/key"}
+				""");
+			StringWriter errors = new StringWriter();
+
+			IOException failure = expectThrows(IOException.class, () -> launchWithAuthentication(root, List.of(),
+				Map.of("PATH", "", Platform.current().homeVariable(), home.toString()), errors));
+
+			// The session starts and fails only because the test runs no CAT artifact
+			requireThat(failure, "failure").isNotInstanceOf(SessionRefusedException.class);
+			requireThat(errors.toString(), "errors").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that a launch whose bound, which its starter names, denies reading a file that the runner reads from the
+	 * source home is refused with the refusal status, naming the file and the denial, while the same launch passed on by
+	 * a nested session's runner, whose bound denies those files by design, is not refused for them.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void refusesSourceFileThatBoundDenies() throws IOException
+	{
+		// Requirement: R-I14
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("source-home-")).toRealPath();
+			Path source = SourceHomes.create(root, "source");
+			Path settings = SourceHomes.settings(source, """
+				{"apiKeyHelper": "printf key"}
+				""");
+			Path denied = source.resolve(".claude");
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(),
+				SourceHomes.create(root, "runner").toString());
+			StringWriter errors = new StringWriter();
+
+			int status = launchWithAuthentication(root, List.of("--home", source.toString()), environment, errors,
+				List.of(denied));
+
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").contains(settings.toString());
+			// The denied folder's path begins the file's, so the denial is named only if it remains without the file's
+			requireThat(errors.toString().replace(settings.toString(), ""), "denial").contains(denied.toString());
+			requireThat(Files.exists(root.resolve("results")), "resultsFolderExists").isFalse();
+
+			StringWriter inheritedErrors = new StringWriter();
+			IOException failure = expectThrows(IOException.class, () -> launchWithAuthentication(root, List.of(
+				"--home", source.toString(), "--inherited-source-home"), environment, inheritedErrors, List.of(denied)));
+			// The session starts and fails only because the test runs no CAT artifact
+			requireThat(failure, "failure").isNotInstanceOf(SessionRefusedException.class);
+			requireThat(inheritedErrors.toString(), "inheritedErrors").isEmpty();
+		}
+	}
+
+	/**
+	 * Returns the environment of a runner whose own home folder is the source home of its launches, below a folder, and
+	 * holds an {@code apiKeyHelper}, for a test whose subject is not the session's credential.
+	 *
+	 * @param root the folder that receives the home folder
+	 * @return the environment
+	 * @throws IOException if the home folder cannot be written
+	 */
+	private static Map<String, String> sourceHome(Path root) throws IOException
+	{
+		Path home = SourceHomes.create(root, "runner-home");
+		SourceHomes.settings(home, """
+			{"apiKeyHelper": "printf key"}
+			""");
+		return Map.of("PATH", "", Platform.current().homeVariable(), home.toString());
+	}
+
+	/**
+	 * Runs a launch in this process, as CAT's own starter starts it with a bound that denies nothing and a capacity
+	 * slot that the starter holds, and returns its exit status.
+	 *
+	 * @param root        the test's directory, which holds the project and the results folder
+	 * @param options     the launch's options beyond its project, results folder, profile and bound
+	 * @param environment the runner's environment
+	 * @param errors      receives why the launch was refused
+	 * @return the exit status
+	 * @throws IOException if the launch fails without being refused
+	 */
+	private static int launchWithAuthentication(Path root, List<String> options, Map<String, String> environment,
+		StringWriter errors) throws IOException
+	{
+		return launchWithAuthentication(root, options, environment, errors, List.of());
+	}
+
+	/**
+	 * Runs a launch in this process, as CAT's own starter starts it with a bound and a capacity slot that the starter
+	 * holds, and returns its exit status.
+	 *
+	 * @param root        the test's directory, which holds the project and the results folder
+	 * @param options     the launch's options beyond its project, results folder, profile and bound
+	 * @param environment the runner's environment
+	 * @param errors      receives why the launch was refused
+	 * @param readDenials the files and folders that the bound denies the session reading
+	 * @return the exit status
+	 * @throws IOException if the launch fails without being refused
+	 */
+	private static int launchWithAuthentication(Path root, List<String> options, Map<String, String> environment,
+		StringWriter errors, List<Path> readDenials) throws IOException
+	{
+		Path project = Files.createDirectories(root.resolve("project"));
+		JsonMapper json = JsonMapper.builder().build();
+		List<String> denials = new ArrayList<>();
+		for (Path denial : readDenials)
+			denials.add(json.writeValueAsString(denial.toString()));
+		Path bound = Files.writeString(root.resolve("authentication-bound.json"), """
+			{"format_version": 1, "write_roots": [%s], "write_denials": [], "read_denials": [%s],
+			 "read_reallowances": [], "hosts": ["api.anthropic.com", "gateway.example"], "allow_local_binding": false}
+			""".formatted(json.writeValueAsString(root.toString()), String.join(", ", denials)));
+		List<String> args = new ArrayList<>(List.of("--project", project.toString(), "--results",
+			root.resolve("results").toString(), "--model", "sonnet", "--effort", "low", "--capacity-held",
+			PolicyBoundFile.OPTION, bound.toString()));
+		args.addAll(options);
+		PrintWriter writer = new PrintWriter(errors, true);
+		return HarnessRunnerOptions.refusingInvalidArguments(() -> ClaudeRunnerCli.launch(args.toArray(String[]::new),
+			environment, Yielding.waiting(), new StringReader(""), new ByteArrayOutputStream(), writer,
+			() -> root.resolve("plugin"), () ->
+			{
+				throw new AssertionError("No session's tool scope is opened");
+			}), writer);
 	}
 }

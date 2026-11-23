@@ -15,12 +15,13 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Learns a child's needs from the runner of the child's harness, which alone knows the harness's model host, its
- * dependency caches and the login that its isolated home copies. The runner runs with
+ * dependency caches and the files that hold the child's credential. The runner runs with
  * {@link ChildNeedsReport#OPTION} in the request's directory and writes {@link ChildNeedsReport#FILE_NAME} there.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
@@ -54,7 +55,7 @@ public final class RunnerChildNeeds implements ChildNeedsSource
 	 * {@inheritDoc}
 	 * <p>
 	 * The child needs its session folder, the request's denied reads, and the writes and hosts that its harness's runner
-	 * reports. A child whose isolated home would copy a login file that {@code bound} denies reading is refused.
+	 * reports. A child whose credential is in a file that {@code bound} denies reading is refused.
 	 *
 	 * @throws IOException if the runner cannot start, does not report within 60 seconds, fails, or writes an invalid
 	 *                     report
@@ -80,7 +81,8 @@ public final class RunnerChildNeeds implements ChildNeedsSource
 
 	/**
 	 * Returns what a child needs, as its harness's runner reports it, once the parent's policy lets the parent's
-	 * commands read every login that the child copies: the child's commands could read the copy in its session folder.
+	 * commands read every file that holds the child's credential: a session may use only a credential that it may read,
+	 * and a launch never extends its requester's reach.
 	 *
 	 * @param harness       the child's harness identifier
 	 * @param report        what the child's harness's runner reports
@@ -90,8 +92,9 @@ public final class RunnerChildNeeds implements ChildNeedsSource
 	 * @return the child's needs
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code harness} is blank
-	 * @throws IOException              if a symbolic link in a login's path cannot be read
-	 * @throws PolicyRefusal            if the parent's policy denies reading a login
+	 * @throws IOException              if a symbolic link in a file's path cannot be read
+	 * @throws PolicyRefusal            if the parent's policy denies reading a file that holds the child's credential;
+	 *                                  the reason names the file and the read denial that holds it
 	 */
 	public static ChildNeeds needs(String harness, ChildNeedsReport report, Path sessionFolder, List<Path> deniedReads,
 		ParentPolicy bound) throws IOException, PolicyRefusal
@@ -103,11 +106,13 @@ public final class RunnerChildNeeds implements ChildNeedsSource
 		requireThat(bound, "bound").isNotNull();
 		for (Path login : report.logins())
 		{
-			if (!bound.mayRead(login))
+			Optional<Path> denial = bound.readDenial(login);
+			if (denial.isPresent())
 			{
-				throw new PolicyRefusal("its sandbox denies its commands reading " + login + ", the login that a " +
-					"requested " + harness + " session copies into its session folder, where the commands could read it",
-					"Let the session's sandbox read " + login + ", then start a new session");
+				throw new PolicyRefusal("its sandbox denies its commands reading " + denial.get() + ", which holds " +
+					login + ", a file that holds the credential of the requested " + harness + " session, and a launch " +
+					"never uses a credential that its requester may not read", "Let the session's sandbox read " + login +
+					", or name another source home with --home, then start a new session");
 			}
 		}
 		return new ChildNeeds(sessionFolder, report.writes(), deniedReads, report.hosts());

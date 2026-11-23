@@ -850,9 +850,9 @@ public abstract class CampaignStoreContract
 					new Throttle(resetsAt, 1, 2, 1),
 					List.of(new RateLimitWindow(0.97, resetsAt), new RateLimitWindow(0.25, null)),
 					HostLogin.SUBSCRIPTION, new TokenUsage(100, 20, 30, 10),
-					new CommandSummary(Duration.ofMillis(17_181), 2)),
+					new CommandSummary(Duration.ofMillis(17_181), 2), null),
 				new TrialSession(Instant.parse("2026-10-01T10:05:00Z"), Instant.parse("2026-10-01T10:05:00Z"), 1,
-					Throttle.NONE, List.of(), HostLogin.API_KEY, null, CommandSummary.UNKNOWN));
+					Throttle.NONE, List.of(), HostLogin.API_KEY, null, CommandSummary.UNKNOWN, null));
 			store.writeTrialSession("campaign-1", assigned.key(), sessions.getFirst());
 			store.writeAssignment("campaign-1", assigned);
 			store.writeTrialSession("campaign-1", assigned.key(), sessions.getLast());

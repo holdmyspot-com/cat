@@ -44,8 +44,10 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * --conversation}, the launch publishes the request without its records and sends each of the conversation's messages
  * as the request's next record while the session runs. When the parent's nested session may request no further session,
  * the parent refuses the request and the launch exits with status 2 and the reason. Inside a nested session, the parent
- * chooses the results folder, the artifact, its own denied reads and the limits of the sessions it requests, so a
- * launch may not choose them; outside a nested session, a launch chooses the limits of the session it requests. The
+ * chooses the results folder, the artifact, its own denied reads, the limits of the sessions it requests and the source
+ * home and gateway login class of their credential, so a launch may not choose them: the parent runner, which runs with
+ * the user's permissions, would otherwise read files that the session chose. Outside a nested session, a launch chooses
+ * the limits, the source home and the gateway login class of the session it requests. The
  * copy of the session's nested session that its runner returns is copied into the launch's results folder, which inside
  * a nested session only a launch that names one has; otherwise the copy stays in the response that the nested session's
  * runner keeps. A launch may name the options that only narrow the requested session or describe its own inputs:
@@ -65,7 +67,8 @@ public final class SessionRequestForwarder
 	 */
 	private static final Map<String, String> PARENT_OPTIONS = Map.of("--session-requests", "session_requests",
 		"--request-depth", "request_depth", "--max-concurrency", "max_concurrency", "--capacity-wait", "capacity_wait",
-		"--agent", "agent");
+		"--agent", "agent", AuthenticationOptions.HOME_OPTION, "home", AuthenticationOptions.LOGIN_CLASS_OPTION,
+		"gateway_login_class");
 
 	/**
 	 * The runner that serves a launch's request.
@@ -573,10 +576,15 @@ public final class SessionRequestForwarder
 					throw new InvalidArgumentsException("Missing value for " + option);
 				index += 1;
 				String field = PARENT_OPTIONS.get(option);
-				if (option.equals("--agent"))
-					request.put(field, args[index]);
-				else
-					request.put(field, count(option, args[index]));
+				switch (option)
+				{
+					case "--agent" -> request.put(field, args[index]);
+					case AuthenticationOptions.HOME_OPTION ->
+						request.put(field, AuthenticationOptions.parseHome(args[index]).toString());
+					case AuthenticationOptions.LOGIN_CLASS_OPTION -> request.put(field,
+						AuthenticationOptions.classValue(AuthenticationOptions.parseLoginClass(args[index])));
+					default -> request.put(field, count(option, args[index]));
+				}
 				continue;
 			}
 			switch (option)

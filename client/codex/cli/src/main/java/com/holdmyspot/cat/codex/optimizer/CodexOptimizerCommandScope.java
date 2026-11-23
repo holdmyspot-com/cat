@@ -21,6 +21,7 @@ import com.holdmyspot.cat.common.optimizer.cli.MainOptimizerCommandScope;
 import com.holdmyspot.cat.common.optimizer.port.HostInterruptSignal;
 import com.holdmyspot.cat.common.optimizer.port.ProfileInventory;
 import com.holdmyspot.cat.common.optimizer.port.SessionPort;
+import com.holdmyspot.cat.common.runner.AuthenticationOptions;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.MainHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
@@ -58,7 +59,8 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 			public CodexOptimizerCommandScope newCodexOptimizerCommandScope(Map<String, String> environment, Path home,
 				Path directory, Path artifact, Waiting waiting) throws IOException
 			{
-				return new CodexOptimizerCommandScope(environment, home, directory, artifact, waiting);
+				return new CodexOptimizerCommandScope(environment, home, directory, artifact, waiting,
+					AuthenticationOptions.DEFAULT);
 			}
 
 			@Override
@@ -88,13 +90,14 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	 *
 	 * @param waiting how the process waits between the attempts of a retried operation; the launcher supplies
 	 *   {@code Pause::sleeping}
+	 * @param authentication the command's choice of the source home and gateway login class
 	 * @throws IOException if the environment does not set the platform's home variable
 	 */
-	CodexOptimizerCommandScope(Waiting waiting) throws IOException
+	CodexOptimizerCommandScope(Waiting waiting, AuthenticationOptions authentication) throws IOException
 	{
 		this(Platform.current().environment(System.getenv()), home(Platform.current().environment(System.getenv())),
 			Path.of("").toAbsolutePath(),
-			PluginDirectory.of(CodexOptimizerCommandScope.class), waiting);
+			PluginDirectory.of(CodexOptimizerCommandScope.class), waiting, authentication);
 	}
 
 	/**
@@ -105,18 +108,19 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	 * @param directory   the working directory
 	 * @param artifact    the complete Codex artifact that nested sessions install
 	 * @param waiting     how the process waits between the attempts of a retried operation
+	 * @param authentication the command's choice of the source home and gateway login class
 	 * @throws NullPointerException if any argument is null
 	 * @throws IOException          if Codex's home cannot be located as Codex locates it
 	 */
-	CodexOptimizerCommandScope(Map<String, String> environment, Path home, Path directory, Path artifact, Waiting waiting)
-		throws IOException
+	CodexOptimizerCommandScope(Map<String, String> environment, Path home, Path directory, Path artifact, Waiting waiting,
+		AuthenticationOptions authentication) throws IOException
 	{
 		requireThat(environment, "environment").isNotNull();
 		requireThat(home, "home").isNotNull();
 		requireThat(artifact, "artifact").isNotNull();
 		Path configurationDirectory = CodexInstallation.resolveHome(environment, home, directory.toAbsolutePath());
 		super(Harness.CODEX, CodexSessionSandbox::refusal, CodexSessionHarness.HARNESS, CodexRunnerCli.MARKERS,
-			environment, configurationDirectory, directory, LOADER_CONFIGURATION, waiting);
+			environment, configurationDirectory, directory, LOADER_CONFIGURATION, waiting, authentication);
 		this.environment = Map.copyOf(environment);
 		this.artifact = artifact;
 		this.configurationDirectory = configurationDirectory;
@@ -287,7 +291,7 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 			environment, configurationDirectory, HarnessCapacity.forHome(jvm.fileLocks(), home, HARNESS_ID,
 				HarnessCapacity.MAXIMUM_CONCURRENCY, jvm.waiting()), clock, replacer,
 			Optional.of(ProjectRuleLoader.rulesDirectory(home)),
-			hostProject);
+			hostProject, authentication());
 		return new CodexSessions(settings, retainedTrials());
 	}
 

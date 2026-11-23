@@ -716,7 +716,8 @@ final class Session implements SessionHandle
 	 * A contract author session that receives a draft directory asks for the draft's symbolic-link declarations with
 	 * its result. Every session is denied reading the host session's project, except its own nested session and the
 	 * evidence that it reads, and a session of the development part is also denied reading the held-out locations. A
-	 * session whose request asks for extra permissions names the file that lists them.
+	 * session whose request asks for extra permissions names the file that lists them. Every session receives the
+	 * command's source home and gateway login class.
 	 *
 	 * @param workspace the directory that holds the trial's workspace files, or {@code null} if there are none
 	 * @param permissions the file that lists the request's extra permissions, or {@code null} if it asks for none
@@ -752,6 +753,7 @@ final class Session implements SessionHandle
 			arguments.add(RunnerArguments.HELD_OUT_OPTION);
 		TrialProfile profile = request.profile();
 		arguments.addAll(List.of("--model", profile.model(), "--effort", profile.effort()));
+		arguments.addAll(settings.authentication().arguments());
 		if (profile.toolOutputTokenLimit() > 0)
 			arguments.addAll(List.of("--tool-output-token-limit", String.valueOf(profile.toolOutputTokenLimit())));
 		if (installCat)
@@ -794,6 +796,8 @@ final class Session implements SessionHandle
 		List<String> options = new ArrayList<>(List.of(RunnerArguments.RESUME_OPTION, retainedSession,
 			"--results", resultsFolder().toString(), "--model", profile.model(), "--effort", profile.effort(),
 			"--session-transcripts"));
+		// A resumed session takes its credential from the resuming command's source home
+		options.addAll(settings.authentication().arguments());
 		if (request.part() == Part.HELD_OUT)
 			options.add(RunnerArguments.HELD_OUT_OPTION);
 		if (permissions != null)

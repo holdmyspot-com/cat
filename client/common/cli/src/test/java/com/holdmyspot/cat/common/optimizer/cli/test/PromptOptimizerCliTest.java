@@ -25,6 +25,7 @@ import com.holdmyspot.cat.common.optimizer.contract.PromptConfiguration;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.inventory.InventoryScanner;
 import com.holdmyspot.cat.common.optimizer.port.HookRegistration;
+import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.port.LoadedSources;
 import com.holdmyspot.cat.common.optimizer.port.PluginBase;
 import com.holdmyspot.cat.common.optimizer.port.UnreachableReference;
@@ -32,6 +33,7 @@ import com.holdmyspot.cat.common.optimizer.port.test.FakeProfileInventory;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort;
 import com.holdmyspot.cat.common.optimizer.store.CampaignStore;
 import com.holdmyspot.cat.common.optimizer.store.TrialRecovery;
+import com.holdmyspot.cat.common.runner.AuthenticationOptions;
 import com.holdmyspot.cat.common.runner.RetainedTrialResponse;
 import com.holdmyspot.cat.common.runner.RetainedTrialResponse.HarnessSession;
 import com.holdmyspot.cat.common.runner.RetainedTrialResponse.Identity;
@@ -39,6 +41,7 @@ import com.holdmyspot.cat.common.runner.RetainedTrialResponse.Status;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.secrets.OptimizerCommandScopeSecrets;
 import com.holdmyspot.cat.common.test.ExitedProcess;
+import java.util.concurrent.atomic.AtomicReference;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
@@ -104,7 +107,7 @@ public final class PromptOptimizerCliTest
 				});
 
 				int exit = PromptOptimizerCli.run(new String[]{"evaluator-info", project.toString(), staged.toString(),
-					target}, () -> scope, ZoneOffset.UTC, out);
+					target}, _ -> scope, ZoneOffset.UTC, out);
 
 				requireThat(exit, "exit").isEqualTo(0);
 				String report = bytes.toString(StandardCharsets.UTF_8);
@@ -143,7 +146,7 @@ public final class PromptOptimizerCliTest
 				PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
 			{
 				int exit = PromptOptimizerCli.run(new String[]{"evaluator-info", project.toString(), project.toString(),
-					target}, () -> scope, ZoneOffset.UTC, out);
+					target}, _ -> scope, ZoneOffset.UTC, out);
 
 				requireThat(exit, "exit").isEqualTo(0);
 				EvaluatorMetadata result = EvaluatorMetadata.read(JsonMapper.builder().build(),
@@ -240,7 +243,7 @@ public final class PromptOptimizerCliTest
 							return List.of("PostToolUse check");
 						});
 						String[] args = command.subList(1, command.size()).toArray(String[]::new);
-						int exit = PromptOptimizerCli.run(args, () -> peer, ZoneOffset.UTC, out);
+						int exit = PromptOptimizerCli.run(args, _ -> peer, ZoneOffset.UTC, out);
 						return new ExitedProcess(builder, exit, bytes.toString(StandardCharsets.UTF_8), "");
 					}
 				});
@@ -274,7 +277,7 @@ public final class PromptOptimizerCliTest
 			try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
 			{
 				int exit = PromptOptimizerCli.run(new String[]{"evaluator-info", project.toString(), project.toString(),
-					target.toString()}, () -> TestOptimizerCommandScope.of(owner, project), ZoneOffset.UTC, out);
+					target.toString()}, _ -> TestOptimizerCommandScope.of(owner, project), ZoneOffset.UTC, out);
 				requireThat(exit, "exit").isEqualTo(0);
 			}
 
@@ -313,7 +316,7 @@ public final class PromptOptimizerCliTest
 			try (TestOptimizerCommandScope<?> scope = TestOptimizerCommandScope.of(Harness.CLAUDE, project);
 				PrintStream out = new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8))
 			{
-				int exit = PromptOptimizerCli.run(new String[]{"frobnicate"}, () -> scope, ZoneOffset.UTC, out);
+				int exit = PromptOptimizerCli.run(new String[]{"frobnicate"}, _ -> scope, ZoneOffset.UTC, out);
 
 				requireThat(exit, "exit").isEqualTo(2);
 				requireThat(scope.isClosed(), "closed").isTrue();
@@ -340,7 +343,7 @@ public final class PromptOptimizerCliTest
 			{
 				scope.useHome(home);
 
-				int exit = PromptOptimizerCli.run(new String[]{"status", "AGENTS.md"}, () -> scope, ZoneOffset.UTC,
+				int exit = PromptOptimizerCli.run(new String[]{"status", "AGENTS.md"}, _ -> scope, ZoneOffset.UTC,
 					out);
 
 				requireThat(exit, "exit").isEqualTo(1);
@@ -362,7 +365,7 @@ public final class PromptOptimizerCliTest
 		ByteArrayOutputStream bytes = new ByteArrayOutputStream();
 		try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
 		{
-			int exit = PromptOptimizerCli.run(new String[]{"status"}, () ->
+			int exit = PromptOptimizerCli.run(new String[]{"status"}, _ ->
 			{
 				throw new IOException("configuration unavailable");
 			}, ZoneOffset.UTC, out);
@@ -385,7 +388,7 @@ public final class PromptOptimizerCliTest
 		ByteArrayOutputStream bytes = new ByteArrayOutputStream();
 		try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
 		{
-			int exit = PromptOptimizerCli.run(new String[]{"contract", "check", "missing-cat-contract.json"}, () ->
+			int exit = PromptOptimizerCli.run(new String[]{"contract", "check", "missing-cat-contract.json"}, _ ->
 			{
 				throw new AssertionError("A contract tool opened a command scope");
 			}, ZoneOffset.UTC, out);
@@ -418,7 +421,7 @@ public final class PromptOptimizerCliTest
 			try (TestOptimizerCommandScope<?> scope = TestOptimizerCommandScope.of(Harness.CLAUDE, project);
 				PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
 			{
-				int exit = PromptOptimizerCli.run(new String[]{"start", "AGENTS.md"}, () -> scope, ZoneOffset.UTC, out);
+				int exit = PromptOptimizerCli.run(new String[]{"start", "AGENTS.md"}, _ -> scope, ZoneOffset.UTC, out);
 
 				requireThat(exit, "exit").isEqualTo(1);
 			}
@@ -449,7 +452,7 @@ public final class PromptOptimizerCliTest
 			try (TestOptimizerCommandScope<?> scope = TestOptimizerCommandScope.of(Harness.CODEX, project);
 				PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
 			{
-				int exit = PromptOptimizerCli.run(new String[]{"status", "AGENTS.md"}, () -> scope, ZoneOffset.UTC, out);
+				int exit = PromptOptimizerCli.run(new String[]{"status", "AGENTS.md"}, _ -> scope, ZoneOffset.UTC, out);
 
 				requireThat(exit, "exit").isEqualTo(1);
 			}
@@ -459,6 +462,52 @@ public final class PromptOptimizerCliTest
 			requireThat(result.get("message").asString(), "message").
 				isEqualTo("No campaign or certification record exists for AGENTS.md.");
 			requireThat(contents(project), "contents").isEqualTo(before);
+		}
+	}
+
+	/**
+	 * Verifies that a command that starts sessions passes its source home and gateway login class to the scope that
+	 * starts the sessions, so that every session that the command starts takes its credential from that source home,
+	 * while a command that starts no session refuses them with the invalid-input status, naming the option, before it
+	 * opens a scope.
+	 *
+	 * @throws IOException if the test project cannot be created
+	 */
+	@Test
+	public void passesSourceHomeToSessionStartingCommand() throws IOException
+	{
+		// Requirement: R-I14
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("prompt-optimizer-cli-"));
+			Files.createDirectory(project.resolve(".git"));
+			Files.writeString(project.resolve("AGENTS.md"), "Be brief.\n");
+			Path home = Files.createDirectories(project.resolve("source-home"));
+			AtomicReference<AuthenticationOptions> received = new AtomicReference<>();
+			try (TestOptimizerCommandScope<?> scope = TestOptimizerCommandScope.of(Harness.CODEX, project);
+				PrintStream out = new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8))
+			{
+				PromptOptimizerCli.run(new String[]{"start", "AGENTS.md", "--home", home.toString(),
+					"--gateway-login-class", "api_key"}, authentication ->
+				{
+					received.set(authentication);
+					return scope;
+				}, ZoneOffset.UTC, out);
+			}
+			requireThat(received.get(), "received").isEqualTo(new AuthenticationOptions(Optional.of(home),
+				Optional.of(HostLogin.API_KEY), false));
+
+			ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+			try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
+			{
+				int exit = PromptOptimizerCli.run(new String[]{"status", "AGENTS.md", "--home", home.toString()}, _ ->
+				{
+					throw new AssertionError("A command that starts no session opened a scope");
+				}, ZoneOffset.UTC, out);
+
+				requireThat(exit, "exit").isEqualTo(2);
+			}
+			requireThat(bytes.toString(StandardCharsets.UTF_8), "output").contains("--home");
 		}
 	}
 
@@ -521,7 +570,7 @@ public final class PromptOptimizerCliTest
 					default -> new String[]{"run", campaign};
 				};
 				Map<String, String> before = contents(project);
-				int exit = PromptOptimizerCli.run(args, () -> scope, ZoneOffset.UTC, out);
+				int exit = PromptOptimizerCli.run(args, _ -> scope, ZoneOffset.UTC, out);
 
 				int expectedProbes = switch (preflight)
 				{

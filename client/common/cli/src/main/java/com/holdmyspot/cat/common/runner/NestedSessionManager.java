@@ -50,6 +50,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import tools.jackson.core.JacksonException;
+import tools.jackson.databind.SerializationFeature;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -120,7 +121,8 @@ public final class NestedSessionManager
 		  "turn_number": (?<turnNumber>[0-9]+),
 		  "exit_code": (?<exitCode>null|-?[0-9]+),
 		  "finished_at": (?<finishedAt>null|"(?<finishedAtValue>[^\"]+)"),
-		  "diagnostic": "[^"\\\\]*+(?:\\\\.[^"\\\\]*+)*+"
+		  "diagnostic": "[^"\\\\]*+(?:\\\\.[^"\\\\]*+)*+"\
+		(?:,\\n  "authentication": (?<authentication>\\{[^\\n]*\\}))?
 		}\\n\\z""");
 
 	/**
@@ -577,7 +579,7 @@ public final class NestedSessionManager
 			writeManifest(new Manifest(harness, id, "running", "initializing", HarnessProcessState.ABSENT,
 				owner.pid(), ownerStart, null, null,
 				clock.instant(), null, 0,
-				"", "", "", "", null, 0, null, null, ""), directory);
+				"", "", "", "", null, 0, null, null, "", null), directory);
 			if (launchArguments != null)
 				NestedSessionLaunch.write(JsonMapper.builder().build(), directory, launchArguments, replacer);
 			if (tracksTurnCheckpoints())
@@ -719,7 +721,7 @@ public final class NestedSessionManager
 						HarnessProcessState.ABSENT, owner.pid(), ownerStart, null, null, manifest.createdAt(),
 						manifest.harnessSessionId(), manifest.requestsUsed(), manifest.artifactPath(), manifest.projectPath(),
 						manifest.transport(), manifest.harnessCommand(), manifest.startedAt(), manifest.turnNumber(),
-							null, null, ""),
+							null, null, "", manifest.authentication()),
 						directory);
 					completeStartup(nestedSession, ownerStart);
 				}
@@ -810,7 +812,8 @@ public final class NestedSessionManager
 				previous.harnessStart(), previous.createdAt(), harnessSessionId, previous.requestsUsed(),
 				previous.artifactPath(),
 				previous.projectPath(), previous.transport(), previous.harnessCommand(), previous.startedAt(),
-				previous.turnNumber(), previous.exitCode(), previous.finishedAt(), previous.diagnostic()),
+				previous.turnNumber(), previous.exitCode(), previous.finishedAt(), previous.diagnostic(),
+				previous.authentication()),
 				nestedSession.directory());
 		}
 	}
@@ -872,7 +875,7 @@ public final class NestedSessionManager
 				previous.harnessStart(), previous.createdAt(), previous.harnessSessionId(), requestsUsed,
 				previous.artifactPath(), previous.projectPath(), previous.transport(), previous.harnessCommand(),
 				previous.startedAt(), previous.turnNumber(), previous.exitCode(), previous.finishedAt(),
-				previous.diagnostic()), nestedSession.directory());
+				previous.diagnostic(), previous.authentication()), nestedSession.directory());
 		}
 	}
 
@@ -918,6 +921,24 @@ public final class NestedSessionManager
 	public void initialize(NestedSession nestedSession, Path artifact, Path project, String transport,
 		List<String> command) throws IOException
 	{
+		initialize(nestedSession, artifact, project, transport, command, null);
+	}
+
+	/**
+	 * Records non-secret metadata required to investigate an owned harness process, with the authentication that the
+	 * harness uses, which names the source home and the copied parts but no secret.
+	 *
+	 * @param nestedSession  the owned nested session
+	 * @param artifact       the complete harness artifact
+	 * @param project        the source project
+	 * @param transport      the persistent harness transport identifier
+	 * @param command        the harness command with any secret values redacted
+	 * @param authentication the authentication that the harness uses, or null if the runner records none
+	 * @throws IOException if the manifest cannot be persisted
+	 */
+	public void initialize(NestedSession nestedSession, Path artifact, Path project, String transport,
+		List<String> command, AuthenticationEvidence authentication) throws IOException
+	{
 		synchronized (this)
 		{
 			requireThat(nestedSession, "nestedSession").isNotNull();
@@ -928,6 +949,13 @@ public final class NestedSessionManager
 			Manifest previous = readManifest(nestedSession);
 			if (!previous.state().equals("running"))
 				throw new IOException("Cannot initialize a terminal nested session");
+			String recorded = previous.authentication();
+			if (authentication != null)
+			{
+				JsonMapper json = JsonMapper.builder().build();
+				recorded = json.writer().without(SerializationFeature.INDENT_OUTPUT).
+					writeValueAsString(authentication.toJson(json));
+			}
 			writeManifest(new Manifest(previous.harness(), previous.id(), previous.state(), previous.phase(),
 				previous.harnessProcessState(),
 				previous.ownerPid(),
@@ -935,7 +963,7 @@ public final class NestedSessionManager
 				previous.harnessSessionId(), previous.requestsUsed(),
 				artifact.toAbsolutePath().normalize().toString(), project.toAbsolutePath().normalize().toString(), transport,
 				redact(command), clock.instant(), previous.turnNumber(), previous.exitCode(), previous.finishedAt(),
-				previous.diagnostic()), nestedSession.directory());
+				previous.diagnostic(), recorded), nestedSession.directory());
 		}
 	}
 
@@ -1025,7 +1053,8 @@ public final class NestedSessionManager
 				previous.requestsUsed(),
 				previous.artifactPath(),
 				previous.projectPath(), previous.transport(), previous.harnessCommand(), previous.startedAt(),
-				previous.turnNumber(), previous.exitCode(), previous.finishedAt(), previous.diagnostic()),
+				previous.turnNumber(), previous.exitCode(), previous.finishedAt(), previous.diagnostic(),
+				previous.authentication()),
 				nestedSession.directory());
 		}
 	}
@@ -1085,7 +1114,8 @@ public final class NestedSessionManager
 			previous.requestsUsed(),
 			previous.artifactPath(),
 			previous.projectPath(), previous.transport(), previous.harnessCommand(), previous.startedAt(),
-			previous.turnNumber(), previous.exitCode(), previous.finishedAt(), previous.diagnostic());
+			previous.turnNumber(), previous.exitCode(), previous.finishedAt(), previous.diagnostic(),
+			previous.authentication());
 	}
 
 	/**
@@ -1140,7 +1170,8 @@ public final class NestedSessionManager
 				previous.harnessProcessState(), previous.ownerPid(), previous.ownerStart(), previous.harnessPid(),
 				previous.harnessStart(), previous.createdAt(), previous.harnessSessionId(), previous.requestsUsed(),
 				previous.artifactPath(), previous.projectPath(), previous.transport(), previous.harnessCommand(),
-				previous.startedAt(), previous.turnNumber(), result.exitCode(), previous.finishedAt(), previous.diagnostic()),
+				previous.startedAt(), previous.turnNumber(), result.exitCode(), previous.finishedAt(), previous.diagnostic(),
+				previous.authentication()),
 				nestedSession.directory());
 		}
 	}
@@ -1165,7 +1196,8 @@ public final class NestedSessionManager
 				previous.harnessProcessState(), previous.ownerPid(), previous.ownerStart(), previous.harnessPid(),
 				previous.harnessStart(), previous.createdAt(), previous.harnessSessionId(), previous.requestsUsed(),
 				previous.artifactPath(), previous.projectPath(), previous.transport(), previous.harnessCommand(),
-				previous.startedAt(), turnNumber, previous.exitCode(), previous.finishedAt(), previous.diagnostic()),
+				previous.startedAt(), turnNumber, previous.exitCode(), previous.finishedAt(), previous.diagnostic(),
+				previous.authentication()),
 				nestedSession.directory());
 		}
 	}
@@ -1893,7 +1925,8 @@ public final class NestedSessionManager
 					manifest.harnessSessionId(), manifest.requestsUsed(),
 					manifest.artifactPath(), manifest.projectPath(), manifest.transport(), manifest.harnessCommand(),
 					manifest.startedAt(), manifest.turnNumber(), manifest.exitCode(), clock.instant(),
-					"Runner process ended without recording a terminal result"), nestedSession.directory());
+					"Runner process ended without recording a terminal result",
+					manifest.authentication()), nestedSession.directory());
 				return true;
 			}
 			catch (IOException e)
@@ -1952,7 +1985,8 @@ public final class NestedSessionManager
 				previous.requestsUsed(),
 				previous.artifactPath(),
 				previous.projectPath(), previous.transport(), previous.harnessCommand(), previous.startedAt(),
-				previous.turnNumber(), previous.exitCode(), finishedAt, diagnostic), nestedSession.directory());
+				previous.turnNumber(), previous.exitCode(), finishedAt, diagnostic,
+				previous.authentication()), nestedSession.directory());
 		}
 	}
 
@@ -1978,7 +2012,7 @@ public final class NestedSessionManager
 				previous.harnessSessionId(), previous.requestsUsed(),
 				previous.artifactPath(), previous.projectPath(), previous.transport(), previous.harnessCommand(),
 				previous.startedAt(), previous.turnNumber(), previous.exitCode(), previous.finishedAt(),
-				previous.diagnostic()), nestedSession.directory());
+				previous.diagnostic(), previous.authentication()), nestedSession.directory());
 		}
 	}
 
@@ -2012,10 +2046,24 @@ public final class NestedSessionManager
 			nullableString(manifest.startedAt()) + ",\n  \"turn_number\": " + manifest.turnNumber() +
 			",\n  \"exit_code\": " + nullableNumber(manifest.exitCode()) + ",\n  \"finished_at\": " +
 			nullableString(manifest.finishedAt()) + ",\n  \"diagnostic\": \"" +
-			escape(manifest.diagnostic()) + "\"\n}\n";
+			escape(manifest.diagnostic()) + "\"" + authenticationField(manifest.authentication()) + "\n}\n";
 		writeAtomically(directory.resolve("session.json"), content);
 		if (!manifest.state().equals("running"))
 			HarnessCredentials.removeLoginCopies(directory);
+	}
+
+	/**
+	 * Returns the manifest's field that records the authentication that a nested session's harness uses.
+	 *
+	 * @param authentication the compact JSON object of the authentication, or null if the runner records none
+	 * @return the field, preceded by the comma that ends the field before it, or an empty string if
+	 *   {@code authentication} is null
+	 */
+	private static String authenticationField(String authentication)
+	{
+		if (authentication == null)
+			return "";
+		return ",\n  \"" + AuthenticationEvidence.FIELD + "\": " + authentication;
 	}
 
 	/**
@@ -2137,7 +2185,7 @@ public final class NestedSessionManager
 				unescape(matcher.group("artifactPath")),
 				unescape(matcher.group("projectPath")), unescape(matcher.group("transport")),
 				unescape(matcher.group("harnessCommand")), startedAt, Integer.parseInt(matcher.group("turnNumber")),
-				exitCode, finishedAt, "");
+				exitCode, finishedAt, "", matcher.group("authentication"));
 		}
 		catch (JacksonException e)
 		{
@@ -2247,6 +2295,8 @@ public final class NestedSessionManager
 	 * @param exitCode the latest observed harness-turn or externally reported runner exit status, if available
 	 * @param finishedAt the terminal timestamp, if terminal
 	 * @param diagnostic the optional diagnostic
+	 * @param authentication the compact JSON object of the {@link AuthenticationEvidence} of the credential that the
+	 *   harness uses, or null if the runner records none
 	 */
 	record Manifest(String harness, String id, String state, String phase,
 		HarnessProcessState harnessProcessState, long ownerPid, String ownerStart,
@@ -2254,7 +2304,7 @@ public final class NestedSessionManager
 		String artifactPath,
 		String projectPath,
 		String transport, String harnessCommand, Instant startedAt, int turnNumber, Integer exitCode, Instant finishedAt,
-		String diagnostic)
+		String diagnostic, String authentication)
 	{
 	}
 

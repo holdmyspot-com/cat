@@ -20,6 +20,7 @@ import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.optimizer.cli.HookCheck;
 import com.holdmyspot.cat.common.optimizer.port.HookInspection;
+import com.holdmyspot.cat.common.runner.AuthenticationOptions;
 import com.holdmyspot.cat.common.runner.HarnessArtifact;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessCapacityWaitExpiredException;
@@ -121,9 +122,10 @@ public final class CodexRunnerCli
 	 * Every other launch goes along its route, as {@link #launch(String[], Map, Waiting, Reader, OutputStream,
 	 * PrintWriter)} describes, and the launcher exits with the launch's status.
 	 * <p>
-	 * With {@code serve}, {@value ChildNeedsReport#OPTION} and a file, it writes what a Codex child session needs to
-	 * that file, as {@link CodexRunner#childNeeds(Map)} reports it, for the request server that asks before it
-	 * starts the child, and starts nothing.
+	 * With {@code serve}, {@value ChildNeedsReport#OPTION} and a file, optionally followed by the launch's
+	 * {@value AuthenticationOptions#HOME_OPTION} and {@value AuthenticationOptions#LOGIN_CLASS_OPTION}, it writes what a
+	 * Codex child session needs to that file, as {@link CodexRunner#childNeeds(Map)} reports it, for the request server
+	 * that asks before it starts the child, and starts nothing.
 	 * <p>
 	 * A brokered hook comparison reads its launch from standard input and writes its result to standard output.
 	 *
@@ -147,14 +149,24 @@ public final class CodexRunnerCli
 			System.out.println(HarnessArtifact.validate(Path.of(args[1]), Path.of(".codex-plugin/plugin.json")));
 			return;
 		}
-		if (args.length == 3 && args[0].equals("serve") && args[1].equals(ChildNeedsReport.OPTION))
+		if (args.length >= 3 && args[0].equals("serve") && args[1].equals(ChildNeedsReport.OPTION))
 		{
 			if (!MARKERS.running(environment).isEmpty())
 			{
 				errors().println(LaunchRoute.internalOptionRefusal(args).orElseThrow());
 				System.exit(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
 			}
-			CodexRunner.childNeeds(environment).write(JsonMapper.builder().build(), Path.of(args[2]));
+			String[] needsArgs = args;
+			int status = HarnessRunnerOptions.refusingInvalidArguments(() ->
+			{
+				// A Codex session does not yet take its credential from the source home that the request names, so the
+				// options are only checked
+				AuthenticationOptions.parseAlone(Arrays.copyOfRange(needsArgs, 3, needsArgs.length));
+				CodexRunner.childNeeds(environment).write(JsonMapper.builder().build(), Path.of(needsArgs[2]));
+				return 0;
+			}, errors());
+			if (status != 0)
+				System.exit(status);
 			return;
 		}
 		if (args.length == 2 && args[1].equals(HookComparisonLaunch.OPTION))

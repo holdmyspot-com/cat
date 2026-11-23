@@ -32,7 +32,7 @@ public sealed interface LaunchRoute
 		ChildNeedsReport.OPTION, RunnerArguments.GIT_NAME_OPTION, RunnerArguments.GIT_EMAIL_OPTION,
 		RunnerArguments.CONTINUE_AFTER_FAILED_TURN_OPTION, RunnerArguments.SLOT_ID_OPTION,
 		RunnerArguments.RESUME_SLOT_OPTION, RunnerArguments.STARTUP_PERMIT_OPTION,
-		RunnerArguments.INHERITED_DENY_READ_OPTION);
+		RunnerArguments.INHERITED_DENY_READ_OPTION, RunnerArguments.INHERITED_SOURCE_HOME_OPTION);
 
 	/**
 	 * Returns the reason for refusing a launch that a harness session runs and that names an option that only CAT's

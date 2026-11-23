@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.claude.optimizer.test;
 
+import com.holdmyspot.cat.claude.runner.test.SourceHomes;
 import com.holdmyspot.cat.common.JvmScope;
 
 import com.holdmyspot.cat.common.fakes.test.GitProjects;
@@ -43,6 +44,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
 import com.holdmyspot.cat.common.optimizer.port.UnreachableReference;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
+import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.fakes.test.RequestingNestedSession;
@@ -809,8 +811,8 @@ public final class ClaudeSessionsTest
 	}
 
 	/**
-	 * Verifies that the port classifies a signed-in host as a subscription, from the key names of its credential
-	 * file, without starting a session.
+	 * Verifies that the port classifies a source home whose only credential is the stored login as a subscription,
+	 * without starting a session.
 	 *
 	 * @throws IOException if a credential fixture cannot be created
 	 */
@@ -819,22 +821,22 @@ public final class ClaudeSessionsTest
 	{
 		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			// Requirement: R-E7
+			// Requirement: R-E7, R-I14
 			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
 				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
-				Files.writeString(root.resolve(".credentials.json"), "{\"claudeAiOauth\":{}}", UTF_8);
-
-				HostLogin login = loginPort(jvm, root, Map.of()).hostLogin();
-
+				Path home = SourceHomes.create(root, "home");
+				SourceHomes.storedLogin(home);
+				HostLogin login = loginPort(jvm, root, Map.of(Platform.current().homeVariable(), home.toString())).
+					hostLogin();
 				requireThat(login, "login").isEqualTo(HostLogin.SUBSCRIPTION);
 			}
 		}
 	}
 
 	/**
-	 * Verifies that the port classifies a host whose environment selects an API key as an API-key login, even when a
-	 * subscription credential file exists.
+	 * Verifies that the port classifies a source home whose settings hold an API key as an API-key login, even when it
+	 * also holds a stored subscription login, as Claude Code ranks the key first.
 	 *
 	 * @throws IOException if a credential fixture cannot be created
 	 */
@@ -843,49 +845,25 @@ public final class ClaudeSessionsTest
 	{
 		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			// Requirement: R-E7
+			// Requirement: R-E7, R-I14
 			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
 				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
-				Files.writeString(root.resolve(".credentials.json"), "{\"claudeAiOauth\":{}}", UTF_8);
-
-				HostLogin login = loginPort(jvm, root, Map.of("ANTHROPIC_API_KEY", "")).hostLogin();
-
+				Path home = SourceHomes.create(root, "home");
+				SourceHomes.storedLogin(home);
+				SourceHomes.settings(home, """
+					{"env": {"ANTHROPIC_API_KEY": "%s"}}
+					""".formatted(SourceHomes.SECRET));
+				HostLogin login = loginPort(jvm, root, Map.of(Platform.current().homeVariable(), home.toString())).
+					hostLogin();
 				requireThat(login, "login").isEqualTo(HostLogin.API_KEY);
 			}
 		}
 	}
 
 	/**
-	 * Verifies that the port classifies a session's host as a subscription when the session's environment names a
-	 * login store that holds a subscription login and a configuration directory that holds none, as the environment
-	 * of a session that CAT's runner starts does.
-	 *
-	 * @throws IOException if a credential fixture cannot be created
-	 */
-	@Test(timeOut = 120_000)
-	public void classifiesTheLoginStoreOfANestedSession() throws IOException
-	{
-		try (TestJvmScope jvm = new TestJvmScope())
-		{
-			try (TemporaryDirectories cleanup = new TemporaryDirectories())
-			{
-				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
-				Path store = Files.createDirectories(root.resolve("store"));
-				Files.writeString(store.resolve(".credentials.json"), "{\"claudeAiOauth\":{}}", UTF_8);
-
-				HostLogin login = loginPort(jvm, root.resolve("session-home"),
-					Map.of("CLAUDE_SECURESTORAGE_CONFIG_DIR", store.toString())).hostLogin();
-
-				requireThat(login, "login").isEqualTo(HostLogin.SUBSCRIPTION);
-			}
-		}
-	}
-
-	/**
-	 * Verifies that the port classifies the host as the class that a CAT runner states in {@code CAT_HOST_LOGIN},
-	 * although neither the session's configuration directory nor a login store that it can read holds a login, as in
-	 * a session whose commands cannot read the user's login file.
+	 * Verifies that inside a nested session the port classifies the host as the class that the nested session's
+	 * runner states in {@code CAT_HOST_LOGIN}, because the nested session's commands may not read its source home.
 	 *
 	 * @throws IOException if a fixture cannot be created
 	 */
@@ -897,17 +875,15 @@ public final class ClaudeSessionsTest
 			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
 				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
-
-				HostLogin login = loginPort(jvm, root, Map.of("CAT_HOST_LOGIN", "subscription")).hostLogin();
-
+				HostLogin login = loginPort(jvm, root, Map.of(HarnessEnvironment.NESTED_SESSION_VARIABLE,
+					HarnessEnvironment.NESTED_SESSION_VALUE, "CAT_HOST_LOGIN", "subscription")).hostLogin();
 				requireThat(login, "login").isEqualTo(HostLogin.SUBSCRIPTION);
 			}
 		}
 	}
 
 	/**
-	 * Verifies that the port reports an unknown login when the host has neither a credential file nor a login
-	 * variable.
+	 * Verifies that inside a nested session whose runner states no class, the port reports an unknown login.
 	 *
 	 * @throws IOException if a credential fixture cannot be created
 	 */
@@ -920,9 +896,8 @@ public final class ClaudeSessionsTest
 			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
 				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
-
-				HostLogin login = loginPort(jvm, root, Map.of()).hostLogin();
-
+				HostLogin login = loginPort(jvm, root, Map.of(HarnessEnvironment.NESTED_SESSION_VARIABLE,
+					HarnessEnvironment.NESTED_SESSION_VALUE)).hostLogin();
 				requireThat(login, "login").isEqualTo(HostLogin.UNKNOWN);
 			}
 		}

@@ -245,19 +245,28 @@ public final class RequestServer
 
 	/**
 	 * Returns what a requested session needs, as its harness's runner reports it when it runs with
-	 * {@value ChildNeedsReport#OPTION}. The runner reports into a folder of its own inside the new session's session
-	 * folder.
+	 * {@value ChildNeedsReport#OPTION} and the launch's choice of source home and gateway login class, which decide the
+	 * files that hold the session's credential. The runner reports into a folder of its own inside the new session's
+	 * session folder.
 	 *
-	 * @param starter starts the runner of the new session's harness
-	 * @param cleanup receives the folder that the runner reports into
+	 * @param starter        starts the runner of the new session's harness
+	 * @param authentication the launch's choice of source home and gateway login class
+	 * @param cleanup        receives the folder that the runner reports into
 	 * @return the needs
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	private static ChildNeedsSource runnerNeeds(RequestedRunner.Start starter, TemporaryDirectories cleanup)
+	private static ChildNeedsSource runnerNeeds(RequestedRunner.Start starter, AuthenticationOptions authentication,
+		TemporaryDirectories cleanup)
 	{
 		requireThat(starter, "starter").isNotNull();
+		requireThat(authentication, "authentication").isNotNull();
 		requireThat(cleanup, "cleanup").isNotNull();
-		RunnerChildNeeds runner = new RunnerChildNeeds((_, arguments, directory) -> starter.run(arguments, directory));
+		RunnerChildNeeds runner = new RunnerChildNeeds((_, arguments, directory) ->
+		{
+			List<String> withAuthentication = new ArrayList<>(arguments);
+			withAuthentication.addAll(authentication.arguments());
+			return starter.run(withAuthentication, directory);
+		});
 		return (harness, sessionFolder, deniedReads, bound) ->
 		{
 			Path directory = cleanup.add(Files.createTempDirectory(Files.createDirectories(sessionFolder),
@@ -791,8 +800,9 @@ public final class RequestServer
 		}
 
 		/**
-		 * Applies the request's own choices of the session's requests, capacity wait and concurrency, and bounds the
-		 * session by the intersection of the session's policy and what the new session needs.
+		 * Applies the request's own choices of the session's requests, capacity wait, concurrency, source home and gateway
+		 * login class, and bounds the session by the intersection of the session's policy and what the new session needs,
+		 * which refuses a session whose credential is in a file that the session's policy denies reading.
 		 *
 		 * @param request       the request
 		 * @param resultsFolder the request's results folder
@@ -815,8 +825,10 @@ public final class RequestServer
 				options.addAll(List.of("--session-requests", String.valueOf(request.sessionRequests())));
 			if (request.requestDepth() > 0)
 				options.addAll(List.of("--request-depth", String.valueOf(request.requestDepth())));
+			options.addAll(request.authentication().arguments());
 			ChildPolicy child = bound.bound(request.harness(), resultsFolder, request.deniedReads(),
-				request.extraPermissions(), askingThread, runnerNeeds(selected.start(), cleanup), policies ->
+				request.extraPermissions(), askingThread, runnerNeeds(selected.start(), request.authentication(), cleanup),
+				policies ->
 				{
 					if (!ownerHarness.equals(request.harness()))
 						selected.requireTrusted(policies);
