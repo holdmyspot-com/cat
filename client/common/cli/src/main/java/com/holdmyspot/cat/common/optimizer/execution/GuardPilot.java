@@ -60,6 +60,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -70,10 +71,11 @@ import java.util.random.RandomGenerator;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Runs the guard pilot of a proposed contract before CAT presents it: {@value #TRIALS} control trials of each prompt
- * test in each applicable evaluator's weakest cell, on development test cases only, decided by the proposed built-in
- * tools and judge. The results show how often the agent already passes each assertion without the target prompts,
- * so that the user can see a guard that the agent fails even before any prompt is optimized.
+ * Runs the guard pilot of a proposed contract before CAT presents it: at least {@value #TRIALS} control trials of each
+ * prompt test in each applicable evaluator's weakest cell, and at least {@value #TRIALS_PER_CLASS} of each boundary
+ * class of the test, on development test cases only, decided by the proposed built-in tools and judge. The results
+ * show how often the agent already passes each assertion without the target prompts, so that the user can see a guard
+ * that the agent fails even before any prompt is optimized.
  * <p>
  * Pilot trials are targeted: they enter no count, record no campaign event and spend no allowance.
  * <p>
@@ -96,9 +98,14 @@ public final class GuardPilot
 	}
 
 	/**
-	 * The number of control trials of each prompt test.
+	 * The least number of control trials of each prompt test.
 	 */
 	public static final int TRIALS = 20;
+	/**
+	 * The least number of control trials of each boundary class of a prompt test. A test with more than
+	 * {@code TRIALS / TRIALS_PER_CLASS} classes runs more than {@value #TRIALS} trials.
+	 */
+	public static final int TRIALS_PER_CLASS = 2;
 	/**
 	 * Removes one of a passing pilot trial's project directories.
 	 */
@@ -237,6 +244,41 @@ public final class GuardPilot
 		this.schema = schema;
 		this.json = json;
 		this.ceiling = ceiling;
+	}
+
+	/**
+	 * Returns the boundary classes of a prompt test's development test cases, which the pilot samples.
+	 *
+	 * @param contract the proposed contract
+	 * @param test the prompt test
+	 * @return the distinct classes in alphabetical order, without the empty class of untagged test cases
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	private static List<String> boundaryClasses(Contract contract, PromptTest test)
+	{
+		requireThat(contract, "contract").isNotNull();
+		requireThat(test, "test").isNotNull();
+		Set<String> classes = new TreeSet<>();
+		for (TestCase testCase : contract.split().testCases(test, Part.DEVELOPMENT))
+		{
+			if (!testCase.boundaryClass().isEmpty())
+				classes.add(testCase.boundaryClass());
+		}
+		return List.copyOf(classes);
+	}
+
+	/**
+	 * Returns how many trials the pilot of a prompt test draws: {@value #TRIALS}, or {@value #TRIALS_PER_CLASS} of
+	 * each boundary class of its development test cases if that is more.
+	 *
+	 * @param contract the proposed contract
+	 * @param test the prompt test
+	 * @return the number of trials
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public static int trialCount(Contract contract, PromptTest test)
+	{
+		return Math.max(TRIALS, TRIALS_PER_CLASS * boundaryClasses(contract, test).size());
 	}
 
 	/**
@@ -535,7 +577,8 @@ public final class GuardPilot
 				}
 				else
 					earlier = null;
-				pending.add(preparePilot(test, conditions, earlier, random));
+				pending.add(preparePilot(test, boundaryClasses(contract, test), trialCount(contract, test), conditions, earlier,
+					random));
 				// Reserves the test and evaluator's place in contract order
 				pilots.put(key, null);
 			}
@@ -606,17 +649,20 @@ public final class GuardPilot
 	 * Prepares a pilot, keeping its draws and receipts when its previous conditions still apply.
 	 *
 	 * @param test the prompt test
+	 * @param classes the boundary classes that the pilot samples
+	 * @param trialCount the number of trials that the pilot draws
 	 * @param conditions the current conditions of its control trials
 	 * @param earlier the matching prior pilot, or {@code null} if there is none
 	 * @param random supplies seeds for new pilots
 	 * @return the prepared pilot
 	 */
-	private static Pilot preparePilot(PromptTest test, PilotConditions conditions, PilotResult earlier,
-		RandomGenerator random)
+	private static Pilot preparePilot(PromptTest test, List<String> classes, int trialCount,
+		PilotConditions conditions, PilotResult earlier, RandomGenerator random)
 	{
 		if (earlier == null)
-			return new Pilot(test, conditions, random.nextLong(), List.of(), Map.of());
-		Pilot pilot = new Pilot(test, conditions, earlier.seed(), earlier.trials(), earlier.pendingTrials());
+			return new Pilot(test, classes, trialCount, conditions, random.nextLong(), List.of(), Map.of());
+		Pilot pilot = new Pilot(test, classes, trialCount, conditions, earlier.seed(), earlier.trials(),
+			earlier.pendingTrials());
 		pilot.stopReason = retainedPause(earlier);
 		pilot.paused = pilot.stopReason != null;
 		return pilot;
@@ -652,7 +698,7 @@ public final class GuardPilot
 			if (!pilot.paused() && !resetPositions)
 				return pilot;
 			return new PilotResult(pilot.testId(), pilot.definition(), pilot.cellId(), pilot.control(), pilot.seed(),
-				pilot.trials(), pilot.failedTrials(), UNFINISHED, false, recovery, pilot.evaluator());
+				pilot.trials(), pilot.failedTrials(), UNFINISHED, false, recovery, pilot.evaluator(), pilot.trialCount());
 		});
 		return reset;
 	}
@@ -854,12 +900,17 @@ public final class GuardPilot
 	{
 		private final Object stateLock = new Object();
 		private final PromptTest test;
+		/**
+		 * The boundary classes that the first draws sample, {@value #TRIALS_PER_CLASS} trials each.
+		 */
+		private final List<String> classes;
+		private final int trialCount;
 		private final PilotConditions conditions;
 		private final long seed;
 		/**
 		 * The record of each decided trial, by draw position; {@code null} for a trial that is undecided.
 		 */
-		private final PilotTrial[] trials = new PilotTrial[TRIALS];
+		private final PilotTrial[] trials;
 		/**
 		 * Recovery and earlier infrastructure attempts of each undecided trial, by draw position.
 		 */
@@ -873,15 +924,20 @@ public final class GuardPilot
 		 * Creates a pilot.
 		 *
 		 * @param test the prompt test
+		 * @param classes the boundary classes that the pilot samples
+		 * @param trialCount the number of trials that the pilot draws
 		 * @param conditions the current conditions of the control trials
 		 * @param seed the seed of the test's development stream
 		 * @param kept the trials that an earlier run of this pilot decided, which this pilot keeps
 		 * @param undecided the earlier pilot's undecided trials, by draw position
 		 */
-		Pilot(PromptTest test, PilotConditions conditions, long seed, List<PilotTrial> kept,
-			Map<Integer, PilotTrialRecovery> undecided)
+		Pilot(PromptTest test, List<String> classes, int trialCount, PilotConditions conditions, long seed,
+			List<PilotTrial> kept, Map<Integer, PilotTrialRecovery> undecided)
 		{
 			this.test = test;
+			this.classes = classes;
+			this.trialCount = trialCount;
+			this.trials = new PilotTrial[trialCount];
 			this.conditions = conditions;
 			this.seed = seed;
 			recovery.putAll(undecided);
@@ -890,6 +946,24 @@ public final class GuardPilot
 				trials[trial.position()] = trial;
 				++finished;
 			}
+		}
+
+		/**
+		 * Draws the test case of a trial. The first draws, {@value #TRIALS_PER_CLASS} for each boundary class of the
+		 * test, take the classes in turn, so that every class has {@value #TRIALS_PER_CLASS} trials whatever the stream
+		 * draws; the others draw from every development test case.
+		 *
+		 * @param generator the contract's generator
+		 * @param position the trial's draw position
+		 * @param stream the test's development stream
+		 * @return the drawn test case
+		 */
+		DrawnTestCase draw(Generator generator, int position, DrawStream stream)
+		{
+			String cellId = conditions.cell().id();
+			if (position < TRIALS_PER_CLASS * classes.size())
+				return generator.drawOfClass(cellId, classes.get(position % classes.size()), stream);
+			return generator.draw(cellId, stream);
 		}
 
 		/**
@@ -926,7 +1000,8 @@ public final class GuardPilot
 			synchronized (stateLock)
 			{
 				trials[position] = new PilotTrial(position, testCase.testCase().describedValues(),
-					testCase.testCase().expectedOutcome(), assertions, record, recovery(position).infrastructureAttempts());
+					testCase.testCase().expectedOutcome(), testCase.testCase().boundaryClass(), assertions, record,
+					recovery(position).infrastructureAttempts());
 				recovery.remove(position);
 				++finished;
 			}
@@ -1074,7 +1149,7 @@ public final class GuardPilot
 		{
 			synchronized (stateLock)
 			{
-				if (finished >= TRIALS)
+				if (finished >= trialCount)
 					return result(null, false);
 				return result(UNFINISHED, false);
 			}
@@ -1096,7 +1171,7 @@ public final class GuardPilot
 					decided.add(trial);
 			}
 			return new PilotResult(test.id(), conditions.definition(), conditions.cell().id(), conditions.control(), seed,
-				decided, failedTrials, reason, pause, recovery, conditions.evaluator());
+				decided, failedTrials, reason, pause, recovery, conditions.evaluator(), trialCount);
 		}
 	}
 
@@ -1280,10 +1355,10 @@ public final class GuardPilot
 			for (Pilot pilot : pilots)
 			{
 				DrawStream stream = DrawStream.create(DrawStream.Kind.DEVELOPMENT, pilot.seed);
-				for (int position = 0; position < TRIALS; ++position)
+				for (int position = 0; position < pilot.trialCount; ++position)
 				{
 					// A kept trial still draws, so that every later trial keeps its test case
-					DrawnTestCase drawn = generator.markTargeted(generator.draw(pilot.conditions.cell().id(), stream));
+					DrawnTestCase drawn = generator.markTargeted(pilot.draw(generator, position, stream));
 					if (!pilot.isDecided(position))
 						queue.add(new TrialJob(pilot, position, drawn, Optional.empty()));
 				}
@@ -1339,7 +1414,7 @@ public final class GuardPilot
 				return;
 			for (Pilot pilot : pilots)
 			{
-				if (pilot.finished < TRIALS)
+				if (pilot.finished < pilot.trialCount)
 				{
 					pilot.stopReason = stopReason;
 					pilot.paused = paused;

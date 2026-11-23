@@ -4114,9 +4114,13 @@ public final class OptimizerCore implements Core
 	private static String pilotProgress(Map<String, PilotResult> pilots, String again)
 	{
 		int decided = 0;
+		int planned = 0;
 		for (PilotResult pilot : pilots.values())
+		{
 			decided += pilot.trials().size();
-		return "The guard pilot has decided " + decided + " of " + pilots.size() * GuardPilot.TRIALS + " trials. " +
+			planned += pilot.trialCount();
+		}
+		return "The guard pilot has decided " + decided + " of " + planned + " trials. " +
 			again + " to continue it, which keeps the trials it decided.";
 	}
 

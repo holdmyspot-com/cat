@@ -106,6 +106,48 @@ public final class Generator
 	}
 
 	/**
+	 * Draws one randomly sampled test case of a boundary class, from the part that the stream's kind draws. The draw
+	 * picks each of the cell's test's confirmed test cases of the class in that part with equal probability, and uses
+	 * one stream position as {@link #draw(String, DrawStream)} does. It never draws an added test case.
+	 *
+	 * @param cellId the identifier of the test/profile pair chosen before the draw
+	 * @param boundaryClass the boundary class of the test case
+	 * @param stream the stream to draw from
+	 * @return the validated test case
+	 * @throws NullPointerException if any argument is null
+	 * @throws IllegalArgumentException if the contract has no such cell or {@code boundaryClass} is blank
+	 * @throws IllegalStateException if {@code stream} is closed
+	 * @throws GeneratorValidationException if the test has no test case of the class in the stream's part, or the
+	 *   drawn test case is not permitted by its prompt test
+	 */
+	public DrawnTestCase drawOfClass(String cellId, String boundaryClass, DrawStream stream)
+	{
+		requireThat(cellId, "cellId").isNotNull();
+		requireThat(boundaryClass, "boundaryClass").isNotBlank();
+		requireThat(stream, "stream").isNotNull();
+		Cell cell = contract.findCell(cellId).orElseThrow(() -> new IllegalArgumentException(
+			"The contract has no cell '" + cellId + "'"));
+		PromptTest test = contract.testOf(cell);
+
+		DrawnTestCase drawn;
+		synchronized (stream)
+		{
+			DrawStream.State start = stream.state();
+			Part part = start.kind().part();
+			List<TestCase> candidates = contract.split().testCases(test, part).stream().
+				filter(testCase -> testCase.boundaryClass().equals(boundaryClass)).toList();
+			if (candidates.isEmpty())
+			{
+				throw new GeneratorValidationException("The test '" + test.id() + "' has no test case of the class '" +
+					boundaryClass + "' in the " + part + " part");
+			}
+			drawn = instantiate(cell, test, pick(candidates, stream.nextDouble()), start);
+		}
+		validate(drawn);
+		return drawn;
+	}
+
+	/**
 	 * Draws one of a test's added test cases, for a trial that tries whether those test cases reproduce a failure.
 	 * The draw picks one of them with equal probability.
 	 *

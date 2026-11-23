@@ -18,13 +18,14 @@ import java.util.Map;
  * @param values the value of each variable of the test case, by variable name, in declaration order: the text of a
  *   text value, and the call of a generated value
  * @param expectedOutcome the result that a compliant reply gives
+ * @param boundaryClass the boundary class of the test case, or an empty string if the test case is untagged
  * @param assertions indicates whether the trial passed each assertion that it decided, by assertion identifier. A
  *   failed built-in tool ends the trial without a judge, so the assertions that the judge decides are absent.
  * @param record the judge's rationale, or the record of the failed built-in tools
  * @param infrastructureAttempts why each earlier attempt of this trial ended without an outcome, in the order the
  *   attempts ended. The trial used the same test case on every retry.
  */
-public record PilotTrial(int position, Map<String, String> values, String expectedOutcome,
+public record PilotTrial(int position, Map<String, String> values, String expectedOutcome, String boundaryClass,
 	Map<String, Boolean> assertions, String record, List<String> infrastructureAttempts)
 {
 	/**
@@ -34,6 +35,7 @@ public record PilotTrial(int position, Map<String, String> values, String expect
 	 * @param values the value of each variable of the test case, by variable name, in declaration order: the text of
 	 *   a text value, and the call of a generated value
 	 * @param expectedOutcome the result that a compliant reply gives
+	 * @param boundaryClass the boundary class of the test case, or an empty string if the test case is untagged
 	 * @param assertions whether the trial passed each assertion that it decided, by assertion identifier
 	 * @param record the judge's rationale, or the record of the failed built-in tools
 	 * @param infrastructureAttempts why each earlier attempt of this trial ended without an outcome
@@ -46,6 +48,7 @@ public record PilotTrial(int position, Map<String, String> values, String expect
 		requireThat(position, "position").isNotNegative();
 		requireThat(values, "values").isNotNull();
 		requireThat(expectedOutcome, "expectedOutcome").isNotBlank();
+		requireThat(boundaryClass, "boundaryClass").isNotNull();
 		requireThat(assertions, "assertions").isNotEmpty();
 		requireThat(record, "record").isNotBlank();
 		infrastructureAttempts = List.copyOf(infrastructureAttempts);
@@ -63,5 +66,25 @@ public record PilotTrial(int position, Map<String, String> values, String expect
 			requireThat(assertion.getKey(), "assertions.key").isNotNull();
 			requireThat(assertion.getValue(), "assertions.get(name)").withContext(assertion.getKey(), "name").isNotNull();
 		}
+	}
+
+	/**
+	 * Creates the record of a trial whose test case has no boundary class.
+	 *
+	 * @param position the trial's position in the draw of its prompt test's development test cases
+	 * @param values the value of each variable of the test case, by variable name, in declaration order: the text of
+	 *   a text value, and the call of a generated value
+	 * @param expectedOutcome the result that a compliant reply gives
+	 * @param assertions whether the trial passed each assertion that it decided, by assertion identifier
+	 * @param record the judge's rationale, or the record of the failed built-in tools
+	 * @param infrastructureAttempts why each earlier attempt of this trial ended without an outcome
+	 * @throws NullPointerException if any of the arguments are null, or a map or list holds null
+	 * @throws IllegalArgumentException if {@code position} is negative, {@code expectedOutcome}, {@code record} or a
+	 *   reason in {@code infrastructureAttempts} are blank, or {@code assertions} is empty
+	 */
+	public PilotTrial(int position, Map<String, String> values, String expectedOutcome, Map<String, Boolean> assertions,
+		String record, List<String> infrastructureAttempts)
+	{
+		this(position, values, expectedOutcome, "", assertions, record, infrastructureAttempts);
 	}
 }

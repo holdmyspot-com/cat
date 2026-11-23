@@ -62,13 +62,14 @@ final class PilotReport
 		StringBuilder text = new StringBuilder(INITIAL_CAPACITY);
 		Map<Harness, TrialProfiles> scopes = contract.profiles().byEvaluator();
 		boolean shared = scopes.size() > 1;
-		text.append("Before presenting this proposal, CAT ran ").append(GuardPilot.TRIALS).
+		text.append("Before presenting this proposal, CAT ran at least ").append(GuardPilot.TRIALS).
 			append(" control trials of each prompt test in its weakest cell");
 		if (shared)
 			text.append(" on each applicable evaluator");
-		text.append(", drawing only development test cases, and decided them with the proposed checks and judge. " +
-			"Control trials run the incumbent with the target prompt files emptied. Pilot trials enter no count and " +
-			"spend no allowance.\n");
+		text.append(", and at least ").append(GuardPilot.TRIALS_PER_CLASS).
+			append(" of each of its boundary classes, drawing only development test cases, and decided them with the " +
+				"proposed checks and judge. Control trials run the incumbent with the target prompt files emptied. " +
+				"Pilot trials enter no count and spend no allowance.\n");
 		for (PromptTest test : contract.tests())
 		{
 			if (!shared)
@@ -168,6 +169,7 @@ final class PilotReport
 						"prompts. A control comparison on it needs many pairs or ends the certification attempt.");
 			}
 			text.append('\n');
+			failuresByClass(text, pilot, id);
 		}
 		if (pilot.failedTrials().isEmpty())
 			return;
@@ -180,6 +182,33 @@ final class PilotReport
 		{
 			text.append("- ").append(entry.getKey()).append(" (").append(count(entry.getValue(), "trial", "trials")).
 				append(")\n");
+		}
+	}
+
+	/**
+	 * Appends the trials that failed an assertion, by the boundary class of their test cases, so that an assertion that
+	 * fails only on one kind of input shows where. A pilot whose test cases have no class lists nothing, and neither
+	 * does a class in which no trial failed the assertion.
+	 *
+	 * @param text the text to append to
+	 * @param pilot the test's pilot
+	 * @param assertionId the assertion
+	 */
+	private static void failuresByClass(StringBuilder text, PilotResult pilot, String assertionId)
+	{
+		Map<String, Integer> decided = pilot.decidedByClass(assertionId);
+		if (decided.keySet().stream().allMatch(String::isEmpty))
+			return;
+		for (Map.Entry<String, Integer> failures : pilot.failuresByClass(assertionId).entrySet())
+		{
+			String boundaryClass = failures.getKey();
+			text.append("  - ");
+			if (boundaryClass.isEmpty())
+				text.append("no class");
+			else
+				text.append("class `").append(boundaryClass).append('`');
+			text.append(": ").append(failures.getValue()).append(" of ").append(count(decided.get(boundaryClass), "trial",
+				"trials")).append(" failed it\n");
 		}
 	}
 

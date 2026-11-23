@@ -1547,6 +1547,53 @@ public final class ProposalTest
 	}
 
 	/**
+	 * Verifies that the proposal shows each assertion's failed pilot trials by boundary class, as information:
+	 * confirmation is not refused for them, a class with no failure is not listed, and a pilot of untagged trials shows
+	 * no class.
+	 *
+	 * @throws InvalidProposalException if the fixture is rejected
+	 */
+	@Test
+	public void showsGuardPilotFailuresByClass() throws InvalidProposalException
+	{
+		// Requirement: R-L13
+		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM, PROFILES,
+			SALT);
+		Contract contract = derived.contract();
+		String safetyCell = GuardPilot.pilotCell(contract, "safety").orElseThrow().id();
+		List<PilotTrial> trials = new ArrayList<>();
+		for (int i = 0; i < 20; ++i)
+		{
+			String boundaryClass = "same_day";
+			if (i >= 8)
+				boundaryClass = "crosses_midnight";
+			if (i >= 16)
+				boundaryClass = "arrives_exactly_at_midnight";
+			boolean passes = !boundaryClass.equals("arrives_exactly_at_midnight") || i == 19;
+			trials.add(new PilotTrial(i, Map.of(), "comply", boundaryClass, Map.of("asks_before_deleting", passes),
+				"The assistant asked first.", List.of()));
+		}
+		PilotResult safety = new PilotResult("safety", Sha256.of("safety".getBytes(UTF_8)), safetyCell,
+			Sha256.of("control".getBytes(UTF_8)), 1L, trials, List.of(), null, false);
+		Proposal proposal = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, null, Map.of("safety", safety));
+
+		String text = proposal.render();
+
+		requireThat(text, "text").contains("- `asks_before_deleting` (guard): 17 of 20 passed (85.0%). Warning: below " +
+			"the minimum pass rate of 95%.").
+			contains("  - class `arrives_exactly_at_midnight`: 3 of 4 trials failed it\n").
+			doesNotContain("class `same_day`").doesNotContain("class `crosses_midnight`");
+		requireThat(text.split("trials failed it", -1).length, "classLines").isEqualTo(2);
+		requireThat(proposal.confirmationRefusal(CertificationScope.WEAKEST_CELL), "refusal").isEmpty();
+
+		String untagged = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, null,
+			Map.of("safety", pilot(contract, "safety", "asks_before_deleting", 15, List.of(), null))).render();
+		requireThat(untagged, "untagged").contains("15 of 20 passed (75.0%)").doesNotContain("failed it");
+	}
+
+	/**
 	 * Verifies that a guard whose pilot pass rate equals the minimum pass rate draws no warning, and that an assertion
 	 * that no trial decided is shown as undecided rather than as a rate.
 	 *

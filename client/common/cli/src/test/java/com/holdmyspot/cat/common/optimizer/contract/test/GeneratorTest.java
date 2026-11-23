@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.common.optimizer.contract.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static org.testng.Assert.expectThrows;
 
 import com.holdmyspot.cat.common.optimizer.contract.AddedTestCase;
 import com.holdmyspot.cat.common.optimizer.contract.AddedTestCases;
@@ -192,6 +193,37 @@ public final class GeneratorTest
 
 		requireThat(testCase.streamKind(), "streamKind").isEqualTo(DrawStream.Kind.FORMAL);
 		requireThat(testCase.isRepresentative(), "representative").isTrue();
+	}
+
+	/**
+	 * Verifies that drawing a boundary class gives only test cases of that class in the stream's part, one stream
+	 * position at a time as any draw does, and that a class that the part holds no test case of is refused.
+	 */
+	@Test
+	public void drawOfClassGivesOnlyThatClass()
+	{
+		// Requirement: R-L13
+		Contract contract = capitalContract(40, List.of("small_country", "large_country", "island_country"));
+		Generator generator = new Generator(contract);
+		DrawStream stream = DrawStream.create(DrawStream.Kind.DEVELOPMENT, SEED);
+		Set<TestCase> drawn = new HashSet<>();
+		for (int i = 0; i < 60; ++i)
+		{
+			DrawnTestCase testCase = generator.drawOfClass(CAPITAL_CELL, "island_country", stream);
+			requireThat(testCase.testCase().boundaryClass(), "boundaryClass").isEqualTo("island_country");
+			requireThat(testCase.streamPosition(), "streamPosition").isEqualTo((long) i);
+			requireThat(testCase.streamKind(), "streamKind").isEqualTo(DrawStream.Kind.DEVELOPMENT);
+			drawn.add(testCase.testCase());
+		}
+		PromptTest test = contract.testOf(contract.findCell(CAPITAL_CELL).orElseThrow());
+		List<TestCase> development = contract.split().testCases(test, Part.DEVELOPMENT).stream().
+			filter(testCase -> testCase.boundaryClass().equals("island_country")).toList();
+		requireThat(development, "development").isNotEmpty();
+		requireThat(development, "development").containsAll(drawn);
+		requireThat(drawn.size(), "distinct").isGreaterThan(1);
+		GeneratorValidationException refused = expectThrows(GeneratorValidationException.class, () ->
+			generator.drawOfClass(CAPITAL_CELL, "unknown_class", DrawStream.create(DrawStream.Kind.DEVELOPMENT, SEED)));
+		requireThat(refused.getMessage(), "refusal").contains("unknown_class");
 	}
 
 	/**
@@ -640,6 +672,21 @@ public final class GeneratorTest
 	 */
 	private static PromptTest capitalTest(int countries, List<String> workspaces)
 	{
+		return capitalTest(countries, workspaces, List.of());
+	}
+
+	/**
+	 * Returns a prompt test that asks about a country, whose capital is the expected outcome, in a workspace. Each
+	 * test case pairs a country with a workspace; the workspace does not change the expected outcome.
+	 *
+	 * @param countries  the number of countries, which the test cases name {@code country 0}, {@code country 1} and so
+	 *                   on
+	 * @param workspaces the workspaces that each country is asked in
+	 * @param classes    the boundary classes that the countries take in turn, or an empty list for untagged test cases
+	 * @return the test
+	 */
+	private static PromptTest capitalTest(int countries, List<String> workspaces, List<String> classes)
+	{
 		List<TestCase> testCases = new ArrayList<>();
 		for (int i = 0; i < countries; ++i)
 		{
@@ -652,7 +699,10 @@ public final class GeneratorTest
 				String outcome = "Capital " + i;
 				if (workspace.equals("beta"))
 					outcome = "  capital\t" + i;
-				testCases.add(ContractFixtures.testCase(outcome, values));
+				String boundaryClass = "";
+				if (!classes.isEmpty())
+					boundaryClass = classes.get(i % classes.size());
+				testCases.add(ContractFixtures.testCase(outcome, boundaryClass, values));
 			}
 		}
 		return new PromptTest(CAPITAL_TEST, new RiskRank(1), List.of("r1"), List.of(), "Always.",
@@ -673,8 +723,21 @@ public final class GeneratorTest
 	 */
 	private static Contract capitalContract(int countries)
 	{
+		return capitalContract(countries, List.of());
+	}
+
+	/**
+	 * Returns a contract whose one test, {@value #CAPITAL_TEST}, is the capital-question test asked in the
+	 * {@code alpha} workspace, under {@link #CAPITAL_SALT}.
+	 *
+	 * @param countries the number of countries
+	 * @param classes the boundary classes that the countries take in turn, or an empty list for untagged test cases
+	 * @return the contract
+	 */
+	private static Contract capitalContract(int countries, List<String> classes)
+	{
 		Contract original = ContractFixtures.contract();
-		List<PromptTest> tests = List.of(capitalTest(countries, List.of("alpha")));
+		List<PromptTest> tests = List.of(capitalTest(countries, List.of("alpha"), classes));
 		return new Contract(checked(original, tests), tests,
 			ContractFixtures.profiles(checked(original, tests), tests), original.judge(),
 			original.limitations(), original.minimumPassRate(), CAPITAL_SALT);

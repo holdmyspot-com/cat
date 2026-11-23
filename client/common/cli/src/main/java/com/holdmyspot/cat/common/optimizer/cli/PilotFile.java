@@ -55,6 +55,15 @@ final class PilotFile
 	 */
 	private static final String EVALUATOR = "evaluator";
 	/**
+	 * The property that holds the number of trials that a pilot draws. A pilot stored without it drew
+	 * {@value GuardPilot#TRIALS} trials.
+	 */
+	private static final String TRIAL_COUNT = "trial_count";
+	/**
+	 * The property that holds the boundary class of a trial's test case, which a trial of an untagged test case omits.
+	 */
+	private static final String BOUNDARY_CLASS = "boundary_class";
+	/**
 	 * The first version to store unfinished trials.
 	 */
 	private static final int PENDING_TRIALS_VERSION = 4;
@@ -106,6 +115,7 @@ final class PilotFile
 			test.put("cell", pilot.cellId());
 			test.put("control", pilot.control().hex());
 			test.put("seed", pilot.seed());
+			test.put(TRIAL_COUNT, pilot.trialCount());
 			test.put("paused", pilot.paused());
 			ArrayNode failedTrials = test.putArray("failed_trials");
 			pilot.failedTrials().forEach(failedTrials::add);
@@ -121,6 +131,8 @@ final class PilotFile
 				ObjectNode values = node.putObject("values");
 				trial.values().forEach(values::put);
 				node.put("expected_outcome", trial.expectedOutcome());
+				if (!trial.boundaryClass().isEmpty())
+					node.put(BOUNDARY_CLASS, trial.boundaryClass());
 				ObjectNode assertions = node.putObject("assertions");
 				trial.assertions().forEach(assertions::put);
 				node.put("record", trial.record());
@@ -206,6 +218,16 @@ final class PilotFile
 	 */
 	private static PilotResult pilot(JsonNode test, int version)
 	{
+		int trialCount = GuardPilot.TRIALS;
+		if (test.has(TRIAL_COUNT))
+		{
+			if (!test.get(TRIAL_COUNT).isInt() || test.get(TRIAL_COUNT).asInt() < GuardPilot.TRIALS)
+			{
+				throw new IllegalArgumentException("\"" + TRIAL_COUNT + "\" must be an integer of at least " +
+					GuardPilot.TRIALS + ": " + test);
+			}
+			trialCount = test.get(TRIAL_COUNT).asInt();
+		}
 		List<PilotTrial> trials = new ArrayList<>();
 		for (JsonNode node : test.path("trials"))
 		{
@@ -219,14 +241,17 @@ final class PilotFile
 					throw new IllegalArgumentException("A trial's assertions must be booleans: " + node);
 				assertions.put(assertion.getKey(), assertion.getValue().asBoolean());
 			}
-			if (!node.path("position").isInt() || node.get("position").asInt() >= GuardPilot.TRIALS)
+			if (!node.path("position").isInt() || node.get("position").asInt() >= trialCount)
 			{
-				throw new IllegalArgumentException("A trial's \"position\" must be an integer below " +
-					GuardPilot.TRIALS + ": " + node);
+				throw new IllegalArgumentException("A trial's \"position\" must be an integer below " + trialCount +
+					": " + node);
 			}
+			String boundaryClass = "";
+			if (node.has(BOUNDARY_CLASS))
+				boundaryClass = text(node.get(BOUNDARY_CLASS));
 			List<String> attempts = infrastructureAttempts(node);
 			trials.add(new PilotTrial(node.get("position").asInt(), values, text(node.path("expected_outcome")),
-				assertions, text(node.path("record")), attempts));
+				boundaryClass, assertions, text(node.path("record")), attempts));
 		}
 		String stopReason = null;
 		if (!test.path("stop_reason").isNull())
@@ -267,7 +292,7 @@ final class PilotFile
 		}
 		return new PilotResult(text(test.path("test")), new Sha256(text(test.path("definition"))),
 			text(test.path("cell")), new Sha256(text(test.path("control"))), test.get("seed").asLong(), trials,
-			failedTrials, stopReason, test.get("paused").asBoolean(), pending, evaluator);
+			failedTrials, stopReason, test.get("paused").asBoolean(), pending, evaluator, trialCount);
 	}
 
 	/**

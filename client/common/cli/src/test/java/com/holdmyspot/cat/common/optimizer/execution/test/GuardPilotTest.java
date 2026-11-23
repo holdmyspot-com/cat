@@ -130,6 +130,12 @@ public final class GuardPilotTest
 	 * The reply that fails the {@code forbidden-text} check of {@link #checkedContract()}.
 	 */
 	private static final String BROKEN = "BROKEN";
+	/**
+	 * The boundary classes of the {@code safety} test in the tests of the pilot's class draws.
+	 */
+	private static final List<String> CLASS_NAMES = List.of("same_day", "crosses_midnight",
+		"arrives_exactly_at_midnight", "leaves_at_midnight", "spans_two_midnights", "starts_before_dawn",
+		"ends_after_dusk", "crosses_noon", "spans_a_week", "same_minute", "reverses_direction");
 	private final JsonMapper json = JsonMapper.builder().build();
 
 	/**
@@ -200,6 +206,132 @@ public final class GuardPilotTest
 					map(PromptTest::textByVariable).toList();
 				for (PilotTrial trial : pilots.get(test.id()).trials())
 					requireThat(development, "development").contains(trial.values());
+			}
+		}
+	}
+
+	/**
+	 * Supplies the seeds of the pilots that draw boundary classes, so that the guarantee does not rest on one draw.
+	 *
+	 * @return the seeds
+	 */
+	@DataProvider(name = "classSeeds")
+	public static Object[][] classSeeds()
+	{
+		return new Object[][]{{1L}, {2L}, {3L}, {4L}, {5L}};
+	}
+
+	/**
+	 * A test with 3 boundary classes gets at least 2 pilot trials of each class, and the pilot still runs its 20
+	 * trials, so that a kind of input that the other test cases do not resemble is not left unsampled.
+	 * <p>
+	 * Runtime includes 20 scripted trials for each seed. Fewer seeds would show one draw's luck, not the guarantee.
+	 * No harness or model runs.
+	 *
+	 * @param seed the seed of the pilot's draws
+	 * @throws IOException if the test directory cannot be used
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test(dataProvider = "classSeeds")
+	public void drawsTwoTrialsOfEachBoundaryClass(long seed) throws IOException, InterruptedException
+	{
+		// Requirement: R-L13
+		List<TestCase> cases = classedCases(3, 20, 2);
+		Contract contract = withSafetyCases(TierFixtures.tieredContract(), cases);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-classes"));
+			SessionScript sessions = new SessionScript(directory, _ -> "pass");
+
+			PilotResult safety = pilot(sessions, workspace(directory), 4).run(contract, List.of(), control(), Set.of(),
+				SELECTION, Map.of(), new SplittableRandom(seed)).get("safety");
+
+			requireThat(safety.trials().size(), "trials").isEqualTo(GuardPilot.TRIALS);
+			Map<String, Integer> trialsByClass = trialsByClass(cases, safety);
+			for (String boundaryClass : CLASS_NAMES.subList(0, 3))
+			{
+				requireThat(trialsByClass.getOrDefault(boundaryClass, 0), boundaryClass + "Trials[" + seed + "]").
+					isGreaterThanOrEqualTo(2);
+			}
+		}
+	}
+
+	/**
+	 * A test with 11 boundary classes needs 22 trials to draw 2 of each, so the pilot grows past 20 trials and
+	 * every class still gets 2.
+	 * <p>
+	 * Runtime includes 22 scripted trials. No harness or model runs.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void growsPastTwentyTrialsWithElevenClasses() throws IOException, InterruptedException
+	{
+		// Requirement: R-L13
+		List<TestCase> cases = classedCases(11, 4, 4);
+		Contract contract = withSafetyCases(TierFixtures.tieredContract(), cases);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-eleven-classes"));
+			SessionScript sessions = new SessionScript(directory, _ -> "pass");
+
+			PilotResult safety = pilot(sessions, workspace(directory), 4).run(contract, List.of(), control(), Set.of(),
+				SELECTION, Map.of(), new SplittableRandom(7)).get("safety");
+
+			requireThat(safety.trials().size(), "trials").isEqualTo(22);
+			requireThat(sessions.requests(SessionRole.TRIAL).stream().filter(GuardPilotTest::isSafety).count(),
+				"safetyTrialSessions").isEqualTo(22L);
+			Map<String, Integer> trialsByClass = trialsByClass(cases, safety);
+			for (String boundaryClass : CLASS_NAMES)
+				requireThat(trialsByClass.getOrDefault(boundaryClass, 0), boundaryClass + "Trials").
+					isGreaterThanOrEqualTo(2);
+		}
+	}
+
+	/**
+	 * A judge that fails a guard on every reply of one boundary class makes the pilot list those failures under that
+	 * class only, and the pilot records the class of each trial.
+	 * <p>
+	 * Runtime includes 20 scripted trials and their judge sessions. No harness or model runs.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void listsFailuresUnderTheirClass() throws IOException, InterruptedException
+	{
+		// Requirement: R-L13
+		List<TestCase> cases = classedCases(3, 20, 2);
+		String failing = "arrives_exactly_at_midnight";
+		Contract contract = withSafetyCases(TierFixtures.tieredContract(), cases);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-failures-by-class"));
+			SessionScript sessions = new SessionScript(directory, request ->
+			{
+				if (isSafety(request) && request.turns().getFirst().contains("dir-" + failing + "-"))
+					return "fail:asks_before_deleting";
+				return "pass";
+			});
+
+			PilotResult safety = pilot(sessions, workspace(directory), 4).run(contract, List.of(), control(), Set.of(),
+				SELECTION, Map.of(), new SplittableRandom(2)).get("safety");
+
+			Map<String, Integer> trialsByClass = trialsByClass(cases, safety);
+			requireThat(safety.decided("asks_before_deleting"), "decided").isEqualTo(GuardPilot.TRIALS);
+			requireThat(safety.failuresByClass("asks_before_deleting"), "failuresByClass").
+				isEqualTo(Map.of(failing, trialsByClass.get(failing)));
+			requireThat(safety.decidedByClass("asks_before_deleting"), "decidedByClass").isEqualTo(trialsByClass);
+			requireThat(safety.passes("asks_before_deleting"), "passes").
+				isEqualTo(GuardPilot.TRIALS - trialsByClass.get(failing));
+			Map<String, String> classByTarget = new HashMap<>();
+			for (TestCase testCase : cases)
+				classByTarget.put(PromptTest.textByVariable(testCase).get("target"), testCase.boundaryClass());
+			for (PilotTrial trial : safety.trials())
+			{
+				requireThat(trial.boundaryClass(), "trial.boundaryClass()").
+					isEqualTo(classByTarget.get(trial.values().get("target")));
 			}
 		}
 	}
@@ -2378,6 +2510,78 @@ public final class GuardPilotTest
 	{
 		return withSafety(contract, List.of(ContractFixtures.judged("asks_before_deleting", AssertionKind.GUARD,
 			statement, "r2")));
+	}
+
+	/**
+	 * Returns test cases of the {@code safety} test that fill boundary classes, each case with its own outcome, so that
+	 * the split puts half of each class's cases in each part.
+	 *
+	 * @param classes the number of classes, at most the number of {@link #CLASS_NAMES}
+	 * @param commonCases the number of test cases of every class but the last
+	 * @param rareCases the number of test cases of the last class, which the pilot's random draws rarely reach when it
+	 *   is much smaller than {@code commonCases}
+	 * @return the test cases, class by class
+	 */
+	private static List<TestCase> classedCases(int classes, int commonCases, int rareCases)
+	{
+		List<TestCase> cases = new ArrayList<>();
+		List<String> names = CLASS_NAMES.subList(0, classes);
+		for (int i = 0; i < names.size(); ++i)
+		{
+			String boundaryClass = names.get(i);
+			int count = commonCases;
+			if (i == names.size() - 1)
+				count = rareCases;
+			for (int j = 0; j < count; ++j)
+			{
+				cases.add(ContractFixtures.testCase("Outcome " + boundaryClass + " " + j, boundaryClass,
+					Map.of("target", "dir-" + boundaryClass + "-" + j)));
+			}
+		}
+		return cases;
+	}
+
+	/**
+	 * Returns how many of a pilot's trials ran a test case of each boundary class, reading each trial's values.
+	 *
+	 * @param cases the test cases of the {@code safety} test
+	 * @param pilot the pilot of the {@code safety} test
+	 * @return the number of trials by class
+	 */
+	private static Map<String, Integer> trialsByClass(List<TestCase> cases, PilotResult pilot)
+	{
+		Map<String, String> classByTarget = new HashMap<>();
+		for (TestCase testCase : cases)
+			classByTarget.put(PromptTest.textByVariable(testCase).get("target"), testCase.boundaryClass());
+		Map<String, Integer> trialsByClass = new HashMap<>();
+		for (PilotTrial trial : pilot.trials())
+			trialsByClass.merge(classByTarget.get(trial.values().get("target")), 1, Integer::sum);
+		return trialsByClass;
+	}
+
+	/**
+	 * Returns a contract whose {@code safety} test has other test cases.
+	 *
+	 * @param contract the contract
+	 * @param testCases the test cases of the {@code safety} test, none of them committed
+	 * @return the contract, with the same cells
+	 */
+	private static Contract withSafetyCases(Contract contract, List<TestCase> testCases)
+	{
+		List<PromptTest> tests = new ArrayList<>();
+		for (PromptTest test : contract.tests())
+		{
+			if (test.id().equals("safety"))
+			{
+				test = new PromptTest(test.id(), test.riskRank(), test.requirementIds(), test.absentTriggers(),
+					test.applicability(), test.turns(), test.timeLimit(), test.expectedBehaviour(),
+					test.uncoveredInteractions(), test.variables(), List.of(), testCases, test.assertions(),
+					test.regressionScenarios(), List.of(), Optional.empty(), Optional.empty());
+			}
+			tests.add(test);
+		}
+		return new Contract(contract.requirements(), tests, contract.profiles(), contract.judge(),
+			contract.limitations(), contract.minimumPassRate(), contract.salt());
 	}
 
 	/**

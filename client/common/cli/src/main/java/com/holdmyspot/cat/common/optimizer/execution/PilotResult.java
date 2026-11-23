@@ -7,6 +7,7 @@ import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 
 import java.math.BigDecimal;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -33,13 +34,70 @@ import java.util.Set;
  *   another reason
  * @param pendingTrials recovery and earlier infrastructure attempts of each undecided trial, by draw position
  * @param evaluator the evaluator that qualifies a shared result, or {@code null} for a single evaluator
+ * @param trialCount the number of trials that the pilot draws: at least {@value GuardPilot#TRIALS}, and more when the
+ *   test has more boundary classes than that number allows 2 trials each
  */
 public record PilotResult(String testId, Sha256 definition, String cellId, Sha256 control, long seed,
 	List<PilotTrial> trials, List<String> failedTrials, String stopReason, boolean paused,
-	Map<Integer, PilotTrialRecovery> pendingTrials, Harness evaluator)
+	Map<Integer, PilotTrialRecovery> pendingTrials, Harness evaluator, int trialCount)
 {
 	/**
 	 * Creates a pilot result.
+	 *
+	 * @param testId the prompt test
+	 * @param definition the identity of the prompt test and the requirements that it checks when the pilot ran
+	 * @param cellId the cell that the trials ran in
+	 * @param control the identity of the conditions that the trials ran in
+	 * @param seed the seed of the development stream that draws the trials' test cases
+	 * @param trials the trials that the proposed built-in tools or judge decided, in draw order
+	 * @param failedTrials why each trial that the proposed built-in tools could not decide ended, one entry per trial
+	 * @param stopReason why the pilot stopped before running every trial, or {@code null} if it ran every trial
+	 * @param paused {@code true} if the pilot stopped because one of its trials ended without an outcome too many times
+	 * @param pendingTrials recovery of undecided trials, by draw position
+	 * @param evaluator the evaluator that qualifies a shared result, or {@code null} for a single evaluator
+	 * @param trialCount the number of trials that the pilot draws
+	 * @throws NullPointerException if a required argument, trial, failure, pending position or pending state is null
+	 * @throws IllegalArgumentException if {@code testId}, {@code cellId}, a reason in {@code failedTrials} or a non-null
+	 *   {@code stopReason} are blank, {@code trialCount} is less than {@value GuardPilot#TRIALS}, a trial's position
+	 *   is outside the pilot, two trials hold one position, or {@code paused} is {@code true} and {@code stopReason}
+	 *   is null, a pending position is already decided or outside the pilot, or a shared cell's evaluator does not
+	 *   match the result's evaluator
+	 */
+	public PilotResult
+	{
+		requireThat(testId, "testId").isNotBlank();
+		requireThat(definition, "definition").isNotNull();
+		requireThat(cellId, "cellId").isNotBlank();
+		requireThat(control, "control").isNotNull();
+		requireThat(trialCount, "trialCount").isGreaterThanOrEqualTo(GuardPilot.TRIALS);
+		if (evaluator != null && !cellId.startsWith(evaluator.commandName() + ":"))
+			throw new IllegalArgumentException("Pilot cell " + cellId + " does not belong to " + evaluator);
+		trials = List.copyOf(trials);
+		Set<Integer> positions = new HashSet<>();
+		for (PilotTrial trial : trials)
+		{
+			if (trial.position() >= trialCount)
+				throw new IllegalArgumentException("Invalid trial position " + trial.position());
+			if (!positions.add(trial.position()))
+				throw new IllegalArgumentException("Two trials hold the position " + trial.position());
+		}
+		pendingTrials = Map.copyOf(pendingTrials);
+		for (int pending : pendingTrials.keySet())
+		{
+			if (pending < 0 || pending >= trialCount || positions.contains(pending))
+				throw new IllegalArgumentException("Invalid undecided trial position " + pending);
+		}
+		failedTrials = List.copyOf(failedTrials);
+		for (String reason : failedTrials)
+			requireThat(reason, "reason").isNotBlank();
+		if (stopReason != null)
+			requireThat(stopReason, "stopReason").isNotBlank();
+		else if (paused)
+			throw new IllegalArgumentException("A paused pilot must say why it paused");
+	}
+
+	/**
+	 * Creates a result of a pilot that draws {@value GuardPilot#TRIALS} trials.
 	 *
 	 * @param testId the prompt test
 	 * @param definition the identity of the prompt test and the requirements that it checks when the pilot ran
@@ -58,34 +116,12 @@ public record PilotResult(String testId, Sha256 definition, String cellId, Sha25
 	 *   {@code stopReason} is null, a pending position is already decided or outside the pilot, or a shared cell's
 	 *   evaluator does not match the result's evaluator
 	 */
-	public PilotResult
+	public PilotResult(String testId, Sha256 definition, String cellId, Sha256 control, long seed,
+		List<PilotTrial> trials, List<String> failedTrials, String stopReason, boolean paused,
+		Map<Integer, PilotTrialRecovery> pendingTrials, Harness evaluator)
 	{
-		requireThat(testId, "testId").isNotBlank();
-		requireThat(definition, "definition").isNotNull();
-		requireThat(cellId, "cellId").isNotBlank();
-		requireThat(control, "control").isNotNull();
-		if (evaluator != null && !cellId.startsWith(evaluator.commandName() + ":"))
-			throw new IllegalArgumentException("Pilot cell " + cellId + " does not belong to " + evaluator);
-		trials = List.copyOf(trials);
-		Set<Integer> positions = new HashSet<>();
-		for (PilotTrial trial : trials)
-		{
-			if (!positions.add(trial.position()))
-				throw new IllegalArgumentException("Two trials hold the position " + trial.position());
-		}
-		pendingTrials = Map.copyOf(pendingTrials);
-		for (int pending : pendingTrials.keySet())
-		{
-			if (pending < 0 || pending >= GuardPilot.TRIALS || positions.contains(pending))
-				throw new IllegalArgumentException("Invalid undecided trial position " + pending);
-		}
-		failedTrials = List.copyOf(failedTrials);
-		for (String reason : failedTrials)
-			requireThat(reason, "reason").isNotBlank();
-		if (stopReason != null)
-			requireThat(stopReason, "stopReason").isNotBlank();
-		else if (paused)
-			throw new IllegalArgumentException("A paused pilot must say why it paused");
+		this(testId, definition, cellId, control, seed, trials, failedTrials, stopReason, paused, pendingTrials,
+			evaluator, GuardPilot.TRIALS);
 	}
 
 	/**
@@ -197,6 +233,48 @@ public record PilotResult(String testId, Sha256 definition, String cellId, Sha25
 				++passes;
 		}
 		return passes;
+	}
+
+	/**
+	 * Returns how many trials of each boundary class decided an assertion. Trials of untagged test cases are listed
+	 * under the empty class.
+	 *
+	 * @param assertionId the assertion
+	 * @return the number of trials that passed or failed the assertion, by class, in the order in which the trials'
+	 *   classes first appear
+	 * @throws NullPointerException if {@code assertionId} is null
+	 */
+	public Map<String, Integer> decidedByClass(String assertionId)
+	{
+		requireThat(assertionId, "assertionId").isNotNull();
+		Map<String, Integer> decided = new LinkedHashMap<>();
+		for (PilotTrial trial : trials)
+		{
+			if (trial.assertions().containsKey(assertionId))
+				decided.merge(trial.boundaryClass(), 1, Integer::sum);
+		}
+		return decided;
+	}
+
+	/**
+	 * Returns how many trials of each boundary class failed an assertion. A class in which no trial failed it is
+	 * absent.
+	 *
+	 * @param assertionId the assertion
+	 * @return the number of trials that failed the assertion, by class, in the order in which the trials' classes first
+	 *   appear; trials of untagged test cases are listed under the empty class
+	 * @throws NullPointerException if {@code assertionId} is null
+	 */
+	public Map<String, Integer> failuresByClass(String assertionId)
+	{
+		requireThat(assertionId, "assertionId").isNotNull();
+		Map<String, Integer> failures = new LinkedHashMap<>();
+		for (PilotTrial trial : trials)
+		{
+			if (Boolean.FALSE.equals(trial.assertions().get(assertionId)))
+				failures.merge(trial.boundaryClass(), 1, Integer::sum);
+		}
+		return failures;
 	}
 
 	/**

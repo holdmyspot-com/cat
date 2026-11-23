@@ -1998,6 +1998,40 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Verifies that the stored pilot records the number of trials that it drew and, for each trial, the boundary
+	 * class of its test case, with at least two trials of every boundary class that the test's development test
+	 * cases have.
+	 */
+	@Test
+	public void startStoresBoundaryClassOfEachPilotTrial() throws Exception
+	{
+		// Requirement: R-L13
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+
+			JsonNode stored = JSON.readTree(Files.readString(repository.directory(id).resolve("held_out/pilot.json")));
+			requireThat(stored.path("tests").size(), "pilots").isGreaterThan(0);
+			for (JsonNode pilot : stored.path("tests"))
+			{
+				requireThat(pilot.path("trial_count").asInt(), "trialCount").isEqualTo(GuardPilot.TRIALS);
+				Map<String, Integer> trialsByClass = new HashMap<>();
+				for (JsonNode trial : pilot.path("trials"))
+				{
+					requireThat(trial.has("boundary_class"), "hasClass").isTrue();
+					trialsByClass.merge(trial.path("boundary_class").asString(), 1, Integer::sum);
+				}
+				requireThat(trialsByClass, "trialsByClass").isNotEmpty();
+				for (Map.Entry<String, Integer> entry : trialsByClass.entrySet())
+					requireThat(entry.getValue(), entry.getKey()).isGreaterThanOrEqualTo(2);
+			}
+		}
+	}
+
+	/**
 	 * Verifies that {@code start} derives a proposal, runs the guard pilot's control trials before presenting it,
 	 * persists both, and runs nothing else: the pilot's sessions spend no allowance and the proposal stays
 	 * unconfirmed.
