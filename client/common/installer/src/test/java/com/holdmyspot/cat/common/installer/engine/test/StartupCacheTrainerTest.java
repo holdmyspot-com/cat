@@ -532,6 +532,9 @@ public final class StartupCacheTrainerTest
 	/**
 	 * Interrupting a training after its fixture process publishes its ID and is observed running stops that process and
 	 * leaves the plugin without a startup cache. A separate test application owns this real process boundary.
+	 * <p>
+	 * The fixture process must start and signal readiness before the test application interrupts training. That ordering
+	 * exercises cleanup after a child has already started.
 	 *
 	 * @throws IOException if the fixture cannot be created or inspected
 	 * @throws InterruptedException if the test thread is interrupted while waiting for the fixture

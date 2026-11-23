@@ -10,6 +10,19 @@ bats_require_minimum_version 1.5.0
 load bootstrap-helpers
 load windows-helpers
 
+@test "a Windows launcher with a bundled runtime binding runs Java from its relocated plugin copy" {
+	plugin="${TEST_ROOT}/relocated plugin"
+	cp -R "${GENERATED_RUNTIME_DIRECTORY}/codex" "${plugin}"
+	[ -f "${plugin}/bin/bundled-runtime" ]
+	printf '%s\n' "$(cygpath -w "${TEST_ROOT}/removed runtime")" > "${plugin}/bin/runtime-binding"
+
+	run --separate-stderr powershell_command '& $env:LAUNCHER' "LAUNCHER=$(cygpath -w "${plugin}/bin/plugin-info.cmd")" \
+		< /dev/null
+
+	[ "${status}" -eq 0 ]
+	[[ "${output//$'\r'/}" == "harness=codex"$'\n'* ]]
+}
+
 @test "PowerShell runs each launcher of the Windows Codex plugin by its path without an extension" {
 	bin="${TEST_ROOT}/codex plugin/bin"
 	mkdir -p "${bin}/runtime/modules"
@@ -18,6 +31,8 @@ load windows-helpers
 			cp "${file}" "${bin}"
 		fi
 	done
+	rm "${bin}/bundled-runtime"
+	printf '%s\n' "$(cygpath -w "${GENERATED_RUNTIME_DIRECTORY}/codex/bin/runtime")" > "${bin}/runtime-binding"
 	# With no modules, each program stops at once with Java's report that its module is missing, which shows that the
 	# launcher ran Java. A path that PowerShell does not resolve to a batch launcher is reported instead of run, because
 	# PowerShell hands a file that it cannot run to the program that Windows associates with the file.
