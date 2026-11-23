@@ -4,17 +4,19 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.CellTier;
-import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
+import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.contract.Cell;
 import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
+import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
- * The cells of a confirmed campaign: its certification scope and, per test, the weakest cell and the development
- * cells.
+ * The cells of a confirmed campaign: its certification scope and, per test and evaluator, the weakest cell and
+ * development cells.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  *
@@ -55,34 +57,45 @@ public record CellTierReport(CertificationScope scope, int scopeCells, List<Test
 		Contract contract = campaign.contract();
 		List<Cell> development = CellTier.developmentCells(campaign);
 		List<TestCells> tests = new ArrayList<>();
+		boolean shared = contract.profiles().byEvaluator().size() > 1;
+		List<Cell> weakestCells = CellTier.weakestCells(contract);
 		for (PromptTest test : contract.tests())
 		{
-			List<String> cells = development.stream().filter(cell -> cell.testId().equals(test.id())).
-				map(Cell::id).toList();
-			tests.add(new TestCells(test.id(), CellTier.weakestCell(contract, test.id()).id(),
-				cells));
+			for (Cell weakest : weakestCells)
+			{
+				if (!weakest.testId().equals(test.id()))
+					continue;
+				List<String> cells = development.stream().filter(cell ->
+					cell.testId().equals(test.id()) && cell.evaluator().equals(weakest.evaluator())).map(Cell::id).toList();
+				Optional<Harness> evaluator = Optional.empty();
+				if (shared)
+					evaluator = weakest.evaluator();
+				tests.add(new TestCells(test.id(), weakest.id(), cells, evaluator));
+			}
 		}
 		return new CellTierReport(contract.profiles().scope(), CellTier.scopeCells(contract).size(), tests);
 	}
 
 	/**
-	 * One test's weakest cell and development cells.
+	 * One test and evaluator's weakest cell and development cells.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
-	 * @param test the test's identifier
-	 * @param weakestCell the identifier of the test's weakest cell
+	 * @param test             the test's identifier
+	 * @param weakestCell      the identifier of the test's weakest cell
 	 * @param developmentCells the identifiers of the test's development cells, in contract order
+	 * @param evaluator        the evaluator if the report covers more than one harness
 	 */
-	public record TestCells(String test, String weakestCell, List<String> developmentCells)
+	public record TestCells(String test, String weakestCell, List<String> developmentCells, Optional<Harness> evaluator)
 	{
 		/**
 		 * Creates a test's cells.
 		 *
-		 * @param test the test's identifier
-		 * @param weakestCell the identifier of the test's weakest cell
+		 * @param test             the test's identifier
+		 * @param weakestCell      the identifier of the test's weakest cell
 		 * @param developmentCells the identifiers of the test's development cells, in contract order
-		 * @throws NullPointerException if any of the arguments are null
+		 * @param evaluator        the evaluator if the report covers more than one harness
+		 * @throws NullPointerException     if any of the arguments are null
 		 * @throws IllegalArgumentException if {@code test} or {@code weakestCell} are blank, or
 		 *   {@code developmentCells} is empty
 		 */
@@ -91,6 +104,7 @@ public record CellTierReport(CertificationScope scope, int scopeCells, List<Test
 			requireThat(test, "test").isNotBlank();
 			requireThat(weakestCell, "weakestCell").isNotBlank();
 			requireThat(developmentCells, "developmentCells").isNotEmpty();
+			requireThat(evaluator, "evaluator").isNotNull();
 			developmentCells = List.copyOf(developmentCells);
 		}
 	}

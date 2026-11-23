@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.optimizer.cli;
 
+
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.AbstractJvmScope;
 import com.holdmyspot.cat.common.HomeProject;
@@ -15,6 +16,8 @@ import com.holdmyspot.cat.common.optimizer.campaign.TrialState;
 import com.holdmyspot.cat.common.optimizer.execution.CapCalibrator;
 import com.holdmyspot.cat.common.optimizer.execution.SliceSettings;
 import com.holdmyspot.cat.common.optimizer.port.HostInterruptSignal;
+import com.holdmyspot.cat.common.optimizer.port.PluginBase;
+import com.holdmyspot.cat.common.optimizer.port.HookInspection;
 import com.holdmyspot.cat.common.optimizer.port.ProfileInventory;
 import com.holdmyspot.cat.common.optimizer.port.SessionPort;
 import com.holdmyspot.cat.common.optimizer.proposal.SymbolicLinkProbe;
@@ -26,6 +29,7 @@ import com.holdmyspot.cat.common.optimizer.store.TrialRecovery;
 import com.holdmyspot.cat.common.optimizer.workspace.Forks;
 import com.holdmyspot.cat.common.runner.HarnessSandbox;
 import com.holdmyspot.cat.common.runner.RetainedTrialResponse;
+import com.holdmyspot.cat.common.runner.TrialPluginInput;
 import com.holdmyspot.cat.common.secrets.OptimizerCommandScopeAccess;
 import com.holdmyspot.cat.common.secrets.OptimizerCommandScopeSecrets;
 
@@ -110,6 +114,175 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 
 	@Override
 	public abstract SessionPort sessions() throws IOException;
+
+	/**
+	 * Reads metadata from the installed peer evaluator within this command's sandbox.
+	 *
+	 * @param evaluator the requested peer harness
+	 * @param project   the absolute original project directory
+	 * @param staged    the absolute existing staged source
+	 * @param target    the target relative to both directories
+	 * @return the peer's metadata report
+	 * @throws IOException          if the peer cannot be selected or does not produce a valid report
+	 * @throws InterruptedException if this command is interrupted while waiting for the peer
+	 */
+	public final EvaluatorMetadata peerEvaluatorMetadata(Harness evaluator, Path project, Path staged, Path target)
+		throws IOException, InterruptedException
+	{
+		ensureOpen();
+		return PeerEvaluator.read(json(), executableFiles(), peerEvaluatorArtifact(evaluator), evaluator,
+			project, staged, target);
+	}
+
+	/**
+	 * Reads metadata using the selected evaluator's ordered trial plugin bases.
+	 *
+	 * @param evaluator the requested peer harness
+	 * @param project the absolute original project directory
+	 * @param staged the absolute existing staged source
+	 * @param target the target relative to both directories
+	 * @param plugins the selected plugin bases
+	 * @return the peer's metadata report
+	 * @throws IOException if the peer cannot be selected or does not produce a valid report
+	 * @throws InterruptedException if this command is interrupted while waiting for the peer
+	 */
+	public final EvaluatorMetadata peerEvaluatorMetadata(Harness evaluator, Path project, Path staged, Path target,
+		List<PluginBase> plugins) throws IOException, InterruptedException
+	{
+		if (plugins.isEmpty())
+			return peerEvaluatorMetadata(evaluator, project, staged, target);
+		ensureOpen();
+		return PeerEvaluator.read(json(), executableFiles(), peerEvaluatorArtifact(evaluator), evaluator,
+			project, staged, target, plugins, temporaryDirectory());
+	}
+
+	/**
+	 * Reads the selected peer evaluator's installed copies for a configured plugin name.
+	 *
+	 * @param evaluator the requested peer harness
+	 * @param project the absolute original project directory
+	 * @param name the configured plugin name
+	 * @return the directories reported by that harness's installation
+	 * @throws IOException if the peer or its installation cannot be inspected
+	 * @throws InterruptedException if this command is interrupted while waiting for the peer
+	 */
+	public final List<Path> peerInstalledPlugins(Harness evaluator, Path project, String name)
+		throws IOException, InterruptedException
+	{
+		ensureOpen();
+		return PeerEvaluator.installed(json(), executableFiles(), peerEvaluatorArtifact(evaluator), evaluator,
+			project, name);
+	}
+
+	/**
+	 * Resolves the installed artifact of the requested peer evaluator.
+	 *
+	 * @param evaluator the requested peer harness
+	 * @return the installed artifact directory
+	 * @throws IOException if no supported installed artifact can be selected
+	 */
+	protected Path peerEvaluatorArtifact(Harness evaluator) throws IOException
+	{
+		throw new IOException("No installed evaluator route is available for " + evaluator.productName());
+	}
+
+	/**
+	 * Returns the port that runs the installed evaluator's trials through the owner.
+	 *
+	 * @param evaluator the selected peer harness
+	 * @param metadata  the metadata from the selected installed evaluator
+	 * @return the peer's trial port
+	 * @throws IOException if no installed evaluator can launch through the owner
+	 */
+	protected SessionPort peerTrialSessions(Harness evaluator, EvaluatorMetadata metadata) throws IOException
+	{
+		throw new IOException("No installed trial evaluator is available for " + evaluator.productName());
+	}
+
+	/**
+	 * Opens a read-only adapter for this evaluator's installed harness and user configuration.
+	 *
+	 * @param project the original project
+	 * @param results a temporary path for inspection bookkeeping
+	 * @return the native inspection adapter
+	 * @throws IOException if the adapter cannot be initialized
+	 */
+	protected SessionPort evaluatorInspection(Path project, Path results) throws IOException
+	{
+		return sessions();
+	}
+
+	/**
+	 * Returns why the selected evaluator's startup-hook comparison cannot run.
+	 *
+	 * @param evaluator the harness that normally delivers the hook
+	 * @return the reason when the evaluator's native hook authority cannot be verified
+	 */
+	protected Optional<String> hookComparisonRefusal(Harness evaluator)
+	{
+		return Optional.empty();
+	}
+
+	/**
+	 * Finds the broker route for a peer evaluator's native hook comparison.
+	 *
+	 * @param evaluator the harness that normally delivers the hook
+	 * @return the peer comparison when supported by this scope
+	 */
+	Optional<HookCheck.PeerComparator> peerHookComparison(Harness evaluator)
+	{
+		return Optional.empty();
+	}
+
+	/**
+	 * Finds the native approval resolver for a startup-hook comparison.
+	 *
+	 * @param evaluator the harness that normally delivers the hook
+	 * @param project the owner's original project
+	 * @param prompt the fixed user prompt for the comparison
+	 * @return the native resolver, or empty when this scope has no native route for the evaluator
+	 */
+	protected Optional<HookPairResolver> nativeHookComparison(Harness evaluator, Path project, String prompt)
+	{
+		return Optional.empty();
+	}
+
+	/**
+	 * Selects and resolves both invocations using the evaluator's native approval rules.
+	 */
+	@FunctionalInterface
+	protected interface HookPairResolver
+	{
+		/**
+		 * Resolves the eligible invocations for the two comparison workspaces.
+		 *
+		 * @param production the full workspace copy
+		 * @param trial the trial workspace copy
+		 * @param trialHome the fresh trial home
+		 * @param plugins the staged plugin inputs for the trial
+		 * @return the pairs that can run and the native approval limitations, when observed
+		 * @throws IOException if the resolver cannot establish the native approvals
+		 * @throws InterruptedException if inspection is interrupted
+		 */
+		HookInspection read(Path production, Path trial, Path trialHome, List<TrialPluginInput> plugins)
+			throws IOException, InterruptedException;
+	}
+
+	/**
+	 * Starts a startup-hook comparison process. A launcher outside its host's tool sandbox must enforce
+	 * the host's policy on the copied project before it starts the command.
+	 *
+	 * @param builder the command, copied project directory, environment and standard I/O
+	 * @param scratch the comparison directory that holds both copies
+	 * @param trialHome the isolated trial home, or empty for a production comparison
+	 * @return the running hook process
+	 * @throws IOException if the process cannot start under the host's policy
+	 */
+	protected Process startHookProcess(ProcessBuilder builder, Path scratch, Optional<Path> trialHome)
+		throws IOException
+	{
+		return builder.start();
+	}
 
 	/**
 	 * Returns the probe that checks symbolic-link creation in this command's CAT temporary directory.

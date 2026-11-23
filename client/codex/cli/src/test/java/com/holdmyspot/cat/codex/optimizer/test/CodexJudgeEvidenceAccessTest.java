@@ -5,6 +5,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.codex.optimizer.CodexSessions;
 import com.holdmyspot.cat.codex.runner.CodexConnectionConfiguration;
+import com.holdmyspot.cat.codex.runner.CodexParentMultiAgentState;
 import com.holdmyspot.cat.codex.runner.CodexRunner;
 import com.holdmyspot.cat.codex.runner.CodexRunner.SessionSandbox;
 import com.holdmyspot.cat.codex.runner.CodexRunnerCli;
@@ -21,12 +22,14 @@ import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
+import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
 import com.holdmyspot.cat.common.runner.NestedSession;
 import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
+import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -38,6 +41,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -106,6 +110,15 @@ public final class CodexJudgeEvidenceAccessTest
 				requireThat(sandbox.access(evidence), "access(" + evidence + ")").isEqualTo("read");
 			requireThat(sandbox.access(sandbox.sibling()), "siblingAccess").isEqualTo("deny");
 			requireThat(sandbox.access(sandbox.instructions()), "instructionsAccess").isEqualTo("deny");
+			if (platform.isLinux())
+			{
+				Path hostProject = sandbox.instructions().getParent();
+				requireThat(sandbox.profileDenies(hostProject), "repeatedProjectMask").isFalse();
+				requireThat(sandbox.permissions().path("cat-runner").path("filesystem").path(hostProject.toString()).
+					asString(""), "defaultProjectDenial").isEqualTo("deny");
+				requireThat(sandbox.access(sandbox.evidence().getLast().resolve("reserved.txt")), "reservedEvidence").
+					isEqualTo("deny");
+			}
 			for (String own : List.of("project", "home"))
 			{
 				Path path = sandbox.judgeFolder().resolve(own);
@@ -234,11 +247,23 @@ public final class CodexJudgeEvidenceAccessTest
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession judge = judges.create("codex");
 			Path configuration = judge.directory().resolve("home/config.toml");
-			CodexConnectionConfiguration.copy(judge.directory().resolve("missing.toml"), configuration,
-				judge.directory().resolve("project"));
+			Path project = judge.directory().resolve("project");
+			Path source = judge.directory().resolve("missing.toml");
+			ChildPolicy inherited = null;
+			if (platform.isLinux() && bubblewrap)
+			{
+				Path reserved = Files.writeString(trialArtifacts.resolve("reserved.txt"), "reserved");
+				inherited = new ChildPolicy(List.of(judge.directory()), List.of(),
+					List.of(hostProject, reserved), List.of(), Set.of(), false);
+				CodexConnectionConfiguration.copy(source, configuration, project,
+					new HarnessDependencyCaches(List.of(), Map.of()), configuration.getParent().resolve("tmp"),
+					0, null, platform, CodexParentMultiAgentState.NONE, inherited);
+			}
+			else
+				CodexConnectionConfiguration.copy(source, configuration, project);
 			sandboxes.add(CodexRunner.sessionSandbox(configuration, judges, judge, options.readOnlyEvidence(),
 				options.deniedReads(), platform, Map.of("PATH", bin.toString()), null,
-				CodexRunner.appServerCommand("codex", false)));
+				CodexRunner.appServerCommand("codex", false), inherited));
 			configurations.add(configuration);
 			judgeFolders.add(judge.directory());
 			ScriptedHarness.serve(options.resultsFolder(), "codex", List.of(Turn.replies("{}")), input, output);
@@ -335,6 +360,24 @@ public final class CodexJudgeEvidenceAccessTest
 			if (mount.equals("--ro-bind") && !result.equals("deny"))
 				return "read";
 			return result;
+		}
+
+		/**
+		 * Returns whether the thread's profile or one it extends denies the exact path.
+		 *
+		 * @param path the absolute path
+		 * @return whether any profile in the chain denies the path
+		 */
+		boolean profileDenies(Path path)
+		{
+			for (String name = profile; !name.isEmpty();)
+			{
+				JsonNode entry = permissions.path(name);
+				if (entry.path("filesystem").path(path.toString()).asString("").equals("deny"))
+					return true;
+				name = entry.path("extends").asString("");
+			}
+			return false;
 		}
 
 		/**

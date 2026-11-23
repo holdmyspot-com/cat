@@ -9,6 +9,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.CampaignEvent;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationProcedure;
 import com.holdmyspot.cat.common.optimizer.campaign.ContractIdentity;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
+import com.holdmyspot.cat.common.optimizer.contract.Cell;
 import com.holdmyspot.cat.common.optimizer.campaign.Header;
 import com.holdmyspot.cat.common.optimizer.campaign.Lifecycle;
 import com.holdmyspot.cat.common.optimizer.campaign.Outcome;
@@ -1064,8 +1065,8 @@ public final class ProposalTest
 			doesNotContain("### `described`").
 			contains("To certify other cells, describe them in revision feedback").
 			contains("\nCells: tests `formatting`, `plain_list` × profile `small/high`; test `safety` × profile " +
-				"`big/high` (3 cells)\n").
-			contains("\nWeakest cells: tests `formatting`, `plain_list` × profile `small/high`; test `safety` × " +
+				"`big/high` (3 cells)\n\nWeakest cells: tests `formatting`, `plain_list` × profile `small/high`; " +
+				"test `safety` × " +
 				"profile `big/high`\n").
 			contains("At least " + 2 * weakest + " nested sessions remain if every trial passes: " + weakest +
 				" trials").
@@ -1114,6 +1115,44 @@ public final class ProposalTest
 		requireThat(ranked.isConfirmable(CertificationScope.DESCRIBED), "describedWithoutCells").isFalse();
 		requireThat(ranked.confirmationRefusal(CertificationScope.DESCRIBED), "describedRefusal").
 			contains("revision feedback");
+	}
+
+	/**
+	 * Verifies that restoring a shared proposal keeps its evaluator profiles and shows the weakest cells of both.
+	 *
+	 * @throws InvalidProposalException if the fixture is rejected
+	 */
+	@Test
+	public void derivesProfilesForEachEvaluator() throws InvalidProposalException
+	{
+		TrialProfile peerProfile = TrialProfile.stored("haiku", "low");
+		ProfileEvidence peer = evidence(new ProfileCatalog("peer catalog", List.of(peerProfile)), Map.of());
+		ProfileEvidence shared = new ProfileEvidence(PROFILES.inventory(), PROFILES.ranking(), PROFILES.bindings(),
+			Map.of(Harness.CODEX, PROFILES, Harness.CLAUDE, peer));
+		ObjectNode persisted = json.createObjectNode();
+		shared.write(persisted);
+		ProfileEvidence restored = ProfileEvidence.read(persisted);
+
+		DerivedProposal proposal = contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM,
+			restored, SALT);
+		DerivedProposal reopened = contractAuthor.proposal(proposal.derivation(), proposal.draft(),
+			proposal.observedSources(), restored, SALT);
+
+		requireThat(restored, "evidence").isEqualTo(shared);
+		requireThat(reopened.contract().profiles(), "reopenedProfiles").isEqualTo(proposal.contract().profiles());
+		requireThat(reopened.contract().profiles().forEvaluator(Harness.CLAUDE).inventory(), "peerInventory").
+			isEqualTo(peer.inventory());
+		requireThat(reopened.contract().profiles().forEvaluator(Harness.CODEX).inventory(), "ownerInventory").
+			isEqualTo(PROFILES.inventory());
+		for (Cell cell : reopened.contract().cells())
+			requireThat(cell.id(), "cellId").contains(cell.evaluator().orElseThrow().commandName());
+
+		Proposal rendered = Proposal.of(reopened, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
+		List<String> weakest = rendered.render().lines().filter(line -> line.startsWith("Weakest cells: ")).toList();
+		requireThat(weakest.size(), "scopeChoices").isEqualTo(2);
+		for (String choice : weakest)
+			requireThat(choice, "weakestCells").contains("claude/haiku/low").contains("codex/test-model/high");
 	}
 
 	/**
@@ -1641,6 +1680,51 @@ public final class ProposalTest
 	}
 
 	/**
+	 * Each evaluator's author input keeps its own plugin source and names an explicitly empty configuration.
+	 */
+	@Test
+	public void requestListsPluginsByEvaluator()
+	{
+		// Requirement: R-L6, R-W10
+		ContractAuthorProtocol author = new ContractAuthorProtocol(json, schema, judge,
+			new RegressionScenarios(PROMPT_SYSTEM, List.of()), TARGET, null, true,
+			Map.of(Harness.CODEX, List.of(builtPlugin(), installedPlugin()), Harness.CLAUDE, List.of()),
+			LAUNCHER, UNKNOWN_LIMIT);
+		Map<Harness, List<HookRegistration>> hooks = Map.of(Harness.CLAUDE, List.of(), Harness.CODEX,
+			List.of(new HookRegistration("cat", "hooks/hooks.json", "SessionStart", "", "bin/codex-start")));
+
+		String input = author.request(PROMPT_SYSTEM, PROFILES, hooks, List.of(), SALT).turns().getFirst();
+
+		requireThat(input, "input").contains("Evaluator `claude`\n\nnone\n\nEvaluator `codex`\n\n" +
+			"- `cat`, built by the project, with these project paths written over it: `source/rules` → `rules/codex`\n" +
+			"- `tools@market`, installed by the user\n");
+		requireThat(input, "hooks").contains("Claude Code hook registrations\nnone\n\nCodex hook registrations\n" +
+			"- event `SessionStart`, command `bin/codex-start`, registered by `hooks/hooks.json` of the trial plugin " +
+			"`cat`");
+	}
+
+	/**
+	 * A shared proposal keeps plugin sources, coverage warnings and unapproved hooks qualified by evaluator.
+	 *
+	 * @throws InvalidProposalException if the fixture is rejected
+	 */
+	@Test
+	public void proposalListsPluginsByEvaluator() throws InvalidProposalException
+	{
+		// Requirement: R-L6, R-W12
+		PluginCheck codex = new PluginCheck(List.of(builtPlugin()), List.of(Path.of("rules/codex-only.md")), List.of(),
+			List.of(), List.of(), List.of("cat SessionStart ./start.sh"), Map.of());
+		PluginCheck shared = PluginCheck.forEvaluators(Map.of(Harness.CODEX, codex, Harness.CLAUDE, PluginCheck.NONE));
+
+		String text = pluginProposal(shared).render();
+
+		requireThat(text, "proposal").contains("### Claude Code\n\nTrials install no plugin.\n\n### Codex\n\n" +
+			"- `cat`: built by `./build-plugin --release`").
+			contains("never reaches trials:\n\n- `rules/codex-only.md`\n").
+			contains("Codex — cat SessionStart ./start.sh");
+	}
+
+	/**
 	 * Verifies that absolute loaded files receive only their containing directories as read-only evidence, with
 	 * repeated directories granted once and project files needing no extra grant.
 	 */
@@ -1736,10 +1820,9 @@ public final class ProposalTest
 			List.of(), List.of(), Map.of()));
 
 		requireThat(unapproved.contract().limitations(), "unapproved").contains(
-			"Trials do not run these hooks of the trial plugins, because the user has not approved them in " +
-			"the harness: cat SessionStart `./log.sh`; cat PostToolUse `./check.sh`. A hook also does not run if its " +
-			"declaration changed after the user approved it. Approve the hooks in the harness and run revise, " +
-			"or accept that trials can behave differently from sessions in which those hooks run.");
+			"Trials skip these hooks of the trial plugins because CAT could not verify their approval for the " +
+			"installed trial copies: cat SessionStart `./log.sh`; cat PostToolUse `./check.sh`. Review those hooks " +
+			"and their approvals in the harness, then run revise to check them again.");
 		requireThat(approved.contract().limitations().stream().
 			filter(limitation -> limitation.contains("hooks of the trial plugins")).toList(), "approved").isEmpty();
 	}

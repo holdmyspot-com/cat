@@ -126,7 +126,7 @@ public final class CodexEvidenceTest
 	}
 
 	/**
-	 * Child calls retain their own thread attribution and appear at their invocation position among root calls.
+	 * A child launch appears once at its invocation position, and the child's calls retain their own attribution.
 	 *
 	 * @throws IOException if the recording cannot be read
 	 */
@@ -136,9 +136,10 @@ public final class CodexEvidenceTest
 		// Requirement: R-E21
 		SessionEvidence evidence = parse(recorded("child-work.jsonl"));
 		List<Tool> tools = evidence.entries().stream().filter(Tool.class::isInstance).map(Tool.class::cast).toList();
-		requireThat(tools.size(), "tools.size").isEqualTo(4);
+		requireThat(tools.size(), "tools.size").isEqualTo(5);
 		requireThat(tools.stream().map(Tool::agent).toList(), "agents").
-			isEqualTo(List.of("root", "root", "root", "child-thread"));
+			isEqualTo(List.of("root", "root", "root", "root", "child-thread"));
+		requireThat(tools.get(2), "launch").isEqualTo(new Tool(1, "root", "spawn_agent", "", false, null, ""));
 		requireThat(tools.getLast(), "childCall").isEqualTo(new Tool(1, "child-thread", "commandExecution",
 			"/bin/bash -lc true", true, 1,
 			"error building bubblewrap command: app-server socket directory must be a user-owned directory " +

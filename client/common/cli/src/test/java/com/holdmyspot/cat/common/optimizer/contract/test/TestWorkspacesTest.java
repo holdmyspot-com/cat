@@ -10,6 +10,8 @@ import com.holdmyspot.cat.common.optimizer.contract.PromptTestFiles;
 import com.holdmyspot.cat.common.optimizer.contract.ScenarioFormatException;
 import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TestValue;
+import com.holdmyspot.cat.common.runner.ResultProjectLinks;
+import com.holdmyspot.cat.common.runner.ResultsCopy;
 import com.holdmyspot.cat.common.test.RootedPaths;
 
 import org.testng.annotations.Test;
@@ -332,6 +334,56 @@ public final class TestWorkspacesTest
 			requireThat(files.source(files.workspaceFiles().get(0)), "fromDraft").isEqualTo(drafted);
 			requireThat(files.source(files.workspaceFiles().get(1)), "fromProject").
 				isEqualTo(project.resolve(".cat/tests/guidance/shared/logs/{{notes}}"));
+		}
+	}
+
+	/**
+	 * Verifies that completed authoring keeps the draft's linked project directory through both served result copies.
+	 *
+	 * @throws IOException if a fixture file cannot be written or read
+	 * @throws ScenarioFormatException if the received draft is refused
+	 */
+	@Test
+	public void servedDraftKeepsLinkedDirectory() throws IOException, ScenarioFormatException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path run = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "draft-results"));
+			Path author = Files.createDirectory(run.resolve("author"));
+			Path draftPath = Path.of("cat-draft");
+			Path testPath = Path.of(".cat/tests/guidance/case");
+			Path project = Files.createDirectory(author.resolve("project"));
+			Path workspace = Files.createDirectories(project.resolve(draftPath).resolve(testPath).resolve("workspace"));
+			Files.writeString(workspace.resolveSibling(PromptTestFiles.SCENARIO), SCENARIO);
+			Path reports = Files.createDirectory(project.resolve("reports"));
+			Files.writeString(reports.resolve("shipping.md"), "Shipping is ready.");
+			Files.writeString(workspace.resolve("own.md"), "{{before}}\nDraft file");
+			link(workspace.resolve("reports"), "../../../../../reports");
+			link(workspace.resolve("latest"), "own.md");
+			List<String> expectedPaths = List.of("latest", "own.md", "reports/shipping.md");
+			Path authoredDraft = project.resolve(draftPath);
+			PromptTestFiles authored = PromptTestFiles.readScenario(project, authoredDraft,
+				authoredDraft.resolve(".cat/tests"), authoredDraft.resolve(testPath));
+			requireThat(authored.workspaceFiles().stream().map(PromptTestFiles.WorkspaceEntry::path).toList(),
+				"authoredWorkspaceFiles").isEqualTo(expectedPaths);
+
+			Path broker = run.resolve("broker");
+			Path receiver = run.resolve("requester");
+			requireThat(ResultsCopy.copyTurn(author, broker, draftPath), "brokerCopy").isEmpty();
+			requireThat(ResultsCopy.copyTurn(broker, receiver), "requesterCopy").isEmpty();
+
+			Path receivedProject = receiver.resolve("project");
+			ResultProjectLinks.restore(receivedProject, draftPath.toString());
+			Path draft = receivedProject.resolve(draftPath);
+			PromptTestFiles files = PromptTestFiles.readScenario(receivedProject, draft, draft.resolve(".cat/tests"),
+				draft.resolve(testPath));
+			requireThat(files.workspaceFiles().stream().map(PromptTestFiles.WorkspaceEntry::path).toList(),
+				"receivedWorkspaceFiles").isEqualTo(expectedPaths);
+			Path trial = Files.createDirectory(run.resolve("trial"));
+			TestWorkspaces.copy(files, testCase("notes.md"), trial);
+			requireThat(Files.readString(trial.resolve("reports/shipping.md")), "report").isEqualTo("Shipping is ready.");
+			requireThat(Files.readSymbolicLink(trial.resolve("latest")), "latest").isEqualTo(Path.of("own.md"));
 		}
 	}
 

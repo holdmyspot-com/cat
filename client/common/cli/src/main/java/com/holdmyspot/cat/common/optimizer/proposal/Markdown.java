@@ -302,7 +302,26 @@ public final class Markdown
 	 */
 	private Optional<String> pluginFile(String path)
 	{
-		for (Map.Entry<String, Path> entry : plugin.baseDirectories().entrySet())
+		if (plugin.byEvaluator().isEmpty())
+			return pluginFile(path, plugin.baseDirectories());
+		StringJoiner matches = new StringJoiner(", ");
+		plugin.byEvaluator().forEach((evaluator, check) -> pluginFile(path, check.baseDirectories()).
+			ifPresent(file -> matches.add(evaluator.productName() + " " + file)));
+		if (matches.length() == 0)
+			return Optional.empty();
+		return Optional.of(matches.toString());
+	}
+
+	/**
+	 * Names a file relative to one evaluator's plugin base.
+	 *
+	 * @param path the file's recorded path
+	 * @param baseDirectories the plugin base directories
+	 * @return the relative description, or empty if no matching plugin base exists
+	 */
+	private static Optional<String> pluginFile(String path, Map<String, Path> baseDirectories)
+	{
+		for (Map.Entry<String, Path> entry : baseDirectories.entrySet())
 		{
 			String prefix = entry.getValue().toAbsolutePath().normalize() + File.separator;
 			if (path.startsWith(prefix))
@@ -765,7 +784,12 @@ public final class Markdown
 			switch (dependent.location())
 			{
 				case PROJECT -> text.append("The project file `");
-				case PLUGIN -> text.append("The file of the trial plugin `").append(dependent.plugin()).append("` `");
+				case PLUGIN ->
+				{
+					text.append("The file of the trial plugin `").append(dependent.plugin()).append('`');
+					dependent.evaluator().ifPresent(evaluator -> text.append(" for ").append(evaluator.productName()));
+					text.append(" `");
+				}
 			}
 			text.append(dependent.path()).append("`: ");
 			switch (dependent.removal())
@@ -799,9 +823,29 @@ public final class Markdown
 	private void trialPlugins()
 	{
 		heading("Trial plugins");
-		if (plugin.plugins().isEmpty())
+		if (plugin.byEvaluator().isEmpty())
+		{
+			trialPlugins(plugin);
+			return;
+		}
+		plugin.byEvaluator().forEach((evaluator, check) ->
+		{
+			text.append("### ").append(evaluator.productName()).append("\n\n");
+			trialPlugins(check);
+			text.append('\n');
+		});
+	}
+
+	/**
+	 * Shows one evaluator's installed plugins and observations.
+	 *
+	 * @param check the evaluator's check
+	 */
+	private void trialPlugins(PluginCheck check)
+	{
+		if (check.plugins().isEmpty())
 			text.append("Trials install no plugin.\n");
-		for (TrialPlugin trialPlugin : plugin.plugins())
+		for (TrialPlugin trialPlugin : check.plugins())
 		{
 			text.append("- `").append(trialPlugin.name()).append("`: ");
 			switch (trialPlugin.source())
@@ -824,34 +868,34 @@ public final class Markdown
 				case TrialPlugin.Installed _ -> text.append("the user's installed copy\n");
 			}
 		}
-		if (!plugin.differing().isEmpty())
+		if (!check.differing().isEmpty())
 		{
 			text.append("\nWarning: the content of these mapped files differs from the base's, because the base " +
 				"predates them or the build changes them. Trials load the project's content:\n\n");
-			for (PluginMapping.Difference difference : plugin.differing())
+			for (PluginMapping.Difference difference : check.differing())
 			{
 				text.append("- `").append(PortablePaths.text(difference.file())).append("` → `").
 					append(difference.plugin()).append("` `").append(PortablePaths.text(difference.mapped())).
 					append("`\n");
 			}
 		}
-		if (!plugin.uncovered().isEmpty())
+		if (!check.uncovered().isEmpty())
 		{
 			text.append("\nThese prompt files do not load from the project, and no trial plugin that the project " +
 				"builds holds a copy of them, so a candidate's edit to them never reaches trials:\n\n");
-			for (Path path : plugin.uncovered())
+			for (Path path : check.uncovered())
 				text.append("- `").append(PortablePaths.text(path)).append("`\n");
 		}
-		if (!plugin.productionOnly().isEmpty())
+		if (!check.productionOnly().isEmpty())
 		{
 			text.append("\nThese files load in the user's sessions of the harness but not in trials:\n\n");
-			productionOnlyGroups();
+			productionOnlyGroups(check.productionOnly());
 		}
-		if (!plugin.homeOnly().isEmpty())
+		if (!check.homeOnly().isEmpty())
 		{
 			text.append("\nThese hooks, plugins and MCP servers of the user's harness configuration run in the user's " +
 				"sessions but not in trials:\n\n");
-			for (String entry : plugin.homeOnly())
+			for (String entry : check.homeOnly())
 			{
 				text.append("- ").append(Character.toUpperCase(entry.charAt(0))).append(entry.substring(1)).
 					append('\n');
@@ -863,11 +907,13 @@ public final class Markdown
 	 * Shows the files that load in the user's sessions but not in trials, one line per directory. The directories are
 	 * the deepest directory that holds every file, and each of its subdirectories that holds files. A group of at
 	 * most {@code MAX_LISTED_FILES} files lists its files; a larger group shows its directory and its file count.
+	 *
+	 * @param productionOnly the files that load only in production
 	 */
-	private void productionOnlyGroups()
+	private void productionOnlyGroups(List<String> productionOnly)
 	{
 		List<Path> files = new ArrayList<>();
-		for (String name : plugin.productionOnly())
+		for (String name : productionOnly)
 			files.add(Path.of(name));
 		Path common = files.get(0).getParent();
 		for (Path file : files)
@@ -1028,9 +1074,9 @@ public final class Markdown
 	private void certificationScope()
 	{
 		heading("Certification scope");
-		text.append("Certification covers the weakest cell only unless you choose another scope: " +
-			"`confirm <campaign>` confirms the weakest cell only, and `confirm <campaign> <choice>` confirms a choice. " +
-			"Development always runs in each test's weakest cell, the lowest effort of the least capable model " +
+		text.append("Certification covers each test's weakest cell in each evaluator unless you choose another scope. " +
+			"`confirm <campaign>` confirms those cells, and `confirm <campaign> <choice>` confirms a choice. " +
+			"Development runs in each evaluator's weakest cells, at the lowest effort of the least capable models " +
 			"that the choice covers, and in every cell where a certification attempt fails. The choice sets the " +
 			"cells that the incumbent baseline and every certification attempt run in, and the cells that the " +
 			"claim covers. A test with one cell is certified in that cell under every choice. To certify " +
@@ -1058,10 +1104,8 @@ public final class Markdown
 	{
 		Contract scoped = preview.contract();
 		text.append("\n### `").append(scope.id()).append("`: ").append(scope.summary()).append("\n\n").
-			append("Cells: ").append(describeCells(CellTier.scopeCells(scoped))).append('\n');
-		List<Cell> weakest = new ArrayList<>();
-		for (PromptTest test : scoped.tests())
-			weakest.add(CellTier.weakestCell(scoped, test.id()));
+			append("Cells: ").append(describeCells(CellTier.scopeCells(scoped))).append("\n\n");
+		List<Cell> weakest = CellTier.weakestCells(scoped);
 		text.append("Weakest cells: ").append(cellGroups(weakest)).append("\n\n");
 		RemainingWork remaining = RemainingWork.of(preview);
 		int trials = remaining.total();
@@ -1106,7 +1150,8 @@ public final class Markdown
 	 * Names cells exactly as groups of tests and profiles, each group holding every pairing of its tests with its
 	 * profiles, such as {@code tests `a`, `b` × profiles `big/high`, `small/high`}. The tests whose cells have the
 	 * same set of profiles form one group. The groups are in the order of their first cell, and the tests and
-	 * profiles of a group are in the order of their first cell.
+	 * profiles of a group are in the order of their first cell. A cell with an assigned evaluator prefixes its
+	 * profile with the evaluator name.
 	 *
 	 * @param cells the cells
 	 * @return the groups, separated by semicolons
@@ -1115,7 +1160,11 @@ public final class Markdown
 	{
 		Map<String, Set<String>> profilesByTest = new LinkedHashMap<>();
 		for (Cell cell : cells)
-			profilesByTest.computeIfAbsent(cell.testId(), _ -> new LinkedHashSet<>()).add(cell.profile().label());
+		{
+			String profile = cell.profile().label();
+			String label = cell.evaluator().map(harness -> harness.commandName() + "/" + profile).orElse(profile);
+			profilesByTest.computeIfAbsent(cell.testId(), _ -> new LinkedHashSet<>()).add(label);
+		}
 		// Set equality ignores order, so tests whose profiles appear in different orders still share a group
 		Map<Set<String>, List<String>> testsByProfiles = new LinkedHashMap<>();
 		for (Map.Entry<String, Set<String>> entry : profilesByTest.entrySet())

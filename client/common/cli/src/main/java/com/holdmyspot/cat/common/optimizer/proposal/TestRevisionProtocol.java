@@ -340,6 +340,7 @@ public final class TestRevisionProtocol
 		TestRevisionCheck check = check(examined);
 		Path effects = result.effects();
 		String draftName = DraftDirectory.name(result.initialProject());
+		DraftDirectory.restoreReturnedLinks(effects, draftName);
 		Path draft = effects.resolve(draftName);
 		Result outcome = check.validate(output, effects, draft, confirmed.observedSources(), examined.profiles(),
 			confirmed.contract().salt(), true);

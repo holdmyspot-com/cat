@@ -2,6 +2,8 @@ package com.holdmyspot.cat.common.optimizer.contract;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.optimizer.campaign.Harness;
+
 import java.math.BigDecimal;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -282,23 +284,31 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 	 */
 	private static void requireDependents(List<Dependent> dependents)
 	{
-		// A dependent in the project has the empty plugin name, so the project and each plugin have their own paths
-		Map<String, Map<Path, List<Dependent.Removal>>> removals = new HashMap<>();
+		// A dependent in the project has the empty plugin name, so the project and each plugin have their own paths.
+		Map<String, Map<Path, List<Dependent>>> byFile = new HashMap<>();
 		for (Dependent dependent : dependents)
 		{
-			List<Dependent.Removal> ofFile = removals.computeIfAbsent(dependent.plugin(),
+			List<Dependent> others = byFile.computeIfAbsent(dependent.plugin(),
 				_ -> new HashMap<>()).computeIfAbsent(dependent.path(), _ -> new ArrayList<>());
-			if (ofFile.contains(dependent.removal()))
+			for (Dependent other : others)
 			{
-				throw new IllegalArgumentException("The dependent " + dependent.path() + " lists " +
-					dependent.removal() + " twice");
+				if (dependent.evaluator().isPresent() && other.evaluator().isPresent() &&
+					!dependent.evaluator().equals(other.evaluator()))
+				{
+					continue;
+				}
+				if (other.removal().equals(dependent.removal()))
+				{
+					throw new IllegalArgumentException("The dependent " + dependent.path() + " lists " +
+						dependent.removal() + " twice");
+				}
+				if (other.removal() instanceof Dependent.WholeFile || dependent.removal() instanceof Dependent.WholeFile)
+				{
+					throw new IllegalArgumentException("The dependents of " + dependent.path() + " remove the whole " +
+						"file and also a part of it. List the file once, as a whole file");
+				}
 			}
-			ofFile.add(dependent.removal());
-			if (ofFile.size() > 1 && ofFile.stream().anyMatch(Dependent.WholeFile.class::isInstance))
-			{
-				throw new IllegalArgumentException("The dependents of " + dependent.path() + " remove the whole file " +
-					"and also a part of it. List the file once, as a whole file");
-			}
+			others.add(dependent);
 		}
 	}
 
@@ -325,6 +335,19 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 	 */
 	public List<Dependent> pluginRemovals(TrialPlugin plugin)
 	{
+		return pluginRemovals(plugin, null);
+	}
+
+	/**
+	 * Returns the mapped project removals and packaged removals that apply to this evaluator's plugin copy.
+	 *
+	 * @param plugin a trial plugin
+	 * @param evaluator the target evaluator, or null to include only unqualified packaged removals
+	 * @return the dependents relative to the plugin directory, in contract order
+	 * @throws NullPointerException if the plugin is null
+	 */
+	public List<Dependent> pluginRemovals(TrialPlugin plugin, Harness evaluator)
+	{
 		requireThat(plugin, "plugin").isNotNull();
 		if (!plugin.isProjectBuilt())
 			return List.of();
@@ -335,8 +358,11 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 			{
 				case PLUGIN ->
 				{
-					if (dependent.plugin().equals(plugin.name()))
+					if (dependent.plugin().equals(plugin.name()) &&
+						(dependent.evaluator().isEmpty() || dependent.evaluator().orElseThrow() == evaluator))
+					{
 						removals.add(dependent);
+					}
 				}
 				case PROJECT ->
 				{

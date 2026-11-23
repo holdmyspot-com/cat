@@ -7,6 +7,8 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.CellTier;
 import com.holdmyspot.cat.common.optimizer.campaign.FailedAssertion;
+import com.holdmyspot.cat.common.optimizer.campaign.Harness;
+import com.holdmyspot.cat.common.optimizer.campaign.MeasurementIdentity;
 import com.holdmyspot.cat.common.optimizer.contract.BuiltInToolResult;
 import com.holdmyspot.cat.common.optimizer.contract.Cell;
 import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
@@ -20,6 +22,7 @@ import com.holdmyspot.cat.common.optimizer.contract.ProposalSchema;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
+import com.holdmyspot.cat.common.optimizer.contract.TrialProfiles;
 import com.holdmyspot.cat.common.optimizer.contract.TestWorkspace;
 import com.holdmyspot.cat.common.optimizer.contract.UndecidableToolException;
 import com.holdmyspot.cat.common.optimizer.execution.PilotTrialRecovery.Discard;
@@ -38,6 +41,7 @@ import com.holdmyspot.cat.common.runner.RetainedTrialClaim;
 import com.holdmyspot.cat.common.runner.RetainedTrialRequest;
 import com.holdmyspot.cat.common.runner.RetainedTrialResponse;
 import com.holdmyspot.cat.common.runner.RetainedTrialResponse.Status;
+import com.holdmyspot.cat.common.runner.TrialPluginInput;
 import com.holdmyspot.cat.common.secrets.GuardPilotSecrets;
 
 import java.io.IOException;
@@ -55,19 +59,21 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.random.RandomGenerator;
 
 import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Runs the guard pilot of a proposed contract before CAT presents it: {@value #TRIALS} control trials of each prompt
- * test in its weakest cell, on development test cases only, decided by the proposed built-in tools and judge. The
- * results show how often the agent already passes each assertion without the target prompts, so that the user can see
- * a guard that the agent fails even before any prompt is optimized.
+ * test in each applicable evaluator's weakest cell, on development test cases only, decided by the proposed built-in
+ * tools and judge. The results show how often the agent already passes each assertion without the target prompts,
+ * so that the user can see a guard that the agent fails even before any prompt is optimized.
  * <p>
  * Pilot trials are targeted: they enter no count, record no campaign event and spend no allowance.
  * <p>
@@ -125,6 +131,7 @@ public final class GuardPilot
 	private static final PilotTrialRecovery NO_RECOVERY =
 		new PilotTrialRecovery(Optional.empty(), NO_PROGRESS, List.of(), Optional.empty());
 	private final SessionPort sessions;
+	private final Map<Harness, SessionPort> evaluators;
 	private final WorkspacePort workspace;
 	private final Path target;
 	private final DirectoryRemoval directoryRemoval;
@@ -154,6 +161,27 @@ public final class GuardPilot
 	}
 
 	/**
+	 * Creates a guard pilot with an owner judge and evaluator-specific trial sessions.
+	 *
+	 * @param sessions starts the owner judge and settles broker launches for removed evaluators
+	 * @param evaluators starts trial sessions for each selected evaluator
+	 * @param workspace stages the control source that the trials work in
+	 * @param target the normalized relative path of the target prompt
+	 * @param judge writes the judge requests and reads their verdicts
+	 * @param schema writes the definition of each prompt test
+	 * @param json reads and writes the hook configurations from which control trials remove the target's dependents
+	 * @param ceiling the maximum number of sessions that run at the same time
+	 * @throws NullPointerException     if any argument or evaluator entry is null
+	 * @throws IllegalArgumentException if {@code target} is absolute or {@code ceiling} is not positive
+	 */
+	public GuardPilot(SessionPort sessions, Map<Harness, SessionPort> evaluators, WorkspacePort workspace,
+		Path target, JudgeProtocol judge, ProposalSchema schema, JsonMapper json, int ceiling)
+	{
+		this(sessions, evaluators, workspace, target, judge, schema, json, ceiling,
+			TemporaryDirectories::deleteRecursively);
+	}
+
+	/**
 	 * Creates a guard pilot with a supplied project-directory remover.
 	 *
 	 * @param sessions starts the trial and judge sessions
@@ -171,6 +199,26 @@ public final class GuardPilot
 	private GuardPilot(SessionPort sessions, WorkspacePort workspace, Path target, JudgeProtocol judge,
 		ProposalSchema schema, JsonMapper json, int ceiling, DirectoryRemoval directoryRemoval)
 	{
+		this(sessions, Map.of(), workspace, target, judge, schema, json, ceiling, directoryRemoval);
+	}
+
+	/**
+	 * Creates a guard pilot with evaluator sessions and a supplied project-directory remover.
+	 *
+	 * @param sessions starts the owner judge and provides the default trial sessions
+	 * @param evaluators starts trial sessions for the selected evaluators
+	 * @param workspace stages the control source that the trials work in
+	 * @param target the normalized relative path of the target prompt
+	 * @param judge writes the judge requests and reads their verdicts
+	 * @param schema writes the definition of each prompt test
+	 * @param json reads and writes the control hook configurations
+	 * @param ceiling the maximum number of sessions that run at the same time
+	 * @param directoryRemoval deletes project directories of passing trials
+	 */
+	private GuardPilot(SessionPort sessions, Map<Harness, SessionPort> evaluators, WorkspacePort workspace,
+		Path target, JudgeProtocol judge, ProposalSchema schema, JsonMapper json, int ceiling,
+		DirectoryRemoval directoryRemoval)
+	{
 		requireThat(sessions, "sessions").isNotNull();
 		requireThat(workspace, "workspace").isNotNull();
 		FileInventory.requireInventoryPath(target, "target");
@@ -181,6 +229,7 @@ public final class GuardPilot
 		requireThat(json, "json").isNotNull();
 		requireThat(ceiling, "ceiling").isPositive();
 		this.sessions = sessions;
+		this.evaluators = Map.copyOf(evaluators);
 		this.workspace = workspace;
 		this.target = target;
 		this.directoryRemoval = directoryRemoval;
@@ -191,19 +240,37 @@ public final class GuardPilot
 	}
 
 	/**
+	 * Returns a prompt test's pilot cell for a single-evaluator contract.
+	 *
+	 * @param contract the proposed contract
+	 * @param testId the prompt test
+	 * @return the cell, or empty if it depends on an unranked model family
+	 * @throws NullPointerException if an argument is null
+	 * @throws IllegalArgumentException if the test has no cell or the contract has multiple evaluators
+	 */
+	public static Optional<Cell> pilotCell(Contract contract, String testId)
+	{
+		requireThat(contract, "contract").isNotNull();
+		TrialProfiles profiles = contract.profiles();
+		if (profiles.byEvaluator().size() > 1)
+			throw new IllegalArgumentException("Choose an evaluator before selecting a pilot cell");
+		return pilotCell(profiles, testId);
+	}
+
+	/**
 	 * Returns the cell that a prompt test's pilot runs in: the test's weakest cell when every model is allowed, since
 	 * the certification scope is known only at confirmation.
 	 *
-	 * @param contract the proposed contract
+	 * @param profiles the trial profiles of one evaluator
 	 * @param testId the prompt test
 	 * @return the cell, or empty if it depends on a model whose family is unranked
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if the test has no cell
 	 */
-	public static Optional<Cell> pilotCell(Contract contract, String testId)
+	public static Optional<Cell> pilotCell(TrialProfiles profiles, String testId)
 	{
-		requireThat(contract, "contract").isNotNull();
-		return CellTier.weakestCell(contract.profiles(), CertificationScope.WEAKEST_CELL, testId);
+		requireThat(profiles, "profiles").isNotNull();
+		return CellTier.weakestCell(profiles, CertificationScope.WEAKEST_CELL, testId);
 	}
 
 	/**
@@ -223,7 +290,37 @@ public final class GuardPilot
 	}
 
 	/**
-	 * Runs the pilot of each prompt test that a stored pilot does not describe.
+	 * Checks whether the stored controls for a sole evaluator ran under the proposed conditions, without starting any
+	 * sessions. A result that recorded failed trials can still match its conditions.
+	 *
+	 * @param contract the proposal's contract
+	 * @param evaluator the sole evaluator
+	 * @param plugins its prepared trial plugins
+	 * @param control the control overlay
+	 * @param selection the files the control trials receive
+	 * @param stored the previously presented pilot results
+	 * @return whether each stored result matches its current conditions
+	 */
+	public boolean matchesStored(Contract contract, Harness evaluator, List<TrialPlugin> plugins, Overlay control,
+		SourceSelection selection, Map<String, PilotResult> stored)
+	{
+		TrialProfiles profiles = contract.profiles().forEvaluator(evaluator);
+		Sha256 files = control.snapshot().identity();
+		for (PilotResult result : stored.values())
+		{
+			Optional<PromptTest> test = contract.findTest(result.testId());
+			if (test.isEmpty() || profiles.cellsOf(result.testId()).isEmpty())
+				return false;
+			Optional<Cell> cell = pilotCell(profiles, result.testId());
+			if (cell.isEmpty() || !conditionsFor(contract, test.orElseThrow(), cell.orElseThrow(), false, files,
+				selection, plugins).matches(result))
+				return false;
+		}
+		return true;
+	}
+
+	/**
+	 * Runs each applicable test and evaluator whose stored pilot needs more trials.
 	 * <p>
 	 * A stored pilot is reused when it ran every trial, every trial ended with a decision, and its test's definition,
 	 * its cell, the control source's files, the selection, the session environment version and the judge version are
@@ -253,10 +350,11 @@ public final class GuardPilot
 	 * @param excluded the project-relative paths that the staged control source leaves out, so that a trial cannot
 	 *   read the prompt tests
 	 * @param selection the files of the control source that the staged control source holds
-	 * @param stored the pilots that an earlier run of the same campaign stored, by prompt test
+	 * @param stored the pilots previously stored for the campaign, by test and evaluator
 	 * @param random draws the seed of each test's development stream
-	 * @return the pilot of each prompt test that has one, by prompt test, in contract order
+	 * @return the pilots by test and evaluator, in contract order
 	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalArgumentException if evaluator trial ports are missing or disagree with the assigned profiles
 	 * @throws IOException if the control source or its copies of the trial plugins cannot be staged, or the project
 	 *   copies of a control trial that passes every assertion cannot be deleted
 	 * @throws InterruptedException if the thread is interrupted while it waits for a session. Every running session
@@ -272,7 +370,7 @@ public final class GuardPilot
 	}
 
 	/**
-	 * Runs the pilot of each prompt test that a stored pilot does not describe, as
+	 * Runs each applicable test and evaluator whose stored pilot needs more trials, as
 	 * {@link #run(Contract, List, Overlay, Set, SourceSelection, Map, RandomGenerator)} does, and hands the pilots to a
 	 * checkpoint before a new trial launches, after each observer decision and when a trial is decided.
 	 *
@@ -283,12 +381,13 @@ public final class GuardPilot
 	 * @param excluded the project-relative paths that the staged control source leaves out, so that a trial cannot
 	 *   read the prompt tests
 	 * @param selection the files of the control source that the staged control source holds
-	 * @param stored the pilots that an earlier run of the same campaign stored, by prompt test
+	 * @param stored the pilots previously stored for the campaign, by test and evaluator
 	 * @param random draws the seed of each test's development stream
 	 * @param checkpoint keeps the pilots' in-progress launches, observer decisions and trial results. A pilot that has
 	 *   more trials to run at that point has a stop reason that says so.
-	 * @return the pilot of each prompt test that has one, by prompt test, in contract order
+	 * @return the pilots by test and evaluator, in contract order
 	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalArgumentException if evaluator trial ports are missing or disagree with the assigned profiles
 	 * @throws IOException if the control source or its copies of the trial plugins cannot be staged, the project
 	 *   copies of a control trial that passes every assertion cannot be deleted, or the checkpoint fails. A failed
 	 *   checkpoint starts no further session and interrupts the running ones.
@@ -303,7 +402,7 @@ public final class GuardPilot
 	}
 
 	/**
-	 * Runs the pilot of each prompt test that a stored pilot does not describe, as
+	 * Runs each applicable test and evaluator whose stored pilot needs more trials, as
 	 * {@link #run(Contract, List, Overlay, Set, SourceSelection, Map, RandomGenerator, PilotCheckpoint)} does, within
 	 * a slice's time bound.
 	 * <p>
@@ -321,12 +420,13 @@ public final class GuardPilot
 	 * @param excluded the project-relative paths that the staged control source leaves out, so that a trial cannot
 	 *   read the prompt tests
 	 * @param selection the files of the control source that the staged control source holds
-	 * @param stored the pilots that an earlier run of the same campaign stored, by prompt test
+	 * @param stored the pilots previously stored for the campaign, by test and evaluator
 	 * @param random draws the seed of each test's development stream
 	 * @param checkpoint keeps the pilots' in-progress launches, observer decisions and trial results
 	 * @param slice the time bound, or {@code null} if the pilot runs until every trial ends or the pilot stops
-	 * @return the pilot of each prompt test that has one, by prompt test, in contract order
+	 * @return the pilots by test and evaluator, in contract order
 	 * @throws NullPointerException if any of the arguments other than {@code slice} are null
+	 * @throws IllegalArgumentException if evaluator trial ports are missing or disagree with the assigned profiles
 	 * @throws IOException if the control source or its copies of the trial plugins cannot be staged, the project
 	 *   copies of a control trial that passes every assertion cannot be deleted, the host's interrupt record cannot
 	 *   be read, a session cannot be interrupted, or the checkpoint fails. A failure starts no further session and
@@ -338,54 +438,116 @@ public final class GuardPilot
 		Set<Path> excluded, SourceSelection selection, Map<String, PilotResult> stored, RandomGenerator random,
 		PilotCheckpoint checkpoint, PilotSlice slice) throws IOException, InterruptedException
 	{
+		requireThat(plugins, "plugins").isNotNull();
+		return runPilot(contract, _ -> plugins, control, excluded, selection, stored, random, checkpoint, slice);
+	}
+
+	/**
+	 * Runs controls from one staged source with each evaluator's ordered plugin copies.
+	 *
+	 * @param contract the proposed contract
+	 * @param plugins the prepared plugin lists, keyed by the selected evaluator
+	 * @param control the common control overlay
+	 * @param excluded the project-relative paths that the staged source leaves out
+	 * @param selection the union of files that the evaluator trial projects receive
+	 * @param stored the previous pilots, by test and evaluator
+	 * @param random draws the seed of each test's development stream
+	 * @param checkpoint persists the pilots
+	 * @param slice the time bound, or null for a full pilot
+	 * @return the pilots by test and evaluator, in contract order
+	 * @throws IOException if the source or plugins cannot be staged or the pilots cannot be stored
+	 * @throws InterruptedException if the thread is interrupted while waiting for a session
+	 * @throws IllegalArgumentException if plugin lists are missing or do not match the evaluator scope
+	 */
+	public Map<String, PilotResult> run(Contract contract, Map<Harness, List<TrialPlugin>> plugins, Overlay control,
+		Set<Path> excluded, SourceSelection selection, Map<String, PilotResult> stored, RandomGenerator random,
+		PilotCheckpoint checkpoint, PilotSlice slice) throws IOException, InterruptedException
+	{
+		Set<Harness> scope = contract.profiles().byEvaluator().keySet();
+		if (scope.isEmpty() || !scope.equals(plugins.keySet()))
+			throw new IllegalArgumentException("Provide trial plugin lists for the evaluator scope " + scope);
+		return runPilot(contract, plugins::get, control, excluded, selection, stored, random, checkpoint, slice);
+	}
+
+	/**
+	 * Runs or resumes the controls for each selected evaluator and test whose pilot remains pending.
+	 *
+	 * @param contract the proposed contract
+	 * @param pluginSelection selects the prepared plugins for an evaluator
+	 * @param control the common control overlay
+	 * @param excluded the project-relative paths that the staged source leaves out
+	 * @param selection the project files that trial projects receive
+	 * @param stored the previous pilots
+	 * @param random draws the seed of each test's development stream
+	 * @param checkpoint persists the pilots
+	 * @param slice the time bound, or null for a full pilot
+	 * @return the pilots in contract order
+	 * @throws IOException if the source or plugins cannot be staged or the pilots cannot be stored
+	 * @throws InterruptedException if waiting for a session is interrupted
+	 */
+	private Map<String, PilotResult> runPilot(Contract contract, Function<Harness, List<TrialPlugin>> pluginSelection,
+		Overlay control, Set<Path> excluded, SourceSelection selection, Map<String, PilotResult> stored,
+		RandomGenerator random, PilotCheckpoint checkpoint, PilotSlice slice) throws IOException, InterruptedException
+	{
 		requireThat(checkpoint, "checkpoint").isNotNull();
 		requireThat(contract, "contract").isNotNull();
-		requireThat(plugins, "plugins").isNotNull();
 		requireThat(control, "control").isNotNull();
 		requireThat(excluded, "excluded").isNotNull();
 		requireThat(selection, "selection").isNotNull();
 		requireThat(stored, "stored").isNotNull();
 		requireThat(random, "random").isNotNull();
-		// Keyed by the files rather than the overlay, so that a pilot still applies once confirmation records the same
-		// files in the fork
-		Sha256 files = controlIdentity(control.snapshot().identity(), selection);
+		Map<Harness, TrialProfiles> scopes = contract.profiles().byEvaluator();
+		boolean shared = scopes.size() > 1;
+		if ((shared || !evaluators.isEmpty()) && !evaluators.keySet().equals(scopes.keySet()))
+			throw new IllegalArgumentException("Provide evaluator trial ports for " + scopes.keySet());
+		List<TrialProfiles> localProfiles = List.copyOf(scopes.values());
+		if (localProfiles.isEmpty())
+			localProfiles = List.of(contract.profiles());
 		Map<String, PilotResult> pilots = new LinkedHashMap<>();
 		Set<String> matching = new HashSet<>();
 		List<Pilot> pending = new ArrayList<>();
+		// Keyed by files rather than the overlay, so that a pilot still applies when confirmation records the fork
+		Sha256 files = control.snapshot().identity();
 		for (PromptTest test : contract.tests())
 		{
-			Optional<Cell> cell = pilotCell(contract, test.id());
-			if (cell.isEmpty() || contract.split().testCases(test, Part.DEVELOPMENT).isEmpty())
+			if (contract.split().testCases(test, Part.DEVELOPMENT).isEmpty())
 				continue;
-			Sha256 definition = definition(contract, test);
-			PilotResult earlier = stored.get(test.id());
-			if (earlier != null && earlier.appliesTo(definition, cell.get().id(), files))
+			for (TrialProfiles local : localProfiles)
 			{
-				pilots.put(test.id(), earlier);
-				continue;
+				if (local.cellsOf(test.id()).isEmpty())
+					continue;
+				Optional<Cell> selected = pilotCell(local, test.id());
+				if (selected.isEmpty())
+					continue;
+				Cell cell = selected.orElseThrow();
+				List<TrialPlugin> plugins = List.copyOf(pluginSelection.apply(cell.evaluator().orElse(null)));
+				PilotConditions conditions = conditionsFor(contract, test, cell, shared, files, selection, plugins);
+				String key = PilotResult.key(test.id(), conditions.evaluator());
+				PilotResult earlier = stored.get(key);
+				if (earlier != null && conditions.matches(earlier))
+				{
+					matching.add(key);
+					if (earlier.appliesTo(conditions.definition(), cell.id(), conditions.control()))
+					{
+						pilots.put(key, earlier);
+						continue;
+					}
+				}
+				else
+					earlier = null;
+				pending.add(preparePilot(test, conditions, earlier, random));
+				// Reserves the test and evaluator's place in contract order
+				pilots.put(key, null);
 			}
-			Pilot pilot;
-			if (earlier != null && earlier.ranIn(definition, cell.get().id(), files))
-			{
-				matching.add(test.id());
-				pilot = new Pilot(test, cell.get(), definition, earlier.seed(), earlier.trials(), earlier.pendingTrials());
-				pilot.stopReason = retainedPause(earlier);
-				pilot.paused = pilot.stopReason != null;
-			}
-			else
-				pilot = new Pilot(test, cell.get(), definition, random.nextLong(), List.of(), Map.of());
-			pending.add(pilot);
-			// Reserves the test's place in contract order
-			pilots.put(test.id(), null);
 		}
-		discardObsolete(stored, matching);
+		discardObsolete(stored, matching, scopes);
 		if (pending.stream().anyMatch(pilot -> pilot.paused))
 		{
 			for (Pilot pilot : pending)
 			{
 				if (!pilot.paused)
 					pilot.stopReason = UNFINISHED;
-				pilots.put(pilot.test.id(), pilot.result(files));
+				pilots.put(pilot.key(), pilot.result());
 			}
 			return pilots;
 		}
@@ -398,12 +560,79 @@ public final class GuardPilot
 		StagedTarget.read(source, control.snapshot(), target);
 		if (!pending.isEmpty())
 		{
-			List<Path> directories = TrialPlugins.of(plugins, contract, workspace, source, true, json);
-			new Run(contract, source, control.snapshot(), directories, pending, pilots, files, checkpoint, slice).run();
+			Map<Optional<Harness>, List<TrialPluginInput>> directories = new HashMap<>();
+			for (Pilot pilot : pending)
+			{
+				Optional<Harness> evaluator = pilot.conditions.cell().evaluator();
+				if (!directories.containsKey(evaluator))
+				{
+					directories.put(evaluator, TrialPlugins.of(evaluator.orElse(null), pilot.conditions.plugins(),
+						contract, workspace, source, true, json));
+				}
+			}
+			new Run(contract, source, control.snapshot(), directories, pending, pilots, checkpoint, slice).run();
 		}
 		for (Pilot pilot : pending)
-			pilots.put(pilot.test.id(), pilot.result(files));
+			pilots.put(pilot.key(), pilot.result());
 		return pilots;
+	}
+
+	/**
+	 * Builds the identities used both to reuse a stored pilot and to confirm its proposal.
+	 *
+	 * @param contract the proposal's contract
+	 * @param test the prompt test
+	 * @param cell the selected pilot cell
+	 * @param shared whether the persisted pilot key includes the evaluator
+	 * @param files the control snapshot's identity
+	 * @param selection the files the control trials receive
+	 * @param plugins the trial plugins in installation order
+	 * @return the current control conditions
+	 */
+	private PilotConditions conditionsFor(Contract contract, PromptTest test, Cell cell, boolean shared, Sha256 files,
+		SourceSelection selection, List<TrialPlugin> plugins)
+	{
+		Harness evaluator = cell.evaluator().orElse(null);
+		Sha256 definition = Sha256.of(schema.toJson(contract, test, evaluator).getBytes(UTF_8));
+		SessionPort trials = trialSessions(evaluator);
+		Harness pilotEvaluator = null;
+		if (shared)
+			pilotEvaluator = evaluator;
+		return new PilotConditions(cell, pilotEvaluator, trials, definition,
+			controlIdentity(files, selection, trials, evaluator, plugins), plugins);
+	}
+
+	/**
+	 * Prepares a pilot, keeping its draws and receipts when its previous conditions still apply.
+	 *
+	 * @param test the prompt test
+	 * @param conditions the current conditions of its control trials
+	 * @param earlier the matching prior pilot, or {@code null} if there is none
+	 * @param random supplies seeds for new pilots
+	 * @return the prepared pilot
+	 */
+	private static Pilot preparePilot(PromptTest test, PilotConditions conditions, PilotResult earlier,
+		RandomGenerator random)
+	{
+		if (earlier == null)
+			return new Pilot(test, conditions, random.nextLong(), List.of(), Map.of());
+		Pilot pilot = new Pilot(test, conditions, earlier.seed(), earlier.trials(), earlier.pendingTrials());
+		pilot.stopReason = retainedPause(earlier);
+		pilot.paused = pilot.stopReason != null;
+		return pilot;
+	}
+
+	/**
+	 * Selects the trial sessions, or the owner's broker for an unassigned or removed evaluator.
+	 *
+	 * @param evaluator the assigned evaluator, or {@code null} for a legacy pilot
+	 * @return the session port
+	 */
+	private SessionPort trialSessions(Harness evaluator)
+	{
+		if (evaluator == null)
+			return sessions;
+		return evaluators.getOrDefault(evaluator, sessions);
 	}
 
 	/**
@@ -423,7 +652,7 @@ public final class GuardPilot
 			if (!pilot.paused() && !resetPositions)
 				return pilot;
 			return new PilotResult(pilot.testId(), pilot.definition(), pilot.cellId(), pilot.control(), pilot.seed(),
-				pilot.trials(), pilot.failedTrials(), UNFINISHED, false, recovery);
+				pilot.trials(), pilot.failedTrials(), UNFINISHED, false, recovery, pilot.evaluator());
 		});
 		return reset;
 	}
@@ -439,7 +668,7 @@ public final class GuardPilot
 		if (pilot.paused())
 			return pilot.stopReason();
 		return pilot.pendingTrials().entrySet().stream().filter(entry -> exhausted(entry.getValue())).
-			min(Map.Entry.comparingByKey()).map(entry -> exhaustionReason(pilot.testId(), entry.getKey(),
+			min(Map.Entry.comparingByKey()).map(entry -> exhaustionReason(pilot.key(), entry.getKey(),
 				entry.getValue().infrastructureAttempts())).orElse(null);
 	}
 
@@ -480,19 +709,25 @@ public final class GuardPilot
 	 * Settles old launches whose pilot no longer describes the proposed test, cell or source.
 	 *
 	 * @param stored the previous pilots
-	 * @param matching the tests that will retain the previous pilot
+	 * @param matching the keys that will retain the previous pilot
+	 * @param scopes the selected evaluator profiles
 	 * @throws IOException if an obsolete launch cannot be settled
 	 */
-	private void discardObsolete(Map<String, PilotResult> stored, Set<String> matching) throws IOException
+	private void discardObsolete(Map<String, PilotResult> stored, Set<String> matching,
+		Map<Harness, TrialProfiles> scopes) throws IOException
 	{
 		for (PilotResult previous : stored.values())
 		{
-			if (matching.contains(previous.testId()))
+			if (matching.contains(previous.key()))
 				continue;
+			Harness evaluator = previous.evaluator();
+			if (evaluator == null && scopes.size() == 1)
+				evaluator = scopes.keySet().iterator().next();
+			SessionPort trials = trialSessions(evaluator);
 			for (PilotTrialRecovery trial : previous.pendingTrials().values())
 			{
 				if (trial.requestId().isPresent())
-					discard(observe(trial.requestId().orElseThrow()));
+					discard(trials, observe(trials, trial.requestId().orElseThrow()));
 			}
 		}
 	}
@@ -500,13 +735,14 @@ public final class GuardPilot
 	/**
 	 * Gets the state of an original launch while keeping its request ID until the broker settles it.
 	 *
+	 * @param trials the session port of the original launch
 	 * @param requestId the original launch
 	 * @return the broker's state
 	 * @throws IOException if the lookup fails or the launch is still live
 	 */
-	private RetainedTrialResponse observe(UUID requestId) throws IOException
+	private static RetainedTrialResponse observe(SessionPort trials, UUID requestId) throws IOException
 	{
-		RetainedTrialResponse response = sessions.retainedTrial(RetainedTrialRequest.status(requestId));
+		RetainedTrialResponse response = trials.retainedTrial(RetainedTrialRequest.status(requestId));
 		if (!requestId.equals(response.requestId()))
 			throw new IOException("The broker answered for a different pilot launch: " + response.requestId());
 		if (response.status() == Status.BUSY)
@@ -519,15 +755,16 @@ public final class GuardPilot
 	/**
 	 * Requires a broker acknowledgement that the observed original launch cannot run again.
 	 *
+	 * @param trials the session port of the original launch
 	 * @param observed the broker's last observation of the original launch
 	 * @throws IOException if the broker does not confirm that the launch is gone
 	 */
-	private void discard(RetainedTrialResponse observed) throws IOException
+	private static void discard(SessionPort trials, RetainedTrialResponse observed) throws IOException
 	{
 		if (observed.status() == Status.ABSENT)
 			return;
 		UUID requestId = observed.requestId();
-		RetainedTrialResponse answer = sessions.retainedTrial(RetainedTrialRequest.discard(requestId, observed.identity()));
+		RetainedTrialResponse answer = trials.retainedTrial(RetainedTrialRequest.discard(requestId, observed.identity()));
 		if (!requestId.equals(answer.requestId()) || (answer.status() != Status.DISCARDED &&
 			answer.status() != Status.ABSENT))
 		{
@@ -539,7 +776,7 @@ public final class GuardPilot
 	/**
 	 * Returns why the pilots paused.
 	 *
-	 * @param pilots the pilot of each prompt test that has one, by prompt test
+	 * @param pilots the pilots by test and evaluator
 	 * @return the reason, which names the logical trial whose attempts ended without an outcome; empty if no pilot paused
 	 * @throws NullPointerException if {@code pilots} is null
 	 */
@@ -557,7 +794,7 @@ public final class GuardPilot
 	/**
 	 * Indicates whether the pilots stopped because the slice that ran them ended: a later command continues them.
 	 *
-	 * @param pilots the pilot of each prompt test that has one, by prompt test
+	 * @param pilots the pilots by test and evaluator
 	 * @return {@code true} if a pilot stopped because its slice ended before it ran every trial
 	 * @throws NullPointerException if {@code pilots} is null
 	 */
@@ -573,6 +810,43 @@ public final class GuardPilot
 	}
 
 	/**
+	 * Indicates whether the stored pilots include a checkpoint left while trials remained to run.
+	 *
+	 * @param pilots the pilots by test and evaluator
+	 * @return whether a checkpoint was saved during execution or at the end of a slice
+	 * @throws NullPointerException if {@code pilots} is null
+	 */
+	public static boolean hasUnfinishedCheckpoint(Map<String, PilotResult> pilots)
+	{
+		return endedBySlice(pilots) || pilots.values().stream().anyMatch(pilot -> UNFINISHED.equals(pilot.stopReason()));
+	}
+
+	/**
+	 * The conditions that distinguish the results of control trials for one evaluator.
+	 *
+	 * @param cell the cell in which the trials run
+	 * @param evaluator the evaluator for a shared pilot, or {@code null} for a singleton
+	 * @param trialSessions starts and observes the evaluator's trials
+	 * @param definition the identity of the prompt test
+	 * @param control the identity of the control source and execution conditions
+	 * @param plugins the plugins installed by these control trials
+	 */
+	private record PilotConditions(Cell cell, Harness evaluator, SessionPort trialSessions, Sha256 definition,
+		Sha256 control, List<TrialPlugin> plugins)
+	{
+		/**
+		 * Checks that a stored result describes these controls.
+		 *
+		 * @param result the stored pilot
+		 * @return whether it ran under these conditions
+		 */
+		private boolean matches(PilotResult result)
+		{
+			return result.ranIn(definition, cell.id(), control);
+		}
+	}
+
+	/**
 	 * The pilot of one prompt test while it runs. The scheduling thread owns all state except the synchronized
 	 * recovery state and snapshots, which the turn observers also access.
 	 */
@@ -580,8 +854,7 @@ public final class GuardPilot
 	{
 		private final Object stateLock = new Object();
 		private final PromptTest test;
-		private final Cell cell;
-		private final Sha256 definition;
+		private final PilotConditions conditions;
 		private final long seed;
 		/**
 		 * The record of each decided trial, by draw position; {@code null} for a trial that is undecided.
@@ -600,18 +873,16 @@ public final class GuardPilot
 		 * Creates a pilot.
 		 *
 		 * @param test the prompt test
-		 * @param cell the cell that the trials run in
-		 * @param definition the identity of the test's definition
+		 * @param conditions the current conditions of the control trials
 		 * @param seed the seed of the test's development stream
 		 * @param kept the trials that an earlier run of this pilot decided, which this pilot keeps
 		 * @param undecided the earlier pilot's undecided trials, by draw position
 		 */
-		Pilot(PromptTest test, Cell cell, Sha256 definition, long seed, List<PilotTrial> kept,
+		Pilot(PromptTest test, PilotConditions conditions, long seed, List<PilotTrial> kept,
 			Map<Integer, PilotTrialRecovery> undecided)
 		{
 			this.test = test;
-			this.cell = cell;
-			this.definition = definition;
+			this.conditions = conditions;
 			this.seed = seed;
 			recovery.putAll(undecided);
 			for (PilotTrial trial : kept)
@@ -619,6 +890,16 @@ public final class GuardPilot
 				trials[trial.position()] = trial;
 				++finished;
 			}
+		}
+
+		/**
+		 * Returns the key of this test and evaluator in a pilot checkpoint.
+		 *
+		 * @return the checkpoint key
+		 */
+		String key()
+		{
+			return PilotResult.key(test.id(), conditions.evaluator());
 		}
 
 		/**
@@ -776,40 +1057,37 @@ public final class GuardPilot
 		/**
 		 * Returns the pilot's result.
 		 *
-		 * @param control the identity of the conditions that the trials ran in
 		 * @return the result, whose trials are in draw order
 		 */
-		PilotResult result(Sha256 control)
+		PilotResult result()
 		{
-			return result(control, stopReason, paused);
+			return result(stopReason, paused);
 		}
 
 		/**
 		 * Returns the pilot's result as it stands while the pilot runs: a pilot with trials left to run says that it did
 		 * not finish, so that a later run keeps the trials that it decided and runs the others.
 		 *
-		 * @param control the identity of the conditions that the trials ran in
 		 * @return the result, whose trials are in draw order
 		 */
-		PilotResult interim(Sha256 control)
+		PilotResult interim()
 		{
 			synchronized (stateLock)
 			{
 				if (finished >= TRIALS)
-					return result(control, null, false);
-				return result(control, UNFINISHED, false);
+					return result(null, false);
+				return result(UNFINISHED, false);
 			}
 		}
 
 		/**
 		 * Returns the pilot's result with a reason why it stopped.
 		 *
-		 * @param control the identity of the conditions that the trials ran in
 		 * @param reason why the pilot stopped before running every trial, or {@code null}
 		 * @param pause {@code true} if the pilot paused for the user's choice
 		 * @return the result, whose trials are in draw order
 		 */
-		private PilotResult result(Sha256 control, String reason, boolean pause)
+		private PilotResult result(String reason, boolean pause)
 		{
 			List<PilotTrial> decided = new ArrayList<>();
 			for (PilotTrial trial : trials)
@@ -817,8 +1095,8 @@ public final class GuardPilot
 				if (trial != null)
 					decided.add(trial);
 			}
-			return new PilotResult(test.id(), definition, cell.id(), control, seed, decided, failedTrials, reason,
-				pause, recovery);
+			return new PilotResult(test.id(), conditions.definition(), conditions.cell().id(), conditions.control(), seed,
+				decided, failedTrials, reason, pause, recovery, conditions.evaluator());
 		}
 	}
 
@@ -828,12 +1106,18 @@ public final class GuardPilot
 	 *
 	 * @param files the identity of the control source's files
 	 * @param selection the files of the control source that the staged control source holds
+	 * @param trials the trial sessions of the selected evaluator
+	 * @param evaluator the assigned evaluator, or null for an unassigned singleton
+	 * @param plugins the selected trial plugins
 	 * @return the identity
 	 */
-	private Sha256 controlIdentity(Sha256 files, SourceSelection selection)
+	private Sha256 controlIdentity(Sha256 files, SourceSelection selection, SessionPort trials, Harness evaluator,
+		List<TrialPlugin> plugins)
 	{
 		String conditions = files.hex() + "\nselection\n" + selection.describe() + "\nsession environment version " +
-			sessions.sessionEnvironmentVersion() + "\njudge version " + sessions.judgeVersion();
+			trials.sessionEnvironmentVersion() + "\njudge version " + sessions.judgeVersion();
+		if (evaluator != null && !plugins.isEmpty())
+			conditions += "\ntrial plugins " + new TreeMap<>(MeasurementIdentity.ofPlugins(plugins, Map.of()).values());
 		return Sha256.of(conditions.getBytes(UTF_8));
 	}
 
@@ -914,14 +1198,13 @@ public final class GuardPilot
 		private final Contract contract;
 		private final Path source;
 		private final FileInventory inventory;
-		private final List<Path> plugins;
+		private final Map<Optional<Harness>, List<TrialPluginInput>> plugins;
 		private final List<Pilot> pilots;
 		/**
 		 * The pilots that every checkpoint holds, in contract order: a stored pilot that still applies stands for its
 		 * test, and a pilot that runs has a {@code null} place until the checkpoint replaces it.
 		 */
 		private final Map<String, PilotResult> places;
-		private final Sha256 files;
 		private final PilotCheckpoint checkpoint;
 		/**
 		 * The slice's time bound, or {@code null} if the pilot runs until every trial ends or the pilot stops.
@@ -960,16 +1243,15 @@ public final class GuardPilot
 		 * @param contract the proposed contract
 		 * @param source the staged control source
 		 * @param inventory the control snapshot
-		 * @param plugins the plugin directories that the trials of {@code source} install
+		 * @param plugins the plugin directories that each evaluator's trials install
 		 * @param pilots the pilots to run, in contract order
-		 * @param places the pilot of each prompt test in contract order, with {@code null} for each of {@code pilots}
-		 * @param files the identity of the conditions that the trials run in
+		 * @param places the pilots by test and evaluator in contract order, with {@code null} for pending pilots
 		 * @param checkpoint keeps the pilots' in-progress launches, observer decisions and trial results
 		 * @param slice the slice's time bound, or {@code null} if the pilot runs until every trial ends or the pilot
 		 *   stops
 		 */
-		Run(Contract contract, Path source, FileInventory inventory, List<Path> plugins, List<Pilot> pilots,
-			Map<String, PilotResult> places, Sha256 files, PilotCheckpoint checkpoint, PilotSlice slice)
+		Run(Contract contract, Path source, FileInventory inventory, Map<Optional<Harness>, List<TrialPluginInput>> plugins,
+			List<Pilot> pilots, Map<String, PilotResult> places, PilotCheckpoint checkpoint, PilotSlice slice)
 		{
 			this.contract = contract;
 			this.source = source;
@@ -977,7 +1259,6 @@ public final class GuardPilot
 			this.plugins = plugins;
 			this.pilots = pilots;
 			this.places = places;
-			this.files = files;
 			this.checkpoint = checkpoint;
 			this.slice = slice;
 		}
@@ -1002,7 +1283,7 @@ public final class GuardPilot
 				for (int position = 0; position < TRIALS; ++position)
 				{
 					// A kept trial still draws, so that every later trial keeps its test case
-					DrawnTestCase drawn = generator.markTargeted(generator.draw(pilot.cell.id(), stream));
+					DrawnTestCase drawn = generator.markTargeted(generator.draw(pilot.conditions.cell().id(), stream));
 					if (!pilot.isDecided(position))
 						queue.add(new TrialJob(pilot, position, drawn, Optional.empty()));
 				}
@@ -1104,7 +1385,8 @@ public final class GuardPilot
 				return Optional.empty();
 			}
 			UUID requestId = state.requestId().orElseThrow();
-			RetainedTrialResponse observed = observe(requestId);
+			SessionPort trials = pilot.conditions.trialSessions();
+			RetainedTrialResponse observed = observe(trials, requestId);
 			if (observed.status() == Status.READY && state.discard().isEmpty())
 			{
 				int completed = observed.completedTurns().orElseThrow();
@@ -1115,7 +1397,7 @@ public final class GuardPilot
 					return Optional.of(new RetainedTrialClaim(requestId, observed.identity().orElseThrow(), completed));
 				}
 			}
-			discard(observed);
+			discard(trials, observed);
 			Discard intent = state.discard().orElse(new Discard(
 				"The previous pilot launch " + requestId + " did not have a resumable checkpoint", true));
 			finishRetirement(trial, intent);
@@ -1247,13 +1529,13 @@ public final class GuardPilot
 		/**
 		 * Returns the pilots as they stand.
 		 *
-		 * @return the pilot of each prompt test that has one, by prompt test, in contract order
+		 * @return the pilots by test and evaluator, in contract order
 		 */
 		private Map<String, PilotResult> snapshot()
 		{
 			Map<String, PilotResult> snapshot = new LinkedHashMap<>(places);
 			for (Pilot pilot : pilots)
-				snapshot.put(pilot.test.id(), pilot.interim(files));
+				snapshot.put(pilot.key(), pilot.interim());
 			return snapshot;
 		}
 
@@ -1344,16 +1626,19 @@ public final class GuardPilot
 				if (slice != null)
 					startedAt.put(job, slice.clock().instant());
 				checkObserverFailure();
+				SessionPort port = sessions;
+				if (job instanceof TrialJob trial)
+					port = trial.pilot().conditions.trialSessions();
 				SessionHandle handle;
 				try
 				{
-					if (job instanceof TrialJob trial && sessions.recoversTrials())
+					if (job instanceof TrialJob trial && port.recoversTrials())
 					{
 						UUID requestId = trial.pilot().recovery(trial.position()).requestId().orElseThrow();
-						handle = sessions.startTrial(request, requestId, trial.claim());
+						handle = port.startTrial(request, requestId, trial.claim());
 					}
 					else
-						handle = sessions.start(request);
+						handle = port.start(request);
 				}
 				catch (IOException e)
 				{
@@ -1377,9 +1662,11 @@ public final class GuardPilot
 		private SessionRequest trialRequest(TrialJob trial) throws IOException
 		{
 			Pilot pilot = trial.pilot();
+			Cell cell = pilot.conditions.cell();
 			return new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, source, trial.testCase().turns(), List.of(),
-				pilot.test.timeLimit(), pilot.cell.profile(), TestWorkspace.of(pilot.test, trial.testCase().testCase()),
-				plugins, Optional.empty(), true).withTurnObserver(trialObserver(trial));
+				pilot.test.timeLimit(), cell.profile(), TestWorkspace.of(pilot.test, trial.testCase().testCase()),
+				Optional.empty(), true, plugins.get(cell.evaluator())).
+				withTurnObserver(trialObserver(trial));
 		}
 
 		/**
@@ -1392,8 +1679,9 @@ public final class GuardPilot
 		private TurnObserver trialObserver(TrialJob trial) throws IOException
 		{
 			Pilot pilot = trial.pilot();
-			if (!sessions.recoversTrials())
-				return EarlyTrialEnd.forTest(pilot.test, trial.testCase().testCase(), sessions);
+			SessionPort trials = pilot.conditions.trialSessions();
+			if (!trials.recoversTrials())
+				return EarlyTrialEnd.forTest(pilot.test, trial.testCase().testCase(), trials);
 			if (trial.claim().isEmpty())
 			{
 				pilot.begin(trial.position(), UUID.randomUUID());
@@ -1401,7 +1689,7 @@ public final class GuardPilot
 			}
 			PilotTrialRecovery state = pilot.recovery(trial.position());
 			UUID requestId = state.requestId().orElseThrow();
-			return EarlyTrialEnd.forTest(pilot.test, trial.testCase().testCase(), sessions, state.progress(),
+			return EarlyTrialEnd.forTest(pilot.test, trial.testCase().testCase(), trials, state.progress(),
 				progress -> saveReceipt(trial, requestId, progress));
 		}
 
@@ -1510,7 +1798,7 @@ public final class GuardPilot
 			String section = "";
 			try
 			{
-				TrialEvidence evidence = TrialEvidence.read(sessions, completed);
+				TrialEvidence evidence = TrialEvidence.read(pilot.conditions.trialSessions(), completed);
 				results = pilot.test.decide(testCase.testCase(), evidence);
 				if (contract.judge().prompt().contains("{{evidence}}"))
 					section = evidence.render();
@@ -1682,7 +1970,7 @@ public final class GuardPilot
 		{
 			if (stopReason == null && attempts.size() >= Campaign.INFRASTRUCTURE_FAILURE_LIMIT)
 			{
-				stopReason = exhaustionReason(pilot.test.id(), position, attempts);
+				stopReason = exhaustionReason(pilot.key(), position, attempts);
 				paused = true;
 			}
 		}
@@ -1700,7 +1988,8 @@ public final class GuardPilot
 			if (pilot.markDiscard(job.position(), intent))
 			{
 				save();
-				discard(observe(pilot.recovery(job.position()).requestId().orElseThrow()));
+				SessionPort trials = pilot.conditions.trialSessions();
+				discard(trials, observe(trials, pilot.recovery(job.position()).requestId().orElseThrow()));
 			}
 			finishRetirement(job, intent);
 		}
@@ -1720,7 +2009,7 @@ public final class GuardPilot
 				pauseIfExhausted(pilot, position, pilot.infrastructureAttempt(position, intent.reason()));
 			else
 				pilot.clearLaunch(position);
-			if (sessions.recoversTrials())
+			if (pilot.conditions.trialSessions().recoversTrials())
 				save();
 		}
 

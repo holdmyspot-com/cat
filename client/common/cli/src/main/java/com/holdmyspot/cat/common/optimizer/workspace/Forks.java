@@ -24,6 +24,19 @@ public interface Forks
 	ForkView create(Path base, Path campaign, Set<Path> participants) throws IOException;
 
 	/**
+	 * Creates a temporary checkout for evaluating campaign inputs, without editing files in the base worktree.
+	 * The caller removes the registered checkout with {@link #remove(Path, Path)}.
+	 *
+	 * @param base the base worktree
+	 * @param scratch the preparation directory
+	 * @param participants the paths to record beyond the tracked files
+	 * @return the temporary fork, with no session ignore notice
+	 * @throws WorkspaceException if the base has uncommitted changes or a participant does not exist
+	 * @throws IOException if the temporary fork cannot be created
+	 */
+	ForkView prepare(Path base, Path scratch, Set<Path> participants) throws IOException;
+
+	/**
 	 * Lists the files that Git tracks in a project.
 	 *
 	 * @param base the base worktree

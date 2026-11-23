@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.execution;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.optimizer.campaign.Applicability;
+import com.holdmyspot.cat.common.optimizer.campaign.MeasurementCondition;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult;
 import com.holdmyspot.cat.common.optimizer.inventory.DeliveryConflict;
 import com.holdmyspot.cat.common.optimizer.inventory.PathChange;
@@ -11,7 +12,9 @@ import com.holdmyspot.cat.common.optimizer.report.Status;
 import com.holdmyspot.cat.common.optimizer.report.StatusReport;
 
 import java.nio.file.Path;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 import java.util.StringJoiner;
 
 /**
@@ -118,7 +121,7 @@ public final class SliceReports
 	/**
 	 * Combines the prompt-content side of a delivered candidate's applicability with its measurement side.
 	 *
-	 * @param content the delivery's applicability, which covers base-only changes to prompt sources
+	 * @param content the delivery's applicability, which covers base-only changes to prompt sources and loader files
 	 * @param measurement the applicability of the delivered result's measurement conditions
 	 * @return the combined applicability
 	 */
@@ -130,8 +133,12 @@ public final class SliceReports
 		{
 			status = Applicability.Status.HISTORICAL;
 		}
+		Set<MeasurementCondition> changed = EnumSet.noneOf(MeasurementCondition.class);
+		changed.addAll(content.changed());
+		changed.addAll(measurement.changed());
 		return new Applicability(status, content.promptContentChanged() || measurement.promptContentChanged(),
-			measurement.changed(), measurement.parameters(), measurement.unchecked());
+			List.copyOf(changed), measurement.parameters(),
+			measurement.unchecked().stream().filter(condition -> !changed.contains(condition)).toList());
 	}
 
 	/**

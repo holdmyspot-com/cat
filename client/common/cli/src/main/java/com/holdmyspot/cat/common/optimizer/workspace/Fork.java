@@ -129,6 +129,42 @@ public final class Fork implements ForkView
 	public static Fork create(Path base, Path campaign, Set<Path> participants, FileReplacer replacer,
 		CharacterDevices devices, WorktreeRegistrar registrar) throws IOException
 	{
+		return create(base, campaign, participants, replacer, devices, registrar, true);
+	}
+
+	/**
+	 * Creates a temporary fork under the provided registration without changing the base's Git ignore rules.
+	 *
+	 * @param base the base worktree
+	 * @param scratch the preparation directory
+	 * @param participants the paths to record beyond the tracked files
+	 * @param replacer replaces the fork's stored participant selection
+	 * @param registrar registers the temporary worktree
+	 * @return the registered temporary fork
+	 * @throws IOException if the temporary fork cannot be created
+	 */
+	static Fork prepare(Path base, Path scratch, Set<Path> participants, FileReplacer replacer,
+		WorktreeRegistrar registrar) throws IOException
+	{
+		return create(base, scratch, participants, replacer, new FileSystemCharacterDevices(), registrar, false);
+	}
+
+	/**
+	 * Records the base files and creates a registered worktree from them.
+	 *
+	 * @param base the base worktree
+	 * @param campaign where the recorded source and checkout are stored
+	 * @param participants the paths to record beyond the tracked files
+	 * @param replacer replaces the fork's stored participant selection
+	 * @param devices tells which files are character devices
+	 * @param registrar registers the worktree
+	 * @param ensureIgnore whether to add CAT's session directory to the base's Git ignore rules if needed
+	 * @return the fork
+	 * @throws IOException if Git or recording the fork fails
+	 */
+	private static Fork create(Path base, Path campaign, Set<Path> participants, FileReplacer replacer,
+		CharacterDevices devices, WorktreeRegistrar registrar, boolean ensureIgnore) throws IOException
+	{
 		requireThat(base, "base").isNotNull();
 		requireThat(campaign, "campaign").isNotNull();
 		requireThat(participants, "participants").isNotNull();
@@ -140,8 +176,9 @@ public final class Fork implements ForkView
 		Git git = new Git(normalizedBase);
 		requireTopLevel(git, normalizedBase);
 		requireClean(git, normalizedBase, devices);
-		Optional<String> ignoreNotice = SessionIgnore.ensure(normalizedBase).
-			map(SessionIgnore.IgnoreNotice::forAgent);
+		Optional<String> ignoreNotice = Optional.empty();
+		if (ensureIgnore)
+			ignoreNotice = SessionIgnore.ensure(normalizedBase).map(SessionIgnore.IgnoreNotice::forAgent);
 
 		Set<Path> paths = new HashSet<>(participants);
 		for (Path path : tracked(git))

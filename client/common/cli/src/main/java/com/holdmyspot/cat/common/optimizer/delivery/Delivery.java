@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.CertificationHistory;
 import com.holdmyspot.cat.common.optimizer.campaign.DeliveryLabel;
 import com.holdmyspot.cat.common.optimizer.campaign.HistoryEntry;
 import com.holdmyspot.cat.common.optimizer.campaign.DeliveryRequest;
+import com.holdmyspot.cat.common.optimizer.campaign.MeasurementCondition;
 import com.holdmyspot.cat.common.optimizer.campaign.Outcome;
 import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFile;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestFiles;
@@ -111,6 +112,7 @@ public final class Delivery
 	private final FileReplacer replacer;
 	private final CertificationHistoryJson historyCodec;
 	private final Consumer<DeliveryChange> afterWrite;
+	private final Set<Path> loaderPaths;
 
 	/**
 	 * Creates a delivery executor.
@@ -125,7 +127,24 @@ public final class Delivery
 	public Delivery(CampaignStore store, WorkspacePort workspace, Forks forks, JsonMapper json,
 		FileReplacer replacer)
 	{
-		this(store, workspace, forks, json, replacer, _ ->
+		this(store, workspace, forks, json, replacer, Set.of());
+	}
+
+	/**
+	 * Creates a delivery executor that compares live project loader files with the measured source.
+	 *
+	 * @param store the store that holds the campaign's delivery journal
+	 * @param workspace the optimization worktree
+	 * @param forks compares the delivered paths with the base worktree's {@code HEAD}
+	 * @param json the JSON mapper that reads and writes the certification history
+	 * @param replacer replaces the delivered files and links
+	 * @param loaderPaths the project loader paths that can change applicability
+	 * @throws NullPointerException if an argument or loader path is null
+	 */
+	public Delivery(CampaignStore store, WorkspacePort workspace, Forks forks, JsonMapper json,
+		FileReplacer replacer, Set<Path> loaderPaths)
+	{
+		this(store, workspace, forks, json, replacer, loaderPaths, _ ->
 		{
 		});
 	}
@@ -145,6 +164,24 @@ public final class Delivery
 	public Delivery(CampaignStore store, WorkspacePort workspace, Forks forks, JsonMapper json,
 		FileReplacer replacer, Consumer<DeliveryChange> afterWrite)
 	{
+		this(store, workspace, forks, json, replacer, Set.of(), afterWrite);
+	}
+
+	/**
+	 * Creates an executor with the loader paths and delivery observer supplied by its caller.
+	 *
+	 * @param store the store that holds the campaign's delivery journal
+	 * @param workspace the optimization worktree
+	 * @param forks compares the delivered paths with the base worktree's {@code HEAD}
+	 * @param json the mapper for the certification history
+	 * @param replacer replaces the delivered files and links
+	 * @param loaderPaths the project loader paths that can change applicability
+	 * @param afterWrite receives each change after it is written and before it is journaled
+	 * @throws NullPointerException if an argument or loader path is null
+	 */
+	private Delivery(CampaignStore store, WorkspacePort workspace, Forks forks, JsonMapper json,
+		FileReplacer replacer, Set<Path> loaderPaths, Consumer<DeliveryChange> afterWrite)
+	{
 		requireThat(store, "store").isNotNull();
 		requireThat(workspace, "workspace").isNotNull();
 		requireThat(forks, "forks").isNotNull();
@@ -158,6 +195,7 @@ public final class Delivery
 		this.replacer = replacer;
 		this.historyCodec = new CertificationHistoryJson(json);
 		this.afterWrite = afterWrite;
+		this.loaderPaths = Set.copyOf(loaderPaths);
 	}
 
 	/**
@@ -681,11 +719,14 @@ public final class Delivery
 			map(PathChange::path).filter(path -> !delivered.contains(path)).sorted().toList();
 		List<Path> baseOnlyPromptSourceChanges = baseOnlyChanges.stream().
 			filter(path -> promptSources.stream().anyMatch(path::startsWith)).toList();
-		Applicability applicability;
-		if (baseOnlyPromptSourceChanges.isEmpty())
-			applicability = new Applicability(Applicability.Status.CURRENT, false, List.of());
-		else
-			applicability = new Applicability(Applicability.Status.HISTORICAL, true, List.of());
+		List<MeasurementCondition> changed = List.of();
+		if (baseOnlyChanges.stream().anyMatch(loaderPaths::contains))
+			changed = List.of(MeasurementCondition.LOADER_CONFIGURATION);
+		boolean promptChanged = !baseOnlyPromptSourceChanges.isEmpty();
+		Applicability.Status status = Applicability.Status.CURRENT;
+		if (promptChanged || !changed.isEmpty())
+			status = Applicability.Status.HISTORICAL;
+		Applicability applicability = new Applicability(status, promptChanged, changed);
 		return new Delivered(label, applicability, baseOnlyPromptSourceChanges, baseOnlyChanges, journal.changes(),
 			forks.diff(base, journal.changes().stream().map(DeliveryChange::target).toList()));
 	}

@@ -85,6 +85,8 @@ public final class CodexTrialRecordTest
 				requireThat(decide("exit-status \"-lc true$\" 1", record), "failedToStart").isTrue();
 				requireThat(decide("exit-status \"-lc true$\" 0", record), "succeeded").isFalse();
 				requireThat(decide("tool-used commandExecution", record), "toolUsed").isTrue();
+				requireThat(decide("tool-used spawn_agent", record), "childLaunchUsed").isTrue();
+				requireThat(decide("tool-unused spawn_agent", record), "childLaunchUnused").isFalse();
 				requireThat(decide("no-tool-call", record), "noToolCall").isFalse();
 			}
 		}

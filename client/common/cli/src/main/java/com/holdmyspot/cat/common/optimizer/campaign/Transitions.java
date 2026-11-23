@@ -223,6 +223,11 @@ public final class Transitions
 		Map<MeasurementCondition, String> contractValues = new EnumMap<>(MeasurementCondition.class);
 		contractValues.put(MeasurementCondition.CONTRACT, confirm.contractHash().hex());
 		contractValues.put(MeasurementCondition.GENERATOR, Generator.IDENTITY);
+		if (!confirm.environment().cells().isEmpty())
+		{
+			draft.identity = new MeasurementIdentity(draft.identity.values()).
+				replaceWith(confirm.environment());
+		}
 		draft.identity = draft.identity.replaceWith(new MeasurementIdentity(contractValues));
 		draft.startBaseline();
 		draft.startDevelopment(draft.working);
@@ -767,9 +772,10 @@ public final class Transitions
 	{
 		int index = indexOfRunningTrial(draft, fail.key());
 		LogicalTrial trial = draft.trials.get(index);
-		// A provider error, crash, rate-limit rejection or refusal halves every window; an attempt that CAT interrupted
-		// says nothing about the provider
-		if (fail.failure() != TrialAttemptFailure.INTERRUPTED)
+		// Evaluator capacity already applies the rate-limit hold to that evaluator's next sessions
+		boolean scopedRateLimit = fail.failure() == TrialAttemptFailure.RATE_LIMITED &&
+			!draft.header.evaluationHarnesses().equals(Set.of(draft.header.harness()));
+		if (fail.failure() != TrialAttemptFailure.INTERRUPTED && !scopedRateLimit)
 			draft.windows = draft.windows.afterInfrastructureAttempt();
 		if (TrialAdoption.isStale(draft, trial))
 		{
@@ -785,8 +791,7 @@ public final class Transitions
 				if (infrastructureFailures >= Campaign.INFRASTRUCTURE_FAILURE_LIMIT)
 					draft.raise(new PendingDecision.TrialFailures(trial.key()));
 			}
-			// A rate-limited, refused or interrupted trial is queued unchanged after this switch. The harness's shared
-			// hold reaches the throttle through HoldAdmissions.
+			// Rate-limited, refused and interrupted trials return to the queue without a charged failure.
 			case RATE_LIMITED, INTERRUPTED ->
 			{
 			}

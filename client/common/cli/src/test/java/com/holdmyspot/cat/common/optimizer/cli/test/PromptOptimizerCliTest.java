@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.optimizer.cli.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.campaign.Admission;
 import com.holdmyspot.cat.common.optimizer.campaign.Allocation;
@@ -16,20 +17,34 @@ import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
 import com.holdmyspot.cat.common.optimizer.campaign.test.Builder;
 import com.holdmyspot.cat.common.optimizer.cli.CommandRefusedException;
+import com.holdmyspot.cat.common.optimizer.cli.EvaluatorMetadata;
+import com.holdmyspot.cat.common.optimizer.cli.EvaluatorObservations;
 import com.holdmyspot.cat.common.optimizer.cli.PromptOptimizerCli;
+import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
 import com.holdmyspot.cat.common.optimizer.contract.PromptConfiguration;
+import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
+import com.holdmyspot.cat.common.optimizer.inventory.InventoryScanner;
+import com.holdmyspot.cat.common.optimizer.port.HookRegistration;
+import com.holdmyspot.cat.common.optimizer.port.LoadedSources;
+import com.holdmyspot.cat.common.optimizer.port.PluginBase;
+import com.holdmyspot.cat.common.optimizer.port.UnreachableReference;
+import com.holdmyspot.cat.common.optimizer.port.test.FakeProfileInventory;
+import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort;
 import com.holdmyspot.cat.common.optimizer.store.CampaignStore;
 import com.holdmyspot.cat.common.optimizer.store.TrialRecovery;
 import com.holdmyspot.cat.common.runner.RetainedTrialResponse;
 import com.holdmyspot.cat.common.runner.RetainedTrialResponse.HarnessSession;
 import com.holdmyspot.cat.common.runner.RetainedTrialResponse.Identity;
 import com.holdmyspot.cat.common.runner.RetainedTrialResponse.Status;
+import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.secrets.OptimizerCommandScopeSecrets;
+import com.holdmyspot.cat.common.test.ExitedProcess;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -37,9 +52,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -55,6 +72,233 @@ public final class PromptOptimizerCliTest
 	 */
 	public PromptOptimizerCliTest()
 	{
+	}
+
+	/**
+	 * Verifies that the metadata command inspects the staged target without initializing an optimizer campaign.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void reportsStagedEvaluatorMetadata() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("prompt-optimizer-evaluator-"));
+			Path staged = Files.createDirectory(project.resolve("staged"));
+			String target = "rules.md";
+			Files.writeString(project.resolve(target), "Working tree contents");
+			Files.writeString(staged.resolve(target), "Staged contents");
+			Harness harness = Harness.values()[0];
+			ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+			try (TestOptimizerCommandScope<FakeSessionPort> scope = TestOptimizerCommandScope.of(harness, project);
+				PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
+			{
+				scope.userLoaderSettings("private fixture setting");
+				scope.sessions().loading((root, plugins) ->
+				{
+					requireThat(root, "root").isEqualTo(staged);
+					requireThat(plugins, "plugins").isEmpty();
+					return new LoadedSources(List.of(), List.of(new DerivedSource(target, "Imported project rule")),
+						List.of(), List.of(), List.of());
+				});
+
+				int exit = PromptOptimizerCli.run(new String[]{"evaluator-info", project.toString(), staged.toString(),
+					target}, () -> scope, ZoneOffset.UTC, out);
+
+				requireThat(exit, "exit").isEqualTo(0);
+				String report = bytes.toString(StandardCharsets.UTF_8);
+				requireThat(report, "report").doesNotContain("private fixture setting");
+				EvaluatorMetadata result = EvaluatorMetadata.read(JsonMapper.builder().build(),
+					new ByteArrayInputStream(bytes.toByteArray()));
+				requireThat(result.harness(), "harness").isEqualTo(harness);
+				requireThat(result.roleProfile(), "roleProfile").isEqualTo(FakeProfileInventory.ROLE);
+				requireThat(result.profiles().inventory(), "inventory").isEqualTo(FakeProfileInventory.INVENTORY);
+				requireThat(result.loaderFiles(), "stagedLoaderFiles").isEmpty();
+				requireThat(result.loaderPaths().orElseThrow(), "configuredLoaderPaths").size().isEqualTo(1);
+				requireThat(result.loadedSources(), "loadedSources").
+					isEqualTo(List.of(new DerivedSource(target, "Imported project rule")));
+				requireThat(result.refusal().isEmpty(), "refusal").isTrue();
+			}
+			requireThat(Files.exists(project.resolve(".cat/sessions")), "sessionsRootExists").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that the report identifies an evaluator whose trial sources omit the target.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void reportsUnloadedEvaluatorTarget() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("prompt-optimizer-evaluator-"));
+			String target = "other.md";
+			Files.writeString(project.resolve(target), "Existing file the evaluator does not load");
+			Harness harness = Harness.values()[0];
+			ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+			try (TestOptimizerCommandScope<?> scope = TestOptimizerCommandScope.of(harness, project);
+				PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
+			{
+				int exit = PromptOptimizerCli.run(new String[]{"evaluator-info", project.toString(), project.toString(),
+					target}, () -> scope, ZoneOffset.UTC, out);
+
+				requireThat(exit, "exit").isEqualTo(0);
+				EvaluatorMetadata result = EvaluatorMetadata.read(JsonMapper.builder().build(),
+					new ByteArrayInputStream(bytes.toByteArray()));
+				requireThat(result.refusal().orElseThrow(), "refusal").contains(harness.productName()).contains(target).
+					contains("trial loaders do not load that file");
+			}
+		}
+	}
+
+	/**
+	 * Verifies that oversized evaluator output is rejected before JSON parsing.
+	 *
+	 * @throws IOException if the bounded reader refuses the report
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*exceeds the maximum.*")
+	public void rejectsOversizedEvaluatorOutput() throws IOException
+	{
+		EvaluatorMetadata.read(JsonMapper.builder().build(), new ByteArrayInputStream(new byte[1_048_577]));
+	}
+
+	/**
+	 * Verifies that the owner sends the selected frozen plugin base to the peer's loader inspection.
+	 *
+	 * @throws IOException if the fixture or peer report cannot be read
+	 * @throws InterruptedException if waiting for the peer is interrupted
+	 */
+	@Test
+	public void inspectsSelectedPeerPluginBase() throws IOException, InterruptedException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("prompt-optimizer-peer-plugin-")).toRealPath();
+			Path target = Path.of("guide.md");
+			Path base = Files.createDirectory(project.resolve("plugin base"));
+			Files.writeString(project.resolve(target), "Fixture instructions");
+			Files.writeString(base.resolve("README.md"), "Fixture plugin");
+			String digest = InventoryScanner.scan(base, Set.of()).identity().hex();
+			List<TrialPlugin.Mapping> mappings = List.of(new TrialPlugin.Mapping(target, Path.of("rules/common/guide.md")));
+			TrialPlugin plugin = new TrialPlugin("docs", digest, new TrialPlugin.Build(List.of(), project.relativize(base)),
+				mappings, null);
+			PluginBase selected = new PluginBase(plugin, base);
+			HookRegistration hook = new HookRegistration(plugin.name(), "hooks/hooks.json", "PostToolUse", "", "check");
+			UnreachableReference reference = new UnreachableReference(target.toString(), "missing.md",
+				UnreachableReference.Problem.MISSING);
+			DerivedSource trial = new DerivedSource(target.toString(), "Loaded by the Codex fixture plugin");
+			DerivedSource direct = new DerivedSource("AGENTS.md", "Loaded by the Codex project loader");
+			EvaluatorObservations expected = new EvaluatorObservations(List.of(direct), List.of("user-sources.md"),
+				List.of("the MCP server `fixture`"), List.of(reference), List.of(hook),
+				List.of(plugin.name() + " PostToolUse check"));
+			try (TestOptimizerCommandScope<?> owner = TestOptimizerCommandScope.of(Harness.CLAUDE, project))
+			{
+				owner.usePeerArtifact(project.resolve("codex-artifact"));
+				owner.launchProcesses(builder ->
+				{
+					List<String> command = builder.command();
+					requireThat(command.size(), "commandSize").isEqualTo(6);
+					requireThat(command.get(1), "command").isEqualTo("evaluator-info");
+					requireThat(command.getFirst(), "launcher").contains("codex-artifact");
+					ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+					FakeSessionPort nativePeer = new FakeSessionPort()
+					{
+						@Override
+						public List<HookRegistration> hookRegistrations(Path staged, List<PluginBase> bases)
+						{
+							requireThat(staged, "staged").isEqualTo(project);
+							requireThat(bases.size(), "baseCount").isEqualTo(1);
+							requireThat(bases.getFirst().plugin().mappings(), "hookMappings").isEqualTo(mappings);
+							return List.of(hook);
+						}
+					};
+					try (TestOptimizerCommandScope<FakeSessionPort> peer =
+							new TestOptimizerCommandScope<>(Harness.CODEX, project, Set.of(), _ -> nativePeer);
+						PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
+					{
+						peer.sessions().loading((root, bases) ->
+						{
+							requireThat(root, "stagedRoot").isEqualTo(project);
+							requireThat(bases.size(), "baseCount").isEqualTo(1);
+							PluginBase inspected = bases.getFirst();
+							requireThat(inspected.directory(), "inspectedDirectory").isEqualTo(base);
+							requireThat(inspected.plugin().baseDigest(), "inspectedDigest").isEqualTo(digest);
+							if (inspected.plugin().mappings().isEmpty())
+								return new LoadedSources(List.of(), List.of(direct), List.of(), List.of(), List.of());
+							requireThat(inspected.plugin().name(), "pluginName").isEqualTo(plugin.name());
+							requireThat(inspected.plugin().isProjectBuilt(), "projectBuilt").isTrue();
+							requireThat(inspected.plugin().mappings(), "loaderMappings").isEqualTo(mappings);
+							return new LoadedSources(List.of(), List.of(trial), expected.productionOnly(), expected.homeOnly(),
+								List.of(reference));
+						});
+						nativePeer.unapprovedHooks(directory ->
+						{
+							requireThat(directory, "base").isEqualTo(base);
+							return List.of("PostToolUse check");
+						});
+						String[] args = command.subList(1, command.size()).toArray(String[]::new);
+						int exit = PromptOptimizerCli.run(args, () -> peer, ZoneOffset.UTC, out);
+						return new ExitedProcess(builder, exit, bytes.toString(StandardCharsets.UTF_8), "");
+					}
+				});
+				EvaluatorMetadata report = owner.peerEvaluatorMetadata(Harness.CODEX, project, project, target,
+					List.of(selected));
+				requireThat(report.harness(), "peerHarness").isEqualTo(Harness.CODEX);
+				requireThat(report.refusal().isEmpty(), "targetLoads").isTrue();
+				requireThat(report.loadedSources().getFirst().rule(), "rule").contains("Codex fixture plugin");
+				requireThat(report.observations(), "observations").isEqualTo(Optional.of(expected));
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a report naming a different harness is rejected after launching the selected peer artifact.
+	 *
+	 * @throws IOException          when the report fails evaluator validation
+	 * @throws InterruptedException if interrupted while waiting for the report
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*reported evaluator.*")
+	public void refusesMismatchedPeerEvaluator() throws IOException, InterruptedException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("prompt-optimizer-peer-"));
+			Path target = Path.of("rules.md");
+			Files.writeString(project.resolve(target), "Fixture instructions");
+			Harness owner = Harness.values()[0];
+			Harness requested = Harness.values()[1];
+			ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+			try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
+			{
+				int exit = PromptOptimizerCli.run(new String[]{"evaluator-info", project.toString(), project.toString(),
+					target.toString()}, () -> TestOptimizerCommandScope.of(owner, project), ZoneOffset.UTC, out);
+				requireThat(exit, "exit").isEqualTo(0);
+			}
+
+			try (TestOptimizerCommandScope<?> scope = TestOptimizerCommandScope.of(owner, project))
+			{
+				Path artifact = project.resolve("installed-peer");
+				scope.usePeerArtifact(artifact);
+				scope.launchProcesses(builder ->
+				{
+					String launcher = "prompt-optimizer";
+					if (Platform.current().isWindows())
+						launcher += ".cmd";
+					requireThat(builder.command(), "command").isEqualTo(List.of(
+						artifact.resolve("bin").resolve(launcher).toString(), "evaluator-info",
+						project.toString(), project.toString(), target.toString()));
+					requireThat(builder.directory().toPath(), "directory").isEqualTo(project);
+					requireThat(builder.environment().containsKey(SessionRequestAccess.REQUESTS_VARIABLE), "requests").
+						isFalse();
+					return new ExitedProcess(builder, 0, bytes.toString(StandardCharsets.UTF_8), "private fixture setting");
+				});
+
+				scope.peerEvaluatorMetadata(requested, project, project, target);
+			}
+		}
 	}
 
 	/**
@@ -180,8 +424,40 @@ public final class PromptOptimizerCliTest
 			}
 			JsonNode result = JsonMapper.builder().build().readTree(bytes.toString(StandardCharsets.UTF_8));
 			requireThat(result.get("status").asString(), "status").isEqualTo("refused");
+			requireThat(result.has("reason"), "hasReason").isFalse();
 			requireThat(result.get("message").asString(), "message").contains("no \"claude\" key").
 				doesNotContain(".gitignore");
+			requireThat(contents(project), "contents").isEqualTo(before);
+		}
+	}
+
+	/**
+	 * Verifies that the caller can distinguish a target without a campaign or certification from other refusals.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void statusReportsNoCampaignOrRecord() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("prompt-optimizer-cli-"));
+			Files.createDirectory(project.resolve(".git"));
+			Files.writeString(project.resolve("AGENTS.md"), "Be brief.\n");
+			Map<String, String> before = contents(project);
+			ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+			try (TestOptimizerCommandScope<?> scope = TestOptimizerCommandScope.of(Harness.CODEX, project);
+				PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
+			{
+				int exit = PromptOptimizerCli.run(new String[]{"status", "AGENTS.md"}, () -> scope, ZoneOffset.UTC, out);
+
+				requireThat(exit, "exit").isEqualTo(1);
+			}
+			JsonNode result = JsonMapper.builder().build().readTree(bytes.toString(StandardCharsets.UTF_8));
+			requireThat(result.get("status").asString(), "status").isEqualTo("refused");
+			requireThat(result.path("reason").asString(""), "reason").isEqualTo("no_campaign_or_certification_record");
+			requireThat(result.get("message").asString(), "message").
+				isEqualTo("No campaign or certification record exists for AGENTS.md.");
 			requireThat(contents(project), "contents").isEqualTo(before);
 		}
 	}

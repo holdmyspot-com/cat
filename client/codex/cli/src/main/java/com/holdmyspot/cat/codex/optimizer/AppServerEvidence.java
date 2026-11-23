@@ -145,7 +145,8 @@ final class AppServerEvidence
 
 	/**
 	 * Records a child's start or end, or a message that an agent sent a child that it started, at its original
-	 * position. Codex records the assignment that a child was started with, and every message sent through a
+	 * position. A start also proves a successful {@code spawn_agent} call by the initiating thread. Codex records the
+	 * assignment that a child was started with, and every message sent through a
 	 * collaboration tool, only in encrypted form, so a start or a sent message holds no text. A child's message to the
 	 * agent that started it is recorded where that agent received the message instead.
 	 *
@@ -182,8 +183,12 @@ final class AppServerEvidence
 				return;
 			}
 		}
-		entries.put(createKey(params, "item", item.path("id").asString("")), new ChildEvent(
-			resolveTurn(params, rootThread), resolveActor(params, rootThread), child, path, kind, ""));
+		String id = item.path("id").asString("");
+		int turn = resolveTurn(params, rootThread);
+		String actor = resolveActor(params, rootThread);
+		entries.put(createKey(params, "item", id), new ChildEvent(turn, actor, child, path, kind, ""));
+		if (kind == ChildEvent.Kind.STARTED)
+			entries.put(createKey(params, "spawn", id), new Tool(turn, actor, "spawn_agent", "", false, null, ""));
 	}
 
 	/**

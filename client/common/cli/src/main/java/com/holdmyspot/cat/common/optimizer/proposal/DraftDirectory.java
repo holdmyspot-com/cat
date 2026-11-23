@@ -4,9 +4,11 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.optimizer.contract.InvalidProposalException;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestFiles;
 import com.holdmyspot.cat.common.optimizer.contract.ScenarioFormatException;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
+import com.holdmyspot.cat.common.runner.ResultProjectLinks;
 
 import java.io.IOException;
 import java.nio.file.DirectoryNotEmptyException;
@@ -42,6 +44,27 @@ import java.util.stream.Stream;
  */
 public final class DraftDirectory
 {
+	/**
+	 * Restores the draft links which a nested session returned as declarations.
+	 *
+	 * @param project the returned project directory
+	 * @param name the draft directory's name
+	 * @throws InvalidProposalException if the returned declarations are invalid or cannot be restored
+	 */
+	static void restoreReturnedLinks(Path project, String name) throws InvalidProposalException
+	{
+		try
+		{
+			ResultProjectLinks.restore(project, name);
+		}
+		catch (IOException e)
+		{
+			InvalidProposalException invalid = new InvalidProposalException(List.of(e.toString()));
+			invalid.initCause(e);
+			throw invalid;
+		}
+	}
+
 	/**
 	 * The name of the draft directory when the session's project does not already hold a file by that name.
 	 */

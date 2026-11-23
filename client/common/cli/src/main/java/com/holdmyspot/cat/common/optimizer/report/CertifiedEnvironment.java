@@ -7,14 +7,18 @@ import com.holdmyspot.cat.common.optimizer.campaign.CertificationRecord;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementCondition;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementIdentity;
+import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.StringJoiner;
+import java.util.TreeMap;
 
 /**
  * The environment that a certification was measured in, worded for a user who knows none of CAT's terms.
@@ -29,9 +33,11 @@ import java.util.StringJoiner;
  * @param cells       the identifiers of the cells of the certification scope, in cell order
  * @param promptFiles the certified prompt files, relative to the project, in the order that the block lists them
  * @param unchecked   the recorded conditions that the reporting session could not check
+ * @param evaluators  the measured cells grouped by evaluator
+ * @param snapshot    the measured snapshot digest, or empty for a record predating it
  */
 public record CertifiedEnvironment(MeasurementIdentity identity, List<String> cells, List<Path> promptFiles,
-	List<MeasurementCondition> unchecked)
+	List<MeasurementCondition> unchecked, Map<String, List<String>> evaluators, Optional<Sha256> snapshot)
 {
 	/**
 	 * The text that stands for a condition that the measurement identity does not record.
@@ -58,6 +64,8 @@ public record CertifiedEnvironment(MeasurementIdentity identity, List<String> ce
 	 * @param cells       the identifiers of the cells of the certification scope, in cell order
 	 * @param promptFiles the certified prompt files, relative to the project, in the order that the block lists them
 	 * @param unchecked   the recorded conditions that the reporting session could not check
+	 * @param evaluators  the measured cells grouped by evaluator
+	 * @param snapshot    the measured snapshot digest, or empty for a record predating it
 	 * @throws NullPointerException if any of the arguments are null or contain null
 	 */
 	public CertifiedEnvironment
@@ -66,9 +74,28 @@ public record CertifiedEnvironment(MeasurementIdentity identity, List<String> ce
 		requireThat(cells, "cells").isNotNull();
 		requireThat(promptFiles, "promptFiles").isNotNull();
 		requireThat(unchecked, "unchecked").isNotNull();
+		requireThat(evaluators, "evaluators").isNotNull();
+		requireThat(snapshot, "snapshot").isNotNull();
 		cells = List.copyOf(cells);
 		promptFiles = List.copyOf(promptFiles);
 		unchecked = List.copyOf(unchecked);
+		Map<String, List<String>> copied = new TreeMap<>();
+		evaluators.forEach((evaluator, measured) -> copied.put(evaluator, List.copyOf(measured)));
+		evaluators = Collections.unmodifiableMap(copied);
+	}
+
+	/**
+	 * Creates an environment that records campaign-wide harness and loader conditions.
+	 *
+	 * @param identity    the measurement conditions that the certification was measured under
+	 * @param cells       the identifiers of the cells of the certification scope, in cell order
+	 * @param promptFiles the certified prompt files, relative to the project, in the order that the block lists them
+	 * @param unchecked   the recorded conditions that the reporting session could not check
+	 */
+	public CertifiedEnvironment(MeasurementIdentity identity, List<String> cells, List<Path> promptFiles,
+		List<MeasurementCondition> unchecked)
+	{
+		this(identity, cells, promptFiles, unchecked, Map.of(), Optional.empty());
 	}
 
 	/**
@@ -86,7 +113,8 @@ public record CertifiedEnvironment(MeasurementIdentity identity, List<String> ce
 		for (CertificationRecord.CellResult cell : record.cells())
 			cells.add(cell.cell());
 		return new CertifiedEnvironment(record.identity(), cells,
-			targetFirst(record.target(), record.promptFiles().keySet()), unchecked);
+			targetFirst(record.target(), record.promptFiles().keySet()), unchecked, record.evaluatorCells(),
+			record.snapshot());
 	}
 
 	/**
@@ -119,8 +147,28 @@ public record CertifiedEnvironment(MeasurementIdentity identity, List<String> ce
 		List<String> lines = new ArrayList<>();
 		lines.add("Certified for the following environment:");
 		lines.add("");
-		lines.add(checked(harness(), MeasurementCondition.PROVIDER, MeasurementCondition.HARNESS_VERSION));
-		lines.add(checked("Plugins: " + plugins(), MeasurementCondition.TRIAL_PLUGINS,
+		if (evaluators.size() > 1)
+			sharedLines(lines);
+		else
+			singletonLines(lines);
+		lines.addAll(acceptedChangeLines(identity));
+		lines.add("");
+		lines.add(MACHINE_LIMITATION);
+		return lines;
+	}
+
+	/**
+	 * Describes a record with one evaluator's harness and loader conditions.
+	 *
+	 * @param lines the block's lines
+	 */
+	private void singletonLines(List<String> lines)
+	{
+		String evaluatorCell = null;
+		if (!identity.values().containsKey(MeasurementCondition.PROVIDER))
+			evaluatorCell = evaluators.values().stream().flatMap(List::stream).findFirst().orElse(null);
+		lines.add(checked(harness(evaluatorCell), MeasurementCondition.PROVIDER, MeasurementCondition.HARNESS_VERSION));
+		lines.add(checked("Plugins: " + plugins(evaluatorCell), MeasurementCondition.TRIAL_PLUGINS,
 			MeasurementCondition.PLUGIN_BASES, MeasurementCondition.PLUGIN_VERSIONS, MeasurementCondition.PLUGIN_BUILDS,
 			MeasurementCondition.PLUGIN_MAPPINGS));
 		if (cells.isEmpty())
@@ -133,14 +181,39 @@ public record CertifiedEnvironment(MeasurementIdentity identity, List<String> ce
 			lines.add(checked("Model: " + model(cell), MeasurementCondition.MODEL, MeasurementCondition.REASONING));
 		}
 		lines.add(checked("Prompt files loaded: " + promptFileList(), MeasurementCondition.PROMPT_SOURCES));
-		lines.add(checked("Harness settings: " + settings(), MeasurementCondition.LOADER_CONFIGURATION,
+		lines.add(checked("Harness settings: " + settings(evaluatorCell), MeasurementCondition.LOADER_CONFIGURATION,
 			MeasurementCondition.LOADER_FILES));
-		lines.add(checked("Trial setup: " + trialSetup(), MeasurementCondition.SESSION_ENVIRONMENT_VERSION,
+		lines.add(checked("Trial setup: " + trialSetup(evaluatorCell), MeasurementCondition.SESSION_ENVIRONMENT_VERSION,
 			MeasurementCondition.SESSION_ENVIRONMENT_RELEASE));
-		lines.addAll(acceptedChangeLines(identity));
-		lines.add("");
-		lines.add(MACHINE_LIMITATION);
-		return lines;
+	}
+
+	/**
+	 * Describes one frozen candidate across its measured evaluators.
+	 *
+	 * @param lines the block's lines
+	 */
+	private void sharedLines(List<String> lines)
+	{
+		snapshot.ifPresent(digest -> lines.add("Certified snapshot " + digest.hex()));
+		lines.add(checked("Prompt files loaded: " + promptFileList(), MeasurementCondition.PROMPT_SOURCES));
+		for (List<String> measured : evaluators.values())
+		{
+			String first = measured.getFirst();
+			lines.add("");
+			lines.add(checked(harness(first), MeasurementCondition.PROVIDER, MeasurementCondition.HARNESS_VERSION));
+			lines.add(checked("Plugins: " + plugins(first), MeasurementCondition.TRIAL_PLUGINS,
+				MeasurementCondition.PLUGIN_BASES, MeasurementCondition.PLUGIN_VERSIONS, MeasurementCondition.PLUGIN_BUILDS,
+				MeasurementCondition.PLUGIN_MAPPINGS));
+			lines.add(checked("Harness settings: " + settings(first), MeasurementCondition.LOADER_CONFIGURATION,
+				MeasurementCondition.LOADER_FILES));
+			lines.add(checked("Trial setup: " + trialSetup(first), MeasurementCondition.SESSION_ENVIRONMENT_VERSION,
+				MeasurementCondition.SESSION_ENVIRONMENT_RELEASE));
+			for (String cell : measured)
+			{
+				lines.add(checked("Model for " + cell + ": " + model(cell), MeasurementCondition.MODEL,
+					MeasurementCondition.REASONING));
+			}
+		}
 	}
 
 	/**
@@ -203,17 +276,18 @@ public record CertifiedEnvironment(MeasurementIdentity identity, List<String> ce
 	/**
 	 * Names the harness and its version.
 	 *
+	 * @param cell a measured cell of the evaluator, or {@code null} for campaign-wide conditions
 	 * @return the line, such as {@code Codex 0.160.0+41}
 	 */
-	private String harness()
+	private String harness(String cell)
 	{
-		String harness = identity.values().get(MeasurementCondition.PROVIDER);
+		String harness = valueOf(cell, MeasurementCondition.PROVIDER);
 		String name;
 		if (harness == null)
 			name = "Harness " + NOT_RECORDED;
 		else
 			name = Harness.fromCommandName(harness).map(Harness::productName).orElse(harness);
-		String version = identity.values().get(MeasurementCondition.HARNESS_VERSION);
+		String version = valueOf(cell, MeasurementCondition.HARNESS_VERSION);
 		if (version == null)
 			return name + ", version " + NOT_RECORDED;
 		return name + " " + versionNumber(version);
@@ -239,17 +313,18 @@ public record CertifiedEnvironment(MeasurementIdentity identity, List<String> ce
 	/**
 	 * Lists the trial plugins with their versions.
 	 *
+	 * @param cell a measured cell of the evaluator, or {@code null} for campaign-wide conditions
 	 * @return each plugin's name and manifest version, marking one that the project builds, or {@code none}
 	 */
-	private String plugins()
+	private String plugins(String cell)
 	{
-		String names = identity.values().get(MeasurementCondition.TRIAL_PLUGINS);
+		String names = valueOf(cell, MeasurementCondition.TRIAL_PLUGINS);
 		if (names == null)
 			return NOT_RECORDED;
 		if (names.equals("none"))
 			return "none";
-		Map<String, String> versions = pluginLines(MeasurementCondition.PLUGIN_VERSIONS, " ");
-		Map<String, String> builds = pluginLines(MeasurementCondition.PLUGIN_BUILDS, ": ");
+		Map<String, String> versions = pluginLines(cell, MeasurementCondition.PLUGIN_VERSIONS, " ");
+		Map<String, String> builds = pluginLines(cell, MeasurementCondition.PLUGIN_BUILDS, ": ");
 		StringJoiner plugins = new StringJoiner(", ");
 		for (String name : names.split("\n"))
 		{
@@ -275,14 +350,15 @@ public record CertifiedEnvironment(MeasurementIdentity identity, List<String> ce
 	/**
 	 * Reads a plugin condition that records one line per plugin, which starts with the plugin's name.
 	 *
+	 * @param cell a measured cell of the evaluator, or {@code null} for campaign-wide conditions
 	 * @param condition the condition
 	 * @param separator the text between the plugin's name and its value
 	 * @return each plugin's value, keyed by the plugin's name; empty if the condition is not recorded
 	 */
-	private Map<String, String> pluginLines(MeasurementCondition condition, String separator)
+	private Map<String, String> pluginLines(String cell, MeasurementCondition condition, String separator)
 	{
 		Map<String, String> values = new HashMap<>();
-		String value = identity.values().get(condition);
+		String value = valueOf(cell, condition);
 		if (value == null)
 			return values;
 		for (String line : value.split("\n"))
@@ -348,12 +424,13 @@ public record CertifiedEnvironment(MeasurementIdentity identity, List<String> ce
 	/**
 	 * Describes the project's harness settings.
 	 *
+	 * @param cell a measured cell of the evaluator, or {@code null} for campaign-wide conditions
 	 * @return the project's settings files, or {@code defaults} if it has none, followed by the user's settings that
 	 *   trials received; or {@code not recorded}
 	 */
-	private String settings()
+	private String settings(String cell)
 	{
-		String files = identity.values().get(MeasurementCondition.LOADER_FILES);
+		String files = valueOf(cell, MeasurementCondition.LOADER_FILES);
 		if (files == null)
 			return NOT_RECORDED;
 		if (files.equals("none"))
@@ -364,14 +441,15 @@ public record CertifiedEnvironment(MeasurementIdentity identity, List<String> ce
 	/**
 	 * Describes the session environment by the CAT release that introduced it.
 	 *
+	 * @param cell a measured cell of the evaluator, or {@code null} for campaign-wide conditions
 	 * @return the description
 	 */
-	private String trialSetup()
+	private String trialSetup(String cell)
 	{
-		String release = identity.values().get(MeasurementCondition.SESSION_ENVIRONMENT_RELEASE);
+		String release = valueOf(cell, MeasurementCondition.SESSION_ENVIRONMENT_RELEASE);
 		if (release != null)
 			return "as introduced in CAT " + release;
-		String version = identity.values().get(MeasurementCondition.SESSION_ENVIRONMENT_VERSION);
+		String version = valueOf(cell, MeasurementCondition.SESSION_ENVIRONMENT_VERSION);
 		if (version == null)
 			return NOT_RECORDED;
 		return "version " + version + ", CAT release " + NOT_RECORDED;

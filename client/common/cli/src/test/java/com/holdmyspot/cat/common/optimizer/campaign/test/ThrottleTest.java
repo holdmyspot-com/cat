@@ -6,6 +6,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.Admission;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.CampaignEvent;
 import com.holdmyspot.cat.common.optimizer.campaign.ConcurrencyPolicy;
+import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.campaign.Impact;
 import com.holdmyspot.cat.common.optimizer.campaign.LogicalTrial;
 import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
@@ -18,11 +19,17 @@ import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialState;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
 import com.holdmyspot.cat.common.optimizer.campaign.WorkUnit;
+import com.holdmyspot.cat.common.optimizer.contract.Contract;
+import com.holdmyspot.cat.common.optimizer.contract.TrialProfiles;
+import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
 import com.holdmyspot.cat.common.optimizer.port.RateLimitWindow;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Predicate;
 import org.testng.annotations.Test;
 
 /**
@@ -131,6 +138,43 @@ public final class ThrottleTest
 		requireThat(Scheduler.plan(campaign, reset.minusMillis(1), 8), "beforeReset").isEmpty();
 		requireThat(Scheduler.plan(campaign, reset, 8), "atReset").
 			containsExactly(List.of(new Admission.Rerun(key)));
+	}
+
+	/**
+	 * A held evaluator's assigned trial reserves no scheduler slot. Its sibling can take the available slot, and the
+	 * original assignment leads the next plan when its evaluator can start again. A retained continuation releases its
+	 * reservation only after the driver observes that the broker has a resumable prefix and no running session.
+	 */
+	@Test
+	public void heldEvaluatorReleasesQueueSlot()
+	{
+		// Requirement: R-L8
+		Contract base = ContractFixtures.contract();
+		TrialProfiles shared = TrialProfiles.forEvaluators(Map.of(Harness.CLAUDE, base.profiles(),
+			Harness.CODEX, base.profiles()));
+		Contract contract = new Contract(base.requirements(), base.tests(), shared, base.judge(), base.limitations(),
+			base.minimumPassRate(), base.salt());
+		Campaign campaign = new Builder().confirmed(contract, 1).window(1).ceiling(1).build();
+		String heldCell = shared.forEvaluator(Harness.CLAUDE).cells().getFirst().id();
+		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, heldCell);
+		TrialKey heldTrial = TransitionSteps.last(campaign);
+
+		Predicate<String> runnable = cell -> shared.findCell(cell).orElseThrow().
+			evaluator().orElseThrow() == Harness.CODEX;
+		List<Admission> whileHeld = Scheduler.plan(campaign, NOW, 1, runnable);
+		List<Admission> afterHold = Scheduler.plan(campaign, NOW.plusSeconds(60), 1, _ -> true);
+
+		requireThat(whileHeld.size(), "unheldAdmissions").isEqualTo(1);
+		requireThat(whileHeld.getFirst(), "unheldAdmission").isInstanceOf(Admission.Assign.class);
+		Admission.Assign other = (Admission.Assign) whileHeld.getFirst();
+		requireThat(other.purpose(), "purpose").isEqualTo(Purpose.DEVELOPMENT);
+		requireThat(shared.findCell(other.cell()).orElseThrow().evaluator().orElseThrow(), "unheldEvaluator").
+			isEqualTo(Harness.CODEX);
+		requireThat(afterHold, "afterHold").containsExactly(List.of(new Admission.Rerun(heldTrial)));
+		Campaign running = Transitions.apply(campaign, new CampaignEvent.Start(heldTrial));
+		requireThat(Scheduler.plan(running, NOW, 1, runnable), "unconfirmedContinuation").isEmpty();
+		requireThat(Scheduler.plan(running, NOW, 1, runnable, Set.of(heldTrial)), "readyContinuation").
+			isEqualTo(whileHeld);
 	}
 
 	/**

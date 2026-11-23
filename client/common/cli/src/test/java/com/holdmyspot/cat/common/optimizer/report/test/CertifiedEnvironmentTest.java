@@ -2,15 +2,22 @@ package com.holdmyspot.cat.common.optimizer.report.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.optimizer.campaign.CertificationParameters;
+import com.holdmyspot.cat.common.optimizer.campaign.CertificationRecord;
+import com.holdmyspot.cat.common.optimizer.campaign.CertificationRecord.CellResult;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementCondition;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementIdentity;
+import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
+import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
+import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.report.CertifiedEnvironment;
 
 import java.nio.file.Path;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import org.testng.annotations.Test;
 
@@ -42,6 +49,58 @@ public final class CertifiedEnvironmentTest
 
 		requireThat(text, "disclosure").contains("retained earlier results").contains("did not verify equivalence").
 			contains("judge-original").contains("judge-accepted");
+	}
+
+	/**
+	 * A shared certification names the loader and model evidence of both measured evaluators.
+	 */
+	@Test
+	public void namesBothMeasuredEvaluators()
+	{
+		// Requirement: R-M7, R-L9
+		MeasurementIdentity identity = new MeasurementIdentity(Map.of(), Map.of(
+			"claude:example", Map.of(MeasurementCondition.PROVIDER, "claude", MeasurementCondition.HARNESS_VERSION,
+				"2.1.286 (Claude Code)", MeasurementCondition.LOADER_FILES, ".claude/settings.json",
+				MeasurementCondition.MODEL, "claude-haiku-4-5", MeasurementCondition.REASONING, "low"),
+			"codex:example", Map.of(MeasurementCondition.PROVIDER, "codex", MeasurementCondition.HARNESS_VERSION,
+				"codex-cli 0.160.0+41", MeasurementCondition.LOADER_FILES, ".codex/config.toml",
+				MeasurementCondition.MODEL, "gpt-6-luna", MeasurementCondition.REASONING, "low")));
+		List<CellResult> cells = List.of(new CellResult("example", "claude:example", 100, 0, Map.of(), Map.of()),
+			new CellResult("example", "codex:example", 100, 0, Map.of(), Map.of()));
+		Sha256 snapshot = new Sha256("1".repeat(64));
+		CertificationRecord record = new CertificationRecord(Path.of("rules/common.md"), 1,
+			CertificationScope.LATEST_VERSIONS, CertificationParameters.current(1, Contract.DEFAULT_MINIMUM_PASS_RATE),
+			cells, Map.of(), identity, Optional.of(snapshot));
+
+		String lines = String.join("\n", CertifiedEnvironment.of(record, List.of()).lines());
+
+		requireThat(lines, "report").contains("Certified snapshot " + snapshot.hex()).
+			contains("Claude Code 2.1.286").contains("Codex 0.160.0+41").
+			contains(".claude/settings.json").contains(".codex/config.toml").
+			contains("claude-haiku-4-5, reasoning low").contains("gpt-6-luna, reasoning low");
+	}
+
+	/**
+	 * A certification measured by one peer reports the harness, loader and plugins recorded on its cell.
+	 */
+	@Test
+	public void namesSolePeerEvaluator()
+	{
+		// Requirement: R-M7, R-L9
+		MeasurementIdentity identity = new MeasurementIdentity(Map.of(), Map.of("example", Map.of(
+			MeasurementCondition.PROVIDER, "claude", MeasurementCondition.HARNESS_VERSION, "2.1.286 (Claude Code)",
+			MeasurementCondition.LOADER_FILES, ".claude/settings.json", MeasurementCondition.MODEL, "claude-haiku-4-5",
+			MeasurementCondition.TRIAL_PLUGINS, "peer-tools@market", MeasurementCondition.PLUGIN_VERSIONS,
+			"peer-tools@market 2.3.1", MeasurementCondition.SESSION_ENVIRONMENT_RELEASE, "1.0")));
+		CertificationRecord record = new CertificationRecord(Path.of("rules/common.md"), 1,
+			CertificationScope.LATEST_VERSIONS, CertificationParameters.current(1, Contract.DEFAULT_MINIMUM_PASS_RATE),
+			List.of(new CellResult("example", "example", 100, 0, Map.of(), Map.of())), Map.of(), identity);
+
+		String lines = String.join("\n", CertifiedEnvironment.of(record, List.of()).lines());
+
+		requireThat(lines, "report").contains("Claude Code 2.1.286").contains("Plugins: peer-tools@market 2.3.1").
+			contains("Harness settings: the project's .claude/settings.json").contains("Model: claude-haiku-4-5").
+			contains("Trial setup: as introduced in CAT 1.0");
 	}
 
 	/**

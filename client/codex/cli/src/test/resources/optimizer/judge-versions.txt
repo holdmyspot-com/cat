@@ -15,3 +15,7 @@
 12 577972ff0ff64a1ff8ff6639cff5418b0922bfcfc502f19084dabc4ab834ec99
 13 5266d06a281a36cc5bc1f779d32a1def4fa76b84a56266ff1615195b3281cfdf
 14 7cc7de0174954d0cbacea3b5694166ebe59d2903418bbc206628433cf4d9d8ca
+# Served judges now receive paths to the broker's evidence copies.
+15 7cc7de0174954d0cbacea3b5694166ebe59d2903418bbc206628433cf4d9d8ca
+# Trial evidence records Codex child launches as spawn_agent calls.
+16 906f70ee96f25e457c7a3deb192e6d030ab462b95319f3426e638fc7ab864207

@@ -24,6 +24,8 @@ public final class AppServerPromptSourcesTest
 {
 	private static final JsonMapper JSON = JsonMapper.builder().build();
 	private static final String SESSION_FOLDER = "/results/codex/mup8h3ri-14who5rhrw";
+	private static final String SESSION_START_SOURCE =
+		"hook:sessionStart plugin <session>/home/plugins/cache/cat/cat/1.0+b08307c76ca2a/hooks/hooks.json";
 
 	/**
 	 * Creates the test.
@@ -75,6 +77,7 @@ public final class AppServerPromptSourcesTest
 	{
 		List<String> lines = recorded();
 		String sessionStart = observe(lines, SESSION_FOLDER);
+		requireThat(sessionStart, "sessionStart").isEqualTo(SESSION_START_SOURCE);
 		for (String line : lines)
 		{
 			// The subagentStart shape follows the sessionStart notifications in codex-hooks.jsonl.
@@ -97,8 +100,7 @@ public final class AppServerPromptSourcesTest
 		for (String line : recorded())
 		{
 			String value = observe(List.of(line), SESSION_FOLDER);
-			requireThat(value, "value").
-				isEqualTo("hook:sessionStart plugin <session>/home/plugins/cache/cat/cat/1.0/hooks/hooks.json");
+			requireThat(value, "value").isEqualTo(SESSION_START_SOURCE);
 			String other = line.replace("hooks/hooks.json", "hooks/other.json");
 			requireThat(observe(List.of(other), SESSION_FOLDER), "other").isNotEqualTo(value);
 		}
@@ -115,8 +117,7 @@ public final class AppServerPromptSourcesTest
 	{
 		// Requirement: R-M1
 		String value = observe(recorded(), SESSION_FOLDER);
-		requireThat(value, "value").
-			isEqualTo("hook:sessionStart plugin <session>/home/plugins/cache/cat/cat/1.0/hooks/hooks.json");
+		requireThat(value, "value").isEqualTo(SESSION_START_SOURCE);
 	}
 
 	/**

@@ -27,7 +27,8 @@ public sealed interface DeliveryResult
 	 *              incumbent and only its prompt tests were delivered
 	 * @param applicability {@code HISTORICAL} if a change made outside the candidate since the fork, in the base worktree
 	 *                      or to a read-only external participant, changed a prompt source, so that the merged prompt
-	 *                      system is a different snapshot than the one measured; otherwise {@code CURRENT}
+	 *                      system is a different snapshot than the one measured, or changed the loader configuration;
+	 *                      otherwise {@code CURRENT}
 	 * @param baseOnlyPromptSourceChanges the prompt-source paths among {@code baseOnlyChanges}, in path order; a prompt
 	 *                                    source that the candidate edited is in {@code changes}, not here
 	 * @param baseOnlyChanges every path that changed outside the candidate since the fork; delivery left them unchanged
@@ -44,7 +45,7 @@ public sealed interface DeliveryResult
 		 * @param label the certification label that the delivered result carries, or {@code null} if the user kept the
 		 *              incumbent and only its prompt tests were delivered
 		 * @param applicability {@code HISTORICAL} if a change made outside the candidate since the fork changed a prompt
-		 *                      source; otherwise {@code CURRENT}
+		 *                      source or the loader configuration; otherwise {@code CURRENT}
 		 * @param baseOnlyPromptSourceChanges the prompt-source paths among {@code baseOnlyChanges}
 		 * @param baseOnlyChanges every path that changed outside the candidate since the fork
 		 * @param changes the changes that delivered the candidate, in the order they were applied

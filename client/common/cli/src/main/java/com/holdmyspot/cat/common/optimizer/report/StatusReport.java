@@ -728,15 +728,22 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 		for (Map.Entry<String, String> entry : new TreeMap<>(conditions(campaign.identity())).entrySet())
 			values.add(entry.getKey() + "=" + entry.getValue());
 		List<Cell> scopeCells = CellTier.scopeCells(contract);
-		String claim = "The pass rates describe candidate " + candidate.number() + " under the frozen judge (role " +
-			"profile " + judge.profile().label() + "; decision rule: " + judge.decisionRule() + ") on the held-out part " +
+		String claim = "The pass rates describe candidate " + candidate.number() + " under the frozen judge running in " +
+			campaign.header().harness().productName() + " (role profile " + judge.profile().label() + "; decision rule: " +
+			judge.decisionRule() + ") on the held-out part " +
 			"of the balanced benchmark of " + scopeCells.size() + " cells, whose weights are testing assumptions, not " +
 			"usage frequencies, under the measured conditions " + String.join(", ", values) + ".";
 		if (contract.profiles().scope() != CertificationScope.WEAKEST_CELL)
 			return claim;
 		List<String> profiles = new ArrayList<>();
+		boolean shared = contract.profiles().byEvaluator().size() > 1;
 		for (Cell cell : scopeCells)
-			profiles.add(cell.testId() + " under " + cell.profile().label());
+		{
+			String evaluator = "";
+			if (shared)
+				evaluator = " in " + cell.evaluator().orElseThrow().commandName();
+			profiles.add(cell.testId() + evaluator + " under " + cell.profile().label());
+		}
 		return claim + " Certification covered only each test's weakest cell: " + String.join(", ", profiles) +
 			". No other profile was certified.";
 	}

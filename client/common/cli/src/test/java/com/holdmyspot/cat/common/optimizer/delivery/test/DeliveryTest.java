@@ -407,6 +407,40 @@ public final class DeliveryTest
 	}
 
 	/**
+	 * Delivery preserves a loader file that appeared in the live worktree after the fork and reports the measured
+	 * result as historical. The added loader file is listed separately from changes to prompt content.
+	 *
+	 * @throws IOException if the fixture or delivery fails
+	 */
+	@Test
+	public void baseOnlyLoaderAdditionIsHistorical() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = Fixture.create(template, cleanup);
+			Overlay candidate = fixture.candidate();
+			Path loaderPath = Path.of("loader.conf");
+			Path liveLoader = fixture.base().resolve(loaderPath);
+			Files.writeString(liveLoader, "load=alternate.md\n", UTF_8);
+			FakeWorkspacePort workspace = new FakeWorkspacePort(fixture.root().resolve("workspace"),
+				candidate.snapshot());
+			Delivery delivery = new Delivery(fixture.store(), workspace, fixture.forks(), JSON,
+				Yielding.fileReplacer(), Set.of(loaderPath));
+
+			Delivered delivered = requireDelivered(delivery.deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED),
+				candidate, candidate, fixture.promptSources(), RECORD, List.of()));
+
+			requireThat(delivered.applicability(), "applicability").isEqualTo(
+				new Applicability(Applicability.Status.HISTORICAL, false, List.of(MeasurementCondition.LOADER_CONFIGURATION)));
+			requireThat(delivered.baseOnlyChanges(), "baseOnlyChanges").isEqualTo(List.of(loaderPath));
+			requireThat(delivered.baseOnlyPromptSourceChanges(), "baseOnlyPromptSourceChanges").isEmpty();
+			requireThat(read(liveLoader), "liveLoader").isEqualTo("load=alternate.md\n");
+			requireThat(history(fixture).records(), "records").isEqualTo(List.of(RECORD));
+			requireCandidateDelivered(fixture);
+		}
+	}
+
+	/**
 	 * When the user changed a read-only external participant after the fork, delivery leaves it unchanged, delivers the
 	 * candidate, and reports the result as historical, naming the external participant as a changed prompt source.
 	 *
@@ -1226,19 +1260,22 @@ public final class DeliveryTest
 		// Requirement: R-W11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Fixture fixture = Fixture.create(template, cleanup);
+			Fixture fixture = Fixture.create(template, cleanup).
+				recordFile(EDITED_SCENARIO, RECORDED_SCENARIO.getBytes(UTF_8));
 			Overlay candidate = fixture.candidate();
 			DeliveredTest created = promptTest("created_summary", true);
+			DeliveredTest edited = promptTest("release_notes", false);
 
-			DeliveryResult result = fixture.delivery(fixture.store(), candidate, NO_HOOK).
+			DeliveryResult result = fixture.delivery(fixture.store(), candidate, NO_HOOK, recordedScenario()).
 				deliver(CAMPAIGN, null, Overlay.of(fixture.fork()), candidate, fixture.promptSources(),
-					entry(DeliveryLabel.INCUMBENT_KEPT), List.of(created));
+					entry(DeliveryLabel.INCUMBENT_KEPT), List.of(created, edited));
 
 			Delivered delivered = requireDelivered(result);
 			requireThat(delivered.label(), "label").isNull();
 			requireThat(delivered.baseOnlyChanges(), "baseOnlyChanges").isEmpty();
 			requireThat(delivered.baseOnlyPromptSourceChanges(), "baseOnlyPromptSourceChanges").isEmpty();
 			requirePromptTestDelivered(fixture, created);
+			requirePromptTestDelivered(fixture, edited);
 			requireThat(read(fixture.resolve(Path.of("rules/main.md"))), "main.md").isEqualTo("main v1\n");
 			requireThat(fixture.resolve(Path.of("rules/old.md")), "old.md").isRegularFile();
 			requireThat(Files.notExists(fixture.resolve(Path.of("rules/new.md"))), "newIsAbsent").isTrue();

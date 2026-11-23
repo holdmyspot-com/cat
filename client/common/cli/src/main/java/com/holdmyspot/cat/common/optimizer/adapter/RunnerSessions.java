@@ -61,7 +61,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.UnaryOperator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
@@ -166,47 +168,116 @@ public abstract class RunnerSessions implements SessionPort
 		requireThat(settings, "settings").isNotNull();
 		requireThat(harness, "harness").isNotNull();
 		Set<String> running = Set.copyOf(harnesses);
+		return requestBridge(settings, harness, arguments ->
+		{
+			return switch (LaunchRoute.decide(harness, harness, running, arguments.toArray(String[]::new),
+				settings.environment()))
+			{
+				case LaunchRoute.Served _ -> new OwnerRequestRoute(SessionRequestForwarder.Route.SERVER,
+					servedRequests(settings));
+				case LaunchRoute.Forward(Path requests) -> new OwnerRequestRoute(SessionRequestForwarder.Route.RUN,
+					requests);
+				case LaunchRoute.Refused(String reason) -> throw new LaunchRefusedException(reason);
+				case LaunchRoute.Bounded _ -> throw new LaunchRefusedException(
+					"CAT cannot start the session: no Claude Code or Codex session runs this command, so no request " +
+						"server serves it. Run the prompt optimizer from a Claude Code or Codex session.");
+			};
+		});
+	}
+
+	/**
+	 * Creates a bridge for an installed evaluator to submit sessions to the campaign owner's existing broker.
+	 *
+	 * @param settings      the evaluator's settings, including the evaluator's installed CAT artifact
+	 * @param harness       the evaluator's harness
+	 * @param ownerRoute    the owner's already resolved request route
+	 * @param ownerRequests the trusted request directory for that route, resolved by the owner
+	 * @return the bridge
+	 * @throws NullPointerException     if any argument is null
+	 * @throws IllegalArgumentException if the harness identifier is blank or the request directory is relative
+	 */
+	public static Bridge evaluatorBridge(Settings settings, String harness, SessionRequestForwarder.Route ownerRoute,
+		Path ownerRequests)
+	{
+		requireThat(settings, "settings").isNotNull();
+		requireThat(harness, "harness").isNotBlank();
+		requireThat(ownerRoute, "ownerRoute").isNotNull();
+		requireThat(ownerRequests, "ownerRequests").isNotNull();
+		requireThat(ownerRequests.isAbsolute(), "ownerRequests.isAbsolute").isTrue();
+		OwnerRequestRoute route = new OwnerRequestRoute(ownerRoute, ownerRequests);
+		return requestBridge(settings, harness, _ -> route);
+	}
+
+	/**
+	 * Creates the streamed broker bridge for the given harness and route selection.
+	 *
+	 * @param settings the harness's runner settings
+	 * @param harness  the harness to launch
+	 * @param resolver finds the request route for a launch
+	 * @return the bridge
+	 */
+	private static Bridge requestBridge(Settings settings, String harness, RequestRouteResolver resolver)
+	{
 		return new Bridge()
 		{
 			@Override
 			public void serve(List<String> arguments, Reader input, Writer output) throws IOException
 			{
-				serveRoute(Optional.empty(), Optional.empty(), Optional.empty(), arguments, input, output);
+				serveRoute(UUID.randomUUID(), Optional.empty(), Optional.empty(), arguments, input, output, _ -> {});
+			}
+
+			@Override
+			public void serveWithEvidence(List<String> arguments, List<Path> evidence,
+				Consumer<UnaryOperator<Path>> bindPaths, Reader input, Writer output) throws IOException
+			{
+				UUID requestId = UUID.randomUUID();
+				serveRoute(requestId, Optional.empty(), Optional.empty(), arguments, input, output, requests ->
+					bindPaths.accept(path ->
+					{
+						Path absolute = path.toAbsolutePath().normalize();
+						int selectedIndex = -1;
+						Path selectedRoot = null;
+						for (int index = 0; index < evidence.size(); ++index)
+						{
+							Path root = evidence.get(index).toAbsolutePath().normalize();
+							if (absolute.startsWith(root) &&
+								(selectedRoot == null || root.getNameCount() > selectedRoot.getNameCount()))
+							{
+								selectedIndex = index;
+								selectedRoot = root;
+							}
+						}
+						if (selectedRoot == null)
+							return path;
+						return SessionRequestForwarder.offeredEvidence(requests, requestId, selectedIndex).
+							resolve(selectedRoot.relativize(absolute));
+					}));
 			}
 
 			@Override
 			public void serveTrial(UUID requestId, Optional<RetainedTrialClaim> claim, Path source,
 				List<String> arguments, Reader input, Writer output) throws IOException
 			{
-				serveRoute(Optional.of(requestId), claim, Optional.of(source), arguments, input, output);
+				serveRoute(requestId, claim, Optional.of(source), arguments, input, output, _ -> {});
 			}
 
 			/**
 			 * Resolves the broker that owns the caller's launches.
 			 *
-			 * @param requestId the original tracked request identifier, or empty for an ordinary launch
+			 * @param requestId the request identifier
 			 * @param claim the checkpoint that a continuation must claim
 			 * @param source the requesting trial's project, or empty if the launch is untracked
 			 * @param arguments the runner options
 			 * @param input the streamed requests
 			 * @param output the streamed replies
+			 * @param onRoute receives the broker's request directory before any reply is forwarded
 			 * @throws IOException if no broker serves the launch or forwarding fails
 			 */
-			private void serveRoute(Optional<UUID> requestId, Optional<RetainedTrialClaim> claim, Optional<Path> source,
-				List<String> arguments, Reader input, Writer output) throws IOException
+			private void serveRoute(UUID requestId, Optional<RetainedTrialClaim> claim, Optional<Path> source,
+				List<String> arguments, Reader input, Writer output, Consumer<Path> onRoute) throws IOException
 			{
-				String[] args = arguments.toArray(String[]::new);
-				switch (LaunchRoute.decide(harness, harness, running, args, settings.environment()))
-				{
-					case LaunchRoute.Served _ -> forward(SessionRequestForwarder.Route.SERVER, servedRequests(settings),
-						requestId, claim, source, arguments, input, output);
-					case LaunchRoute.Forward(Path requests) -> forward(SessionRequestForwarder.Route.RUN, requests,
-						requestId, claim, source, arguments, input, output);
-					case LaunchRoute.Refused(String reason) -> throw new LaunchRefusedException(reason);
-					case LaunchRoute.Bounded _ -> throw new LaunchRefusedException(
-						"CAT cannot start the session: no Claude Code or Codex session runs this command, so no request " +
-							"server serves it. Run the prompt optimizer from a Claude Code or Codex session.");
-				}
+				OwnerRequestRoute route = resolver.resolve(arguments);
+				forward(route.kind(), route.requests(), requestId, claim, source, arguments, input, output, onRoute);
 			}
 
 			/**
@@ -214,34 +285,57 @@ public abstract class RunnerSessions implements SessionPort
 			 *
 			 * @param route which kind of broker serves the launch
 			 * @param requests the broker's request directory
-			 * @param requestId the original tracked request identifier, or empty for an ordinary launch
+			 * @param requestId the request identifier
 			 * @param claim the checkpoint that a continuation must claim
 			 * @param source the requesting trial's project, or empty if the launch is untracked
 			 * @param arguments the runner options
 			 * @param input the streamed requests
 			 * @param output the streamed replies
+			 * @param onRoute receives the broker's request directory before any reply is forwarded
 			 * @throws IOException if the launch fails
 			 */
-			private void forward(SessionRequestForwarder.Route route, Path requests, Optional<UUID> requestId,
+			private void forward(SessionRequestForwarder.Route route, Path requests, UUID requestId,
 				Optional<RetainedTrialClaim> claim, Optional<Path> source, List<String> arguments, Reader input,
-				Writer output) throws IOException
+				Writer output, Consumer<Path> onRoute) throws IOException
 			{
 				Pause pause = settings.scope().waiting().every(SessionRequestForwarder.RESPONSE_POLL);
+				onRoute.accept(requests);
 				if (claim.isPresent())
 				{
 					SessionRequestForwarder.serveRetainedTrial(route, claim.get(), COMMAND, harness, settings.artifact(),
 						source.orElseThrow(), arguments, input, output, requests, pause);
 				}
-				else if (requestId.isPresent())
-				{
-					SessionRequestForwarder.serve(route, requestId.get(), COMMAND, harness, settings.artifact(),
-						arguments, input, output, requests, pause);
-				}
 				else
-					SessionRequestForwarder.serve(route, COMMAND, harness, settings.artifact(), arguments, input, output,
-						requests, pause);
+					SessionRequestForwarder.serve(route, requestId, COMMAND, harness, settings.artifact(), arguments,
+						input, output, requests, pause);
 			}
 		};
+	}
+
+	/**
+	 * A route through the campaign owner's broker.
+	 *
+	 * @param kind     the broker's forwarding mode
+	 * @param requests the broker's request directory
+	 */
+	private record OwnerRequestRoute(SessionRequestForwarder.Route kind, Path requests)
+	{
+	}
+
+	/**
+	 * Resolves the request route that serves a launch.
+	 */
+	@FunctionalInterface
+	private interface RequestRouteResolver
+	{
+		/**
+		 * Resolves the route.
+		 *
+		 * @param arguments the runner options
+		 * @return the owner route
+		 * @throws IOException if the route cannot be used
+		 */
+		OwnerRequestRoute resolve(List<String> arguments) throws IOException;
 	}
 
 	/**

@@ -6,6 +6,7 @@ import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
+import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.campaign.Candidate;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationHistory;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationRecord;
@@ -318,6 +319,20 @@ public final class DriverHarness
 	 */
 	public DriverContext context(SessionPort sessions)
 	{
+		return context(sessions, Map.of(), Map.of());
+	}
+
+	/**
+	 * Returns the driver's context with the owner and evaluator ports of a shared campaign.
+	 *
+	 * @param sessions the owner port
+	 * @param evaluators the evaluator ports
+	 * @param cellConditions the conditions recorded separately for each cell
+	 * @return the context
+	 */
+	DriverContext context(SessionPort sessions, Map<Harness, SessionPort> evaluators,
+		Map<String, Map<MeasurementCondition, String>> cellConditions)
+	{
 		WorkspacePort workspace = new WorkspacePort()
 		{
 			@Override
@@ -416,6 +431,8 @@ public final class DriverHarness
 		environment.remove(MeasurementCondition.REASONING);
 		environment.remove(MeasurementCondition.PROMPT_SOURCES);
 		environment.putAll(environmentChanges);
+		for (Map<MeasurementCondition, String> conditions : cellConditions.values())
+			environment.keySet().removeAll(conditions.keySet());
 		FakeProcessHandle[] table = processes.toArray(FakeProcessHandle[]::new);
 		HarnessProcesses starts = FakeProcessHandle.processes(table);
 		LongFunction<Optional<ProcessHandle>> handles = FakeProcessHandle.table(table);
@@ -442,8 +459,9 @@ public final class DriverHarness
 			LeftoverNestedSessionsSecrets.getLeftoverNestedSessionsAccess().create(sessions, JsonMapper.builder().build(),
 				liveness),
 			new Authority(Set.of(PROMPT), Set.of(), fork), promptSources,
-			new MeasurementIdentity(environment), directory.resolve("campaign.lock"), new Random(7), settings, json,
-			candidateJudges, judgeRecords, temporaryDirectory);
+			new MeasurementIdentity(environment, cellConditions), directory.resolve("campaign.lock"), new Random(7),
+			settings, json,
+			candidateJudges, judgeRecords, evaluators, temporaryDirectory);
 	}
 
 	/**

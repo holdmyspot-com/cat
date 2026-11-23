@@ -7,7 +7,6 @@ import com.holdmyspot.cat.common.optimizer.campaign.CampaignEvent;
 import com.holdmyspot.cat.common.optimizer.campaign.PendingDecision;
 import com.holdmyspot.cat.common.optimizer.campaign.TestRevision;
 import com.holdmyspot.cat.common.optimizer.proposal.DerivedProposal;
-import com.holdmyspot.cat.common.optimizer.proposal.ProfileEvidence;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
@@ -96,14 +95,14 @@ final class RevisionFile
 	 * Stores a revised contract and what its test revision decided, replacing any stored one.
 	 *
 	 * @param derived the revised contract, whose draft directory the held-out directory stores
-	 * @param profiles the profile inventory, capability ranking and bindings that CAT read when the contract author ran
+	 * @param confirmed the confirmed proposal whose evaluator evidence the revision keeps
 	 * @param revisions the corrections, one per corrected test
 	 * @param blocked the test revisions that cannot proceed
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if the contract's draft directory does not lie in the held-out directory
 	 * @throws IOException if a file cannot be written
 	 */
-	void write(DerivedProposal derived, ProfileEvidence profiles, List<TestRevision> revisions,
+	void write(DerivedProposal derived, ProposalFile.Stored confirmed, List<TestRevision> revisions,
 		List<CampaignEvent.BlockTestRevision> blocked) throws IOException
 	{
 		requireThat(revisions, "revisions").isNotNull();
@@ -127,7 +126,7 @@ final class RevisionFile
 			StandardCharsets.UTF_8);
 		replacer.replace(temporary, file);
 		// The contract is stored last, and a stored test revision is the one whose contract is stored
-		proposal.write(derived, profiles);
+		proposal.write(derived, confirmed.profiles(), confirmed.evaluators());
 	}
 
 	/**

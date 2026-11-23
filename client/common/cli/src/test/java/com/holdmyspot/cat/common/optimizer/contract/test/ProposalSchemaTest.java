@@ -3,10 +3,13 @@ package com.holdmyspot.cat.common.optimizer.contract.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.optimizer.campaign.ContractIdentity;
+import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.contract.Assertion;
 import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
+import com.holdmyspot.cat.common.optimizer.contract.Cell;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.Dependent;
+import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.contract.ExpectedOutcomeTool;
 import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFile;
 import com.holdmyspot.cat.common.optimizer.contract.InvalidProposalException;
@@ -18,6 +21,7 @@ import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TestValue;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
+import com.holdmyspot.cat.common.optimizer.contract.TrialProfiles;
 
 import java.math.BigDecimal;
 import java.nio.file.Path;
@@ -46,6 +50,85 @@ public final class ProposalSchemaTest
 	 */
 	public ProposalSchemaTest()
 	{
+	}
+
+	/**
+	 * An evaluated contract reads identical test profiles with distinct evaluator-qualified addresses.
+	 *
+	 * @throws InvalidProposalException if the stored contract cannot be read
+	 */
+	@Test
+	public void storedContractWithTwoEvaluators() throws InvalidProposalException
+	{
+		// Requirement: R-L8
+		ProposalSchema schema = schema();
+		Contract originalContract = ContractFixtures.contract();
+		ObjectNode stored = (ObjectNode) json.readTree(schema.toJson(originalContract));
+		ObjectNode original = (ObjectNode) stored.get("trial_profiles");
+		ArrayNode evaluators = stored.putObject("trial_profiles").putArray("evaluators");
+		for (Harness evaluator : Harness.values())
+		{
+			ObjectNode local = original.deepCopy();
+			local.put("inventory_source", evaluator.commandName() + " profile fixture");
+			((ObjectNode) local.get("ranking")).put("source", evaluator.commandName() + " ranking fixture");
+			for (JsonNode element : local.get("cells"))
+			{
+				ObjectNode cell = (ObjectNode) element;
+				cell.put("id", evaluator.commandName() + ":" + cell.get("id").asString());
+			}
+			evaluators.addObject().put("evaluator", evaluator.commandName()).set("profiles", local);
+		}
+
+		Contract loaded = schema.parse(json.writeValueAsString(stored));
+
+		for (Harness evaluator : Harness.values())
+		{
+			String id = evaluator.commandName() + ":plain_list";
+			Cell cell = loaded.findCell(id).orElseThrow();
+			TrialProfiles local = loaded.profiles().forEvaluator(evaluator);
+			requireThat(cell.evaluator(), "evaluator").isEqualTo(Optional.of(evaluator));
+			requireThat(cell.profile(), "trialProfile").isEqualTo(originalContract.findCell("plain_list").
+				orElseThrow().profile());
+			requireThat(local.inventory().source(), "inventorySource").
+				isEqualTo(evaluator.commandName() + " profile fixture");
+			requireThat(local.ranking().source(), "rankingSource").isEqualTo(evaluator.commandName() + " ranking fixture");
+			requireThat(local.cellsOf("plain_list"), "localCells").isEqualTo(List.of(cell));
+		}
+		requireThat(json.readTree(schema.toJson(loaded)), "roundTrip").isEqualTo(stored);
+	}
+
+	/**
+	 * A shared campaign cannot read profile evidence from a bare singleton contract.
+	 *
+	 * @throws InvalidProposalException when the contract fails to supply each evaluator's profiles
+	 */
+	@Test(expectedExceptions = InvalidProposalException.class,
+		expectedExceptionsMessageRegExp = ".*must record every evaluator's profiles.*")
+	public void sharedScopeNeedsEvaluatorProfiles() throws InvalidProposalException
+	{
+		// Requirement: R-L8
+		ProposalSchema schema = schema();
+		schema.parseRecorded(schema.toJson(ContractFixtures.contract()), Set.of(Harness.CLAUDE, Harness.CODEX));
+	}
+
+	/**
+	 * Assigns identical computed cells to two evaluators and keeps bare addresses for an individual evaluator.
+	 */
+	@Test
+	public void computedProfilesQualifySharedCells()
+	{
+		// Requirement: R-L8
+		TrialProfiles individual = ContractFixtures.contract().profiles();
+		Cell raw = individual.findCell("plain_list").orElseThrow();
+		TrialProfiles scoped = TrialProfiles.forEvaluators(Map.of(Harness.CLAUDE, individual, Harness.CODEX, individual));
+		requireThat(scoped.cellsOf(raw.testId()), "sharedCells").isEqualTo(List.of(
+			new Cell(Harness.CLAUDE.commandName() + ":" + raw.id(), raw.testId(), raw.profile(), Optional.of(Harness.CLAUDE)),
+			new Cell(Harness.CODEX.commandName() + ":" + raw.id(), raw.testId(), raw.profile(), Optional.of(Harness.CODEX))));
+		requireThat(String.join("\n", scoped.describe()), "description").
+			contains("named `" + Harness.CODEX.commandName() + ":<test>`");
+		TrialProfiles singleton = TrialProfiles.forEvaluators(Map.of(Harness.CLAUDE, individual));
+		requireThat(singleton.cellsOf(raw.testId()), "singletonCell").isEqualTo(List.of(
+			new Cell(raw.id(), raw.testId(), raw.profile(), Optional.of(Harness.CLAUDE))));
 	}
 
 	/**
@@ -1087,6 +1170,38 @@ public final class ProposalSchemaTest
 		requireThat(json.readTree(schema().toJson(without)).has("dependents"), "withoutDependents").isFalse();
 		requireThat(ContractIdentity.of(schema(), contract), "identity").
 			isNotEqualTo(ContractIdentity.of(schema(), without));
+	}
+
+	/**
+	 * A packaged dependent can name one evaluator, even when both evaluators' builds have the same plugin and path.
+	 *
+	 * @throws InvalidProposalException if the fixture cannot be parsed
+	 */
+	@Test
+	public void scopedPluginDependentsRoundTrip() throws InvalidProposalException
+	{
+		Contract contract = schema().parse(changed(new String[]{"dependents"}, json.readTree("""
+			[
+			  {"location": "plugin", "plugin": "cat", "evaluator": "codex", "path": "bin/read-part",
+			   "removes": "file", "text": null, "event": null, "command": null, "serves": "Reads a Codex part."},
+			  {"location": "plugin", "plugin": "cat", "evaluator": "claude", "path": "bin/read-part",
+			   "removes": "file", "text": null, "event": null, "command": null, "serves": "Reads a Claude part."},
+			  {"location": "project", "plugin": null, "path": "bin/read-other", "removes": "file",
+			   "text": null, "event": null, "command": null, "serves": "Reads a shared part."}
+			]
+			""")));
+		TrialPlugin plugin = new TrialPlugin("cat", "1".repeat(64), new TrialPlugin.Build(List.of(), Path.of("out")),
+			List.of(new TrialPlugin.Mapping(Path.of("bin"), Path.of("bin"))), null);
+		Dependent codex = contract.dependents().get(0);
+		Dependent claude = contract.dependents().get(1);
+		Dependent project = contract.dependents().get(2);
+		Dependent mapped = project.inPlugin("cat", project.path());
+		requireThat(codex.evaluator(), "codexScope").isEqualTo(Optional.of(Harness.CODEX));
+		requireThat(claude.evaluator(), "claudeScope").isEqualTo(Optional.of(Harness.CLAUDE));
+		requireThat(contract.pluginRemovals(plugin, Harness.CODEX), "codexRemovals").isEqualTo(List.of(codex, mapped));
+		requireThat(contract.pluginRemovals(plugin, Harness.CLAUDE), "claudeRemovals").isEqualTo(List.of(claude, mapped));
+		requireThat(contract.pluginRemovals(plugin), "unqualifiedRemovals").isEqualTo(List.of(mapped));
+		requireThat(schema().parse(schema().toJson(contract)), "reread").isEqualTo(contract);
 	}
 
 	/**

@@ -230,6 +230,12 @@ public record CertificationStatus(List<Latest> latest, List<HistoryEntry> earlie
 	 */
 	private static String harnessName(HistoryEntry entry)
 	{
+		if (entry instanceof CertificationRecord record)
+		{
+			Set<String> evaluators = record.evaluatorCells().keySet();
+			if (!evaluators.isEmpty())
+				return String.join(" and ", evaluators);
+		}
 		return entry.harness().orElse("an unrecorded harness");
 	}
 

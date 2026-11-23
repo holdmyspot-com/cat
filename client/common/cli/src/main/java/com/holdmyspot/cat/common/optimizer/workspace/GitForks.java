@@ -43,6 +43,12 @@ public final class GitForks implements Forks
 	}
 
 	@Override
+	public ForkView prepare(Path base, Path scratch, Set<Path> participants) throws IOException
+	{
+		return Fork.prepare(base, scratch, participants, replacer, registrar);
+	}
+
+	@Override
 	public Set<Path> tracked(Path base) throws IOException
 	{
 		return Fork.tracked(base);

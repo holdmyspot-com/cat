@@ -6,7 +6,9 @@ import com.holdmyspot.cat.common.optimizer.contract.Part;
 import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFiles;
 import com.holdmyspot.cat.common.optimizer.contract.TestWorkspace;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
+import com.holdmyspot.cat.common.optimizer.evidence.EvidencePrompt;
 
+import com.holdmyspot.cat.common.runner.TrialPluginInput;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 
 import java.nio.file.Path;
@@ -32,7 +34,6 @@ import java.util.Optional;
  *   harness's default model or effort.
  * @param files the files that the workspace receives on top of {@code source} before the first turn: a trial's
  *   workspace files, or the contract author's draft directory; {@link TestWorkspace#NONE} for every other session
- * @param plugins the plugin directories that a trial installs, and no other plugin; empty for every other session
  * @param followUp chooses at most one turn to send after the last of {@code turns}, from the replies so far; that
  *   turn gets a time limit of its own as long as {@code timeLimit}. Empty to end the session after {@code turns}.
  * @param controlSource {@code true} if the session is a trial that runs on the control source, where the target prompt
@@ -41,11 +42,13 @@ import java.util.Optional;
  *   the session gets when its parent's sandbox allows them and otherwise cannot start; {@link ExtraPermissions#NONE}
  *   if the session needs none
  * @param turnObserver observes completed turns and may end a trial before its remaining turns
+ * @param evidencePrompt renders the first turn with the paths offered by the runner, when it stages read-only evidence
+ * @param pluginInputs the ordered trial plugin directories and any exact source identifiers; empty for other sessions
  */
 public record SessionRequest(SessionRole role, Part part, Path source, List<String> turns, List<Path> readOnly,
-	Duration timeLimit, TrialProfile profile, WorkspaceFiles files, List<Path> plugins,
+	Duration timeLimit, TrialProfile profile, WorkspaceFiles files,
 	Optional<FollowUp> followUp, boolean controlSource, ExtraPermissions extraPermissions,
-	Optional<TurnObserver> turnObserver)
+	Optional<TurnObserver> turnObserver, Optional<EvidencePrompt> evidencePrompt, List<TrialPluginInput> pluginInputs)
 {
 	/**
 	 * Creates a request whose workspace receives no files.
@@ -177,10 +180,12 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 	 * @param timeLimit how long the session may run before its remaining turns are abandoned
 	 * @param profile the model and reasoning effort that the session starts under
 	 * @param files the files that the workspace receives on top of {@code source} before the first turn
-	 * @param plugins the plugin directories that a trial installs, and no other plugin
 	 * @param followUp chooses at most one turn to send after the last of {@code turns}
 	 * @param controlSource {@code true} if the session is a trial that runs on the control source
 	 * @param extraPermissions the writes and hosts that the session's commands need beyond what its harness needs
+	 * @param turnObserver observes completed trial turns
+	 * @param evidencePrompt the optional first turn whose evidence paths the runner supplies
+	 * @param pluginInputs the ordered trial plugin inputs
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code turns} is empty, if {@code timeLimit} is not positive, if a judge's
 	 *   {@code part} is not {@link Part#HELD_OUT}, if the {@code part} of triage, a prompt author or the contract
@@ -208,21 +213,51 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 		requireThat(profile, "profile").isNotNull();
 		requireThat(profile.isComplete(), "profile.isComplete()").withContext(profile, "profile").isTrue();
 		requireThat(files, "files").isNotNull();
-		requireThat(plugins, "plugins").isNotNull();
+		requireThat(pluginInputs, "pluginInputs").isNotNull();
 		requireThat(followUp, "followUp").isNotNull();
 		requireThat(extraPermissions, "extraPermissions").isNotNull();
 		requireThat(turnObserver, "turnObserver").isNotNull();
+		requireThat(evidencePrompt, "evidencePrompt").isNotNull();
 		if (turnObserver.isPresent() && role != SessionRole.TRIAL)
 			throw new IllegalArgumentException("Only a trial session may end early");
 		if (role != SessionRole.TRIAL && role != SessionRole.CONTRACT_AUTHOR && !files.isEmpty())
 			throw new IllegalArgumentException("A " + role + " session receives no files");
-		if (role != SessionRole.TRIAL && !plugins.isEmpty())
+		if (role != SessionRole.TRIAL && !pluginInputs.isEmpty())
 			throw new IllegalArgumentException("A " + role + " session installs no plugin");
 		if (role != SessionRole.TRIAL && controlSource)
 			throw new IllegalArgumentException("A " + role + " session does not run on the control source");
 		turns = List.copyOf(turns);
-		plugins = List.copyOf(plugins);
+		pluginInputs = List.copyOf(pluginInputs);
 		readOnly = List.copyOf(readOnly);
+	}
+
+	/** Creates a request with exact trial plugin inputs and default extra permissions. */
+	public SessionRequest(SessionRole role, Part part, Path source, List<String> turns, List<Path> readOnly,
+		Duration timeLimit, TrialProfile profile, WorkspaceFiles files, Optional<FollowUp> followUp,
+		boolean controlSource, List<TrialPluginInput> pluginInputs)
+	{
+		this(role, part, source, turns, readOnly, timeLimit, profile, files, followUp, controlSource,
+			ExtraPermissions.NONE, Optional.empty(), Optional.empty(), pluginInputs);
+	}
+
+	/** Creates a request with path-only plugin inputs. */
+	public SessionRequest(SessionRole role, Part part, Path source, List<String> turns, List<Path> readOnly,
+		Duration timeLimit, TrialProfile profile, WorkspaceFiles files, List<Path> plugins,
+		Optional<FollowUp> followUp, boolean controlSource, ExtraPermissions extraPermissions,
+		Optional<TurnObserver> turnObserver, Optional<EvidencePrompt> evidencePrompt)
+	{
+		this(role, part, source, turns, readOnly, timeLimit, profile, files, followUp, controlSource,
+			extraPermissions, turnObserver, evidencePrompt, TrialPluginInput.unbound(plugins));
+	}
+
+	/** Creates a request whose turns do not depend on where the runner offers evidence. */
+	public SessionRequest(SessionRole role, Part part, Path source, List<String> turns, List<Path> readOnly,
+		Duration timeLimit, TrialProfile profile, WorkspaceFiles files, List<Path> plugins,
+		Optional<FollowUp> followUp, boolean controlSource, ExtraPermissions extraPermissions,
+		Optional<TurnObserver> turnObserver)
+	{
+		this(role, part, source, turns, readOnly, timeLimit, profile, files, plugins, followUp, controlSource,
+			extraPermissions, turnObserver, Optional.empty());
 	}
 
 	/** Creates a request without a completed-turn observer. */
@@ -243,14 +278,37 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 	 */
 	public SessionRequest withExtraPermissions(ExtraPermissions permissions)
 	{
-		return new SessionRequest(role, part, source, turns, readOnly, timeLimit, profile, files, plugins, followUp,
-			controlSource, permissions, turnObserver);
+		return new SessionRequest(role, part, source, turns, readOnly, timeLimit, profile, files, followUp,
+			controlSource, permissions, turnObserver, evidencePrompt, pluginInputs);
 	}
 
 	/** Returns this request with a completed-turn observer. */
 	public SessionRequest withTurnObserver(TurnObserver observer)
 	{
-		return new SessionRequest(role, part, source, turns, readOnly, timeLimit, profile, files, plugins, followUp,
-			controlSource, extraPermissions, Optional.of(observer));
+		return new SessionRequest(role, part, source, turns, readOnly, timeLimit, profile, files, followUp,
+			controlSource, extraPermissions, Optional.of(observer), evidencePrompt, pluginInputs);
+	}
+
+	/**
+	 * Returns this request with a first turn that can render the runner's offered evidence paths.
+	 *
+	 * @param prompt the template and inputs for the first turn
+	 * @return the updated request
+	 * @throws NullPointerException if {@code prompt} is null
+	 */
+	public SessionRequest withEvidencePrompt(EvidencePrompt prompt)
+	{
+		return new SessionRequest(role, part, source, turns, readOnly, timeLimit, profile, files, followUp,
+			controlSource, extraPermissions, turnObserver, Optional.of(prompt), pluginInputs);
+	}
+
+	/**
+	 * Returns the plugin paths in launch order.
+	 *
+	 * @return the staged plugin directories
+	 */
+	public List<Path> plugins()
+	{
+		return pluginInputs.stream().map(TrialPluginInput::path).toList();
 	}
 }

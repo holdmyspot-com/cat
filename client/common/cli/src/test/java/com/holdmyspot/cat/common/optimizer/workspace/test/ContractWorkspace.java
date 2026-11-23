@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.optimizer.workspace.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.nio.file.StandardCopyOption.COPY_ATTRIBUTES;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
 import com.holdmyspot.cat.common.PortableFiles;
@@ -276,7 +277,7 @@ public final class ContractWorkspace implements WorkspaceContract.Subject
 		{
 			Files.createDirectories(effects);
 			for (Path file : port.scanAuthoringCopy(copy).entries().keySet())
-				Files.copy(copy.resolve(file), effects.resolve(file), REPLACE_EXISTING);
+				Files.copy(copy.resolve(file), effects.resolve(file), REPLACE_EXISTING, COPY_ATTRIBUTES);
 		}
 		return effects;
 	}
