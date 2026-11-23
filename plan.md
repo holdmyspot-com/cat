@@ -4,13 +4,220 @@ This plan turns `design.md` into code and acceptance evidence. It is written for
 `design.md` is the product and technical authority; this plan is the execution and acceptance authority. If they
 disagree, fix `design.md` first, then this plan, before dependent work continues.
 
-## Current transfer handoff: session `25d7df4d` (2026-11-20)
+## Current work
 
-The user asked for a wind-down and a transfer to another agent. The goal **implement `design.md` and `plan.md`** is still
-incomplete. This section supersedes every older current-status, next-action and publication statement below it, including
-the `01a1e6ba` handoff, whose steps are done. Resume in `/home/gili/cat/worktrees/v1.0`, on branch `v1.0`. Preserve the
-untracked files: they are sandbox placeholders and session data. Do not list, commit, reset, clean or stash them.
-See [§2](#2-status) for commits and verification after this transfer.
+Continue on branch `v1.0` in this worktree. Preserve the existing local changes and session evidence.
+The status and evidence ledger is [§2](#2-status). The dated handoffs below record the state at their transfers.
+
+### Handoff to the next agent
+
+The goal is to implement and verify the full design and plan. The first shared-candidate delivery passed, and final
+acceptance is open. Resume in this worktree at HEAD `0fc33e2e46431` and preserve the existing uncommitted changes.
+Use the execution order below. Paths starting with `temp/` in this handoff are under
+`.cat/sessions/01a1f722-8002-7742-8a1f-0d65e844b167/`. The installed outer CAT plugin is
+`1.0+befb3c3ddcf3b`. The native Codex checks used the generated `1.0+b0fc33e2e4643` plugin under
+`client/common/distribution/target/runtime/codex`.
+
+| Work | Verified state and next action |
+|---|---|
+| G2 conditional loading | The Codex owner `01a205b6-f73f-7621-b0b1-dec65baafc53` is advancing campaign `20261123T000426Z-7522d7`. The first `start` exited successfully after it was polled by its original handle. At that point the campaign was unconfirmed with no saved proposal. Read turn 4 in `temp/g2-late-load-9UZ6J5/conversation/` before issuing another optimizer command. Reuse this campaign. Use `operator-feedback.txt` in the fixture for the exact two shared cases. Finish the native read and reply evidence for the later turn, the proposal source listing, and the loader configuration check at delivery. On 2026-11-23 both Codex owners were found dead. Their events stopped at 00:24 UTC, the same moment the owning Codex session `01a1f722` ended. The diagnosis is in `.cat/sessions/fab0ed75-654f-4a5c-b939-08335a367474/temp/g2e7-BvMho7/`. Campaign `7522d7` has 79 of 80 guard-pilot trials decided and no proposal. One more `start AGENTS.md` slice in a live owner decides the last trial. The stored goal renders an apostrophe as the literal `\x27`, which made a resume `start --goal` fail with a goal mismatch. This is a defect to fix. Cause: the owner model wrote the four characters `\x27` inside a single-quoted shell argument. CAT recorded them faithfully. Fix in the working tree: the `first-use.md` goal step now says to pass the goal character for character and to write an apostrophe as itself, never as an escape. `PromptOptimizerSkillTest` failed before the fix and passes after. Receipts: `.cat/sessions/fab0ed75-654f-4a5c-b939-08335a367474/temp/goalquote-9UH5lL/`. |
+| E7 external-edit warning | The Codex owner `01a205bd-135b-7c31-8980-0779fbb055e1` is on turn 3 in `temp/e7-shared-conflict-8fmgBh/conversation/`. The first turn stopped after trying to start a nested request server. The second correctly refused the external symlink as the optimization target. The owner is now using the existing broker and was given `AGENTS.md` as the target, with the symlink retained as an external input. Read the turn 3 result and reuse any campaign it created. Before confirming, check the shared case population and authority decision against `operator-goal.txt`. The pilot, native author warning, and linked-file integrity still need evidence. On 2026-11-23 the owner was found dead (same cause as G2). Campaign `20261123T001658Z-cd0ff3` saved `proposal.md` (`e66d9d66…`), whose case population and authority decision match `operator-goal.txt`. The pilot decided 20 of 20 control trials and the linked files match their baseline hashes. The proposal was never relayed. The author warning and the integrity check that follows it come after confirmation. |
+| E5 installed tools and child worktrees | The joined Codex position-1 receipt in `temp/e5-draft-handoff-WG0CdM/verified-parallel-worktrees.json` records two native child launches before the first wait, separate worktrees and report reads, both completions, and the correct parent reply. The judge passed `child_launch_recorded`, `two_agents_dispatched_before_waiting`, `separate_worktree_reads`, and `expected_outcome` on that trial. It failed `completed_findings_attributed` with `unneeded_parent_investigation` because the parent independently read both reports. WI-15 requires child-worktree use and design §3.2 requires child disposition, so compare the existing direct evidence with the final artifact's determining inputs before deciding whether a new trial is required. Preserve the historical verdict. If the rubric needs revising, apply the same revision to both harnesses and retain the checks for actual child work and attribution. On 2026-11-23 a Claude Code campaign on the current-tree `1.0+b0fc33e2e4643` ran a 3-test, 20-trial pilot at haiku/low with an opus/high judge. Native evidence verified the host-tool read in 20 of 20 trials and the general guard in 20 of 20. For isolated children, 8 of 20 trials launched two `isolation: worktree` children with distinct registered worktrees, each child completing and the parent reporting both. The other 12 launched no children. The receipt is `.cat/sessions/fab0ed75-654f-4a5c-b939-08335a367474/temp/e5-49ksXk/verified-native-tool-worktree.json`. The `completed_findings_attributed` assertion came from the pilot author's scenario. It is not in WI-15 or design §3.2, and Claude parents also read reports directly (19 of 20). Whether to keep or relax that assertion is pending the user's decision. On 2026-11-23 the rule-fix agent found that a trial parent loads no CAT rule in either harness. Both tests' `prompt.json` list no trial plugin, so a shipped CAT rule cannot change E5 trial behavior. Under the no-trial-plugin placement, the delegation guidance belongs in the target prompt, which the campaign's development phase writes. The next step is waiting on the user's choice: (A) confirm and develop the saved campaigns `20261123T005104Z-aa0d40` (Claude Code) and `20261122T012457Z-d4a6fe` (Codex); (B) make CAT a trial plugin and ship a rule; or (C) hand-write the guidance. The user chose (A) on 2026-11-23: confirm both campaigns with `weakest_cell`, develop, then rerun 20 trials per harness. The analysis is in `.cat/sessions/fab0ed75-654f-4a5c-b939-08335a367474/temp/e5fix-wId2tU/`. |
+| T3 two-turn role replay | Four new Codex cases for judge, triage, approach ranker, and prompt author passed in the 23-test `CodexSessionsContractTest` suite. The role and native stream index is `temp/t3-role-capture-mxpI3v/served-codex/verified-roles.json`. The new local fixtures are described in the optimizer session README. The matching Claude Code native captures and adapter replay remain open. Use the same test prompts and replies. On 2026-11-23 Claude Code session `fab0ed75` captured all four Claude roles through the installed `1.0+befb3c3ddcf3b` request server with Claude Code 2.1.330 at `haiku/low`. Each role completed two turns in one native session, and each second reply was exactly `308`. The verifier receipt is `temp/t3-role-capture-mxpI3v/served-claude/verified-roles.json`. Four matching Claude cases (`ClaudeSessionsContractTest.replaysBothTurnsOfEachRole`, judge, triage, approach ranker and prompt author) passed in the 21-test suite with Checkstyle and PMD clean. They replay the sanitized fixtures `two-turn-<role>-turn-{1,2}.jsonl`, whose raw source hashes match the verifier receipt. The approach ranker needs `RoleRuleFixtures.write`. The fixture generator and hash list are in `.cat/sessions/fab0ed75-654f-4a5c-b939-08335a367474/temp/t3-claude-replay-qiFDa6/`. T3 replay is complete in both harnesses; the final clean build must include these cases. |
+| G5 forecast omission | Reconciled on 2026-11-23. `StatusReportTest.jsonStatusHasNoForecast` passed in the exit-zero uncached clean build in `temp/final-client-verify-u4iRC5/` (`reports.zip`). It asserts that neither JSON nor the human-readable summary contains a token total, time estimate, remaining time or completion probability. The live `StatusReportTest.java` and `StatusReport.java` have the SHA-256 values recorded in that build's `source.after` (`c0bc808e…` and `473edcab…`), so the result applies to the current tree. The native and final gates keep their own evidence requirements. |
+| Remaining native and final evidence | Claude Code D147's unresolved-conflict reopen (2026-11-23, `.cat/sessions/fab0ed75-654f-4a5c-b939-08335a367474/temp/d147-gL0Gfs/results.jsonl`: the installed skill passed haiku/low 1 of 5 because replies added statements after the question. The working-tree text lost the no-introduction clause and passed 0 of 4. The working-tree `first-use.md` now requires the proposal's first character to begin the reply and status to go after the proposal. The question must be the last sentence, and the conflict path must not offer confirmation or certification scopes. Measured on the saved conflict campaign: haiku/low starts with the proposal 11/12, ends with a question 12/12 and offers no confirmation 12/12; opus/high passes 2/2 on all three. The bundled-skill tests passed. Receipts: `.cat/sessions/fab0ed75-654f-4a5c-b939-08335a367474/temp/d147fix-nx6yAZ/`. The final installed artifact still needs to carry this text), G4's installed owner and peer read denials (2026-11-23, `.cat/sessions/fab0ed75-654f-4a5c-b939-08335a367474/temp/g4-vsd5Yk/verify.out`: DEVELOPMENT triage was denied by the native file tool in Claude Code and Codex, and Codex peer delivery from a Claude owner was denied. Each has a HELD_OUT control that read the file. Open: the Claude peer cell pair. The user authorized loading the Claude provider credentials into that one run on 2026-11-23, but the auto-mode classifier still denied adding that step to the run script, so the cell needs a permission rule from the user, and the Claude control, which read a staged evidence copy because a direct path outside the project prompts for permission), and the T6 native recovery qualification remain open. Preserve the earlier T6 action for policy review. A 2026-11-23 read-only check passed 11 of 11 state checks in `.cat/sessions/fab0ed75-654f-4a5c-b939-08335a367474/temp/t6-oOoxSo/`. The Codex fixtures were unchanged, no crash receipt exists, and the stopped turn ran no kill. The stop was a Codex model safeguard flag, not a permission denial. Claude T6 has no campaign or controller. Qualifying T6 needs a real driver kill, so no part of it can pass without one. The three routes are in `t6-user-steps.md` there, and the choice of route is the user's. The tested Claude launch remains unavailable from the current Codex request server because the owner can write the installed Claude marketplace artifact. Use an owner where the artifact is protected. Reconcile the final acceptance gates against the final source and runtime identities. The normal and absent-home build results with 6,349 tests predate the new T3 replay fixtures. Claude launches work from a Claude Code owner session. The installed plugin's `request-server` was started outside the tool sandbox, and `/home/gili/.local/bin` was put first on its PATH, because the first `claude` on PATH, `/home/gili/.nvm/versions/node/v26.13.1/bin/claude`, is an npm launcher without its native binary. The built runtime under `client/common/distribution/target/runtime/claude` is refused there because the session's sandbox can write it. G4 Claude Code peer retry on 2026-11-23: CAT checks the login in the request server's environment and settings, not the client's. Keys in the owner's request-server environment were not enough because the server runs under the owner TUI. The auto-mode classifier then denied writing the keys into the disposable owner's Claude settings. The owner is stopped and no key was written. On 2026-11-23 the user authorized starting the owner's request server with the platform.claude.com API key (`secrets/anthropic-api-key`). The peer pair is being run that way. |
+
+Both Codex owners were active at handoff. The serving request server and owners were left running for reuse. Start
+with the public `request-session --reply` status and saved reply for the listed conversation and turn. If a runner
+has ended, recover its recorded campaign and evidence before choosing whether to reopen an owner. The two local wait
+handles are observation only and do not own either campaign.
+
+For G4, `CodexSessionsTest.deniesHeldOutReadsToDevelopmentSessions` establishes which role requests carry the
+denied paths. The older native shell probe establishes shell denial on its recorded artifact. The missing evidence
+is an actual native file-tool denial on synthetic held-out data in an installed optimizer role, including peer
+delivery. The T3 session capture procedure is available for this work.
+
+### Execution order
+
+The first end-to-end acceptance path is implemented and demonstrated. One installed Codex owner took a shared
+prompt through pilot, development, certification, and delivery using Codex and Claude Code evaluators. Both
+evaluators passed all 93 held-out trials on the same frozen candidate. Carry that receipt forward for [WI-149](#wi-149--shared-prompt-optimization-across-harnesses)
+while its determining inputs still match. The remaining work is to close the specific acceptance gaps below.
+
+| Order | Work and dependencies | Evidence required |
+|---|---|---|
+| 1 | Carry forward the retained R-I1 receipts for asking about a missing evaluator selection, saving an explicit selection, and reopening it in both harnesses. Keep D147 open for Claude Code's reopen with unresolved conflicts. | The Codex long-proposal replay now verifies the complete prefix and closing question together. Verify those same properties on the outstanding Claude Code conflict path. |
+| 2 | In parallel where fixtures and capacity are independent, close the remaining E5, E7, and native T3/T6 evidence in [WI-15](#wi-15--acceptance). Use Codex first for a new optimizer rehearsal, then run the same prompt tests and expected results in Claude Code. Reuse the warm Claude Code E5 fixture for the outstanding host-tool and isolated-child cases. For E7, prepare a confirmable case whose author can diagnose a needed external edit from observed failures. Keep the T6 action that received a policy stop pending review, and preserve its existing preparation receipts. | E5 ties native tool and child-worktree events to the relevant trial and verdict. E7 records the author warning, read-only choices, and external-file hashes. T3 retains the required native streams. T6 requires the real driver interruption and recovery evidence specified in WI-15. |
+| 3 | Reconcile gates 2, 3, 5, 6, and 7 on the candidate final tree while native checks run. Reuse the accepted requirement, no-model, semantic, and testability maps where their inputs match. Review changed inputs and missing rows, including the outstanding guidance behavior and failure-reporting checks. | Each requirement and G1–G10 clause maps to its own passing evidence. Record unresolved native observations and documentation dependencies explicitly. |
+| 4 | Run the required clean verification on the final changed inputs. Reconcile E1–E8 for both installed harnesses against that artifact, then close gates 1–7. Apply the standalone-codebase transition only after those gates pass. | Record the build with its source identity, final native and documentation dispositions, and the gate 8 reference search. See [§9](#9-final-gates). |
+
+Within each ready group, prioritize gaps that could prevent an installed user workflow from finishing. After those,
+weigh the user benefit and developer time saved against implementation and maintenance cost. Keep installation and
+campaign setup warm while their inputs match. Change one determining input at a time and restart only the process
+being tested. Before spending on a fresh native fixture, check the installed launcher and artifact, the cache and lock
+directories from the native sandbox, and the standalone request-server route. When a provider response is needed,
+reuse the observed nested response for the same build and profile or make one small brokered request. Verify shared
+test inputs at the earliest supported boundary. Use focused checks for edits and batch installed checks per build.
+Run a previously passing expensive check again when a changed input invalidates its evidence, a new failure points
+to it, or a final gate explicitly requires a fresh result.
+
+### Retained evidence
+
+1. **Installed judge evidence.** A served Codex replay on the newly built and installed artifact
+   read both staged evidence files, kept an unrelated project file denied, and recorded a passing
+   verdict. The broker recorded the same hashes before and after the reads. The earlier replay had
+   traced both missing files to a second mount over their parent directory in the judge's shell.
+   The repair preserves the serving process's outer mount and the narrower read denials. Codex E5
+   completed the guard pilot and reached the proposal. The contract author verified the linked
+   reports in its own workspace. The served session's results copy omitted those links, so the pilot
+   trials received no queue reports. A model-free reproduction located the loss in the served
+   result handoff. The handoff now passes focused verification, including staging a linked queue
+   report into a trial. Full Maven verification passed. The installed Codex pilot completed
+   both sets of 20 trials. Native receipts verify a host report read and a parallel case with two
+   separate child worktrees. The parallel pilot failed its additional assertion against duplicate
+   parent investigation. Its authored report inputs were regular templates. A separate installed Codex
+   runner check verified that the broker returns both draft symlink targets verbatim, preserves the
+   drafted regular file, and omits a link outside the selected draft.
+   See [WI-15](#wi-15--acceptance).
+2. **Shared prompt optimization.** The installed Codex-owned campaign certified its fifth shared candidate.
+   Codex and Claude Code each passed 93 of 93 held-out trials. CAT delivered the frozen `AGENTS.md`,
+   its test cases and one joint certificate. Delivery and campaign cleanup passed the installed check in
+   [WI-149](#wi-149--shared-prompt-optimization-across-harnesses).
+   Both installed evaluators loaded the same tracked prompt through one
+   Codex owner's request server. The CLI parser and campaign header retain the chosen evaluator set.
+   The model-free CLI check now pilots both evaluators and records development outcomes from both for one
+   snapshot in one campaign. The same fixture reopened the recorded evaluator set and reused the pilot
+   results. The model-free joint certification check delivered one certificate after both evaluators passed
+   the frozen snapshot. The configured-plugin fixture now also verifies each evaluator's frozen base and
+   refusal before campaign creation when a configured plugin or target cannot be loaded. Hook comparison
+   now records results by evaluator. The Linux Codex-owner route resolves and verifies exact native
+   plugin hook approvals before comparison and records native approval limitations in the proposal.
+   A real Linux Claude Code session authenticated its request server and compared both exact and
+   changed plugins through the Codex runner and repeated the results after installing both
+   local archives into disposable harness homes. The clean build passed on all five platforms.
+   Follow-up tests found and verified repairs for peer-only selection, selective pilot reuse, and
+   judge identity. Local verification passed with an absent home. The hosted build exposed a
+   result-copy test watcher that timed out on macOS x64. The first repair violated the
+   no-sleep audit. The corrected test passed focused verification including that audit and
+   caught deliberately premature completion. A first-time peer-only confirmation now
+   requires a fresh pilot when the owning judge changes. The combined build passed four
+   platforms, including macOS x64. On macOS ARM64, the peer requests passed after their
+   fixtures began signaling the broker, and three streamed requests timed out. In an
+   interactive macOS ARM64 worker, a constrained JVM exposed contention with the fixture's
+   scan loop. Moving the test's polling to platform threads passed all 33 request-server
+   checks under the same constraint. The replacement dashboard opens through the browser relay at
+   `http://127.0.0.1:8317/management.html#/`. The main Codex session and the disposable E5
+   owner both use `http://127.0.0.1:8317/v1` and their saved API keys each received HTTP 200
+   from `/v1/models`. The earlier `/health` probes returned HTTP 403. The outer tool
+   sandbox masks Codex's reserved daemon directory with mode `000`. Its host mode is
+   `0700`. The same E5 owner resumed through its existing host fixture, verified its
+   request server, and retained six new Luna/low child turns that completed over HTTP
+   after WebSocket CONNECT returned 403. The saved pilot still has 13 chat decisions and
+   zero file decisions. It paused first at the file trial, then at an unresolved chat
+   trial on the observed retry. That last retry retained no fresh child or broker failure
+   record. The broker now preserves the runner's diagnostic for an ordinary failure
+   when one is available and falls back to the exit number otherwise. The focused
+   regression failed only when that existing diagnostic was dropped and passed after
+   the repair. All 284 focused broker and optimizer checks passed. The scratch Linux
+   build at `7bc54ce81327` passed verification with the two `/sys`-dependent methods
+   excluded. Both archives passed their checksums, and the disposable Codex install's
+   runtime matches the package. The new runtime uses a separate clean clone of the
+   same E5 fixture while the old pilot and its results remain available. The new
+   pilot decided 11 chat trials and zero file trials before CAT refused to start a
+   session because it could not read the disposable owner's sandbox policy for
+   `owner-home/.m2/.agents`. That path was absent on inspection after the refusal.
+   Codex creates this protected path temporarily for its Linux sandbox. A model-free
+   probe reproduced its disappearance between the existence and canonical-path lookups,
+   and the Java probe threw `NoSuchFileException` at `RealPaths.resolve` in the
+   previous build. The resolver now retries that lookup once after confirming the path
+   is absent without following a link. The candidate completed 75 native sandbox
+   invocations while the observer saw 70 disappearances between the two lookups.
+   All 114 focused policy and Codex runner tests passed. The disposable Linux build
+   at `30730961acbe` passed verification with the two `/sys`-dependent tests excluded.
+   That local build ran without `/sys`. Its first invocation also injected a JVM
+   option whose startup banner disrupted two child-output fixtures. Both fixtures
+   passed in the disposable build with the override removed. Both package checksums
+   passed, and the installed common CLI JAR matched the packaged JAR and contained
+   the retry. The new disposable Codex owner recorded 18 chat decisions and no file
+   decision. Three launches for the second file trial failed during native Codex
+   instruction loading because Bubblewrap could not mount or remount protected paths
+   under the disposable Maven and npm caches. CAT requires both shared cache grants
+   for a Codex child. A model-free probe on Codex 0.171.0 observed 10 mount failures
+   in 72 parallel launches with separate temporary directories and none in 72 with
+   one shared temporary directory. The native mount registry uses the helper's
+   temporary directory, so a production fix needs coordination without sharing
+   writable session scratch. With separate temporary directories and stable empty
+   metadata directories in the disposable cache roots, all 72 launches passed and
+   confirmed that those metadata directories were read-only. The same owner then
+   resumed the pilot with the original prompt, runtime and 18 saved chat decisions.
+   The public retry on that owner then completed all 20 chat and 20 file guard
+   decisions, with one durable record per position in each pilot. The paired
+   native recordings establish a completed Luna/low write to `answer.md` for
+   file position 17 and a passing file verdict. The judge received the exact
+   staged file bytes as added lines in the trial diff, and the trial's final
+   chat reply omitted those bytes. A text-only trial and its judge independently
+   match the durable decision at chat position 7. The evidence receipt is
+   `temp/e5-codex-path-retry-a8lJvx/evidence/verified-codex-pilot.json`.
+   Both native pairs now replay through the Codex adapter and production judge
+   parser in `CodexSessionsContractTest`. The file replay verifies the completed
+   write, the staged bytes, the read-only evidence argument, and the judge's
+   parsed verdict. The text replay verifies the reply and verdict for its
+   text-only case. Focused Codex reactor verification passed all 19 tests in
+   that class, including both replays, with zero failures or skips.
+   Keep the startup check for ordinary caches with absent metadata open.
+   Evidence is also under `temp/e5-codex-file-1Q2Nlj/`,
+   `temp/e5-codex-diagnostic-O0Yza4/`, and `temp/e5-codex-path-retry-a8lJvx/`.
+   Follow the increments in
+   [WI-149](#wi-149--shared-prompt-optimization-across-harnesses).
+3. **Final acceptance.** Continue the remaining installed scenarios in WI-15, using Codex before Claude Code
+   for new optimizer rehearsals. E8 capacity passed in both harnesses on the recorded artifacts. Both
+   harnesses also passed native idle-session wakeup. Codex G6 passed unrelated-Escape survival and
+   native cancellation reaped the driver, eight observed runners, and their 16 observed descendants.
+   In the warm Claude Code fixture, the version probe resolved a broken
+   Node launcher and read its diagnostic as the observed version. The native owner verified the recorded
+   Claude Code version after prepending its executable directory for the test command. The foreground
+   `restore` choice cleared the pending measurement decision, preserving the identity and both 20-trial
+   pilots. With that PATH, the background driver reached development. Its first assigned file trial
+   recorded repeated native runner exits with status 1 before any observed turn, then requested a retry.
+   A host probe verified that the existing request server still resolved the broken Node launcher.
+   The native owner replaced only that background task. A host probe confirmed that the replacement
+   request server's Java process resolves the working native executable. The saved campaign then
+   resumed development. Native cancellation left the campaign resumable and reaped the recorded
+   driver, six runners, and seven descendants. See
+   `temp/e5-file-capture-JTfd0z/g6-claude-verified-cancellation.json`. After resuming again, Escape interrupted
+   an unrelated foreground turn and restored its draft in the Claude terminal. The same driver held the lock
+   immediately after Escape and when the draft reappeared, with eight runners active. T6 still needs an actual driver
+   interruption and recovery in each harness. The Claude E7
+   authority warning still needs a case that reaches prompt authoring and requires an external edit.
+   Reconcile the retained evidence with the final artifact's inputs and the outstanding gates in
+   [§9](#9-final-gates).
+
+Both current test profiles grant writes to the resolved npm and Maven cache paths. Codex E5 resumed
+with the process home for which its disposable profile already had a capacity-lock grant. Its
+request server became ready and the guard pilot completed. In the saved Claude E7 campaign the loopback
+allowlist, private short socket path, capacity-lock grant, and corrected native executable selection
+let the contract author and all three guard pilots finish. The proposal recognized both links and the
+external target's read-only status. Its certification scope omitted the requirement that both projects
+inherit the change through the shared policy. Keep that campaign unconfirmed. The E7 warning still
+needs native evidence from a shared case whose required outcome depends on editing the external source.
+The current clean build includes the
+unfinished-pilot status fix and is installed in a disposable Codex home. Verify the corrected status
+against the next naturally interrupted pilot. The installed command already passes the controlled checkpoint
+comparison recorded in [§9](#9-final-gates).
+
+The republished `v1.0` points to `efb3c3ddcf3b1fe6864347d2d57675180b4ca9b3` and carries
+plugin build `1.0+befb3c3ddcf3b`. The commit includes the current client code, tests and project
+rules. Build 45050947804 passed on all five platforms. Packaging rehearsal 45050997187 verified
+failed-job recovery, assembly of all 15 assets, and cleanup. Production Release 45054981622 passed.
+The public assets passed signature, checksum and archive verification. Each platform archive
+contains the same 151 Codex or 138 Claude Code shipped rules verified in the local Linux install.
+Root retains `temp/republish-v1.0-hdcjFG/release-state.md` and the asset and rule receipts under
+`verified-published/` for final acceptance. Publication leaves the outstanding installed scenarios open.
+
+## Transfer record: session `25d7df4d` (2026-11-20)
+
+The user asked for a wind-down and transfer while implementation was unfinished. See [§2](#2-status) for
+commits and verification after this transfer.
 
 **State at hand-off**
 
@@ -49,7 +256,7 @@ See [§2](#2-status) for commits and verification after this transfer.
 
   §2's WI-147 row has the details.
 
-**Next actions, in order**
+**Actions listed at the transfer**
 
 1. Confirm that the Build is green on all 5 platforms for HEAD.
 2. Rehearse Release without publishing, including its affected Windows x64, Linux x64 and Linux ARM workers and the
@@ -382,8 +589,12 @@ The contract requires actual owned-driver termination and public recovery, stabl
 trial identities/outcomes and attributable process termination; changed groups or missing attribution remain unproved.
 `/root/t6_stable_support` had been assigned disposable offline helper preparation only. At wind-down it was `pending_init`;
 the parent sent a stop/handoff request and interrupted it before any new task was launched. Do not count its helper or
-offline checks as completed without reading a terminal receipt. Native T6 remains unrun. No new diagnostic-repair agent
-was launched. The BuildWorker diagnosis agent is completed. No live root execution handle is known; the missing clean
+offline checks as completed without reading a terminal receipt. At a later checkpoint, the replacement
+offline helper passed 16 unit tests and the three synthetic comparison cases. Its code and terminal
+receipts are in `01a1fc7f-6253-7300-a7a7-e6ae735709f3/temp/t6-stable-support-dBvexs/`.
+The helper retains raw post-exit records and verifies same-group outcomes, exact batch accounting,
+replacement-run attribution and attempt indices. Native T6 remains unrun. No new diagnostic-repair agent
+was launched at the original transfer. The BuildWorker diagnosis agent is completed. No live root execution handle is known; the missing clean
 controller result remains explicitly unresolved above.
 
 The parent installation last reported `consistent: false` after a sandboxed installer encountered a bind-mount rename
@@ -468,8 +679,8 @@ remain historical observations; they do not establish this corrected E1 acceptan
 | E3 | **Pass** both paths: stop leaves the base unchanged; uncertified acceptance delivered with label `not certified`. | Stop **pass** (after a finished trial); accept blocked by the author defect. |
 | E4 | **Pass** (round 3, `s990c`). | **Pass** (round 3, `s990c`). |
 | E5 | Host tool and child worktrees **pass**. No contract test wrote a file, so "a trial writes a file its judge decides on" is not covered. Judge runs are kept under `optimizer-runs/<harness>-held_out/<harness>/<run>/` (191 in that copy); nothing links a trial record to its judge run, so pair them by prompt text and time. A trial's effects are deleted after its verdict, so copy the file-writing trial's files while the campaign runs. | Not run: account limit until 2026-11-19 21:56 Toronto. |
-| E6 | **Pass** (round 3, `s990c`). | **Pass**: refused on a live run, no state change, no workaround. |
-| E7 | Link report and authority warning **pass**; delivery not reached (turn never ended, interrupted in development). External sha256 unchanged `476f03e1…7d13a`. | Same two **pass**; delivery blocked by the author defect. |
+| E6 | **Pass** (round 3, `s990c`). | **Pass on `1.0+b08307c76ca2a`.** In the same physical recovery fixture, the second native Codex session issued the installed foreground `run` command. It exited 1, named the true owning session, and stopped. The owner's driver held its exclusive lock before and after the refusal. The campaign files and Git state matched byte for byte across the refusal. The WI-15 receipt records the two session IDs and the comparison. |
+| E7 | Link report and proposal's read-only warning **pass**. Development was interrupted before an author requested an external edit or CAT delivered a candidate. External SHA-256 unchanged `476f03e1…7d13a`. | Link report and proposal's read-only warning **pass**. The author manifest defect prevented proof of the external-edit warning and delivery. |
 | E8 | Not run. | Not run. |
 
 Every trial record seen gives `login` `subscription` (Claude) or `api_key` (Codex). No proposal was confirmable before
@@ -796,7 +1007,7 @@ transition before gates 1–7 pass. Live acceptance E1–E8 is authorized in bot
 2026-11-16); Claude is also authorized for the separately requested usage comparison. Preserve explicit user exclusions/deferred
 cases from the governing design and plan; do not silently expand or narrow those decisions.
 
-## Immediate handoff: installer sandbox exemption
+## Earlier handoff: installer sandbox exemption
 
 The user requested a handoff after the active subagent finished. The exclusive installer writer has
 finished and released ownership. Root has stopped implementation for that handoff; no build, install,
@@ -1105,7 +1316,7 @@ inherits cleanup of `temp/installer-exemption-hlWkmD/progress.md` after final fe
 - **Concurrent, cheap tests:** Every work item preserves `design.md` [§10](design.md#10-testability-contract). A change
 	that makes a test depend on shared state, real time or replaying earlier work is rejected in review.
 
-## Current handoff (2026-11-11): end-to-end reruns on release 1.0+b520d3dab3eb6
+## Earlier handoff (2026-11-11): end-to-end reruns on release 1.0+b520d3dab3eb6
 
 The user asked for this handoff so that another agent can continue. The goal is still "implement design.md and plan.md".
 It is complete only when all of the following hold:
@@ -2692,6 +2903,14 @@ reaches the correct host-discovery refusal here; an actual visible Codex host or
 remains required before installed live acceptance can run. The project helper-path rule named an obsolete `target/jlink`
 directory; its reference now names the produced `target/runtime` directory, where the installer invocation resolves.
 
+The installed request-server launcher now serves this Codex owner when started as a standalone
+command through the harness's approval mechanism. The restricted command view still exposes only the
+sandbox helper. The approved startup did not require a configuration or cache change. Two isolated
+Codex sessions at `gpt-6-luna/low` ran `plugin-info` successfully, one with the installed release
+and one with the freshly built plugin supplied via the runner's `--plugin` option. Each reported the
+expected version from its own plugin cache. Root retains both native receipts and the command-event
+verification in `temp/served-codex-smoke-d4hDRw/` through final reconciliation.
+
 The requested SessionHistory diagnostic repair is integrated locally. Each input record retains its source path and
 one-based physical line number before blank filtering or Codex ancestry combination. Malformed JSON now becomes an
 IOException with that location, parser detail and the original Jackson cause. Behavioral red checks reproduced the
@@ -2955,9 +3174,9 @@ the cwd note below).
   | Run | Folder | State |
   |---|---|---|
   | Claude E1 r9 | `/home/gili/cat/worktrees/E1-claude-r9/` | round 13; conflict listed PASS, confirmation refused PASS |
-  | Claude E7 r3 | `/home/gili/cat/worktrees/E7-claude-r3/` | link report, external file unchanged, authority warning PASS; about 1,750 of 4,000 session requests used |
+  | Claude E7 r3 | `/home/gili/cat/worktrees/E7-claude-r3/` | link report and proposal's read-only warning observed; external file unchanged at pause; author warning and delivery still unobserved; about 1,750 of 4,000 session requests used |
   | Codex E1 r3 | `/home/gili/cat/worktrees/E1-codex-r3/` | candidate 3 at 5/5, 5/5, 4/4 against a 0/50 baseline; conflict listed and confirmation refused PASS |
-  | Codex E7 r3 | `/home/gili/cat/worktrees/E7-codex-r3/` | all four link checks PASS; 1,121 session requests used |
+  | Codex E7 r3 | `/home/gili/cat/worktrees/E7-codex-r3/` | link report, proposal's read-only warning and staged trial reads observed; external file unchanged at pause; author warning and delivery still unobserved; 1,121 session requests used |
 
 - **Defect 5, decision waiting for the user:** both Claude campaigns first targeted `AGENTS.md`, whose `prompt.json`
   has only a `codex` key. CAT refused without naming `CLAUDE.md`, the file configured for Claude, so each session
@@ -3980,7 +4199,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-128 | `optimize-high` | Lets a session's runner launchers start sessions through the run's runner, ships both launchers and both runner skills (later the runner rule; D123) in both plugins, and adds `--request-depth`; an error gives a launch more than its requester's permissions or limits, puts a login or credential in reach of a command, or changes a run that allows no requested sessions. |
 | WI-129 | `optimize-medium` | Changes only the prompt author’s earlier-attempt input and its recurrence instruction; an error hides a targeted kind or result, or keeps unbounded hunk evidence in the turn. |
 | WI-131 | `optimize-high` | Adds ranking before reservations, exact promotion-share tie breaks, persisted assignments and version-43 migration; an error repeats approaches, changes a resumed assignment, stops a campaign on ranking failure, or prevents a paused campaign from continuing. |
-| WI-132 | `optimize-high` | Changes the promotion rule, the scheduling of promotion runs, weak-round selection and the campaign format; an error promotes a regressing edit, rejects equally good edits, keeps spending runs on a rejected attempt, or prevents a paused version-44 campaign from continuing. |
+| WI-132 | `optimize-high` | Changes the promotion rule, the scheduling of promotion replays, weak-round selection and the campaign format; an error promotes a regressing edit, rejects equally good edits, keeps scheduling replays for a rejected attempt, or prevents a paused version-44 campaign from continuing. |
 | WI-133 | `optimize-xhigh` | Adds a lazily loaded bundled rule and a skill in both harnesses that test changed workflow commands on remote runners through an Upterm session; an error starts sessions for read-only inspection or local builds, lets changed commands run before the agent is connected, abandons a failed worker for a new run, or teaches one provider's mechanism as if every provider had it. |
 | WI-134 | `optimize-high` | Changes what the judge's evidence section holds for every Codex and Claude trial and both harnesses' judge versions; an error hides a child's start, assignment or message from the judge, invents one the trial never showed, misplaces a message among the root's responses, makes a resumed campaign miss its judge change, or lets a Codex judge read another trial or the host project, or change its evidence. |
 | WI-135 | `optimize-high` | Changes when a certification attempt ends; an error ends an attempt that could still certify, keeps one running that cannot, certifies a cell that did not cross its threshold, or makes a resumed attempt decide differently from the attempt that recorded its outcomes. |
@@ -4073,6 +4292,342 @@ requirement names.
   `temp/release-handoff-evidence-2uvhuD/wi147-live-fixture-2jW5A0/`. Together with the retired-term scan, tests and
   five-platform Build below, this closes WI-147 and R-I13. Next is WI-146 live recovery, starting in Codex. Run E1
   successfully in installed Codex before starting a Claude Code optimizer campaign.
+- The installed Codex WI-146 resume retained the original slot and refused `Unsupported option: serve` when the
+  resumed bridge put saved options before its command. `4ae66b4ea` preserves the leading command. The regression
+  reproduced the installed refusal's argument order before the fix.
+  [Build 44749841263](https://github.com/holdmyspot-com/cat/actions/runs/44749841263) rejected the committed regression
+  fixture's `harness-a` identifier. With the fixture corrected to `codex` in `0d076c425`, the runner, broker and
+  forwarder suites passed all 196 targeted tests.
+  [Build 44750744806](https://github.com/holdmyspot-com/cat/actions/runs/44750744806) passed on all five platforms
+  at `0d076c425cb87650ce66e9f6508fff90acee2d0c`.
+  The original retained Codex parent and child slots both still report their original thread IDs and no finish time.
+  Neither slot's recorded runner or harness PID was present in the host process table. The pre-resume observations and
+  hashes are in this session's `temp/wi146-retained-baseline-WBg4Ro/baseline.json`, retained through WI-146 acceptance.
+  A native process-table scan found no visible process with a working directory or absolute argument in either slot.
+  Repeat the check just before resuming the parent.
+  The request server selects the installed runner for the original slots. Keep the released installation in place while
+  the E1 operator is live. A run in a separate installation can test a fresh interruption and resume, but cannot prove
+  recovery of these exact retained slots.
+  The candidate changes the shared runner and its regression test. It leaves the release scripts unchanged and
+  excludes the working-tree edits to the Codex update skill and environment rule.
+  [Isolated runtime build 44752757552](https://github.com/holdmyspot-com/cat/actions/runs/44752757552) runs the
+  Linux x64 checks on the exact candidate commit and archives its Codex runtime for a separate installation. The
+  run passed. The downloaded archive verified against its checksum and source-commit receipt. The isolated
+  installer reports `1.0+b0d076c425cb8` installed and consistent. Its artifact selector returns `source=installed`,
+  and the installed runtime modules match the verified archive byte for byte. Installation and status receipts
+  are in the scratch directory below.
+  The workflow exists only on `rehearsal/wi146-runtime-0d076c42` and publishes no release. This session owns the
+  scratch clone at `temp/wi146-runtime-build-6TPbv7/` and the rehearsal branch through the live check and cleanup.
+  The fresh recovery project is `/home/gili/cat/worktrees/wi146-codex-candidate-J0kPzS`, a clean commit of the
+  deficient fixture with both harness prompt test configurations.
+  Two disposable native sessions could not serve launches. The workspace-write profile disabled network access, and
+  reusing the development workspace profile made the scratch Codex rollout writable to its own commands. Both
+  sessions exited and their scratch authentication files were removed. The test-only profile gives workspace writes
+  to the fixture and grants network access to the configured model host. The isolated CAT request server reported
+  readiness in native thread `01a1f961-4464-7fe1-a797-c2902eae317b`. The parent launch was refused because the test
+  profile did not allow writes to the npm and Maven caches. The thread exited. The replacement profile includes the
+  two cache entries already allowed by the production profile. In native thread
+  `01a1f964-63b7-70f1-9949-184662469b42` (terminal handle `49949`), the request server reported readiness. The
+  installed candidate launched parent `01a1f965-b6a5-77e1-922c-ff7e9cbc0ae4` in `slots/d1/codex/s-1` and
+  child `01a1f966-f646-7c82-b9be-f96bf7f8df16` in its own `slots/d1/codex/s-1`. Both manifests record the native
+  thread IDs and no finish time. The child ran the installed optimizer's foreground `start AGENTS.md`, opened
+  campaign `20261120T144142Z-d0504e`, and launched the Codex contract author
+  `01a1f968-06f5-7ca1-8898-23e213ba2292`. The child completed its first turn with the campaign awaiting user
+  feedback and unconfirmed. While the parent's third turn waited on the rehearsal marker, the controller stopped
+  the disposable request server. The parent runner, child runner and harness processes exited. Both slots kept
+  their thread IDs and no finish time, the campaign proposal retained its hash, and a native process scan found no
+  remaining slot driver. The scratch directory holds the pre- and post-interruption slot observations and proposal
+  checksum. After the request server restarted, fresh thread `01a1f970-1824-71e0-b457-393e4e130827` used
+  `slots/d2/codex/s-2` and ended cleanly. The parent resume passed argument parsing but exited `unresumable` before
+  emitting a thread ID. The runner regenerated the retained home's `config.toml` without its plugin, marketplace,
+  hook trust and project trust tables. The CAT cache files survived, and the unchanged child config still has the
+  registration. Preserve the isolated home's installation state while refreshing the current policy on resume.
+  `a5a6d7a02` preserves the plugin registrations and trust, rebuilds the connection and sandbox settings under the
+  current bound, and replaces the isolated configuration atomically. The regression reproduced the missing CAT
+  installation and passed after the fix. All 187 focused Codex tests passed.
+  This rehearsal parent's config is now incomplete. The original production-artifact parent and child retain
+  their enabled CAT entries, marketplaces and all three CAT hook trust entries.
+  The interrupted parent kept events for turn 3, with no reply artifact or native terminal event. Its manifest
+  advanced to turn 3 even though turns 1 and 2 are the only turns that ended. The runner must preserve the partial
+  events and leave the manifest at turn 2 so the resume receipt starts after the last ended turn.
+  `631e3d08c` separates terminal turn outcomes from unfinished process results and preserves partial evidence.
+  Focused Maven verify on the candidate passed 1,343 tests from 26 classes, including both harness adapters,
+  configuration, bridge, broker, final results copies and optimizer storage and reports.
+  The [isolated runtime build](https://github.com/holdmyspot-com/cat/actions/runs/44762872663) checked this exact source
+  commit and failed three Claude adapter contract cases that the focused run omitted. The affected contract covers
+  rejected turns and explicit interruption. The build did not archive a Codex runtime.
+  `8a7229dd9` restores the Claude adapter contract by preserving its IOException on a native rejection and
+  passing terminal evidence to the bridge. The new focused verify passed 343 tests, including both adapter
+  contracts, the broker and forwarder, turn recovery, and the unreadable private-slots regression in `f91cc06ec`.
+  The [replacement isolated runtime build](https://github.com/holdmyspot-com/cat/actions/runs/44766017168) passed
+  Linux x64 Verify and archived the Codex runtime from `8a7229dd93a4b03191b8abf71fc37f7836ed2c48`. The download
+  matched its checksum and source receipt. The scratch installer reports a consistent `1.0+b8a7229dd93a4`;
+  its artifact selector picked the scratch installation and the installed runtime modules match the archive.
+  The scratch fixture and receipts are under `temp/wi146-e1-candidate-9QgQ9q/`. The native Codex owner
+  `01a1f9a9-d34a-7581-a393-a14aee2aeea4` started the new request server and parent
+  `01a1f9ab-7d2c-7661-b202-44790301e711` in `slots/d1/codex/s-1`. The parent started child
+  `01a1f9ad-75ee-7db1-802f-c03225efd2b8` in its own `slots/d1/codex/s-1`.
+  The child opened campaign `20261120T155841Z-919e60` and completed turn 1. After native Codex reported that the
+  parent's turn 2 started, the controller exited the isolated owner. All four recorded slot processes exited.
+  A host process scan found no other process with its working directory or an absolute argument under either slot.
+  Both slots retained their native IDs and the campaign and proposal checksums matched. The parent recorded
+  turn 1 as its last ended turn. After the owner resumed under its original ID, a fresh launch
+  `01a1f9b5-424f-7c12-9adc-3187b31fb0f9` answered and completed while the original slots remained intact.
+  The parent resumed in the same slot, emitted `01a1f9ab-7d2c-7661-b202-44790301e711`, and completed native
+  turn 2. Its request to resume the original child was refused: the nested broker added inherited and result-folder
+  denials through `--deny-read`, an option the child fixed at launch. The original child and campaign remain
+  retained. The fix must keep the child's saved denials and enforce the current parent's denials without permitting
+  an explicit change to the child's launch options.
+  `809aae7f1` also fixes receipt generation for the later Q7 test. A retained-trial lookup or discard response
+  has no harness or child ID, yet the receipt expected both and could fail after the final turn. The mixed-response
+  regression reproduced the error first and all 11 receipt tests passed after skipping those control responses.
+  [Build 44770385100](https://github.com/holdmyspot-com/cat/actions/runs/44770385100) passed Linux x64 and archived
+  the `809aae7f1` Codex runtime. The download matched its checksum and source receipt, and the isolated installer
+  reports `1.0+b809aae7f1c59` consistent. This build predates the forwarded child resume fix. In its separate
+  `temp/wi146-q7-candidate-mBkCMc/` fixture, native owner `01a1f9cd-639e-7be2-aed1-02b5230d485c` launched
+  operator `01a1f9cf-3c8a-72b0-9eb8-7e03348cc48c`. Its installed `start` opened campaign
+  `20261120T163622Z-9839d7` to derive the two-turn case-number test. The generated scenario checks the
+  exact acknowledgment on turn 1 and case-number recall on turn 2. In a pending pilot trial, the saved
+  state records turn 1 and the acknowledgment result while the recall assertion remains open. This
+  verifies the fixture reaches the intended interruption boundary. Two foreground slices decided all 20 guard
+  trials with no infrastructure failures. All recalled the case number, and the control's exact acknowledgment
+  failed every time. The proposal has 12 case numbers because confirmation requires distinct development and
+  held-out cases. The ranking revision puts terra between sol and luna and preserves the pilot bytes,
+  the assertions and the sole trial profile, `gpt-6-luna/low`. Both proposals and the CLI replies are in
+  `temp/wi146-q7-candidate-mBkCMc/` under `initial-pilot-evidence/` and `revised-pilot-evidence/`.
+  The test controller confirmed the synthetic proposal and armed the observer before the first public
+  `run`. The host process check matched the installed Java optimizer, campaign and disposable working
+  directory. The first foreground slice ended normally after evaluating development judges on near-miss
+  replies, with no trial assignment. The CLI reply and sample native judge records are in
+  `development-judge-evidence/`. The first observer ended without sending a signal. In the
+  second foreground slice, native thread `01a1f9f2-f9aa-77e0-adc5-6d32a8f7fc59` began
+  development trial 1 at `gpt-6-luna/low`. The observer paused its optimizer driver while
+  turn 1 was in progress and waited for the native completion and the runner's saved reply.
+  The optimizer had persisted the original request `6b0561f1-29a1-47d8-97da-63d3c195ea9e`
+  and attempt 1. The runner checkpoint was `ready` at turn 1 and the optimizer observer
+  had not yet consumed the reply. The controller exited the native owner. The recorded
+  driver, runner and harness exited, and a host scan found no other process under the slot.
+  The retained trial still has its original native ID and the campaign, recovery record and
+  saved reply match the copies made before shutdown. The operator used 72 of 128 requests
+  before and after shutdown. The receipts are in `second-freeze.jsonl`,
+  `between-turns-before-stop/`, `between-turns-after-stop.json` and `host-driver-scan.json`.
+  Public `run` recovery and adoption of one outcome still need to be observed.
+  The test that reconstructs a forwarded child launch reproduced the same refusal with a saved original denial
+  and a new results-folder denial. `2bff909e7` sends new restrictions as broker-owned additions at resume and the
+  resumed child passes the combined restrictions to its own child. Public launches cannot set the internal option.
+  All 232 related common tests passed. [Build 44772806743](https://github.com/holdmyspot-com/cat/actions/runs/44772806743)
+  passed every module before Distribution. Its runner-rule contract check found the shipped rule missing
+  the new internal-only option. `0fc33e2e4` fixes the rule, and all 18 runner-launcher tests pass, including
+  the packaged rule check. [Build 44779317129](https://github.com/holdmyspot-com/cat/actions/runs/44779317129)
+  passed uncached Verify with the test home absent. Surefire recorded 6,258 tests in 456 suites, with zero failures,
+  zero errors and one skip. The source checkout and Codex artifact matched the recorded source SHA and archive
+  checksums. The method inventory found 2,535 passing requirement-to-test mappings, no unknown tags and no passing
+  Java mapping for R-I1, whose proof is installed behavior in both harnesses. The inventory records test execution.
+  The final coverage check still needs to evaluate assertions and reconcile the installed behavior receipts.
+  Both isolated Codex installations reported version `1.0+b0fc33e2e4643`. Codex required approval for three packaged
+  hooks in each installation. After reviewing the hook definitions and matching the executables to the build artifact,
+  the test controller approved the hooks in the isolated terminals and resumed the saved owner threads. Each owner
+  reopened its immediate child and the runner reported the original native session ID. The first turn in each reopened
+  conversation reached its retained session. The operator's `prompt-optimizer run` and the parent's `codex-runner`
+  then exited with code 3 before starting a trial or reaching the deeper child's broker. Each retained plugin's
+  `bin/runtime-binding` still named the old installed version in the owner's cache. The owner's update had removed
+  that runtime, while the retained plugin still contained an executable `bin/runtime/bin/java`. The between-turn
+  campaign still showed one running assignment, zero resume claims and 72 of 128 requests used. Both launcher
+  failures are in turn 1 of the public conversations.
+  The distribution correction publishes `bin/bundled-runtime` before writing the runner manifest. Its Java reader
+  and launchers select Java inside each retained plugin copy even when an older installer writes
+  `bin/runtime-binding` pointing to the owner's former version. The current installer writes the absolute binding
+  only for releases without the packaged selector. The focused Maven verification passed 139 tests, including
+  installer delivery, archive assembly, runtime identity, and a retained Codex copy after removing the owner's
+  runtime. All 13 Linux launcher checks passed. Both Linux archives matched their checksums and their relocated
+  launchers reported the expected harness with no legacy binding and with a binding to a missing owner runtime.
+  The live fixtures predate this selector. Their source receipts and archives matched the recorded checksums, and
+  the archived Java trees matched the retained copies byte for byte. Restoring only those runtime trees at the
+  legacy absolute paths in the two disposable owner installations let the existing native sessions proceed with
+  their enrolled plugin contents and hook approvals. The original child reported campaign
+  `20261120T155841Z-919e60` still awaiting confirmation. Ending the child and parent kept their results and released
+  both slots. The child’s saved campaign and proposal matched their pre-interruption checksums. The public optimizer
+  continuation submitted one retained-trial claim for `01a1f9f2-f9aa-77e0-adc5-6d32a8f7fc59`, carrying one completed
+  turn. The native transcript recorded exactly one new turn. The original logical trial has one passing record with
+  the same case, both replies and no added infrastructure attempt. Its trial profile remained `gpt-6-luna`/low.
+  The evidence is in `verified-resumed-child.json` and `verified-resumed-trial.json` in the respective fixture roots.
+  After recording the trial outcome, the controller interrupted the synthetic optimizer slice. The installed
+  status check found no active driver. The operator ended with its results copied and its slot released.
+  Both disposable native owners then exited with status 0.
+  Those two legacy fixtures required the restored Java trees because their retained copies predated the selector.
+  Code commit `b4060268f` is pinned by [build 44792561390](https://github.com/holdmyspot-com/cat/actions/runs/44792561390)
+  on `rehearsal/wi146-bundled-runtime`. Linux passed clean Verify with an absent test home and archived the
+  Codex candidate. Surefire recorded 6,261 tests in 456 suites with zero failures, zero errors, and one skip.
+  The candidate archive checksum and source commit matched the build receipts. Windows passed Verify and the
+  bootstrap checks, including the retained-runtime batch launcher regression.
+  A fresh isolated Codex owner installed `1.0+bb4060268f76f` and started child
+  `01a1fa42-c838-7ed0-a3bd-1fe2b0a81d25`. The controller closed the owner after the child's first completed
+  turn, then used the installer to replace the owner plugin with `1.0+b0fc33e2e4643`. The update removed
+  the owner's old runtime. The retained child's selector, launcher, Java executable and manifest kept their
+  checksums. Codex required approval for three changed hooks. The controller matched those hooks to the build
+  artifact and approved them in the isolated terminal. The reopened owner resumed the same child, whose
+  `plugin-info` command produced the same output and exit status as before the update. The retained checkpoint
+  advanced to turn 2. Ending the child copied its results and released the slot, and the owner exited with status 0.
+  The installer and native command receipts are in `temp/wi146-native-bundled-update-Arm10C/verified-native-update.json`.
+  The fresh guard-pilot check runs alongside this work, in isolated thread
+  `01a1f9bb-67a6-7e93-a30a-aa10c7b81443` using candidate `1.0+b8a7229dd93a4` and separate campaign
+  `20261120T161432Z-76300c`. Its installed `start` produced a proposal, and its `revise` received the same ranking,
+  trial profile and motto feedback as the original E1 campaign. The pilot decided all 20 control trials for its
+  single test, with no pending trials and no infrastructure failures. `revise` returned an unconfirmed proposal
+  and the fixture remains unconfirmed. Of 42 completed broker responses sampled during that check, all were
+  published within 0.121 seconds of their recorded runner finish and none copied a private `slots` directory.
+  The sample, pilot data, proposal and structured `revise` reply are in `temp/wi146-e1-candidate-9QgQ9q/`.
+  The diagnostic conversation ended with status `completed`, produced a results copy without private slots and
+  released its slot after turn 2.
+  This exercises the candidate copy paths. The original campaign still needs its own pilot and proposal review.
+  The installed Codex mid-turn discard and replay check passed below. The corresponding Claude recovery
+  checks remain open.
+  The clean Codex discard-and-replay fixture is `temp/wi146-q7-in-progress-tTWMC8/`, using the archived
+  `1.0+bb4060268f76f` artifact. Operator `01a1fa4c-4a81-7091-9a01-1c571c8326ce` started campaign
+  `20261120T185226Z-8e1b43` through the installed prompt-optimizer skill. The first proposal supplied the
+  required two turns and restricted the trial to `gpt-6-luna`/low, with one case in the held-out part and none
+  in development. Revision supplied twelve distinct case numbers for the required split.
+  The foreground revision slice ended normally after deciding 11 of its 20 pilot trials. The operator
+  repeated the original `start` as the structured result directed. The pilot then finished all 20 trials
+  with zero infrastructure failures. The revised proposal has six cases in each part and retains the two
+  turns and sole `gpt-6-luna`/low profile. The disposable operator confirmed `weakest_cell`. Its first
+  foreground slice evaluated judges and ended normally. The next slice started development trial 1.
+  The controller held the native process at the start of turn 2 and closed the owner. Child
+  `01a1fa6e-912f-7022-9208-e3d9367d856b` kept its `turn_in_progress` checkpoint and completed first reply.
+  No second reply or live fixture process remained. The original checkpoint and stop receipt are under
+  `temp/wi146-q7-in-progress-tTWMC8/`. The controller reopened the same native owner and the same operator.
+  Public `run` found the original request unsafe, discarded the matching retained session and generation, and
+  then published attempt 2 for the same logical trial and test case. The replacement Codex session
+  `01a1fa72-80c1-7050-8f0e-223a4657f4ab` completed both native turns at `gpt-6-luna`/low. Its replies match
+  the sole passing outcome in the durable trial record, which also records one interrupted attempt and zero
+  chargeable infrastructure failures. The replay evidence is in `verified-trial-replay.json` in that fixture.
+  The operator completed its foreground turn and ended with status `completed`. The results copy exists and
+  the operator's slot was removed. The disposable owner then exited with status 0.
+  The integrated client changes are on `rehearsal/wi146-integrated` at
+  `08307c76ca2a5f9449b99479c6cf2dbdf1b237f0`. The standard
+  [Build 44799620845](https://github.com/holdmyspot-com/cat/actions/runs/44799620845) passed on that commit.
+  It covers the bundled runtime, the Codex update handoff, the remote diagnosis rule and scenarios, and Terra's
+  place in the shipped Codex ranking. Linux x64, Linux arm64, Windows x64, macOS x64 and macOS arm64 all passed.
+  The completed recovery test used the prior isolated artifact.
+  The standard build does not retain a runtime or successful Surefire reports. The Linux-only
+  [runtime rehearsal 44805231714](https://github.com/holdmyspot-com/cat/actions/runs/44805231714)
+  used the previously verified archive workflow, with checkout pinned to the integrated commit.
+  It passed clean Verify and the launcher checks. The 456 Surefire reports recorded 6,261 tests, zero
+  failures and errors, and one skip. The workflow verified that the test home stayed absent, and every
+  report records that same path. The rehearsal commit `db82f4fc18f31c7f81f5dd43f6847ffcab576558` changes
+  only its branch's workflow. It used read-only repository permission and published no release.
+  The downloaded Codex runtime matched the archive checksum and exact source receipt. Installation in the
+  new Codex home reported `1.0+b08307c76ca2a`, with consistent status and runtime modules matching the
+  archive byte for byte. The clean E1 project matches the deficient fixture tree
+  `9f42f159219017533863323be3d152254bbe4d58`, which is also the original E1 input tree. The archive,
+  reports, installer receipts, and E1 checkout are in `temp/wi146-integrated-runtime-Izw3OV/`.
+  **Shared recovery rehearsal.** Use this installed build for one disposable two-turn case-number campaign.
+  Check the native launcher with `plugin-info` before starting the campaign. Request twelve cases split
+  between development and held-out cases and `gpt-6-luna` at `low` in the initial public `start`.
+  Reuse the completed pilot and judge evaluation. Interrupt one eligible trial after its first saved reply
+  and another during its second native turn. Keep the same campaign, with a fresh native conversation for
+  each logical trial. Restart the owner only when a check requires its loss and verify the same retained
+  operator on reopening. For each case, use native events to select the interruption and require the
+  broker response, matching native replies, and one durable trial outcome. Preserve separate receipts.
+  Record elapsed time to the second receipt and the model calls by setup and check. Compare timing only
+  when the inputs, runtime, conditions and acceptance evidence match.
+  Owner `01a1fa89-2f6b-7a00-9ee4-d8de89a9e380` started its request server and operator
+  `01a1fa8b-2441-7c23-9fc6-dec3c60695e2`. The operator's `plugin-info` smoke turn reported the
+  expected installed version and exited with status zero. The same operator then invoked public
+  `start` for campaign `20261120T200216Z-3085c5`, with all twelve case values and the trial profile
+  in the initial goal. The controller kept the installation, owner, request server and operator open.
+  The saved split assigned five distinct outcomes to development and seven to held-out, both above
+  the required minimum of two. Keep that population for both checks. The provider disconnected
+  after six pilot decisions. Later turns reached nineteen decisions with zero failures and a completed
+  broker response awaiting adoption for the final pilot trial. Resuming the same operator without the
+  original request options reset its allowance to zero even though its request count was retained.
+  Reopening with the original request allowance and depth let the public `start` finish that same pilot
+  with 20 decisions and no failed or pending trials. The proposal lists three infrastructure attempts and
+  only the `gpt-6-luna`/`low` trial profile. The verifier matched the broker responses, native turns and
+  durable trial records for both earlier recovery captures. It will use separate receipts for the two
+  interruptions in this shared campaign. The contract and pilot interval took 41 minutes including the
+  provider outage and operator restarts. Its retained native transcripts contain 104 distinct metered
+  responses and 49 started turns in that interval. This is a setup measurement for one rehearsal. The
+  earlier rehearsals used a different build and population, so they cannot establish elapsed savings.
+  Public `confirm` recorded the one-cell scope for the disposable fixture. The first development slice
+  began evaluating the judge, then Codex returned HTTP 403. The disposable owner and operator both
+  used `127.0.0.1:2455/backend-api/codex`; the main installation now uses `127.0.0.1:8317/v1`. All
+  three had the same stored API key. The old health endpoint returned 403 with and without that key.
+  The current endpoint authenticated the key, listed both rehearsal models, and completed a
+  `gpt-6-luna`/`low` Responses request. Updated only the disposable owner's provider URL and reopened
+  the same owner and operator. Both generated configs now show the current URL. The operator kept
+  its 20 pilot decisions and resumed the same campaign to continue judge evaluation.
+  The development judge reached `frozen`. Both live recovery checks passed on consecutive development
+  trials with one passing record each. Trial 1 resumed native session `01a1facd-3c22-7ec1-8efd-eabd49d34523`
+  after its first saved reply and executed only the remaining turn, with no infrastructure attempts.
+  Trial 2 retained `01a1fad0-3a76-7691-8bc1-2dbdf13f9494` during its second native turn. The broker
+  marked the retained generation unsafe, acknowledged discard, and launched
+  `01a1fad3-3d71-7f12-bfb0-b8007a60a509` to replay both turns of the same case. The outcome records
+  one interrupted attempt and zero chargeable infrastructure failures. The pilot checksum and judge
+  identity matched across both checks. Each required owner shutdown left the same operator and trial
+  checkpoints available for resume. The driver was interrupted after the second proof was saved.
+  The two checks took 228 and 219 seconds after judge evaluation, including the targeted restarts.
+  The campaign-to-second-proof interval was 4,624 seconds including setup and provider recovery.
+  Retained transcripts contain 132 distinct metered responses, with six in each verification interval.
+  The count covers those transcripts and excludes unmetered requests. The receipts are
+  `live-between-proof.json`, `live-mid-proof.json` and `recovery-measurement.json` in the integrated
+  runtime evidence directory. This confirms one setup served two checks. The end-to-end comparison with
+  two independent rehearsals still needs matching conditions.
+  **Runner guidance checkpoint.** Codex recovery and a resumed Claude worker with child sessions both
+  need the intended launch allowance and depth supplied again. A leaf session can resume without either
+  option. All retain their previously used request count. The shared runner rule owns the resume
+  arguments for both harnesses. The optimizer skill owns campaign continuation after the runner is ready.
+  Both generated plugin distributions contain the corrected wording. Verify passed 18 rule audience tests
+  and 23 session-slot tests. The selected broker and forwarder tests also passed. They check that a
+  resumed session keeps its spent count and that an ordinary resume can start at an exhausted allowance.
+
+  **Rule design checkpoint.** The two recovery cases need the same verified setup and different native
+  interruption events. Two checks of a service's retry and cancellation can similarly reuse the same
+  service while submitting separate jobs with independent state and evidence. A clean-install check
+  needs an empty home and must reinstall. An independent unit test still owns its mutable fixture.
+  The shared decision is to reuse verified preconditions, reset the state that could affect the next
+  result, and observe every claimed behavior separately. The shared testing rule routes this decision.
+  Unit-runtime guidance chooses the smallest unit-test fixture, build-caching guidance reuses build
+  outputs, and progress guidance preserves completed workflow units. Those decisions stay with their
+  existing rules. The service-retry and clean-install scenarios exercise the rule's two decisions.
+  Focused Verify passed all 18 bundled-rule audience tests. Both generated plugins contain the
+  resolved testing route and the companion guidance. Live prompt behavior for the new rule has
+  separate evidence from packaging.
+  Local Verify failed in the hardware-metrics tests because this environment lacks `/sys`. The local
+  invocation also printed a JVM startup notice into two subprocess fixtures. Both passed when rechecked
+  with the temporary directory supplied through Maven's JVM options.
+  Separately, the original released Codex artifact started the E1 acceptance operator from a clean copy of the
+  deficient fixture, thread `01a1f942-96b0-7683-82fb-9bafec5f03e6`. Campaign `20261120T140224Z-dbb1b0`
+  produced an unconfirmed contract proposal with the motto conflict and an unranked Codex model family.
+  The user kept the handbook motto as the sole exception to the answer-only rule, counting it toward the sentence
+  limit. The requested capability order is `astra`, `sol`, `terra`, `luna`. The E1 trial scope remains
+  `gpt-6-luna` at `low`. The installed `revise` received that feedback and reached the guard pilot before
+  reporting an outstanding launch. A retry reached a second trial and hit the same error. Both native trials
+  completed successfully. For the second trial, the broker's completed response followed the terminal event and
+  receipt by about 61 seconds, beyond the optimizer's 30-second stop grace. The results copy was 80 MB, 79 MB of it
+  under the slot's policy grants. Foreground `start` reopened the same campaign and reported a third settling launch.
+  The third trial also completed natively, with a 38-second gap from runner receipt to broker response. The pilot
+  still has zero decided trials and eight pending positions. `50c277984` excludes private slots and quota directories
+  from both final copy paths while preserving the public responses and evidence referenced by the receipt.
+  `d7f3c7bac` gives the repeatable copy regression its own temporary fixture.
+  The saved draft contains the requested four-family order, exactly one trial profile (`gpt-6-luna`/`low`), and
+  the sole motto exception with the motto counted in the sentence limit. It lists zero conflicts. CAT has yet to
+  present the revised proposal because the guard pilot has not completed.
+  Continuing the exact campaign with a candidate broker requires the original outer owner to start the candidate
+  request server, then resume the retained E1 operator. The active broker cannot change its runner image. The
+  candidate artifact must be protected from the owner's ordinary writes and started outside the sandbox with
+  authentic owner ancestry. A successful handoff exercises the candidate broker with the retained optimizer
+  installation. The candidate request server ran outside the original owner's sandbox with the released server
+  still active and refused the scratch plugin path because the owner's commands could write it. The released
+  broker and original campaign remain in place. The retained operator's native ID still matches and its
+  stored pilot has zero decided trials and eight pending positions. The separate integrated installation
+  and clean E1 checkout are ready for native setup. Resuming this original campaign needs the
+  supported update and request-server handoff in its owning session.
+  After the shared recovery rehearsal, the same disposable owner and request server opened a separate
+  Codex E1 operator, `01a1fad6-2fd2-7d23-b30f-d56372939e40`, on the deficient fixture. The operator's
+  project is clean at tree `9f42f159219017533863323be3d152254bbe4d58`. Its first turn checks the
+  installed version and invokes public `start AGENTS.md` without a goal. Its conversation is
+  `warm-e1-operator` under the disposable owner's temporary directory.
 
 - Build run [44671948793](https://github.com/holdmyspot-com/cat/actions/runs/44671948793) is the five-platform
   run for the transfer commit `854efc264`. All five `Verify` jobs eventually ran. Each reported one error, in
@@ -4186,6 +4741,44 @@ and their rationale. Scheduler admission and pairing claims remain mapped to the
 scheduler tests. The scoped receipt is `temp/continuation-dVKKLk/local-map-execution-check.json`.
 This check does not close final gate 5: source changes affecting other map claims still need
 reconciliation, alongside the outstanding installed acceptance.
+
+The G5 execution references have since been checked against the frozen final absent-home
+reports. All 71 distinct mapped methods have passing evidence, comprising 102 executions.
+The 13 mapped test source files match the tested hashes. The 15-claim mapping and report
+locations are in `temp/g5-current-execution.json`. This establishes execution on the
+current test sources. The G5 design row is unchanged from the prior semantic review.
+The 71 report methods resolve to 70 test definitions because the file and in-memory
+stores both execute the inherited acceptance test. That contract's source also matches
+the tested hash. Applying the retained Java syntax-tree spans to the source diff found
+one changed mapped test body, `StatusReportTest.jsonStatusHasNoForecast`. It retains the
+JSON checks and adds the human-readable checks for a minimum of 319 remaining trials,
+observed usage percentiles, and absence of forecasts and token totals. The command-change
+case still edits the command named by the unchanged prompt, checks applicability before
+and after, and requires the unchecked model field in both status formats. The store
+contract still reopens the full accepted campaign and verifies that a different judge
+observation pauses it. The method delta is in `temp/g5-mapped-method-deltas.json`.
+The shared campaign builder now attaches the single evaluator to the recorded profile
+set. Its singleton path preserves cell IDs, model, effort, scope, ranking and bindings.
+Its other change moves placeholder evidence paths that these status tests do not read.
+The two store fixtures still reopen their respective stores. The status fixture still
+writes the target's certification history and reads it through the command entry point.
+These fixture changes preserve what the mapped G5 assertions exercise.
+
+The retained joint campaign's on-disk certificate matches the native delivery receipt's
+hash, snapshot and two 93/93 cell counts. Its campaign directory is absent. The installed
+launcher refused a shell invocation outside a native harness. The same Codex owner then
+reopened and ran `status AGENTS.md` through the installed skill. It returned one current
+joint certification for the delivered snapshot, with no campaign ID or changed conditions.
+It named 14 unchecked conditions and included them in the readable summary. The certificate
+hash remained unchanged and the removed campaign stayed absent. Evidence is in
+`temp/shared-installed-repaired-hkSieB/certification-evidence-IZMpai/verified-native-post-cleanup-status.json`.
+For the historical branch, the same Codex owner read status after a temporary edit to
+the disposable `AGENTS.md`. CAT kept the original joint certificate and snapshot,
+marked them historical for the edited prompt, and identified `prompt_content` as the
+change in its summary. It kept the same unchecked conditions. The temporary edit was
+restored byte for byte and the campaign remained absent. The receipt is
+`verified-native-historical-status.json` in the same evidence directory. The mapped
+`OptimizerCoreTest` cases also exercise changes to recorded measurement conditions.
 
 A separate current-source G3 review now confirms all 10 claims and 40 distinct mapped methods
 remain supported by their assertions; no retired or materially weak assertion was found. Its
@@ -4716,7 +5309,7 @@ Rows marked done keep only their first sentence here. Their full records, unchan
 | WI-93 | Done. Record: [history](plan-history.md). |
 | WI-94 | Done. Record: [history](plan-history.md). |
 | WI-95 | Done. Record: [history](plan-history.md). |
-| WI-96 | Built, exit pending: the Claude adapter lists the files that a listed `CLAUDE.md` imports through `@path` as derived prompt sources, as Claude Code's documented loading rules do. Commit `d75e99cb01`; full build passed (2945 tests, 0 failures, 10 skipped; 92 s). Six `DeliveryTest` tests took 1.0 s to 2.2 s, none touched by this change. The exit needs a fresh Claude E1 run. |
+| WI-96 | Installed exit observed on `1.0+b08307c76ca2a`. Claude E1 proposed imported `AGENTS.md` as a derived prompt source from `CLAUDE.md`. All ten recorded author reports edited only `AGENTS.md`. The native outcome delivered its edit with no authority warning. The proposal, author and terminal receipts are under `temp/claude-e1-build-EHxaBJ/`. Final-artifact applicability remains open. |
 | WI-97 | Done. Record: [history](plan-history.md). |
 | WI-98 | Done. Record: [history](plan-history.md). |
 | WI-99 | Done. Record: [history](plan-history.md). |
@@ -4803,6 +5396,7 @@ models that `codex debug models` reports and asked; given `gpt-6-luna`, `low`, i
 | WI-146 | Not started. Designed 2026-11-19 (`design.md` "Resuming a nested session", §3.2 "Interrupted trials", D151); premises P18 and P19 passed the same day; Q7 ruled the same day; steps 1–6 and 8 merged, step 7 follows WI-147. |
 | WI-147 | In progress: the in-place launch, `--keep-run` and the run ID are removed, and the options, `session.json`, the results folder, the nested-session phrases, the Java type and identifier names, the runner's comments and messages and the rule `harness-runners.md` are renamed; so are `CAT_RUN` (now `CAT_NESTED_SESSION`), the response's results copy (`results_copy`, `results-copy`), `optimizer-runs/` (now `optimizer-nested-sessions/`), the test fixtures, `BackgroundRun` (now `BackgroundDriver`) and `PromotionRun` (now `PromotionReplay`), with session environment versions 27 (Claude) and 21 (Codex) (`bf930e402`, `e97cce0f3`; full build 6,150 tests, only the two tests that need `/sys` fail). `TrainingRun` is now `TrainingLaunch`, and the promotion terms say "replay" (`PromotionReplay`, triggering, regression, reference and paired replays, `replays()`), stored by campaign format 48, which upgrades campaigns of formats 43 to 47 on read (`b3f91edcc`, `17076f56c`); the 1.0 changelog capture scripts pass `--results` and read `session.json` (`45bf883ed`). One live launch per harness remains, after the v1.0 republish. |
 | WI-148 | Not started; ruled 2026-11-19 (pi support); runs at the end of the plan, after every §9 gate. |
+| WI-149 | In progress. The public start command passes the evaluator selection, refuses a change on resume before campaign mutation, and preserves the recorded owner on legacy data. The command, optimizer core and file-store test suites passed. The peer optimizer route is still unavailable. The installed loader premise and first connected campaign check are pending. Follow the staged checks in [WI-149](#wi-149--shared-prompt-optimization-across-harnesses). |
 | WI-145 | Implemented 2026-11-16 (Claude implementer; `87db96986`..`a378c7aa5`; clean full build 6034 tests, 0 failures, 0 errors, 6 skipped): one in-place registrar (`GitWorktreeRegistrar`) for add, recreate, remove and repair behind `Fork`, `GitForks` and the session-start sweep; worktree requests (`worktree-<uuid>.tar`, document of operation and campaign only) served on a thread of their own by the request server (with the `.git/config`/`.git/hooks` write check against the session's policy) and by a run's runner (the one campaign of that identifier in the run's project; refused when the run allows no requests), counted against no limit; the client (`WorktreeRequestClient`) sends by the launch route, sends nothing for intact links, and `start`, `run`, `choose` and `cancel` refuse with status 2 before any change when no server serves the session; the Claude runner's `.git/worktrees` grant removed (session environment version 25); the build-command limit stated in the prompt-optimizer skill. Remaining: the live checks in Claude Code and Codex. Decided 2026-11-16: the code stays (`status` never reconnects; a campaign without its worktree is not a fork, `ForksContract.missingWorktreeIsNotAFork`), and the live check names the next command that reconnects (`run` or `choose`) instead. Probe evidence: `~/cat/worktrees/gitwt-probe4/` and `gitwt-probe3/`. |
 | Incremental build-workflow rule (user request, 2026-10-25) | Done 2026-10-27 (Codex; `ebe1687e7d`, released in v1.0). Record: [history](plan-history.md). |
 | G9 Git diff owner (`4da627d85c`) | Done 2026-10-27 (Claude `optimize-high`). Record: [history](plan-history.md). |
@@ -5220,7 +5814,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-E21 | The trial record holds per turn the tool calls with input, exit status when reported and complete output, child activity, each child started with its assignment, each message received from a child with its sender and text, and each child's end, in the harness's order and marked unreadable where the harness recorded only an unreadable form, and hook status, then the trial's file changes against the trial's initial project, without streaming fragments, telemetry or injected session-start text, from each harness's events; the built-in tools and the judge both read it. | §6.4, D36, D112 | WI-28, WI-63, WI-74, WI-134 | U: trial record tests on recorded events per harness, `JudgePromptTest` |
 | R-E22 | Weakest cell: within the certification scope (for weakest cell only, within the latest versions), the lowest effort of the least capable model by CAT's shipped capability ranking (families ranked from the vendor's published model documentation, with its address and reading date; within a family, older versions below newer), with no trial; a prompt test with one cell uses it; the user may correct or extend the ranking in revision feedback; CAT refuses to confirm while an inventory model's family is unranked. | §6.6, D27 | WI-32 | U: `CapabilityRankingTest` (resource order for both harnesses, version order within a family, an unranked family), `CellTierTest` (weakest cell per scope, one cell, a corrected ranking) |
 | R-E23 | Formal cell order: within a prompt test, formal trials go only to open cells, its development cells and each other scope cell whose development cells and lower cells (model ranked no higher and effort no higher, by the capability ranking) are all certified; among open cells, fewest formal outcomes first. | §3.3, D45 | WI-35 | U: `SchedulerTest` (no formal trial in a stronger cell while a development cell is undecided; incomparable cells open together; a cell opens once every cell below it is certified; a weakest-only scope is unaffected) |
-| R-E24 | Held-out content unreadable: the snapshot, the proposal and the trial records live in the campaign's held-out directory, and formal and baseline trials and judges run under a held-out results folder; development trials, targeted runs, triage, diagnosis, prompt authors and the contract author run with their harness sandbox denying reads of both directories for commands and file tools, in both harnesses; formal and baseline trials and judges deny nothing; a host with the sandbox off is refused. | §4.1, §6.3, D46 | WI-36, WI-37, WI-40 | U: `ClaudeSessionsTest`, `CodexSessionsTest` (the deny list per role), store layout and format tests, the refusal; V: one prompt author session per harness asked to print the snapshot by its absolute path gets no content, including after the snapshot is rewritten, and a development trial still passes |
+| R-E24 | Held-out content unreadable: the snapshot, the proposal and the trial records live in the campaign's held-out directory, and formal and baseline trials and judges run under a held-out results folder; development trials, targeted trials, triage, diagnosis, prompt authors and the contract author run with their harness sandbox denying reads of both directories for commands and file tools, in both harnesses; formal and baseline trials and judges deny nothing; a host with the sandbox off is refused. | §4.1, §6.3, D46 | WI-36, WI-37, WI-40 | U: `ClaudeSessionsTest`, `CodexSessionsTest` (the deny list per role), store layout and format tests, the refusal; V: one prompt author session per harness asked to print the snapshot by its absolute path gets no content, including after the snapshot is rewritten, and a development trial still passes |
 | R-E25 | Early trial end: evaluate assertion settlement only after a completed turn; when every assertion is settled and turns remain, stop between turns with the same per-assertion verdicts as full execution. A judged or end-state assertion remains unsettled until the end, including a failed tool falling back to a judge. Apply the rule to every trial purpose using only that trial's evidence. Record the skipped turns and each assertion's settlement turn, count the result as an ordinary completed trial rather than an interruption or infrastructure attempt, expose the note to failure consumers and report the completed-trial early-end share. | §3.2, §2.6, D145 | WI-8, WI-9 (early-end follow-up) | U: `EarlyTrialEndTest`, `TestSessionsContractTest`, `EarlyEndDriverTest`, `StatusReportTest`; composed local checks pass, installed live evidence remains separate |
 
 ### 3.5 Workspace
@@ -5240,7 +5834,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-W11 | Delivery writes each confirmed prompt test's values file with every test case of the campaign, and the scenario and workspace of each created or edited prompt test, on a certified delivery and when the user keeps the incumbent; staging excludes the confirmed prompt test directories; a stopped campaign writes none. | §4.4, §4.7, D60 | WI-67 | U: `DeliveryTest`, `StagedSourceTest`, `DeliveryPlanTest`, `DriverTest`, `OptimizerCoreTest`, `ScenarioTest`, `DeliveredTestTest`, `ProposalSchemaTest`, `PromptTestLocationsTest` |
 | R-W12 | Trial plugins: `prompt.json` in the target's test directory lists, per harness, the plugins that trials install, each by name with an optional `build` (`command`, `output`); `start` refuses, before creating anything, a target without it or without a key for its harness, naming the file, and a listed plugin without `build` whose name matches a plugin manifest tracked in the project; `start` runs each build command in the optimization worktree and stops, with the exit status and the end of the output, on a failed command, a missing manifest or a different manifest name; a plugin the project does not build is copied from the user's single installed copy; each base is copied into campaign storage once; CAT maps prompt-system directories, or else single files, onto each project-built base by comparing files, lists a participating file that no mapping covers, warns on a mapped file that differs, and refuses a target that would not load in trials; each staged source, the control source included, has a copy of each project-built plugin with its mapped files written over the base; every trial installs exactly the listed plugins and reuses the user's approvals of their hooks; each plugin's name, base identity, build command and mappings are measurement conditions. | §3.1, §4.4, §5, §6.1, D69, D78 | WI-73, WI-81 | U: `PromptConfigurationTest`, `InstalledPluginsTest`, `PluginMappingTest`, `StagedSourceTest`, `ProposalTest`, `ProposalSchemaTest`, `OptimizerCoreTest`, `CodexRunnerTest`, `ClaudeRunnerTest`, `RunnerSessionsTest`; E: WI-71's certification campaign |
 | R-W13 | CAT session directories: one component, `SessionDirectory`, is the only code that names `.cat/sessions`, `.cat/work` or a session directory; it creates `.cat/sessions/<session-id>/` and its `temp/` (the session's `CAT_TEMP`) on first use and writes a marker naming the harness and its configuration directory, never overwriting one; the session ID is the hook input's `session_id` or the tool shell's `CLAUDE_CODE_SESSION_ID` or `CODEX_THREAD_ID`, in canonical UUID form; the injected rules name the directory that the agent's own commands resolve; SessionStart removes each other session directory whose marker is more than 24 hours old and whose transcript the marker's configuration directory no longer holds (a Codex transcript in `archived_sessions/` counts as held), never one without a marker; SessionStart leaves every `.cat/work/` entry in place (the move to `.cat/sessions/` was removed in `f00804a7a5`); CAT neither writes nor deletes `.cat/work/temp`; the Codex PostToolUse hook deletes a `run-part-*` folder that `run-part` saved once its last part arrives uncut and no cut part awaits a re-read. | D79, D81 | WI-83, WI-87 | U: `SessionDirectoryTest`, `SessionSweepTest`, `ClaudeSessionStartHookTest`, `CodexSessionStartHookTest`, `CodexRunPartTest`, `HarnessRunnerOptionsTest`, `CodexRunnerCliTest`, `ToolScopeTest`, `CodexPostToolUseHookTest`; E: WI-83's and WI-87's exit checks in both harnesses |
-| R-W14 | Passing trials' project copies: once a trial's passing verdict is recorded, the driver deletes its effects and its initial project; a guard-pilot control trial loses both once its judge passes every assertion; a failed trial, a failed run and a trial whose verdict is not recorded keep them; a failed deletion ends the pilot once its running sessions end. | §4.4, D51 | WI-88 | U: `DriverTest`, `GuardPilotTest` |
+| R-W14 | Passing trials' project copies: once a trial's passing verdict is recorded, the driver deletes its effects and its initial project; a guard-pilot control trial loses both once its judge passes every assertion; a failed trial, an attempt that ends without an outcome and a trial whose verdict is not recorded keep them; a failed deletion ends the pilot once its running sessions end. | §4.4, D51 | WI-88 | U: `DriverTest`, `GuardPilotTest` |
 | R-W15 | Trial workspace: each candidate's base source holds only the prompt system (every file at or below an in-project prompt source, every instruction file and harness project directory file, the in-project loader configuration, `.cat/rules/`, every file that a plugin mapping covers and every in-project dependent), with the overlay applied and links dereferenced; a trial's workspace adds its prompt test's `workspace/` at the workspace root, with each link whose target is another entry of `workspace/` kept as a link and each other link replaced by a copy of its target, which CAT reads when it checks the proposal and records in the contract, with placeholders replaced in a target inside a test root; control and candidate trials of a test receive the same workspace files; no trial receives a prompt test directory, a shared file inside a test root or the prompt test configuration; plugin copies and prompt measurement use the base source; the contract author and test revision sessions keep the whole fork; CAT refuses an unknown scenario section, and a link that is absolute, missing, outside the project, cyclic, holds itself, reaches a prompt test directory, copies a prompt file, or that Git records where the checkout holds another kind of file; a draft resolves a link at the prompt test's project path, draft first; delivery replaces the link of a test whose shared file changed with a copy; a stored guard pilot applies only to the base selection it ran on. | §4.4, §6.3, D82 | WI-89 | U: `StagedSourceTest`, `TrialSelectionTest`, `TestWorkspacesTest`, `WorkspaceStagingContractTest`, `FakeWorkspaceContractTest`, `GuardPilotTest`, `DriverTest`; E: WI-71's guard pilots |
 | R-W16 | Without a prompt test configuration, `start`'s refusal lists every plugin installed in the harness home with its version and every plugin manifest tracked in the project; the skill asks which ones the prompt's users have, writes `prompt.json` from the answer, shows it and runs `start` again. When CAT is a trial plugin, `.cat/rules/` is an in-project prompt source that a candidate may create rules in; a trial plugin is CAT when its manifest's `repository` matches CAT's after ignoring scheme and host case, a trailing `/` and a trailing `.git`, whatever its name or marketplace, and the campaign records each trial plugin's repository, a missing one meaning not CAT. Only `https://github.com/holdmyspot-com/cat` is CAT's repository; the former `https://github.com/cowwoc/cat`, which CAT 1.0.x and 1.1 manifests state, is not (user ruling, 2026-10-22). | §4.3, §4.4, §8, D30, D92, D93 | WI-119 | U: `OptimizerCoreTest`, authority test, `InstalledPluginsTest`, `PluginManifestTest`; E: installed skill |
 | R-W17 | The optimization worktree's registration (add, recreate, remove, repair) is served outside the session's sandbox: by the session's request server, in a nested session by the nested session's runner, and in place by a process that no sandbox confines, for both harnesses. The request names an operation and a campaign and no path or Git argument. A campaign that is not the session's, a link, an `add` over an existing worktree, a writable `.git/config` or `.git/hooks`, and a missing server are refused with status 2 before anything changes. | §4.2, §8 | WI-145 | U: `WorktreeRequestClientTest`, `ForkTest`, `RequestServerTest`, `SessionRequestBrokerTest`; E: the WI-145 live checks, each with a receipt under WI-15's receipt rule |
@@ -5253,7 +5847,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-M2 | Each listed material change that its identity has not explicitly accepted makes a certification historical without deleting it; a runner or CAT version change with an unchanged session environment version does not; a parameter change makes it historical only when its claim does not imply the new one; an unaccepted judge version makes it historical. | §5 | WI-3, WI-41, WI-42, WI-125 | U: `ApplicabilityTest` (one case per change kind), the session environment tests of WI-41 |
 | R-M3 | A `MEASUREMENT_CHANGED` pause before the next call, offering restore, new identity, keep identity and stop. Keep identity records accepted observed values and retains evidence and attempts; it is unavailable for loader changes (user ruling, 2026-10-24). A loader-configuration change offers only restoring it or starting a new campaign. | §5 | WI-9 | U: `DriverTest` |
 | R-M4 | Comparability by exact equality or values explicitly accepted within the identity, campaign-wide and per cell; a condition only one side records gives `INDETERMINATE` and an unavailable comparison; a condition neither records is unobserved, does not prevent comparison and is a limitation; each differing or missing condition is named in words. | §5 | WI-3 | U: `ComparabilityTest`, `DecisionTableTest`, `KeepImprovementTest`, `OptimizationEvidenceTest`, `StatusReportTest` |
-| R-M5 | A run observed under conditions that differ from its trial's measurement identity and have not been explicitly accepted yields no outcome, is kept as an observation, does not count toward the infrastructure-failure limit, and reruns the same test case after a restore. A new measurement identity during a certification attempt ends it `not certified: testing environment changed`; it never resumes, its allowance stays spent and the next attempt takes the next index. A restore or explicit keep identity lets the attempt continue; excluded verdicts still require a rerun. | §5, §7 | WI-3, WI-9 | U: `TransitionsTest`, `DriverTest` (trace 14) |
+| R-M5 | A trial attempt observed under conditions that differ from its trial's measurement identity and have not been explicitly accepted yields no outcome, is kept as an observation, and does not count toward the infrastructure-failure limit. After a restore, CAT retries the trial with the same test case. A new measurement identity during a certification attempt ends it `not certified: testing environment changed`; it never resumes, its allowance stays spent and the next attempt takes the next index. A restore or explicit keep identity lets the attempt continue; excluded verdicts still require a rerun. | §5, §7 | WI-3, WI-9 | U: `TransitionsTest`, `DriverTest` (trace 14) |
 | R-M6 | A certified delivery appends its certification record to `certifications.json` beside `prompt.json` in the target's test directory, keeping every earlier record, and staging leaves the file out; each record holds the index, scope, per-cell counts and control pair counts, the minimum pass rate `p_min`, the control margin, `α_i` and every measurement condition, with prompt sources and contract by hash, and no trial results; `status` for a target without a resumable campaign and a new campaign's proposal report the latest record of each harness current or historical, naming each changed condition and, as unchecked, each condition only a session observes and, from the other harness, each harness-specific condition, and list earlier records as history. | §4.7, §5, D51 | WI-43, WI-85 | U: `CertificationRecordTest`, `CertificationHistoryTest`, `DeliveryTest`, `ApplicabilityTest`, `StagedSourceTest` |
 | R-M7 | Every certification report (terminal outcome, delivery report, `status`) shows `Certified for the following environment:` with the harness and its version, the trial plugins with their manifest versions or `none`, then the model and reasoning per cell, with no provider (user ruling, 2026-10-22), the prompt files loaded, one `Harness settings` line naming the project's settings files that existed in trials (from the harness's fixed list), or `defaults` when there are none, followed by `with your connection settings and tool restrictions carried over`, the trial setup as the CAT release that introduced the session environment version, an unchecked one marked, and after the lines the host machine limitation of R-M8; a trial plugin's manifest version is a measurement condition. CAT's own version has two parts, such as `1.0`, in `Plugins` and `Trial setup`; a third-party plugin's version is the one its manifest states. `status` of a finished certified campaign that cleanup has not removed shows the same block, drawn from the delivered attempt's record in the target's certification history; without such a record it shows none (user rulings, 2026-10-22). | §5, D92, D94, D95 | WI-119 | U: report test, certification history test, `OptimizerCoreTest`; a stored campaign or history that carries the retired `model_provider` condition loads without it |
 | R-M8 | CAT neither records nor controls the host machine's programs and outside sources, such as MCP servers, websites and web search: no measurement condition names them, so they never pause a campaign, prevent comparison or make a certification historical (user ruling, 2026-10-22). The certified environment block ends, after its lines, with the plain-words limitation that trials ran with this machine's programs and outside sources, which CAT neither records nor controls, and the recommendation to run the campaign, and the sessions that later use the prompt, in the same container image to limit changes to them; `status` states the same limitation among its fixed limitations, except when it shows the certified environment block, which already states it (user ruling, 2026-10-22: once only). A stored campaign or certification history that carries the retired `host_tools` or `external_sources` condition loads with it dropped, and a pending measurement change that names only retired conditions is dropped. | §5, D95 | WI-119 | U: `CertifiedEnvironmentTest`, `StatusReportTest`, `FileCampaignStoreTest`, `CertificationHistoryTest` |
@@ -5261,7 +5855,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-C2 | Feedback regenerates a complete proposal; nothing but the guard pilot runs before confirmation. | §6.1 | WI-9, WI-10, WI-66 | U: `DriverTest`, `ProposalTest` (regeneration) |
 | R-C3 | Each prompt test is its own claim; within a part its test cases are drawn uniformly, frozen at confirmation; allocation never changes the draw. | §6.2 | WI-2, WI-64 | U: `DistributionTest` |
 | R-C4 | Test case validation; separate durable seeded streams for development, formal and baseline draws, each confined to its part, and control trials that draw nothing; targeted work marked before execution; formal draws after the freeze; repeated draws of a test case within a part allowed, each another trial of that test case. | §6.3 | WI-2, WI-33, WI-62, WI-65 | U: `GeneratorTest` (`repeatedDrawsAreAllowed`), `DrawStreamTest` |
-| R-C5 | A frozen judge profile under the role profile; the judge decides every assertion without a `tool:` line, including `expected_outcome`, and every assertion whose built-in tool failed under `on_tool_failure: judge`, per assertion with a rationale and a behavior, and sees built-in tool results as evidence; it cannot override one that decided its assertion. | §6.4, §3.1 | WI-2, WI-10, WI-17, WI-63 | U: `JudgeTest`, `ContractTest`, `ProposalSchemaTest`, `ProposalTest`, `DriverTest`, `OptimizerCoreTest` (a proposal frozen with an old judge version is refused); E: E1 judge per harness |
+| R-C5 | A frozen judge under the role profile for each selected harness; the judge decides every assertion without a `tool:` line, including `expected_outcome`, and every assertion whose built-in tool failed under `on_tool_failure: judge`, per assertion with a rationale and a behavior, and sees built-in tool results as evidence; it cannot override one that decided its assertion. | §6.4, §3.1 | WI-2, WI-10, WI-17, WI-63 | U: `JudgeTest`, `ContractTest`, `ProposalSchemaTest`, `ProposalTest`, `DriverTest`, `OptimizerCoreTest` (a proposal frozen with an old judge version is refused); E: E1 judge per harness |
 | R-C8 | Every prompt test has the expected_outcome assertion that CAT adds, a guard exactly when every other assertion is one. A scenario may supply its built-in tool and optional on_tool_failure metadata; CAT still supplies its description and kind. Under fail the tool must decide the complete expected outcome; under judge it must pass no reply the expected outcome rejects. A scenario may not replace CAT's description or kind. | §6.4, D62 | WI-63 | U: `ProposalTest`, `ContractTest`, `ProposalSchemaTest`, `JudgePromptTest`, `JudgeTest`, `DriverTest` |
 | R-C9 | Built-in tools: the closed `tool:` set of §6.4, with its argument syntax and placeholders; a check's verdict is final unless its `on_tool_failure` is `judge`, when a failure leaves the assertion to the judge; a trial passes when every assertion passes; a failed check under `on_tool_failure: fail` fails only its own assertions, and the judge still decides every assertion no tool decided (user ruling, 2026-11-16); a failed check's record and behavior reach the prompt author; a check whose evidence the harness cannot supply is refused in the proposal. | §6.4, D63, D68 | WI-17, WI-63, WI-72 | U: `BuiltInToolTest` (each check on both sides), `DriverTest`; E: E7 |
 | R-C10 | Trial profiles: the inventory per harness with its source; bindings from Claude skill and subagent frontmatter and Codex agent TOML only, partial bindings fixing one dimension, `inherit` binding nothing; the profile set per prompt test from the requirements mapped to its assertions, and the resulting cells; a user restriction narrows the set; the proposal lists inventory, bindings, cells and their minimum session count; confirmation freezes the set. | §6.6, §2.1, D22 | WI-16, WI-64 | U: `ProfileSetTest`, `ProposalTest`, per-harness inventory and binding tests over recorded catalog output; E: E1 proposal per harness |
@@ -5290,6 +5884,10 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-L3 | Revision during formal testing waits for a safe checkpoint; a stopped attempt never resumes. | §7 | WI-3, WI-9 | U: `TransitionsTest`, `DriverTest`, `TestRevisionTest` |
 | R-L4 | Cancel and resume semantics; a new campaign gets a fresh budget. | §7 | WI-3 | U: `TransitionsTest` |
 | R-L5 | Every listed state distinction is persisted and survives reload. | §7 | WI-4 | U: `FileCampaignStoreTest` |
+| R-L6 | The skill asks for any missing harness selection before starting a new campaign and uses the recorded selection on resume. One owning session advances the campaign. CAT validates the runner routes, target loading and scope before dispatch, refuses scope changes on resume, and uses the starting harness when a direct CLI start omits the selection. | §7.1, §8 | WI-149 | U: skill, command, registry and proposal behavior; E: WI-149 |
+| R-L7 | Every requested harness uses the same prompt tests, cases, split, expected outcomes and assertions. The guard pilot measures the control source for each test in each harness's weakest cell. Resume and revisions reuse only outcomes with the same determining inputs. | §6.1, §7.1 | WI-149 | U: shared test inputs and outcomes, pilot identity and selective rerun; E: WI-149 |
+| R-L8 | Every development assignment and result identifies the shared candidate and its harness-qualified cell. No cell's evidence substitutes for another's, and the common commit gate requires the same snapshot across all development cells. | §2.7, §3.3, §7.1 | WI-149 | U: scheduler, adoption and commit gate; E: WI-149 |
+| R-L9 | One formal attempt and budget cover the fixed candidate and the union of required cells. CAT reports results by harness and certifies the shared diff only when all required cells pass on that candidate, with one certificate covering them. | §2, §4.7, §5, §7.1 | WI-149 | U: transitions, persistence, report and delivery; E: WI-149 |
 
 ### 3.7 Reporting, interface and testability
 
@@ -5298,7 +5896,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-P1 | Four outputs in both phases, with unavailable values explained, including the per-prompt-test comparison state at `β_i / K`. Allocation counts are shown apart from benchmark weights, and a pooled adaptive pass fraction is never presented as the future pass rate. | §2.9 | WI-12 | U: `StatusReportTest` |
 | R-P2 | Descriptive pass rates by concurrency level; dependence ruled out by isolated trial projects and harness homes, staging without optimizer state, a fresh judge seeing only its trial's evidence, and held-out content denied to development sessions. The `invalid statistical assumptions` outcome is reserved for dependence detected by a future check. | §2.6 | WI-12, WI-3, WI-134 | U: `AssumptionCheckTest`, `AssumptionCheckReportTest`, `StagedSourceRunnerCopyTest`, `DriverTest`, `CodexJudgeEvidenceAccessTest` |
 | R-P3 | The outcome set and its labels match §1 exactly, including `improved, not certified`. | §1 | WI-12 | U: `StatusReportTest` |
-| R-P4 | Claim wording names the frozen judge, benchmark, held-out part and conditions, and lists limitations; a weakest-only claim names each prompt test's profile and says no other profile was certified. | §2.1, §5, §6.6 | WI-12, WI-32, WI-94 | U: `StatusReportTest` |
+| R-P4 | The claim identifies the frozen judge and its running harness, the benchmark, the held-out part and the conditions. The report lists limitations. A weakest-only claim names each applicable prompt test's profile in each evaluated harness and says no other profile was certified. | §2.1, §5, §6.6 | WI-12, WI-32, WI-94 | U: `StatusReportTest` |
 | R-I1 | Skill wrappers in both harnesses share one body and follow the §8 loop. | §8 | WI-14 | E: both harnesses |
 | R-I2 | Launcher commands and the JSON status object. | §8 | WI-13 | U: `CommandsTest` |
 | R-I3 | The old skill is retired; `failure-regression-promotion.md` follows D13; `default-rules.md` routing is updated. Recorded regression scenarios live in the location `design.md` §8 names for their guidance, as prompt test directories in the format of §6.3 (`.cat/tests/` for project and user guidance, the module's `src/test/resources/` for guidance packaged as a module resource), and CAT refuses a proposal that omits a scenario of one of its prompt sources. | §6.1, §8, §13 | WI-14, WI-21, WI-23, WI-61, WI-69 | U: `RegressionScenariosTest` (location audit), the proposal refusal test; reference audit |
@@ -5352,10 +5950,13 @@ Results (2026-10-01; facts in `design.md` §11 H11–H40, results in `design.md`
 - P8: passed for Claude; failed for Codex. Fallback applied: reconciliation terminates recorded processes (WI-9).
 - P9: failed for instruction files. Fallback applied: documented derivation (WI-10).
 - P11: passed with the extraction rule; Claude fenced every judge response, Codex returned bare JSON.
-- P12: open until E1 runs a Claude trial per alias; the aliases ship with every documented effort level, and an
-	unsupported combination fails its first trial as an infrastructure failure. Waits on E1 receipts in both harnesses.
-- P13: open; a runner that cannot select a profile tests only its default profile, and the proposal says so. Waits on
-	E1 receipts in both harnesses.
+- P12: Claude Code E1 certified three prompt tests using the `haiku` alias, with
+	`claude-haiku-5-5` in the recorded measurement conditions. E1 trials for `opus`, `sonnet`
+	and `fable` remain unverified. The aliases ship with their documented effort levels, and an
+	unsupported combination fails its first trial as an infrastructure failure.
+- P13: Codex E1 observed the requested `gpt-6-luna/low` profile in the retained native trial records.
+	Claude Code E1 requested `haiku/low` and observed `claude-haiku-5-5`. Its native records do
+	not independently report observed effort, so the effort-observation clause remains open for Claude Code.
 - P14: holds (H27, H28); effort stays in the profile set.
 - P15: holds for the read-file rule; p15-60 certified in all 15 cells and tasks by the optimizer's own rule. One prompt
 	file does not show it for every prompt file, so weakest-only certification claims nothing about the other cells.
@@ -5700,9 +6301,9 @@ The riskiest pure code, built first.
 	an attempt whose manifest omits a hunk or cites an unknown test case; the attempt is retained like an inventory
 	violation. An attempt that edits nothing produces no candidate; its classifications go to the round's diagnosis and to
 	the review-checkpoint or plateau report.
-- **Minimality pass:** after the promotion runs pass, delta debugging over the attempt's hunks: start with two groups,
-	revert one group, rerun the same promotion runs, keep the reduction if it passes the reduction rule (`design.md` §2.7), otherwise
-	split finer down to single hunks. Its runs are targeted and never counted. The minimal attempt is promoted, and the
+- **Minimality pass:** after the promotion replays pass, delta debugging over the attempt's hunks: start with two groups,
+	revert one group, repeat the same promotion replays, keep the reduction if it passes the reduction rule (`design.md` §2.7), otherwise
+	split finer down to single hunks. Its replays are targeted and never counted. The minimal attempt is promoted, and the
 	report names the removed hunks.
 - **Size report:** the status shows the size (bytes and words) of the working candidate's and the incumbent's target
 	prompt file alone, with its staged bytes checked against the snapshot (user ruling, 2026-10-21: derived sources,
@@ -5725,7 +6326,7 @@ The riskiest pure code, built first.
 
 - **Policy:** the `design.md` §2.7 weak test, the 3 concurrent attempts, winner selection and its tie-breaks, in
 	`optimizer.campaign`. The driver starts the attempts concurrently within the shared harness capacity and runs each
-	attempt's promotion runs; only the winner enters the minimality pass. A round that is not weak keeps one attempt at a
+	attempt's promotion replays; only the winner enters the minimality pass. A round that is not weak keeps one attempt at a
 	time.
 - **Report:** the status lists each attempt of a round with its promotion results and whether it won.
 - **Closes:** R-D12.
@@ -5822,12 +6423,17 @@ The riskiest pure code, built first.
 
 ### WI-32 — Development cells and certification scope (user rulings, 2026-10-04)
 
-- **Ranking:** each harness module ships a capability ranking resource: Codex `astra` above `sol` above `luna`
-	(developers.openai.com/api/docs/models, read 2026-10-04), Claude `fable` above `opus` above `sonnet` above `haiku`
+- **Ranking:** each harness module ships a capability ranking resource. Codex ranks `astra`, `sol`, `terra`, and
+	`luna` in descending order (developers.openai.com/api/docs/models, read 2026-11-20, and the user's ranking
+	clarification). Claude ranks `fable`, `opus`, `sonnet`, and `haiku` in descending order
 	(platform.claude.com/docs/en/models/overview, read 2026-10-04), each with its address and reading date. A model's
 	family is its name without its version; within a family, an older version ranks below a newer one. Revision feedback
 	may correct or extend the ranking, which the contract then holds. An inventory model whose family is unranked is
 	named in the proposal, and CAT refuses to confirm until the user ranks it.
+	The current OpenAI model guide and model catalog support adding Terra to the rank resource. The change
+	leaves campaign trial profiles under the existing scope rules and requires no prompt-guidance changes.
+	`CodexProfileInventoryTest.ranksTheDocumentedFamilies` reproduced the missing family before the resource
+	changed. All 24 Codex inventory tests pass after the correction.
 - **Weakest cell:** in `optimizer.campaign`, `CellTier` gives way to the `design.md` §6.6 development cells. A
 	category's weakest cell is, among its cells in the certification scope, the lowest effort of the least capable model;
 	a category with one cell uses it. No trial runs to find it. The 3-trial screen, the active set, the lowest-effort
@@ -5868,7 +6474,7 @@ The riskiest pure code, built first.
 	lists the outcome-changing variables and the counts.
 - **Draws:** `Generator.draw` takes the part from the stream kind: development draws development test cases, formal
 	and baseline draws held-out test cases, each uniform over the prompt test's test cases in its part by the frozen
-	probabilities restricted to that part. Targeted runs and promotion runs use development test cases only.
+	probabilities restricted to that part. Targeted trials, including promotion replays, use development test cases only.
 - **Evidence:** `TrialAdoption.adoptDevelopment` no longer adds the incumbent's development outcomes to the baseline;
 	`adoptBaseline` and formal adoption no longer add failures to the regression set. A formal failure reaches
 	development as its cell, prompt test and failed requirements: triage, diagnosis and prompt author briefs never receive
@@ -6212,7 +6818,7 @@ The riskiest pure code, built first.
 
 ### WI-46 — Development continues after a round without a promotion (user ruling, 2026-10-05)
 
-- **Change:** when a round completes without a promotable attempt, whether every attempt failed its promotion runs, no
+- **Change:** when a round completes without a promotable attempt, whether every attempt failed its promotion replays, no
 	attempt was accepted, or a revert counted the round as unproductive, CAT checks the working candidate's development
 	counts. If no category has more than `EditOrContinue.FAILURE_LIMIT` failures, the round ends with its attempts and
 	diagnoses retained, the working candidate stays, and representative admissions resume with concurrency restarting at
@@ -6327,13 +6933,26 @@ The riskiest pure code, built first.
 - **Layout:** the snapshot, the proposal and the trial records move into the campaign's `held-out/` directory; the
 	campaign format increases and every older format is refused. Formal and baseline trials and judges run under a
 	held-out run root beside the runner's run root, created before any session starts.
-- **Denial:** development trials, targeted runs, triage, diagnosis, prompt authors and the contract author deny reads of
+- **Denial:** development trials, targeted trials, triage, diagnosis, prompt authors and the contract author deny reads of
 	both directories as whole directories; formal and baseline trials and judges deny nothing.
 - **Refusal:** `start` refuses when the host's settings turn off the sandbox that the denial needs.
 - **Closes:** R-E24 with WI-36.
 - **Tests:** store layout and format refusal; session arguments per role and harness; the refusal. The `codex sandbox`
 	probe that a snapshot replaced by rename stays unreadable is manual evidence, not a test, because no test may start
 	a harness process (§8).
+- **Codex manual sandbox receipt:** With Codex 0.171.0 and the
+  runner's directory-denial profile syntax, a single native sandbox read the allowed control
+  and received `EACCES` for both synthetic held-out directories before and after the host
+  replaced their sentinel files by rename. The receipt is
+  `temp/g4-codex-native-fmnX1b/held-out-sandbox-receipt.json` in the current orchestration session.
+  This checks the sandbox's command path. Installed optimizer role delivery and file-tool
+  enforcement are tracked separately under G4.
+- **Claude Code contract-author settings receipt:** During the installed E1 revision, the native
+  contract author's request denied both the campaign's held-out directory and its separate held-out
+  session directory. The launched slot enabled the sandbox, disabled unsandboxed fallback, and
+  included both paths in `sandbox.filesystem.denyRead` and in the file tool's `Read` denials.
+  `temp/claude-e1-build-EHxaBJ/claude-contract-author-g4-config.json` records the request and native
+  session. This verifies the role's settings. A native read attempt against each denial is still due.
 - **Validation:** WI-36's, run after this item, plus, for Claude, that project settings with
 	`sandbox.filesystem.allowRead` naming the held-out directory or `permissions.defaultMode: bypassPermissions` leave
 	it unreadable; if either exposes it, `start` refuses that setting too.
@@ -6574,7 +7193,7 @@ The riskiest pure code, built first.
 	for prompt tests whose scenario or test cases changed. Pilot trials are targeted: they enter no count and spend no
 	allowance.
 - **Proposal:** shows each assertion's pilot pass rate and warns on a guard below the minimum pass rate `p_min`; it
-	lists why each failed run ended without a decision; the revise brief carries the latest pilot results.
+	lists why each failed pilot trial ended without a decision; the revise brief carries the latest pilot results.
 - **Closes:** R-C23, and the pilot side of R-C2.
 - **Tests:** `GuardPilotTest` (control trials in the weakest cell, tallies, reuse, a rerun of changed tests only, a
 	stop on a rate limit), `OptimizerCoreTest` (the pilot runs before presentation, adds to no count, and its brief
@@ -7155,13 +7774,13 @@ including mappings of one source into several plugins; the old two-plugin refusa
 
 ### WI-88 — Delete passing trials' project copies (user ruling, 2026-10-17)
 
-- **Problem:** each trial run keeps two full copies of the staged project, its effects and its initial project, until
+- **Problem:** each trial attempt keeps two full copies of the staged project, its effects and its initial project, until
 	the campaign's files are removed. In the read-file campaign they took about 230 MB per trial and 276 GB over 1,218
-	runs, yet only a failed trial's copies are read again: a prompt author's evidence section and a diagnosis render
+	trial attempts, yet only a failed trial's copies are read again: a prompt author's evidence section and a diagnosis render
 	them.
 - **Change:** once a trial's passing verdict is recorded, the driver deletes both copies; a guard-pilot control trial
-	loses them once its judge passes every assertion. Failed trials, failed runs and trials whose verdict is not
-	recorded keep them. The transcript and run record stay.
+	loses them once its judge passes every assertion. Failed trials, attempts that end without an outcome and trials whose
+	verdict has yet to be recorded keep them. CAT retains the transcript and trial record.
 - **Tests:** a recorded passing development trial's copies are gone and a failed one's remain (`DriverTest`); a pilot
 	keeps exactly the copies of its trials that failed an assertion (`GuardPilotTest`).
 - **Exit:** unit tests pass; the full build passes.
@@ -7259,7 +7878,7 @@ including mappings of one source into several plugins; the old two-plugin refusa
 - **Problem:** the E1 and E7 Codex guard pilots stopped after 8 control trials of their first prompt test, five times
 	in all. The pilot started no further session after a rate-limit rejection, and `start` keeps only a pilot whose
 	trials all finished, so each rerun stopped at the same point. `design.md` §3.5 instead reruns a rejected session
-	after the harness's shared hold, and pilot trials are targeted runs.
+	after the harness's shared hold. Pilot trials are targeted.
 - **Change:** a pilot session that the provider rejects because of a rate limit, or refuses, runs again once the hold
 	ends: a trial with the same test case, and a judge without spending one of its attempts. A refusal that follows a
 	30-minute hold stops the pilot, which records why, as it pauses a campaign.
@@ -7274,7 +7893,7 @@ including mappings of one source into several plugins; the old two-plugin refusa
 	prompt does not say what a limitation is not; the copy stays in the frozen contract, and in every claim that lists
 	its limitations, after a later pilot changes the results.
 - **Change:** the contract author's prompt limits `limitations` to gaps in what the contract requires or tests, and
-	leaves out guard pilot results and other facts about one run, which the proposal already shows.
+	leaves out guard pilot results and other facts about a single trial, which the proposal already shows.
 - **Tests:** the full build; the next contract author revision in E1–E8 lists no pilot result as a limitation.
 - **Exit:** the full build passes; a revised E-scenario proposal after a pilot lists no pilot result as a limitation.
 
@@ -7750,6 +8369,439 @@ selection and download it describes are unchanged.
 
 ### WI-15 — Acceptance
 
+- **Codex E1 checkpoint:** The warm candidate installation `1.0+b08307c76ca2a` started the clean deficient
+  fixture without a goal in campaign `20261120T212438Z-754afb`. The proposal named `AGENTS.md` as a
+  derived source, preserved both requirements, and matched the retained contract author's schema-valid
+  output. Public confirmation exited 1 for the unresolved motto conflict. Before and after receipts
+  show the same unconfirmed phase, Git tree, worktree status, and target bytes. The revised
+  proposal permits only the exact handbook motto in addition to the answer and counts it toward the
+  sentence limit. It preserves the `astra`, `sol`, `terra`, `luna` ranking and restricts trials to
+  `gpt-6-luna/low`. Both guard pilots decided 20 trials each. The revised pilot's only guard passed all
+  20. Confirmation entered development with one cell. Commit `072abb8` adds only the disjoint base
+  edit `docs/parking.md` before the first development slice. The first retained development outcome
+  reports the observed `gpt-6-luna/low` profile, API-key login, throttle with no reported rate-limit
+  windows, and the loader conditions.
+  The first development slice froze the retained judge. The incumbent missed both the sentence and
+  motto requirements. Three prompt author attempts each changed only `AGENTS.md` and returned a
+  schema-valid report. Each proposed edit passed two promotion replays. At slice end, promotion was
+  still in progress and the incumbent remained the working version. The first seven settled
+  development and promotion records each had the expected environment fields and a distinct
+  retained native transcript. The third slice selected attempt 3 in the comparison between edits
+  after 57 passes and seven failures. The native failure recordings distinguish visible lookup
+  announcements from a skipped lookup with a wrong motto. The fourth slice promoted a smaller
+  snapshot with the same handbook lookup guidance and reset development counts for the changed snapshot.
+  That snapshot passed 41 adopted development trials before one visible lookup announcement triggered
+  another author round. The incumbent baseline completed 50 trials with zero passes. Both follow-up
+  edits kept a handbook lookup and failed their first promotion replay after Codex skipped it and
+  invented a motto. The smaller snapshot resumed development and reached 48 passes in 50 trials.
+  Its second failure used an unset `CAT_PROJECT_ROOT` from the edited guidance and tried to read
+  `/docs/handbook.md`. The next author edit used a literal project-relative handbook command and
+  passed 32 promotion replays. After testing smaller variants, CAT promoted snapshot `fe4e239b1`
+  as candidate 2. It passed all 102 adopted trials in its fresh development series and entered its
+  first held-out certification attempt. An organic-test audit matched 159 native
+  user turns to the state-capital question and found only the two intended prompt-system inputs.
+  CAT certified attempt 1 after 147 of 148 held-out trials passed, applied all four delivery
+  edits, and removed the campaign directory. The foreground wrapper timed out with exit 124
+  before capturing its final report. The public target status returned `certified`. The operator
+  captured the delivery from Git in `run-17-delivered.diff`; the reverse-apply check passes, all four
+  edits remain unstaged, and the committed `docs/parking.md` blob and HEAD match the original
+  receipt. The completed audit covers 349 schema-valid judge reports with 1,204 nonempty
+  rationales and unchanged evidence, seven schema-valid prompt-author reports confined to
+  `AGENTS.md`, and 568 distinct trial records with the expected profile, login, rate-limit,
+  and loader fields and retained native transcripts.
+
+- **Codex E6 receipt:** In the same warm installation, the existing recovery campaign
+  `20261120T200216Z-3085c5` was advancing in its owning Codex session. The second Codex session
+  ran the installed foreground command from the same Git root and received the ownership refusal.
+  The second session's `temp/e6-corrected-receipt.json` records the true owner and contender,
+  exit 1, an exclusive driver lock on both sides of the command, and identical campaign and Git
+  snapshots. Its retained native transcript shows that the contender stopped after the refusal.
+
+- **Claude Code E1 certified:** [Hosted build 44844123235](https://github.com/holdmyspot-com/cat/actions/runs/44844123235)
+  checked out `08307c76ca2a5f9449b99479c6cf2dbdf1b237f0`, passed clean verification with 6,261
+  tests, zero failures and errors, and one skip, and retained the Claude distribution. The local
+  build could not run two process tests because `/sys` was absent. The downloaded archive matched
+  the digest checked over the runner connection. The installer registered `1.0+b08307c76ca2a`
+  in the disposable profile. `plugin-info` and Claude's plugin list reported that version, and a
+  live Haiku request succeeded. The clean fixture has Git tree `9f42f159219017533863323be3d152254bbe4d58`.
+  The first operator turn hit noninteractive permission prompts for the skill and installed rule
+  files. The same native session resumed with scoped approvals, started the request server, and
+  issued `start CLAUDE.md --background` without a goal. Campaign `20261121T003944Z-e8fae6`
+  completed 20 guard-pilot trials in each of three Haiku/low cells, with no infrastructure failures.
+  Its unconfirmed proposal names `CLAUDE.md` and imported `AGENTS.md` as derived sources and lists
+  the exact-motto and boilerplate conflict. The same native conversation resumed with streaming input.
+  The installed `confirm` returned exit 1 and named both conflicting requirements. The proposal hash
+  and Git HEAD stayed unchanged. The revised proposal completed a second 60-trial pilot without
+  infrastructure failures, lists no conflict, and counts the exact motto as one sentence and the
+  sole exception to the answer-only rule. The installed `confirm` accepted `weakest_cell` and
+  returned phase `development`. The operator started the background driver in the same session.
+  The disjoint `docs/parking.md` edit was committed as `4e62f8b217bde820b0f45b1a0b90aab14a4ad34b`,
+  with blob `e4b2ba2eaa3c2647d1e6854f3c8f6f6235f17bd3`. Both native contract-author output files
+  pass the shipped proposal schema and the first audit verified 171 schema-valid native judge
+  verdicts with 673 nonempty rationales, unchanged evidence, and no tool calls. The first three
+  native prompt-author reports pass the shipped schema and each changes only imported `AGENTS.md`.
+  Candidate 3 certified on attempt 1 with 93/93 held-out passes in each of the three cells. Claude Code stopped
+  the first request server at its background time limit. The same native owner started a replacement server and
+  continued attempt 1. All 199 formal outcomes saved before that restart remained byte-identical as the attempt
+  admitted new trials. The terminal audit verified 1,199 distinct durable outcomes with native transcripts, including
+  all 279 formal outcomes. The records identify Haiku 5.5, subscription login, rate-limit state and loaded sources.
+  The trial configuration selected low effort. Claude's native records do not report observed effort independently.
+  The audit verified 1,319 schema-valid native judge verdicts with 4,128 nonempty rationales and unchanged evidence,
+  and 10 schema-valid prompt-author reports that changed only authorized prompt sources.
+  Delivery changed the fixture's `AGENTS.md` and added the certificate and all three prompt-test definitions to
+  `.cat/tests/CLAUDE/`. The native driver exited 0 and returned `certified` with delivery `delivered`.
+  The certificate hashes match both prompt files in the fixture. The driver's Git patch passes a reverse apply check,
+  the index is clean, and the disjoint `docs/parking.md` commit and file are unchanged. The campaign workspace was
+  removed after delivery.
+  Build, install, execution, and native evidence are in `temp/claude-e1-build-EHxaBJ/` under session
+  `01a1f722-8002-7742-8a1f-0d65e844b167`.
+
+- **Claude Code E5 file and text evidence:** The same `1.0+b08307c76ca2a` installation ran 20 development-side
+  guard-pilot trials for each of `answer_file_explanation` and `chat_factual_answer` in campaign
+  `20261121T020615Z-923158`. The saved pair for the file test ties a successful native `Write` to the exact `answer.md`
+  bytes supplied to the judge. The judge passed `file_explains_question` and cited wording found in the file but absent
+  from the trial's final chat reply. The saved text judge passed `answers_accurately`. Each judge's verdict conforms to
+  the shipped schema and matches a unique recorded pilot outcome. Both pairs include the exact native trial and judge
+  event streams. The receipt is `temp/e5-file-capture-JTfd0z/verified-claude-pilot/receipt.json` under session
+  `01a1f722-8002-7742-8a1f-0d65e844b167`. The normalized recordings now replay through `ClaudeSessions` and
+  `JudgePrompt` in `ClaudeSessionsContractTest`. Both named E5 replay tests passed in the focused reactor check
+  (16 tests, zero failures or skips). The file replay checks the recorded write bytes, the judge's read-only
+  evidence argument and the parsed verdicts. The host-tool and child-worktree checks remain open.
+  On the older `1.0+b13e913dc00f0` build, the retained Claude recordings also prove a completed Bash `cat`
+  and two successful child calls with worktree isolation and separate child transcripts. The verification
+  receipt is `temp/e5-file-capture-JTfd0z/prior-claude-tool-worktree-receipt.json`. The runner and its slot
+  lifecycle have changed since that build. For the current-artifact check, two clean project copies share
+  tree `ee908853049cc8ea9c293e167d9dece44588477f` with 12 queue records. The copies and the operator brief
+  are in `temp/e5-tool-worktree-FeEpd2/`. Use a separate trial for a host-shell lookup and for an isolated
+  parallel lookup, starting with Codex. Keep the real tool result and both child worktree records.
+  The prepared Claude copy is clean and its `AGENTS.md` matches the fixture digest. Start one new
+  campaign on that copy because the earlier Claude file/text campaign tested a different project.
+  Its `AGENTS.md` trial configuration currently lists only Codex. Resolve the Claude trial plugin
+  selection and verify the disposable profile's nested provider access and request server before starting the pilot.
+  The Codex owner `01a1fc28-0281-7d33-b238-9ed733e6a570` reuses installed `1.0+b9f0c5f0cbc39`.
+  The outer tool sandbox masks Codex's fixed daemon directory with mode `000`; the host reports the
+  required `0700`. Both sandboxed starts stopped at rule loading. The same owner resumed on the host
+  with Codex's workspace-write sandbox enabled, read its rules, and started the installed request server
+  with the bare launcher command. Campaign `20261121T033615Z-9618dc` finished 20 pilot trials per test
+  and saved its unconfirmed proposal.
+  The observer at `temp/e5-tool-worktree-FeEpd2/codex/capture-tool-evidence.py` records successful queue shell
+  commands and child-tool or worktree events from the native slot before it can be reused. It records
+  registered child checkout paths when available. Its parser passed a focused check with successful, failed
+  and partial native event records. In native trial `01a1fc31-0e8e-7540-bfa9-43c75803dfd0`, a shell
+  command read the dispatch report and returned the supporting detail. In trial
+  `01a1fc32-9fea-7c00-a99a-c4ba2b46cdd5`, two `gpt-6-luna/low` children completed report reads from
+  distinct registered Git worktrees and returned findings that the parent incorporated. The receipt
+  `temp/e5-tool-worktree-FeEpd2/codex/verified-native-tool-worktree.json` ties both trials to their native
+  events and verifies both child working directories against the retained rollout records.
+  The paired judge `01a1fc33-b7f8-7133-bab7-65914cfb21c4` received paths to the original trial project
+  and transcript. Both paths returned file-not-found from its shell. Thirteen of the 20 parallel-lookup
+  pilot rationales mention an unavailable transcript. The served launch packs copies of
+  the allowed evidence and passes their extracted paths to the runner, while the judge turn still names
+  the original paths. The local fix binds the generated judge and triage references to that request's
+  staged paths before sending the first turn. The regression check in `CodexSessionsTest` compares
+  the references in the delivered turn with the broker's grants and verifies that the quoted trial reply
+  retains its original path and literal placeholder. Codex judge version 15 and Claude Code judge version 14
+  account for the now-readable evidence. Verify the same path through an installed judge, with an unrelated
+  synthetic sibling file still denied, before closing D112.
+  The scratch Linux package built from `1866855355567f49199d4f956f928d01cea592f0` passed the focused
+  reactor checks and both distribution archive checksums. Its Codex installer and installed
+  `plugin-info` agree on `1.0+b186685535556`. The package and install receipt are under
+  `temp/e5-evidence-build-6t0tl9s4/`. GitHub Build run `44864838195` exposed five retry failures
+  in `DriverTest`. Judge and triage rebuilt the same evidence prompt for a retry, but its rendering
+  callback made equal requests compare unequal. The correction stores the template, placeholder values
+  and original paths as an immutable value and resolves the offered paths at the same launch boundary.
+  The initial installed smoke stopped before the judge launched because the disposable Codex owner's
+  workspace-write policy had network access disabled. The corrected build `5e6ae4cd440a3ca6d535602bb8b530d6e8453a8e`
+  passed all 173 driver tests, including the five affected retries. Within the disposable profile, enabling
+  network access and allowing the two test-owned dependency cache directories let the same Codex owner
+  start the judge. The judge's prompt and the runner's arguments name the same staged transcript and
+  effects roots. The recorded wrapper read-only binds both after masking the project. Native judge
+  `01a1fc67-a14b-7e90-84b6-8c729c6bb40c` still returned file-not-found from both reads. The result and
+  launch records are under `temp/e5-evidence-build-6t0tl9s4/project/evidence-probe/`. A replay with the
+  same installed CAT and Codex verified that the archive extracted both original files byte for byte and
+  that both the named `command/exec` profile and the actual native turn's tool could read them. A local
+  canned provider supplied the tool call. The replay's syscall trace records successful read-only binds
+  and opens. Its receipts are under `temp/d112-staging-60JuVT/` in session
+  `01a1f972-f892-7141-bade-f3d52b3072c5`. The complete served retry through a native owner and the real
+  request server reproduced both missing reads with a loopback provider and no external model calls.
+  The producer hashes and the broker's hashes before and after the failed tool call match both original
+  evidence files. Its `served/run-ca389bab/receipt.json` and `broker-evidence.jsonl` preserve the evidence.
+  A second served replay issued both forms of the tool call in one judge turn. Both files returned
+  file-not-found with the default and the explicitly named judge workspace. The broker's before and
+  after file sizes and hashes matched, and no external provider was contacted. The receipt, tool output
+  and workspace are in `temp/d112-workdir-CmXjlB/served/run-cf7c8267/` under the current session.
+  The next loopback replay captured the native mount table and the selected configuration. The app-server
+  held a read-only mount of each evidence directory under its empty project mount. The selected Codex
+  profile extended `cat-runner`, whose filesystem table still denied that project path. Both shell
+  commands added another mount at the same project path and returned file-not-found. Its receipt,
+  scoped configuration entries and tool outputs are in `temp/d112-mount-order-DDnTTC/served/run-96bc6b5e/`.
+  The repair must preserve narrower read denials inside a directory reopened for evidence and must
+  keep the original restrictions when no outer sandbox applies.
+  The regression verifies those restrictions. The served replay on the disposable Codex install
+  `1.0+b0fc33e2e4643` then read both staged files in one native judge turn. The same turn verified
+  that a synthetic file outside the grant was unreadable and recorded a pass. Both broker hashes
+  matched before and after the reads. The loopback fixture made no external provider calls.
+  `temp/d112-acceptance-lN3mok/served/run-5c57c754/verified-evidence.json` records the tool outputs'
+  assertions, unchanged evidence, and the stopped auxiliary watcher, which had tried to copy an
+  unpublished request archive. The native provider request log and broker file receipts independently
+  cover the read and denial checks. The installed runtime modules match the packaged bytes with
+  SHA-256 `5e95a50eb81077e366924d3203d564bb4762ca92878a49eeef8f90fef004d3f6`.
+  The installer reported a consistent cache. The local package uses the current worktree contents;
+  the version is stamped from its base commit. The local reactor recorded 6,309 tests, one skip and
+  no failures or errors after excluding the two build-admission methods that require `/sys`.
+  Log: `temp/shared-artifact-pywEIY/verify.log`. Live E5 and the committed clean build remain open.
+  The live file-writing fixture reuses the clean source from the Claude Code case and the newly installed
+  Codex artifact in a disposable home. It keeps the loopback receipt separate. The event verifier in
+  `temp/e5-codex-file-1Q2Nlj/` requires a completed Luna/low trial that writes `answer.md`, a separate
+  native judge that reads the staged bytes, and a passing file-content verdict. It rejected an offline
+  fixture whose trial only read the file. The first owner tool call failed because the disposable process
+  lacked Codex's required local socket directory. The same owner resumed with a private temporary directory,
+  read the installed skill and verified that the request server serves its thread.
+  The first optimizer call put `--background` before `--goal`. The parser requires `--background` last.
+  Its foreground retry under `run-part` created campaign `20261121T074527Z-28febd`, but the contract
+  author could not start because the disposable owner's `.cat` directory was read-only in the tool
+  sandbox. The next turn reused that campaign and ran the two launchers separately. The quoted
+  request-server command stayed in the sandbox. The bare launcher started the broker, and the
+  standalone optimizer reached the contract-author slot. The observer remains required to verify a
+  completed file-writing trial and its judge.
+  The contract author produced distinct chat and file tests with 16 distinct expected outcomes each.
+  The pilot saved 13 chat decisions and paused when trial 10 ended without an outcome three times.
+  Eight retained failed-turn transcripts recorded WebSocket reconnects followed by an HTTP CONNECT
+  403 from the proxy, HTTPS fallback, and interruption while waiting for Codex output. A repeated
+  `start` correctly kept the saved decisions and presented `retry` as the required choice. The next
+  turn submitted that choice from the same native owner with the existing settings. The campaign kept its
+  13 chat decisions and paused at chat trial 14 after two runner exits and a launch without a resumable
+  checkpoint. The file pilot has yet to complete a trial and the live receipt is pending.
+  A later health check reached the proxy at both the active provider address and the user-configured
+  dashboard address. Each returned HTTP 403 with `Destination denied or unavailable`. The saved
+  campaign remains available to its owning Codex session. Evidence:
+  `temp/shared-provider-readiness-BIS3za/` and `temp/provider-health-V3cKyF/`.
+
+- **Claude Code E6 ownership refusal:** While the E7 owner's installed background `start` held its exclusive
+  driver lock, a second native Claude Code session used the same Git root and its own request server. The installed
+  foreground `run 20261121T022318Z-d602fd` returned exit 1 and identified the true owning session. The lock was held
+  on both sides of the call, and Git, the working files, and campaign snapshots matched byte for byte. The contender's
+  native transcript shows only its request-server and verifier commands followed by its report of the refusal.
+  The receipt and before/after snapshots are in `temp/e7-link-fixtures-FZewQn/claude/contender/` under session
+  `01a1f722-8002-7742-8a1f-0d65e844b167`. This check exercised ownership while the campaign was starting.
+
+- **Claude Code E7 link report:** Campaign `20261121T022318Z-d602fd` on `1.0+b08307c76ca2a` reports
+  `docs/handbook.md` as an in-project link and `docs/reply-rules.md` as reaching a read-only external target. It
+  explains that trials see regular files at the link paths. Both staged files have the original target bytes,
+  the fixture links retain their original destinations, and the external file's SHA-256 still matches the baseline.
+  The initial proposal completed 60 guard-pilot trials without an infrastructure failure. The same owner revised it
+  to one factual test on Haiku/low, completed that test's 20-trial pilot without infrastructure failures, and
+  confirmed `weakest_cell`. Attempt 1 delivered a certified edit to `AGENTS.md` after 93 of 93 formal trials
+  passed. The Git diff names only `AGENTS.md`, both symlinks still match their initial Git entries, and the
+  external file has the same SHA-256 before and after delivery. The campaign recorded zero authority warnings,
+  so the warning scenario still needs a case where the author reports a required external edit. Claude's tool
+  notified the idle owner when the background command reached its time limit. The owner then called `status`
+  and retrieved the persisted delivery. This records wakeup after the time limit and leaves normal-exit
+  notification open.
+  The staging and delivery receipts are in `temp/e7-link-fixtures-FZewQn/claude/` under session
+  `01a1f722-8002-7742-8a1f-0d65e844b167`.
+
+- **Codex E7 guard pilot:** The installed build `1.0+b189773d673a7` created campaign
+  `20261121T183440Z-393bea` and recorded 18 factual-reply guard decisions. The shared-policy test's second
+  trial failed to start three times while Bubblewrap remounted `.aws`, `.agents`, or `.git` under the
+  disposable npm cache. The owner reopened the same campaign and invoked CAT's retry after the fixture
+  adopted the empty cache metadata directories already verified in the Codex startup rehearsal. The
+  retry reused the same 18 trial records and completed both 20-trial pilots without any trial left
+  undecided. The proposal reports the in-project handbook link and the read-only external policy link.
+  At proposal review, the external policy matched its pre-campaign checksum. The scope revision
+  recorded that adding a persistent exception to the read-only shared policy is an ineligible trial
+  effect. The owner displayed that proposal verbatim. The reviewed proposal and pilot are retained in
+  `scope-review-Z9AMTQ/`. The next revision narrows certification to factual replies in the local
+  project so delivery can be verified without changing the external file. The startup check with ordinary caches
+  remains open. The original and completed pilot records, proposal and owner transcripts are in
+  `temp/e7-link-fixtures-FZewQn/codex/`.
+
+- **Codex E7 authority warning.** A separate campaign on the same installed artifact checked the exact motto
+  and absence of other boilerplate in ordinary factual replies. The pilot decided all 20 trials. After
+  confirmation, the prompt author reported that `exact_motto` needed an edit at the external policy link.
+  CAT recorded and displayed `external_target_read_only`, with choices to continue using an editable
+  source, stop or revise. The external policy's checksum and the original link destination matched the baseline.
+  The decision and displayed warning are retained under `temp/e7-external-warning-WWdHnP/proposal-evidence/`.
+  The Claude Code author-warning receipt remains open.
+
+- **Claude Code E7 authority warning.** The request server's background time limit interrupted prompt authoring
+  in campaign `20261121T210613Z-300a93` on `1.0+b08307c76ca2a`. The same owner restarted the server and
+  retried the saved campaign in the foreground. It delivered on certification attempt 1 with 93 held-out
+  passes in each of the two cells and no failures. The external policy and link target match the fixture
+  baseline, and the campaign directory was removed. CAT recorded no authority warning. The winning candidate
+  met the behavior by changing the local `AGENTS.md`. The warning remains open and needs a case where a
+  local edit cannot meet the user's goal.
+  Root retains the certificate and `temp/e7-claude-warning-Q549KY/claude-e7-owner.events.jsonl` through
+  final acceptance. The final native result is at line 200.
+  The replacement warning fixture in `temp/e7-claude-shared-policy-Yi46EO/` has two consumers of
+  the same external policy and checks the handbook motto against a conflicting sign-off in that policy.
+  Both teams must receive the change through the shared source. The local import wrappers are fixed.
+  Installed campaign `20261121T224047Z-e9591b` reached a revised proposal. The contract author
+  reported a conflict between the requested motto and the read-only policy while the wrappers were
+  fixed. The campaign stopped before the prompt author ran. The owner shut down the request server
+  and exited zero. This records the proposal conflict. The prompt-author warning still requires
+  a native case whose contract can be confirmed. Root retains the baseline, revised proposal
+  and owner events through acceptance.
+  The next fixture in `temp/e7-claude-shared-ambiguous-3OyCcN/` gives both teams the same
+  ambiguous policy bytes that reached the Codex warning. Its goal asks both teams to inherit
+  the closing convention from that source and allows local rules for answer length. Both
+  links resolve to the same read-only file. The installed Claude Code owner loaded
+  `cat:prompt-optimizer` from `1.0+b0fc33e2e4643`. Its shared skill body matches the
+  packaged Codex body byte for byte. The owner used the user's configured Claude provider.
+  The direct tool sandbox could not initialize Claude Code's bridge sockets. The ensuing
+  CAT status for campaign `20261122T000101Z-2da52f` reported that the disposable
+  peer-comparison profile did not grant its commands the required cache writes and
+  loopback access. No contract-author session, proposal, or pilot was produced. The
+  owner tool session was stopped. Both policy links still resolve to the original target,
+  and the target's hash and read-only mode match the baseline. Retain this as a host
+  preflight failure. The warning still needs a native optimizer run under an applicable
+  Claude Code profile. The owner events are in
+	`temp/e7-claude-shared-ambiguous-3OyCcN/owner.events.jsonl`.
+	The saved owner `5483d4ab-f4d2-4553-a99e-11a1d82ed5a5` can reopen that campaign.
+	The disposable profile now has the npm and Maven write grants and includes `127.0.0.1` in
+	`sandbox.network.allowedDomains`. The saved owner reopened the same campaign, and CAT advanced past
+	preflight to a nested runner that exited 1 before writing a contract. Claude reported that its command
+	sandbox failed to initialize its bridge sockets and then ran owner commands without sandbox isolation.
+	That invocation does not count as acceptance. Root stopped the open owner tool invocation after the
+	refusal. Its events are in `temp/e7-claude-profile-recheck-0soN0v/owner.events.jsonl`.
+	A model-free probe on the same temporary directory rejected a 140-byte absolute Unix socket pathname
+	and succeeded with a relative name. The disposable profile now sets `sandbox.failIfUnavailable` to
+	`true` and `sandbox.allowUnsandboxedCommands` to `false`. The owner uses a short, invocation-owned
+	path to the same private scratch directory. Claude's `Bash` tool read its own network namespace,
+	which differed from the launching process, and the native owner exited zero. This verifies owner
+	command isolation on that setup. See `temp/e7-claude-bridge-smoke-zGFFvj/namespace/verified.json`.
+	The next owner invocation uses the same setup to verify the nested contract author through the configured
+	load balancer. It reached the request server with sandbox isolation active. A write to the shared Claude
+	capacity lock failed with a read-only filesystem, so the author had no result. The owner invocation was
+	stopped and its request-server lock was verified free. The disposable profile now grants writes to the
+	existing Claude capacity-lock directory. With that grant, the public start returned through the
+	launcher and the runner started, then exited with code 1 before returning a contract. No sandbox
+	startup or capacity-file refusal appeared in this retry. Its result establishes neither successful
+	provider access nor a provider error. Retained task outputs and the verified free request-server lock
+	are in `temp/e7-claude-bridge-smoke-zGFFvj/campaign-with-capacity/`. Locate the nested runner's
+	authoritative diagnostic before retrying. The broker consults `runner.stderr` before emitting a generic
+	exit reason. The CLI consumed and removed that response. A model-free check in the same host launch
+	environment found that `PATH` selects the npm `claude` shim, which fails to execute directly, while
+	the explicit native owner binary returns Claude Code `2.1.326`. Prepending the native binary's directory
+	for the disposable invocation selects the working executable. The comparison is recorded in
+	`temp/e7-claude-bridge-smoke-zGFFvj/launcher-preflight.json`. The same owner and campaign still reported
+	a nested runner exit of 1 before producing a contract with the native executable first on `PATH`.
+	The owner was stopped and its request-server lock was verified free. See
+	`temp/e7-claude-bridge-smoke-zGFFvj/campaign-native-first/verified-closeout.json`. A subsequent
+	invocation retained the runner's stderr before response cleanup. `HarnessProcessStarter.startOf`
+	threw `Unable to determine the harness process's start` while `ClaudeRunner` was recording its
+	child's identity. Runner stdout was empty. The owner exited and its request-server lock was free.
+	See `temp/e7-claude-bridge-smoke-zGFFvj/campaign-runner-diagnostic/verified-diagnostic.json`.
+	A read-only probe under the same owner's Bash sandbox could read the boot ID and a live test child's
+	`/proc` stat file. See `temp/e7-claude-bridge-smoke-zGFFvj/process-identity/verified.json`.
+	The remaining diagnostic is to distinguish early Claude child exit from missing identity data at
+	the actual runner launch boundary. A native Bash probe found that the owner's shell selected the
+	npm shim and received an exec-format error even when the host process started with native Claude
+	first on `PATH`. The prefixed server command was refused because the installer recognizes the
+	unwrapped launcher. A disposable `CLAUDE_ENV_FILE` with the corrected `PATH` then let the same
+	Bash probe run native Claude `2.1.326` successfully. See
+	`temp/e7-claude-bridge-smoke-zGFFvj/native-session-resolution/verified.json`.
+	With that session environment and the unchanged installed launcher commands, the same campaign's
+	contract-author request reached a native Claude session and streamed `claude-opus-5-5` replies.
+	The broker recorded its session ID and the streamed events. See
+	`temp/e7-claude-bridge-smoke-zGFFvj/campaign-native-session/native-events-summary.json`.
+	That verifies provider access on the previously failing path. CAT saved its draft proposal and
+	started guard trials. The draft names `docs/reply-rules.md` as a derived source and also names the
+	in-project handbook link. `campaign-native-session/proposal-receipt.json` in the same evidence
+	directory binds that observation to the saved proposal. `link-baseline.json` records both committed
+	link texts and target hashes for comparison after delivery. All three guard pilots decided 20 of 20
+	trials. The public proposal reports both symbolic links and identifies the external target as read-only.
+	Its certifiable scope reports no unavailable condition, although its limitations say that it would
+	certify a local prompt and omit the required shared-policy placement. Keep the campaign unconfirmed.
+	The owner was stopped at the proposal and its request-server lock verified free. The same evidence
+	directory contains `verified-pilot-closeout.json`. Comparison with the verified Codex warning case
+	found identical shared-policy bytes and two differences in scope. Codex measured observable local
+	replies and referred to the policy in prose. The newer Claude fixture imports the policy and also
+	requires changes to reach both projects through that file. An older Claude campaign already used
+	the same prose reference and local-reply goal as Codex, then certified through a local edit. Repeating
+	that setup would rely on the author choosing the external file again. Keep the shared-source campaign
+	unconfirmed. For the missing Claude E7 warning, use an independently confirmable case whose failing
+	trial evidence leads the author to diagnose an external edit. Verify that diagnosis, the read-only
+	choices, and the unchanged external target from the native receipt. The warning remains unverified.
+	The two earlier local-reply proposals are not a matched comparison. Codex's one recorded
+	`short_factual_reply` test checks a short answer, the exact closing motto and the absence of other
+	boilerplate, with a built-in pattern for the expected outcome. Claude Code used separate
+	`friendly_factual_question` and `plain_factual_question` tests, with the judge deciding the
+	expected outcome. The later shared-source proposal also omitted the requested shared placement
+	from its assertions and listed it as a limitation. For a matched retry, prepare one scenario and
+	case population with identical user turns, expected outcomes and assertions for both evaluators.
+	Keep the authority decision as an observation of the prompt author's diagnosis. Do not encode it
+	as a demand in the trial questions or count a locally certified reply as an authority receipt.
+	The clean fixture in `temp/e7-matched-fixture-lpea8zky/` uses one `AGENTS.md` target for
+	both evaluators, with `CLAUDE.md` importing it for native Claude loading. It retains the
+	Codex warning scenario and uses 16 newly prepared factual questions with 15 distinct expected
+	outcomes. The in-project handbook link and external read-only policy link resolve to their
+	intended files. The external policy retains SHA-256
+	`476f03e181313f3182e72621094c1a57daf9b7e4d6fc576e7adbf1fc7af7d13a`. Use the fixture's
+	`compare-prompt-tests.py` before a pilot when both prepared test definitions are available.
+	It checks the scenario text, ordered cases and expected outcomes, and the assertion mappings between
+	proposals. Normal `start` begins the pilot immediately after validation. When native authoring needs
+	that path, compare its first saved result before treating any pilot outcomes as comparable. The helper
+	detected drift in an earlier Codex draft despite the matching test name. The fresh Codex proposal matched
+	the prepared test text and all 16 ordered inputs and expected outcomes. CAT treated all the seeded cases as
+	committed development cases and counted zero held-out outcomes. The proposal returned no authority choice.
+	Keep that campaign unconfirmed. Prepare new eligible outcomes and verify the same confirmable test and
+	case population for the counterpart before starting its Claude Code pilot.
+	The revision input `codex-revise-e7.txt` adds 16 organic factual questions with 16 distinct expected
+	outcomes. A local check found no overlap with the 15 normalized committed outcomes. Submit these
+	as new draft cases through the retained Codex owner, keeping the recorded scenario and cases intact.
+	Compare the validated result to `e7-expected-revision/`, then require at least two distinct outcomes
+	in each partition. The comparison directory is outside the project and does not seed recorded cases.
+	The installed Codex revision saved a validated draft that matches the expected scenario, assertions and
+	all 32 ordered cases. A model-free check of the saved draft and campaign salt found 20 distinct
+	development outcomes and 11 held-out outcomes. The public proposal reported the same counts after
+	all 20 pilot trials completed, with no failed or pending executions. The optimizer returned to
+	unconfirmed review, its owner exited zero, and the external file still matched its baseline hash.
+	The native trace is `codex-revise-e7.events.jsonl`. The clean `claude-project/` checkout shares
+	the same commit and external policy digest, and the recorded tests match. Reuse the same new draft
+	inputs for the Claude Code rehearsal. The later native prompt-author warning and
+	unchanged external file at delivery still require their own receipt.
+
+	The same disposable Claude Code profile started `20261122T203526Z-d0dc82` in the clean checkout.
+	The validated draft matched the Codex scenario, assertion text, and all 32 ordered case inputs
+	and expected outcomes. The strict comparison flagged different requirement identifiers. Inspection
+	mapped all four shared assertion IDs to the corresponding meanings in both proposals. The separate
+	campaign salt assigned 24 distinct outcomes to development and seven to held-out. All 20 pilot
+	trials completed, and the external policy checksum still matched.
+	The Claude Code guard passed 18 of 20 trials. Both failures came from the same sampled development
+	case. The question asked where “fjord” comes from. Both answers gave its Old Norse root and then
+	stated that English borrowed it from Norwegian. The judge expected Norwegian as the main answer.
+	The clarified shared fixture in `e7-clarified-inputs/` asks which language English borrowed the
+	word from and retains the expected outcome. The original campaigns and receipts keep their original
+	inputs. Use the clarified wording for both harnesses when collecting new comparable pilot evidence.
+	The native events are in `temp/e7-claude-bridge-smoke-zGFFvj/campaign-matched/owner.events.jsonl`.
+	The native review turn returned success after the pilot notification. The outer owner wrapper later
+	hit its ten-minute timeout with the standalone request-server task still open in the event stream.
+
+	The earlier matched fixture's shared policy already prescribed the exact expected motto.
+	The new disposable fixture at `temp/e7-shared-conflict-8fmgBh/` keeps the same tracked project and
+	clarified factual cases for Codex and Claude Code, and gives its external policy a conflicting sign-off.
+	The operator asks to measure this project's replies, make the correction at the shared source if
+	editable, and present the authority decision before proceeding with a project-only fix. This keeps
+	the measured cases local and avoids requiring certification of the other teams. The tracked
+	checkout is clean, both links resolve to the intended targets, and `link-baseline.sha256` records
+	the two target hashes. The first Codex owner turn treated the nested request-server diagnostic as
+	a missing quota, although the existing runner already allowed session requests. The next turn's
+	status check correctly refused the external symlink as an optimizer target. The same owner now
+	has the explicit project target `AGENTS.md`; the symlink remains an external proposal input.
+	The proposal, pilot, confirmation, and prompt-author warning still need native evidence.
+	Root retains the fixture through the native E7 checks and final reconciliation.
+
+- **Codex E7 delivery.** The installed campaign `20261121T183440Z-393bea` certified candidate 4
+  after 107 passing development trials and 93 passing held-out trials, with no failures in either
+  set for that candidate. The certificate hashes match the delivered prompt. Delivery modified
+  `AGENTS.md` and added the test scenario, values and certificate. The session hook's generated
+  `.gitignore` was also present. Git HEAD and index matched the baseline. Both links kept their
+  committed link text and resolved to the same targets. The external policy retained its original
+  SHA-256. `temp/e7-link-fixtures-FZewQn/codex/local-delivery-evidence-ld441F/linked-delivery-terminal.json`
+  binds that check to the native certification command, which exited 0. The campaign directory was
+  removed. The observer exited 0, and the foreground owner's native turn completed and exited 0.
+
 - **End-to-end:** in both harnesses, run these scenarios through the installed skill:
 	- **E1:** start the deficient fixture without a goal, so requirements derive from its target instructions
 		under D124. The proposal lists its conflict, confirmation is refused
@@ -7771,6 +8823,158 @@ selection and download it describes are unchanged.
 	- **E5:** a trial uses a host tool, and one uses child subagents with child worktrees. One trial writes a file that
 		its judge decides on; that trial and a text-output trial, each with its judge session, are saved as recordings
 		that a unit test judges from.
+		The latest absent-home build passed the file and text trial-and-judge replays in both
+		harnesses. `temp/final-e5-replays-iT3ZQd/verified-replays.json` matches both test sources
+		and all ten recording inputs to the build manifest and joins them to the native pilot
+		receipts, including the captured file hashes. Root owns this evidence through final
+		acceptance. The host tool and isolated child-worktree checks on the final installed
+		artifact remain separate from the recording replays.
+		Codex campaign `20261121T221857Z-9b5901` used installed `1.0+b189773d673a7` and
+		decided all 20 trials in each queue pilot. The judge verified a recorded shell report
+		read and correct factual reply in 19 of 20 single-queue trials. The proposal's
+		`tool-used exec_command` assertion failed on all 20 because the trial adapter records
+		shell calls as `commandExecution`. In the parallel pilot, all 20 replies had the correct
+		facts and all 20 failed the child-execution assertions. The observer captured trials
+		with two registered worktrees whose reads ran in the root session. Check the installed
+		runner's child-tool availability before tuning the prompt, and use the recorded command
+		and exit status to check successful shell reads. The proposal is unconfirmed. Root
+		retains `temp/e5-codex-final-xr9mE4/` through acceptance, with both observer directories,
+		the saved proposal and the owner's zero-exit receipt.
+		The earlier successful native trial asked two agents to investigate, while the new pilot
+		asked for parallel work and separate checkouts. The same Codex owner resumed to revise the
+		two tests. The revision asks two agents in the ordinary parallel request and uses the
+		built-in exit-status check for a command naming the single-queue report. The artifact,
+		case corpus and semantic assertions are retained.
+		The revised pilot decided all 20 trials for each test. The paired single-queue assertions for the
+		shell call and report facts passed on 17 trials. The parallel judge found two separate child worktrees
+		on 14 trials and both completed findings on 12. The built-in `tool-used spawn_agent` check failed on
+		all 20. In a recorded passing judge case, the two child-start item IDs match the two `spawn_agent`
+		call IDs in the root rollout. The Codex adapter preserved the child events and omitted those calls
+		from the trial's tool evidence. `CodexTrialRecordTest.checksDecideFromRecordedEvents` reproduced
+		the missing calls. The parser now records an observed child launch once alongside its lifecycle
+		event. The Codex judge version is 16 because the rendered evidence changed. All 72 focused
+		checks passed. Root retains `temp/e5-codex-spawn-assertion-rmtAgs/` through acceptance. The
+		installed check uses an unchanged queue-fixture checkout with a fresh campaign for the new judge
+		version. The old pilot remains evidence for the preceding version.
+		The clean build with judge 16 passed 6,344 tests with one skip and installed as
+		`1.0+b0fc33e2e4643`. In the disposable owner, restoring the network setting let the
+		request server start and the CLI create campaign `20261121T232922Z-dc94ec`. The
+		foreground command stopped before creating a proposal because its configured write
+		roots did not contain the disposable home's capacity-lock directory. Retry requires
+		consistent home selection at installation and launch. The next owner turn used its
+		inherited home, whose lock path the disposable profile already grants, and retained
+		the disposable profile, project, artifact, and campaign. The request server became ready.
+		The owner finished with a proposal awaiting confirmation. Owner events are in
+		`temp/e5-spawn-release-build-niynGZ/e5-owner-registered-home.events.jsonl`.
+		The receipt verifier in `temp/e5-receipt-verifier-JCpOaa/` joins the saved pilot
+		row, judge input, and native trial. For the retained pilot from the previous judge
+		version, it proves the single-queue read and rejects the parallel claim because
+		the built-in `spawn_agent` verdict failed. The judge-16 pilot finished 20 single-queue and
+		20 parallel trials with no infrastructure failures. The built-in verdict recorded dispatch
+		before await on nine parallel trials. No single trial recorded a successful report read.
+		The native author validated a directory link to the 12 tracked reports and checked the
+		materialized contents. The served results copy only carries regular files, and both
+		stored draft workspace directories were empty. The saved trial source contained zero
+		queue reports. The final verifier did not establish either E5 outcome. Its output is
+		`temp/e5-spawn-release-build-niynGZ/verified-e5-final.json`.
+
+		The model-free reproduction in `temp/e5-model-free-handoff-CXTG7P/` calls the built
+		`ResultsCopy.copyTurn` twice and `ResultsCopy.copy` twice, corresponding to the production
+		publisher and forwarder for completed turns and final results. The author can read a
+		project report through the draft link. Each copy carries the regular draft file and the
+		original project report and leaves the link out. Both copy operations report no failure.
+		See `baseline.log` and `runner-module.sha256` in that directory.
+
+		The focused regression `TestWorkspacesTest#servedDraftKeepsLinkedDirectory` reads the
+		author's draft using the contract checker before publishing it. It then reads the copied
+		draft with the same checker. The author sees the internal link, the regular file, and
+		the report from the linked project directory. The receiver sees only the regular file.
+		The Maven invocation with `-pl common/cli -am -Dtest=TestWorkspacesTest#servedDraftKeepsLinkedDirectory
+		-Dsurefire.failIfNoSpecifiedTests=false verify` ran that one test and failed on the receiver's
+		file list. The log is `temp/e5-model-free-handoff-CXTG7P/focused-red.log`.
+
+		Carry the authored draft's link declarations as data across both result handoffs. The
+		receiving optimizer needs the paths and literal targets to validate the draft against the
+		same workspace-link rules it applies to the author's preview. Scope the transfer to the draft
+		directory selected by the optimizer. Keep the ordinary results tree free of live links and
+		have the result publisher read link text without following it. Initial authoring and test
+		revision both consume the served draft and need the same treatment. Extend the model-free
+		check to prove that a directory link and an internal workspace link reach the contract checker
+		and stage correctly, and that unrelated links stay out of the result tree. Run the native
+		pilot after this check passes. Keep the previous native pilot as evidence of the failing
+		handoff and the corrected native spawn verdict.
+
+		The producer now takes the draft directory selected by the optimizer in its launch request.
+		Both the completed-turn publisher and the final-result publisher record the selected links'
+		literal targets as regular files. The forwarder's turn copy refreshes those declarations
+		together with the project so a removed link does not survive another turn. The focused
+		`ResultsCopyTest#forwardsSelectedTurnLinkDeclarations` passed and checks link text, scope,
+		absence of a live link in returned evidence, and removal on a later turn.
+		The optimizer restores the declarations before validating both an authored draft and a test
+		revision. It validates relative targets against the draft before creating links. All 21 tests
+		in `TestWorkspacesTest` and `ResultsCopyTest` passed. The receiving regression stages the
+		external-to-draft project report into a trial and preserves an internal workspace link.
+		Full Maven verification passed with 6,346 tests, zero failures or errors, and one skip.
+		The Linux Codex archive's SHA-256 is
+		`9417585e07ef7d76b071a7a2c029d84b471f1dd04dbcff7467e7ece194cc0d2f`.
+		Its reported version identifies the same base Git commit as the earlier archive, so use the
+		new archive's checksum to distinguish the repaired runtime. A fresh disposable Codex installation
+		at `temp/e5-draft-handoff-WG0CdM/codex-home` reports that the install is consistent. Its CLI
+		module has the same SHA-256 as the verified build and archive,
+		`fa415cd52b41262900e863d375f0732343cad25648940ea6581282813fbf2ece`.
+		The adjacent clean fixture reuses the original queue-report commit `7dc8deee4ac5` and leaves
+		the old campaign available as failure evidence. The disposable owner used the current provider
+		mapping and checked read and write access to the resolved npm and Maven caches from its sandbox.
+		Owner `01a200d4-8b46-75a2-aa1f-e38ce8b88940` received a completed broker reply from native child
+		`01a200d5-e68f-7d93-b067-b9c04e940b8d`. Its command had an unmatched quote and never invoked
+		`plugin-info`. The same owner resumed, and retry child
+		`01a200da-1a9e-7990-90e4-69958c577ebf` exited zero from `plugin-info` in the native transcript.
+		Public `start` created campaign `20261122T012457Z-d4a6fe` in foreground mode. The request for the
+		contract author selects `cat-draft` for link declarations. Its live draft currently stages queue
+		reports as regular templates. Verify the staged inputs and native outcomes, and record separately
+		whether the pilot exercised a link declaration.
+		The saved campaign has passed all 20 single-queue trials. The independent
+		`temp/e5-draft-handoff-WG0CdM/verified-single-queue.json` receipt joins 16 of those
+		decisions to a unique native rollout and judge verdict. Each joined shell command completed
+		with status zero and printed the targeted tracked report.
+		`temp/e5-draft-handoff-WG0CdM/verified-parallel-worktrees.json` independently joins two
+		native child launches before the first wait to the worktrees they used, each child's report
+		read, both completion messages, and the parent reply. The pilot judge still failed
+		`completed_findings_attributed` for that trial because the parent also read both reports
+		in its original checkout. The receipt establishes the installed child-worktree behavior
+		for that trial. Retain the failed assertion in the pilot results.
+		The first owner process stopped with 18 of 20 parallel trials decided. The reopened owner
+		observed that public `status` reports `awaiting_user` with no proposal or choices while
+		the unconfirmed pilot still has pending trials. The same public `start` arguments resumed
+		the campaign and produced the last two decisions. It returned a proposal, with no confirmation,
+		and the reopened owner exited zero. The parallel pilot finished with 20
+		correct expected outcomes. Nine trials passed the child-launch and distinct-worktree assertions,
+		three passed the dispatch-before-wait assertion, and zero passed them all. Every parallel decision failed the
+		additional parent-investigation assertion.
+		Line 9 of `temp/e5-draft-handoff-WG0CdM/owner-resume-final-e5.events.jsonl` records the
+		unexpected status for the reopened campaign. A focused CLI test reproduced `awaiting_user`
+		after an unfinished pilot slice. The status lookup now reads the saved checkpoint and reports
+		`running` when an active, unconfirmed pilot has work left and no recorded pause. Five focused
+		`OptimizerCoreTest` checks passed, including lookup by ID and target, completed and paused
+		pilots, retry, and background wakeup delivery. The corrected installed command also passed the
+		controlled checkpoint comparison in §9. The native E5 assertion failure remains open.
+		The broader focused reactor check then passed all 311 cases in `OptimizerCoreTest`,
+		`GuardPilotTest`, and `StatusReportTest`, with no failures, errors, or skips.
+		The operator brief asked for the parent to combine the two completed findings. The authored
+		proposal additionally required the parent to avoid direct report investigation. The retained
+		pilot records for positions 1 and 2 credit both completed findings and correct attribution, and
+		record a parent read of both reports before dispatch. Position 3 also began the final reply
+		before the second child finished. The native receipt for position 1 supplies the WI-15 child
+		worktree evidence on that artifact. Keep the stricter authored test's failed verdict and verify
+		the WI-15 evidence against the final artifact's determining inputs.
+		A separate served Codex launch reused the installed artifact and owner thread with a
+		`gpt-6-luna` low-effort child. The first invocation could not open the output path outside
+		the owner's writable project. The retry wrote into the owner's existing session temp directory
+		and exited zero. An independent check matched both literal symlink targets to the declarations
+		in the returned draft, checked that the regular file survived, and verified that no unrelated
+		link or live draft symlink was imported. The parent retains
+		`temp/e5-draft-handoff-WG0CdM/verified-native-draft-links.json` and its referenced native records
+		through final acceptance, then removes the disposable fixture.
 	- **E6:** a second session of the same harness is refused on a live run, without any state change and without the
 		agent working around the refusal; "no state change" is measured from after session start, because the
 		session-start hook writes `.gitignore` before any command. The unit tests
@@ -7780,6 +8984,33 @@ selection and download it describes are unchanged.
 		external file raises an authority warning that offers no way to edit it, and delivery leaves every external file
 		unchanged.
 	- **E8:** two concurrent CAT processes are bounded by the shared capacity.
+		The current disposable fixture retains a verifier in
+		`temp/final-native-package-I1watQ/e8-capacity-8xoOvn/`. It checks that the holder has
+		finished its turn while still holding its conversation open, that a bounded contender
+		exits with the capacity status before a native session starts, and that a separate
+		waiter gets its own native session and reply after the holder releases the permit.
+		Controlled records proved the verifier rejects premature admission and accepts the
+		expected sequence. The final receipt also requires one Linux kernel lock on the same
+		slot inode under each runner's distinct PID. The observer distinguished an unlocked
+		fixture file from its real POSIX lock. The first Codex owner invocation selected the expected installed
+		artifact but quoted the request-server command. Codex ran that spelling in its sandbox and the server
+		exited 2 before any capacity runner started. The same owner resumed with the bare launcher path,
+		started the request server, and passed the test on installed `1.0+b189773d673a7`. The holder
+		completed its turn and kept its conversation open. The bounded contender exited 75 before it
+		published a native session ID. The queued waiter had no native session before release. Linux
+		showed one lock on slot inode 37587128, first under holder PID 2697927 and then under waiter
+		PID 2699369. The sandboxed observer could see only its own PID namespace. The observer
+		in the runners' host namespace recorded both owners and their request directories. The holder
+		and waiter returned their requested replies in distinct native sessions, then both exited 0.
+		The native owner exited 0. The fixture's `project/.cat/e8-capacity/verified-capacity.json`
+		records the terminal check. Claude Code passed on installed `1.0+b08307c76ca2a` with
+		Haiku at low effort. The holder completed its first turn and kept the conversation open.
+		The five-second probe exited 75 without a native session ID. The waiter obtained a
+		distinct native session after the holder ended. Linux reported the same slot inode
+		1329074 under holder PID 3078353 and then waiter PID 3079169. Both conversations returned
+		the requested replies and exited 0. The owner stopped its request server and exited 0.
+		`project/.cat/e8-capacity-claude/verified-capacity.json` retains the verified transfer
+		under the same fixture. Root retains both receipts through final acceptance.
 - **T6 driver crash:** once per harness, run an acceptance-owned copy of the `easy` fixture through that harness's
 	installed final-artifact `prompt-optimizer` skill. Keep the owning host session alive. After campaign records
 	contain a completed outcome and a running logical trial with a durable assignment, record the driver and nested
@@ -7792,6 +9023,100 @@ selection and download it describes are unchanged.
 	command results, identity observations and before/after records until final acceptance. The check passes only
 	when its required crash and recovery outcomes are observed; an untriggered kill condition or uncertain process
 	identity is unrun. Existing E2 ESC/replay and local persistence-fault receipts remain separate accepted evidence.
+	The Codex preparation uses the warm installed artifact and a separate clean four-file fixture in
+	`temp/t6-codex-VaHbsa/project`. Its preflight records the fixture hashes, clean seed commit, and
+	installed CLI digest. Root owns this fixture through the crash and recovery evidence review, then removes it.
+	Native Codex owner `01a200fb-f1b6-7b91-b9eb-9d661e94c6d0` prepared campaign
+	`20261122T020335Z-7d1a16` and exited zero. Its proposal reports 20 decided guard-pilot trials per test across
+	`short_fact`, `paired_facts` and `support_rewrite`, all using `gpt-6-luna/low`. Public status is unconfirmed.
+	The full proposal, durable pilot and native owner records remain in the fixture. Reuse that campaign for T6.
+	The support helper and current campaign codec both read format 50. For the served launch route, the
+	completed copies and live slot manifests observed in E5 record individual runner PIDs. The helper's
+	existing direct-launch predicate requires the optimizer driver PID in those manifests. Before arming a
+	served crash, bind the durable trial recovery record's full logical key and request ID to the matching
+	slot launch request and native manifest, and verify that binding without signaling a process. Keep the
+	actual driver command and PID/start identity as the only crash target.
+	The fixture's read-only `served_trial_evidence.py` now matches the active trial's key and attempt ordinal
+	to its recovery request, broker slot and native PID/start identity. Five focused tests passed, including
+	rejection of a stale attempt, a mismatched key, a duplicate slot binding and PID reuse. On the saved
+	unconfirmed Codex campaign, the same reader returned the expected absence of an active development group.
+	The disposable crash helper now records those bindings with each native session's turn checkpoint and requires
+	them to remain stable before it can signal the owned driver. Its stable capture preserves the armed process
+	identity even if the broker has removed its slot. All seven binding checks and 17 stable-capture and comparison
+	checks passed without a live signal. The recovery observer now records live broker bindings for the interrupted
+	logical keys while the exact recovery driver runs. The stable comparison matches those bindings to the native
+	session and transcript referenced by each durable outcome. A retained request and native session with a
+	completed-turn checkpoint establish continuation. A new request and native session with an added interruption
+	record establish discard and replay. Both branches passed with synthetic stable copies. Missing live launch
+	evidence produced an unproved result. The latest focused checks passed 25 tests. Codex still needs the actual
+	owned driver interruption and public recovery in one native host invocation.
+	The same native Codex owner passed the process-observation preflight. It identified its own child by PID and
+	process-start identity, opened a Linux process handle for that child, and reaped it with exit 0. Public status
+	remained `awaiting_user` in phase `unconfirmed`, and the campaign, pilot and proposal hashes were unchanged.
+	The owner's `temp/t6-process-preflight.json` records those checks. The preflight exercised process observation
+	without interrupting the optimizer. The live crash and recovery still require a confirmed fixture campaign.
+	A subsequent readiness check matched the installed runtime and CLI hashes, all three saved
+	pilot cells at 20 decisions each, and the campaign inputs recorded by the process preflight.
+	The original fixture commit is intact. Its only untracked file is the CAT-generated
+	`.gitignore` for session files, which the fork explicitly permits. The saved proposal has no
+	conflicts or unavailable conditions and its weakest cells use Luna/low. It uses single-turn
+	text cases, so this fixture can prove discard and replay after an actual driver crash during
+	a turn. The two-turn warm rehearsal already proves continuation after a saved reply when the
+	owner restarts. The crash fixture's readiness receipt is
+	`temp/t6-codex-VaHbsa/verified-live-crash-fixture-readiness.json`. No optimizer driver was started
+	or interrupted by this check.
+	The evidence comparator previously accepted a replacement request, a new native session and
+	an interruption record as proof of mid-turn replay even if the crash checkpoint was idle.
+	It now also requires the original native checkpoint to show a turn in progress. The focused
+	comparison rejects replay claims before the first turn and between completed turns. Both
+	variants falsely passed with the previous verifier. All 18 disposable helper tests pass,
+	including the existing continuation and real-mid-turn evidence shapes. The baseline failure
+	is retained in `temp/t6-codex-VaHbsa/t6-checkpoint-guard-baseline.json`. The live driver test
+	still needs an armed in-progress checkpoint and a recovered outcome.
+	The disposable fixture's operator confirmed only `weakest_cell` in the original native
+	owner. The optimizer returned development at attempt zero. The saved pilot and proposal
+	hashes stayed identical, with no trial assigned and no driver holding the lock afterward.
+	`temp/t6-codex-VaHbsa/verified-t6-confirmation.json` binds the native command and current
+	campaign to the installed source revision, tracked fixture hashes, and normal and held-out
+	result roots. The prepared driver binder takes the controller's own child handle and matches
+	the installed Java executable, module, project and campaign before arming. Nine checks passed
+	with simulated process identities, including rejection of another artifact, campaign or
+	parent. The following native invocation exercised the public development command.
+	The first native development invocation produced 21 durable records (20 development outcomes
+	and one diagnostic). The observer reached its fixed 120-second deadline before it recorded an
+	eligible mid-turn checkpoint. The driver later exited zero and the crash receipt directory was
+	empty. The observer now watches the same driver process descriptor for its full lifetime and
+	rechecks the durable trial and native process identities before signaling. All 28 focused
+	observer and broker-binding checks passed. The first invocation's terminal records and observer
+	diagnostic are retained in `temp/t6-codex-VaHbsa/evidence-first-slice/`. The retry uses the
+	same native owner, installed artifact and campaign, including the saved pilot and development outcomes.
+	The retry's observer stayed with the driver through normal exit. CAT paused in development
+	after three prompt-author errors. In all three native replies, the author changed the failure
+	identifier supplied in its prompt. The classifications matched the supplied schema. The validator
+	rejected the altered citations and had previously accepted the exact identifier on the same campaign.
+	No crash receipt was written. The driver exit receipt, public status and observer traceback are
+	retained in `temp/t6-codex-VaHbsa/evidence-author-rejected/`. A new driver can use the same
+	unfinished reservation and starts with a fresh author failure count.
+	The next invocation progressed through 54 contender-race trials and six promotion trials
+	with the same campaign. The driver exited zero and the native crash observer stayed unarmed.
+	The completed development trials all predate this slice. The durable race remains incomplete,
+	so the scheduler has yet to admit ordinary development trials again. The crash check requires a
+	completed outcome and an in-progress trial in the same active development group. Race and
+	promotion assignments do not satisfy that condition. Keep this slice's receipts in
+	`temp/t6-codex-VaHbsa/evidence-race-slice/`. The next invocation continues that incomplete race under the same owner and campaign.
+	That continuation ended normally. Its native owner and optimizer driver both exited zero. Public status
+	still reports development and lists three contenders. The controller observed the driver through exit
+	without finding a qualifying ordinary development group, so it issued no crash signal. Keep the terminal
+	driver receipt and controller diagnostic in `temp/t6-codex-VaHbsa/evidence/`. The only race cell now has
+	73, 73 and 72 completed trials for the three contenders. For the next recovery attempt, reuse the
+	confirmed Codex G6 campaign as a separate T6 observation. Its four tracked fixture files match T6,
+	the same installed artifact produced its cancellation receipt, and its saved status is resumable with
+	no ordinary development record or active race. Revalidate those inputs and use the original owner to
+	activate it with the public foreground resume choice. Capture T6 evidence in a separate directory and
+	arm the observer before the first `run`; retain the G6 receipts as recorded. The read-only review
+	confirmed that the foreground resume choice reactivates the campaign and a separate `run` starts the
+	driver. A policy error stopped the subsequent controller-preparation task. No new interruption attempt
+	was launched. Leave that operation for review and continue the independent acceptance checks.
 - **Unit evidence instead of live runs (user ruling, 2026-10-20, D91):** these §14 claims are proven by Java tests,
 	not by an E scenario: the dirty-base refusal (`ForkTest`, on a real repository); removing a campaign's files after
 	the incumbent is kept and finishing an interrupted removal (driver and delivery tests); a prompt test's fixtures with
@@ -7822,6 +9147,77 @@ selection and download it describes are unchanged.
 	untrimmed native events, actual background tool invocation and the idle interval showing no turn-start checks.
 	Record successful wakeup, unrelated-ESC survival, native cancellation and each conditional refusal independently;
 	leave unavailable host-policy, UI-key or queue prerequisites explicit until observed.
+	The installed Claude Code wakeup branch passed on `1.0+b08307c76ca2a` using E7 campaign
+	`20261121T210613Z-300a93`. The native event stream in
+	`temp/e7-claude-warning-Q549KY/claude-e7-owner.events.jsonl` records the background start
+	at lines 27–29 and the owner's completed turn at line 32. Claude Code delivered the same
+	task's successful exit at line 34 and woke the same owner, which called status and read
+	the stored proposal at lines 37–40, then presented it at line 45. No operator input arrived
+	between the completed turn and the proposal. The unrelated ESC and live cancellation branches
+	remain open. Root retains the event stream through final acceptance.
+	The Codex wakeup rehearsal has a clean, separate four-file `easy` project in
+	`temp/g6-codex-fKQ2pP/project`. The adjacent receipts record the seed commit, all fixture hashes,
+	the warm installed `1.0+b0fc33e2e4643` CLI digest and its public background-command help.
+	The selected Codex 0.171.0 executable advertises `queue --thread … --message …`. That establishes
+	the command grammar only. The native host still has to invoke the optimizer through its own background
+	mode, become idle, and wake on the queue notice before status is read. Root retains the fixture and
+	removes it after final review of the receipts.
+	The first interactive launch inherited the outer tool sandbox's masked app-server socket directory.
+	Codex could not read CAT's rules through its shell tool, and that launch never started a campaign.
+	The host-launched retry retained Codex's own sandbox and entered the background CLI through the native
+	shell tool. Shell session `52576` created campaign `20261122T025415Z-39be2e` under owner
+	`01a2012b-8ece-7e01-9199-bce58d6955b7`, and the model completed its turn without a status call.
+	The controller then closed the idle owner at its observation deadline while the pilot was incomplete.
+	The durable pilot retained 20 decisions each for `capital_question` and `chemical_properties` at
+	`gpt-6-luna/low`. At the final read, `shift_handoff` had no decisions and eight pending assignments.
+	The copied `owner-rollout.jsonl` contains one completed turn and no callback turn. This attempt proves
+	the background launch and idle host only. Reopen the same owner and continue `start` on the same
+	campaign with an observation interval that covers the remaining pilot and the notice.
+	The resumed owner passed the native Codex wakeup branch. In `temp/g6-codex-fKQ2pP/resumed-owner-rollout.jsonl`,
+	lines 113 and 115 record the exact background invocation and live shell handle `49328`. Line 121 ends that
+	turn. Line 123 starts a new turn with `turn_trigger: queue`, and line 125 carries CAT's completion message
+	for the same campaign. No operator input arrived after line 121. Lines 129 and 132 show the callback's public
+	status call and exit 0 with `awaiting_user`, phase `unconfirmed`, and a proposal path. Line 134 reads that
+	proposal. All three pilot tests now have 20 decided Luna/low trials and no pending assignments. The controller
+	closed the owner after its terminal displayed the callback's final marker. The rollout has the callback tools
+	and results but no terminal turn-completion record for that last turn.
+	The same Codex owner confirmed the proposal, started development, and returned a resumable campaign after a
+	first live cancellation. On resume through `choose <campaign> resume --background`, the observer sent Escape
+	during an unrelated foreground shell call. The native rollout records that turn as interrupted, and the same
+	process identity and cancellation address still held the optimizer lock afterward. The public `cancel` then
+	exited zero. The driver and all eight recorded broker runners exited, and a separate public status call showed
+	the same campaign as cancelled with `resume` available. No deeper process descendants were observed.
+	`temp/g6-codex-fKQ2pP/g6-live-resume-observations.json` records the process observations, and
+	`temp/g6-codex-fKQ2pP/g6-escape-cancel-owner-rollout.jsonl` retains the native events. Lines 303, 319 and 342
+	record the interruption, successful cancellation command and subsequent status turn.
+	The follow-up reused that owner, campaign, and installed artifact. The observer recorded the driver,
+	eight broker runners and 16 descendants, including eight native Codex processes, with their process
+	start identities and parent links before the public cancellation call. The native command exited zero,
+	all sampled identities exited, and a separate native status call returned `cancelled` with `resume`.
+	The receipt is `temp/g6-codex-fKQ2pP/g6-codex-cancel-descendants.json`. It completes the deeper
+	process observation for this build. The observer's model-free checks include fast cancellation and
+	stale campaign rejection. Root retains the follow-up through final evidence review.
+	The warm Claude Code owner also passed native cancellation and the unrelated-turn Escape check. Cancellation
+	left a resumable campaign and reaped the driver, six observed runners and seven observed descendants. On
+	resume, the observer matched the unrelated turn's native user event and active terminal footer before sending
+	Escape. The terminal restored that prompt as an unsubmitted draft, and the completed-answer marker never appeared.
+	The observer recorded the same driver PID, process start and lock token before Escape, immediately after it,
+	and after the draft returned. Eight runners were active at the last sample. The receipts are
+	`temp/e5-file-capture-JTfd0z/g6-claude-verified-escape.json` and
+	`temp/e5-file-capture-JTfd0z/g6-claude-verified-cancellation.json`. The Escape receipt establishes the native
+	terminal behavior for G6. The separate T3 adapter interruption record remains open.
+	The conditional Codex sandbox-refusal branch passed in the independent clean fixture at
+	`temp/g6-codex-refusal-NBXJui/`. Owner `01a2013c-f441-79e3-b10c-7fc1dde1a7ac` ran the installed
+	launcher through its ordinary workspace-write shell. In `owner.events.jsonl`, line 15 records exit 1 and
+	a `refused` result naming the sandbox as the reason `--background` is unavailable. Line 21 closes the
+	native turn and the owner exited 0. The fixture contains no campaign or background-driver record, and
+	its tracked files are unchanged. Root retains the native record through final acceptance.
+	That native diagnostic also exposed misleading recovery text. It told the caller to run the path alone,
+	although the optimizer's successful background invocation used a subcommand and arguments. The shared
+	Codex diagnostic now tells callers to use the exact absolute path as the command name in a standalone
+	shell command, with the operation's arguments. Focused Maven verification passed all 16 checks in
+	`CodexServedSessionTest` and `CodexOptimizerBoundaryTest`. The retained native refusal used the older
+	wording. The focused checks cover the source correction.
 - **Recordings:** each run saves its harness event streams, untrimmed, with the harness version. They replace the
 	contract tests' recordings, and the contract tests then pass on them (`design.md` §10 T3). Save at least one
 	completed multi-turn session per role and an interrupted turn (from E2) per harness.
@@ -7878,25 +9274,26 @@ selection and download it describes are unchanged.
 - **Why one item:** ranking decisions, reserved identities and saved-state interpretation share one durable contract;
 	the driver continuation tests verify their connected behavior before final acceptance.
 
-### WI-132 — Pooled regression check and fewer promotion runs
+### WI-132 — Pooled regression check and fewer promotion replays
 
 - **Problem:** in a live Codex campaign, promotion runs were 75% of all trials and rejected attempts held 80% of them;
 	258 of 398 rejected attempts had fixed a triggering test case and were rejected only because one regression run
 	failed where the working candidate's single outcome passed, weak-round attempts ran every run after their rejection
 	was certain, and attempts that failed every triggering test case still ran their regression set.
 - **Scope:** `client/common/cli/`, this design and plan, and user docs that describe the regression check.
-- **Change:** judge regression runs per prompt test by the exact pooled check of §2.7 (5% bar, 5 paired reruns per
-	look, at most 15), for original attempts and minimality reductions; record the working candidate's paired reruns
-	under their own role. Plan regression and reference runs only after a triggering test case has an unfailed streak of
-	2 passes, except for a reduction. Retain a rejected attempt at once, plan no more runs for it and cancel its unstarted
-	runs, in weak rounds too; select a weak round's winner once every attempt is decided, ranking it by passing
-	triggering and first-pass regression runs without paired reruns, which only an attempt that failed a regression run
-	receives. Show the runs an attempt ran and whether it was rejected early. Bump the campaign format to 45 and upgrade
+- **Change:** judge regression replays per prompt test by the exact pooled check of §2.7 (5% bar, 5 paired replays per
+	look, at most 15), for original attempts and minimality reductions. Record the working candidate's paired replays
+	under their own role. Plan regression and reference replays only after a triggering test case has an unfailed streak
+	of 2 passes, except for a reduction. Retain a rejected attempt at once, schedule no further replays for it and
+	cancel its unstarted replays, including in weak rounds. Select a weak round's winner once every attempt is decided.
+	Rank it by passing triggering and first-pass regression replays. Only an attempt that failed a regression replay
+	receives paired replays. Show each attempt's replays and whether CAT rejected the attempt early.
+	Bump the campaign format to 45 and upgrade
 	version-44 files on read, deciding attempts in progress by the new rule and keeping recorded decisions.
-- **Verification:** requirement-level tests with fakes: promotion after passing paired reruns, rejection at the right
-	look, separate groups, looks only every 5 reruns up to 15, rejection with no regression run when every triggering
+- **Verification:** requirement-level tests with fakes: promotion after passing paired replays, rejection at the right
+	look, separate groups, looks only every 5 replays up to 15, rejection with no regression replay when every triggering
 	test case fails, early stop and cancellation in a weak round with a winner from accepted attempts, a winner ranked
-	without paired reruns, a reduction judged by the same rule, and a version-44 campaign that continues. Tag tests
+	without paired replays, a reduction judged by the same rule, and a version-44 campaign that continues. Tag tests
 	R-D3, R-D11, R-D12 or WI-132, then run the clean full offline build and report every test taking at least one
 	second.
 - **Exit:** the acceptance tests and the clean build pass on the committed revision; design and plan match the behavior.
@@ -8334,6 +9731,12 @@ selection and download it describes are unchanged.
 	harness whose results folder holds the copy under the harness's ID.
 - **Exit:** the tests, the scan, the clean build and the live launches pass on the committed revision. Closes R-I13.
 
+**Trial terminology follow-up.** Use *trial* for the logical trial and *trial attempt* for an execution of it.
+Guard-pilot reports count failed trials separately from the infrastructure attempts that preceded an outcome.
+Pilot format 5 writes `failed_trials` and reads retained formats 3 and 4, including format 4's pending trials.
+The focused Maven verify and linters passed for 13 optimizer test classes, including the report and both older pilot
+formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still starts the driver.
+
 ### WI-148 — CAT supports the pi harness (user rulings, 2026-11-19)
 
 - **Problem:** CAT installs into Claude Code and Codex only. pi (`@earendil-works/pi-coding-agent`, researched on 1.5.2
@@ -8374,6 +9777,476 @@ selection and download it describes are unchanged.
 	reports the missing dependency, a foreground and a background subagent under pi-subagents that both receive CAT's
 	context, and a nested session that resumes.
 - **Exit:** the tests, the clean build and the live checks pass on the committed revision.
+
+### WI-149 — Shared prompt optimization across harnesses
+
+- **Outcome.** A user who requests Codex and Claude Code support gets one candidate evaluated during development by
+  both harnesses and one delivered snapshot certified under both. A prompt tested under multiple model profiles
+  already needs separate cell results for the same candidate. Adding a harness keeps that rule and adds the
+  harness's loader and runner identity. Campaigns for independently delivered prompt files keep independent
+  candidates. The existing E1 fixtures keep their independent end-to-end role.
+- **Establish the launch path.** From a disposable owner with both installed artifacts, use the existing
+  request-server routes to verify that each requested harness loads the same tracked target through its own entry
+  files and that CAT can obtain the required runtime and profile evidence. Record both results and a named refusal
+  for an unavailable route. Resolve a missing prerequisite at that boundary before wiring the optimizer. Reuse
+  existing authentication, sandbox profiles, nested-session transport and per-harness capacity.
+  Both request servers already select an installed runner by the requested harness. The optimizer's
+  `RunnerSessions.productionBridge` currently passes the evaluation harness as both arguments to
+  `LaunchRoute.decide`. For an evaluation on the other harness, select the route and request folder using
+  the owning harness, and put the evaluation harness in the forwarded request. Build the evaluation settings
+  from the selected runner's installation and configuration. Verify that a retained trial can resume through
+  the same owner and evaluation runner. WI-120's absent-plugin checks establish the refusal at artifact
+  selection. A native trial receipt is required to establish the loaded target and evaluator identity.
+  The installed runner check passed on CAT `1.0+b5e6ae4cd440a`. Owner
+  `01a1fc6e-c850-7153-96ef-0fef23809a8d` used one request server to launch Codex, then Claude Code, against
+  tracked tree `3325e36a675911fe61f9fc555d76626621cf8369`. The native initialization records for Codex
+  `01a1fc70-9ce8-7092-be1b-c7eceb68fe7e` and Claude Code `920b6ba5-c545-4ee2-9d2a-e4f2b862d6c3`
+  each contain the complete tracked `AGENTS.md`; Claude loaded it through `CLAUDE.md`. The retained
+  `verified-shared-loader.json` records both worktree file digests, native transcripts and replies.
+  Model-free verification now covers evaluator profile discovery and Claude Code's staged import of `AGENTS.md`.
+  The connected optimizer check remains open.
+- **Measure one candidate in both harnesses.** Reuse the existing start, proposed contract, guard pilot,
+  confirmation and development paths. Use one ordinary prompt test and one eligible profile per evaluator, with
+  distinct development and held-out cases. Verify that every evaluator loads the same test definition and case
+  population, including the split, expected outcomes and assertions. Carry harness-native observations through each
+  adapter to those shared assertions. Thread the explicit evaluator set from `start` into the campaign header
+  and bind each cell to its evaluator. Validate both routes and target configurations before mutation or dispatch.
+  Keep host-only starts working and read legacy campaigns using their recorded owner as the evaluator. Run the
+  normal guard pilot for both cells before confirmation. Then record one development outcome in each evaluator
+  for the same immutable snapshot. A model-free check must start from the CLI and verify the saved campaign,
+  the two pilot cells, the runner selected for each development assignment, and both durable outcomes. Use the
+  existing CLI and storage tests to verify implicit scope, invalid selection, and legacy scope. The CLI parser
+  and header changes can be checked independently while the installed loader check runs. The connected check
+  also needs the evaluator routes and cell-aware scheduling. Run it as soon as those paths are wired.
+  In the focused model-free check, the old tier selection dropped both Codex cells. The corrected code treats
+  rankings, weakest cells and stress settings per evaluator. All 240 focused CLI, contract, store and tier tests
+  passed. Stored singleton campaigns use their recorded evaluator and retain their existing trial addresses.
+  The guard pilot and development driver now accept separate evaluator ports. The driver regression ran one
+  immutable candidate through two model-free evaluator ports, recorded outcomes for both and verified that the
+  peer port read its own evidence. The initial check recorded both outcomes through the owner port and failed.
+  All 174 driver tests and all 167 guard-pilot and proposal tests passed after the fix. In the top-level broker,
+  the installed peer and its bound runtime must be protected by the owner's startup and current policies before
+  the same peer serves the needs probe and the evaluation launch. The 51 focused broker and policy tests passed.
+  A combined Maven verification passed 560 tests across the shared CLI and both harness modules, including
+  discovery, profile inventories, and forwarding a peer evaluator request through the owner's route. A later
+  focused verification passed 207 tests, including a peer process that retained the original broker request
+  identity, relayed observed turn evidence, and waited for the owner's decision before allowing another turn.
+  The public optimizer path passed the model-free connected check. One start completed 20 guard trials for
+  each evaluator. Confirmation froze each cell's evaluator conditions, and one `run` saved outcomes from both
+  evaluators for the same development snapshot. Reopening it without an evaluator selection retained
+  both evaluators and the recorded pilot and development results. A subsequent run with a changed peer
+  runtime version refused before dispatch and left the campaign file unchanged. This fixture configures
+  no trial plugins.
+  The same fixture then removed the peer launch route and cancelled through the owner. Before the fix,
+  cancellation was refused because the command tried to build an evaluator port. Afterward it recorded
+  cancellation under the campaign lock, and the focused common verification passed 182 tests.
+  The focused driver regression now also verifies that each evaluator's loader configuration and the native
+  prompt-source observation stay with its measured cell. The campaign-wide measurement does not record a
+  single prompt-source value for the two evaluators.
+  Public start now checks the peer's target and configuration before creating campaign state. The focused
+  verification passed 205 tests, including that check and per-evaluator proposal profile binding.
+- **Resume and revise a shared campaign.** Use the recorded scope on resume and refuse an explicit change before
+  mutation or dispatch. Keep each assignment's snapshot and evaluator through retries and adoption. Verify that
+  reopening the owner retains both decided outcomes, an old-snapshot result cannot satisfy the new candidate's
+  gate, and a held evaluator does not consume the other evaluator's capacity. Verify that changing one pilot's
+  determining inputs reruns only that cell. Extend proposals and status to show each harness's loaded sources,
+  eligible profiles, pilot results and progress. At ceiling one, the model-free driver completed a Codex
+  development trial during a Claude Code provider hold, then resumed the exact Claude Code assignment.
+  When Claude Code refused that assignment after the longest hold, the driver let eligible work finish,
+  stopped with a diagnostic that named Claude Code, and left the original assignment queued without an
+  infrastructure failure count.
+  The scheduler releases the held slot only when the broker confirms that its retained continuation can resume
+  and has no active session. Its regression checks that an unconfirmed continuation still counts. Trial records
+  identify the login type of the evaluator that ran them. The compiled CLI, relay, driver and scheduler suites
+  passed 220 tests after those changes.
+  The shared status tests verify each evaluator's own weakest cells, counts, inventory, and ranking.
+  The shared skill now asks which harnesses a new campaign should
+  target if the user leaves the scope open, and keeps the recorded selection on resume. The CLI test verifies
+  that a target with neither a campaign nor a certification has a distinct refusal reason, with no project
+  changes. The new skill regression inputs cover omitted scope, explicit scope, and resume. Run them against
+  the assembled skill in both harnesses.
+- **Certify and deliver the shared candidate.** Use the existing development gates and race policy to show that
+  a regression in one evaluator prevents the common commit, even when the other passes. Freeze a single snapshot
+  and its evaluator conditions for the joint certification attempt. Verify formal restart preserves both harnesses'
+  decided outcomes and the global attempt index. Verify that partial passes on an older snapshot do not count when
+  a new candidate enters certification. Keep one prompt-author path, one shared candidate history, the existing
+  certification procedure and the existing delivery transaction. Certify and deliver one diff only after all
+  required cells pass on the frozen snapshot. Verify its single certificate lists each evaluator, loader and
+  profile. Upgrade existing certification records using their recorded evaluator evidence. Preserve the explicit
+  uncertified delivery choices and labels.
+  The model-free driver test saved a formal pass from the first evaluator while the second remained in progress
+  and verified that delivery had not started. The second pass on the same frozen snapshot produced one delivery
+  and one certification history record containing both evaluators' conditions.
+  The same test now closes the driver with the second trial in progress. Reopening preserves the partial decision
+  and attempt index, launches the original unfinished assignment on the same snapshot, and produces one certificate.
+  The selected Maven verification passed 478 tests across the common, Codex and Claude Code modules. It covered
+  provider holds, shared campaign reopen and peer runtime drift, formal delivery, and the peer metadata command.
+  The metadata check passes the selected evaluator's ordered, digest-checked plugin bases to its native loader.
+  The native Codex adapter also found an installed plugin using its own isolated home. Format 50 stores ordered
+  plugin lists by evaluator, including explicit empty lists, and reads the earlier shared and singleton records.
+  All 129 file-store tests passed. The model-free author and proposal checks report plugins and loader warnings
+  by evaluator. Their focused build passed 131 tests. The provisional Git checkout can run a build without
+  editing the base's ignore files, and its worktree registration is removed when preparation ends. The Git and
+  Gitless fork suites passed. The public CLI fixture prepared a shared campaign with a project-built owner
+  plugin and an installed peer plugin. It verified that a missing plugin or unrecognized loader target
+  leaves no campaign state or trial dispatch, and that trials still use each evaluator's frozen plugin after
+  the installed copy changes. The selected common, Codex and Claude Code verification passed 789 tests,
+  including Checkstyle and PMD. Peer preparation reports native hook declarations and approvals. A
+  new model-free regression reproduced a shared start that wrote a proposal even though a peer
+  hook would fail in the trial workspace. The comparison now obtains each evaluator's descriptors
+  from its native loader, uses the common pre-contract trial source and writes results by evaluator.
+  The metadata command is read-only. Hook commands exchange event input and bounded output through
+  pipes. On Codex, a launcher outside the tool sandbox starts commands with a native sandbox policy
+  bounded by the protected owner policy.
+  The disposable native hook-process check verified a permitted write, denied reads and writes, a
+  denied loopback bind, and the expected project and child-home environment without calling a
+  provider. Managed native network allowlists and native Windows remain unsupported for this path.
+  Focused Maven verification passed 321 tests across the common, Codex, and Claude Code modules
+  with Checkstyle and PMD. It verified the peer-hook refusal before authoring, a successful retry on
+  the same campaign, and persisted counts of one Codex hook and zero Claude Code hooks. The
+  descriptor codec reuses the existing process-home mapping for its allowed keys.
+  A native `hooks/list` check before any thread or model call reported an original project
+  declaration as trusted, the identical declaration at a different path as untrusted with the same
+  declaration hash, and an edited original as modified. The retained results are under
+  `temp/hook-native-trust-5T7Ais/`. A separate no-model matrix on Codex 0.171.0 found that rebinding
+  an identical frozen plugin to the trial marketplace preserves the full native `currentHash` and
+  the hook-key suffix. A same-name lookalike with different plugin bytes became trusted when the
+  original declaration approval was rebound by name alone, even though the artifact component of
+  `currentHash` differed. A disabled hook can also report trusted. The native config stores the
+  declaration component as `trusted_hash`; the full hash belongs in the equality check. The
+  native responses are retained in `temp/native-frozen-trust-lQss2j/`.
+  `CodexProcess.inspectHooks` now obtains the native result before creating a thread. Focused
+  Maven verification passed 152 tests. The new process test verifies the full native result and
+  that the request sequence contains only `initialize`, `initialized`, and `hooks/list`.
+  CAT's nested-session startup guard also requires the native enabled flag for each hook it verifies,
+  and copying host CAT hook state preserves an explicit disablement. The disabled-but-trusted
+  regression reproduced the former acceptance before the change. All 128 focused configuration,
+  hook-delivery, app-server process and runner tests passed with Checkstyle and PMD.
+  Match the source by exact native plugin ID, canonical source path and hook-key suffix. Require
+  the original and staged hook to be enabled, and require full `currentHash` equality in the
+  actual installed views before transferring the existing approval. After transfer, verify native
+  trust on the exact staged key. Preserve the independently checked frozen inventory digest.
+  Both the comparison and trial runner need this binding. The production comparison still
+  refuses to execute Codex startup hooks until it can establish their approval.
+  The trial plugin's installed source ID is known when the optimizer freezes its copy, before the
+  path crosses the direct, peer or brokered runner boundary. Carry that ID alongside the copied
+  path while preserving path-only requests and project builds as inputs without source approval.
+  Treat the ID as a locator and verify it against the protected original native view. On Linux,
+  a probe listed both enabled and trusted hooks from the exact original marketplace before any
+  thread or turn, with the source home read-only and networking disabled. Native state and logs,
+  the temporary plugin staging path, and a copy of the installation ID were writable in scratch
+  space. The probe and filesystem trace are in `temp/native-readonly-hook-view-XVocAh/verified/`.
+  The optimizer now carries the exact installed ID through direct, peer and brokered launches.
+  The 672-test focused verification covered legacy path-only requests, project builds, two
+  marketplaces with the same plugin name, and positional preservation when the broker inserts
+  an unbound CAT artifact. The Linux trial runner removed manifest-name-only approval transfer.
+  It reads the exact original and trial records, transfers only matching existing approvals, and
+  checks the accepted state in the actual app-server before creating a thread. All 130 selected
+  runner, configuration, and native hook binding tests passed. In a disposable Codex 0.171.0 probe,
+  these compiled components transferred two exact approvals and refused the same-name lookalike.
+  Codex only persisted the accepted trial trust state when the trial home was writable. The
+  original config was unchanged and the probe started no thread or turn. Receipt:
+  `temp/verified-native-hook-binding-UouBTH/verified.json`.
+  The retained Linux trial stores its full hook hashes in a runner-owned record that the
+  native sandbox mounts read-only. It checks the retained configuration against that record
+  and checks the full native hashes before reopening the thread. Earlier trials with ordinary
+  approvals and no binding record take the broker's existing fresh-replay path. All 131
+  focused tests passed. A disposable native Codex probe accepted the unchanged artifact and
+  rejected a different artifact before `thread/resume`, even though Codex reported the altered
+  hooks as trusted. The sandbox refused a write to the record and its digest stayed unchanged.
+  Evidence: `temp/retained-hook-final-tMfsOC/verify.log` and
+  `temp/retained-native-probe-z2Q2hM/probe.log`.
+  Still verify the installed launcher and replay end to end, platforms without the Linux
+  inspection wrapper, and the startup comparison path.
+  The comparison currently pairs parsed commands by display name. Carry the exact native
+  original and isolated hook keys through authorization and pair the approved invocations
+  by that binding before the launcher runs either command. A disposable Codex 0.171.0
+  inspection showed that project hooks have absolute, checkout-specific keys. The unchanged
+  declaration had the same native hash in two checkouts, but only the checkout whose exact
+  key appeared in the owner configuration was trusted. Changing the first command changed
+  only its declaration hash. Project hooks and plugin hooks therefore need separate
+  authority checks. Do not reuse an approval for one copied project merely because its
+  declaration matches; the comparison must reflect the approval available in each view.
+  The inspection sent only initialization and hook-list requests. Receipts are in
+  `temp/native-project-hook-LD9TCC/`.
+  The comparison runner now resolves complete production and trial invocation pairs before
+  launching either side. The declaration-based route keeps its previous order and still
+  skips hooks missing from the trial.
+  A clean native marketplace install also exposed a Linux trial startup failure: Codex's
+  installation and feature check leave `installation_id` absent, which prevented CAT's
+  read-only inspector from even listing the new trial's hooks. CAT now inspects the owner
+  read-only and lets Codex initialize the disposable trial home with networking disabled.
+  A fresh, natively installed fixture verified two inline hooks with the same manifest
+  source path but distinct native keys. The approvals transferred, the owner config stayed
+  byte-for-byte identical, and the probe started no thread or turn. All 321 focused tests passed.
+  Evidence: `temp/startup-marketplace-LoUm2p/probe/verified.log` and
+  `temp/fresh-hook-trial-inspection-OSTmQH/verify.log`.
+  The Linux Codex-owner startup comparison now installs the frozen copies into a disposable
+  native home without network access. It uses the same exact binding as the ordinary trial runner,
+  verifies the trial's native acceptance, and constructs the comparison from those approved commands.
+  An altered packaged file outside the hook declarations invalidates the approval for both hooks.
+  A local probe ran the two unchanged pairs through the confined hook launcher. It uses a private
+  mount for the fixture's temporary directory because the surrounding sandbox masks Codex's fixed
+  daemon socket directory. This test changed no owner configuration. Peer-owned Codex comparison
+  and installed end-to-end verification remain open.
+  All 328 focused tests passed. Evidence: `temp/codex-native-startup-comparison-sKDD7w/verify.log`
+  and `temp/codex-startup-native-proof-OzWc7x/case-GANCJf/probe.log`.
+  The shared resolver now checks whether the owner can read or rewrite the configuration before
+  parsing its approval entries. It also checks the matching installed roots before querying native
+  hook state. The same disposable fixture reran the approved and altered copies and included
+  a malformed writable owner config. That config produced zero pairs without a parse failure
+  or modification. All 124 focused tests passed. Evidence: `temp/codex-approval-source-9go8Oy/verify.log`
+  and `temp/codex-startup-native-proof-OzWc7x/case-VT0yzg/probe.log`.
+  Linux Codex-owner proposals now record approval limitations from the same native trial installation
+  used for comparison, including hooks that run after startup. The report distinguishes a completed
+  inspection with no limitations from a report that predates native inspection. Revising a proposal
+  refreshes the inspection. The reused native fixture showed no limitations for the approved copy and
+  three for the changed copy, including its new PostToolUse hook. None of the changed copy's hooks ran.
+  All 454 focused tests passed. Evidence: `temp/codex-native-hook-proposal-pbvch4/verify.log`
+  and `temp/codex-startup-native-proof-OzWc7x/case-nINicx/probe.log`.
+  For a Claude Code owner, reuse the authenticated request server and its selected Codex runner.
+  The request server now retains both authenticated Claude Code readings for provenance checks
+  before intersecting them for confinement. The regression showed that a path writable only at
+  startup or only in the current policy is still refused as a trusted source. All 66 focused tests
+  passed. Evidence: `temp/peer-owner-policy-k5uWXT/verify.log`.
+  The comparison request captures both workspace copies and the staged plugins from inside the
+  caller's sandbox. The broker's archive reader restores plugin provenance by input position and
+  rejects caller-selected commands, host workspace paths, and a supplied trial home. All 38
+  focused tests passed. Evidence: `temp/peer-hook-request-8ol79E/verify.log`.
+  The request server now dispatches the archive to its installed comparison service, cleans up
+  the extracted inputs before publishing the answer, and returns a bounded report tied to the
+  request ID. A model-free server test exercised the complete request and response against a
+  substitute native service.
+  Codex's native inspection and fresh plugin setup now apply the authenticated read denials after
+  the writable scratch mounts. Unsupported read exceptions fail closed. The installed native
+  executable and bubblewrap must be readable, and the inspection refuses symlinked installation
+  IDs. All 91 focused tests passed across the broker and Codex. The reusable native fixture still
+  ran the two approved hook pairs and kept the changed copy out of execution. Evidence:
+  `temp/peer-hook-broker-6gGrxu/verify.log` and
+  `temp/codex-startup-native-proof-OzWc7x/case-BfVjwE/probe.log`.
+  The Linux Claude Code request server now binds the comparison to its authenticated owner and
+  selects the installed Codex runner. It checks the original plugin approval sources and native
+  executables against both policy readings, then sends the selected executables and intersected
+  policy over the runner's private input pipe. The optimizer records the peer's comparison
+  results in the proposal. The native command sandbox refuses a managed network allowlist when
+  it cannot enforce the owner's policy. All 373 focused tests passed across common, Codex and
+  Claude Code. Evidence: `temp/peer-native-hook-route-orUAV0/verify.log`.
+  The rebuilt runner's internal comparison command reused the warm Codex fixture without a model
+  call. The exact copy ran two approved hook pairs. The changed copy ran no hooks and reported
+  three approval limitations, including PostToolUse. The owner's original files remained
+  byte-identical. The probe used the rebuilt reactor classes and did not traverse an authenticated
+  Claude Code channel. Evidence:
+  `.cat/sessions/01a1fc7f-6253-7300-a7a7-e6ae735709f3/temp/native-broker-comparison-nOlJew/replay-jrmntpcy/verified.json`.
+  The whole-client build detected a production pause created outside main and a test path resolved
+  against the current directory. Both audits passed after moving pause construction into main and
+  using a test-owned directory. The complete local build still failed two build-admission methods
+  because the environment lacks `/sys`. Verification with only those two methods excluded counted
+  6,328 tests, with one skip and no failures or errors. The clean build and installed peer route
+  remain required. Evidence: `temp/peer-hook-whole-client-fBjCZH/verify.log` and
+  `temp/peer-hook-local-coverage-cHaUzp/verify.log`.
+  A second no-network probe exercised the real Claude Code transcript and policy readers,
+  request server, Codex artifact selection, and rebuilt packaged launcher. The fixture supplied
+  Claude Code's process discovery and liveness. The server rejected an unrelated process identity,
+  reread the owner policy for each comparison, and cleaned both requests and responses. The exact
+  copy compared two approved pairs, the changed copy ran no hooks and reported three limitations,
+  and all 71 original fixture files stayed unchanged. Native Claude startup and the installed
+  Bash command exception still require proof. Evidence:
+  `.cat/sessions/01a1fc7f-6253-7300-a7a7-e6ae735709f3/temp/claude-broker-native-comparison-8HoT3B/case-kqpyc4p5/verified.json`.
+  A follow-up used a real Claude Code 2.1.326 session in a no-network namespace. Bash mode
+  supplied the native process ID and session ID and created the matching transcript. The
+  packaged request-server launcher started from its exact standalone Bash exception and chose
+  the matching packaged Codex runner. The exact and changed requests produced the expected
+  two approved pairs and three approval limitations respectively. The original files stayed
+  unchanged, and the broker and caller cleaned both requests and responses. This probe staged
+  the two built packages and still leaves clean installation and campaign certification open.
+  Evidence: `temp/claude-native-peer-8aJqe5/verified.json`.
+  The follow-up installed both locally built Linux x64 archives via their installers in
+  disposable harness homes. A native Claude Code session used the exact Bash exception the
+  installer created, and the broker compared the plugins through the installed Codex peer.
+  The exact copy ran two approved hook pairs. The changed copy ran zero and reported three
+  approval limitations. The probe kept its inputs unchanged, cleaned requests and responses,
+  and made no model calls. The installed shared campaign and held-out certification remain
+  open. Evidence: `temp/claude-native-clean-peer-D9jH1k/verified.json` and the two installer
+  receipts in that directory.
+  Build [44893934193](https://github.com/holdmyspot-com/cat/actions/runs/44893934193) verified the
+  clean rehearsal snapshot on Linux arm64, both macOS architectures and Windows x64. Linux x64
+  reproduced the local teardown race in `RequestServerTest.reusesTrustedPeerForProbeAndLaunch`.
+  Its exited-process fake lacked a process handle when server cleanup still owned the child.
+  The regression now uses the existing handle-capable fixture and waits for a successful server
+  exit before deleting its files. All 140 focused broker, server and termination tests passed.
+  Evidence: `temp/shared-optimizer-hosted-yOQ8Ia/linux-x64.job.log` and
+  `temp/peer-server-teardown-OuusRK/verify.log`.
+  Whole-client verification reported 6,328 tests, one skip and zero failures or errors with only
+  the two `/sys`-dependent methods excluded. All 72 Linux shell tests passed. The unfiltered
+  clean build of the teardown repair at `a57fc5edb` passed on all five platforms.
+  See [build 44895330645](https://github.com/holdmyspot-com/cat/actions/runs/44895330645).
+  Evidence: `temp/peer-server-linux-coverage-Z9WmaB/verify.log` and
+  `temp/peer-server-linux-bats-XAPv9t/bats.log` and
+  `temp/shared-optimizer-hosted-yOQ8Ia/fixed-run.json`.
+  The follow-up reproduced two gaps against that snapshot. Codex-only selection from a Claude Code
+  owner rejected its one pinned plugin list. A Claude-only packaged dependency revision reran
+  the unchanged Codex pilot. The repairs use the existing singleton plugin representation,
+  dispatch through the selected peer, and give each pilot definition only its applicable
+  packaged dependencies. The new certification checks verify that each qualified cell
+  contributes to one shared budget, the sole measured peer appears in history, and judge
+  applicability uses the owning harness's judge version. All 632 focused checks passed.
+  Evidence: `temp/shared-pilot-regressions-red-v6Ngd3/verify.log` and
+  `temp/shared-pilot-certificate-green-fsTBa9/verify.log`.
+  Local verification of `d961eebfa` recorded 6,336 tests in 461 reports with one skip
+  and no failures or errors. It excluded only the two methods requiring `/sys`. The home
+  directory stayed absent and every report records the requested Java home. In
+  [build 44897827857](https://github.com/holdmyspot-com/cat/actions/runs/44897827857), Linux x64,
+  Linux ARM64, macOS ARM64, and Windows x64 passed. The macOS x64 result-copy test's watcher
+  expired before the successful forward operation finished. The test now keeps observing
+  through forwarding, uses a bounded wait for the observation afterward, and cancels the
+  watcher during cleanup. The first version slept between reads and was rejected by the source
+  audit on all five platforms in [build 44898740670](https://github.com/holdmyspot-com/cat/actions/runs/44898740670).
+  The watcher now yields between reads and checks for cancellation. All 187 focused runner and
+  testability checks passed. In a disposable checkout, moving the end marker ahead of the copy
+  caused the result-presence assertion to fail with the corrected watcher.
+  Evidence: `temp/shared-peer-final-local-zQP59g/report-summary.json`,
+  `temp/shared-peer-final-local-zQP59g/hosted-result.json`,
+  `temp/conversation-copy-LF5uPP/hosted-result.json`,
+  `temp/conversation-copy-audit-0AWfr2/`, and `temp/conversation-copy-yield-red-1oA499/verify.log`.
+  A public CLI regression showed that peer-only confirmation accepted results from an earlier owning
+  judge version. First-time peer-only confirmation now uses the pilot's existing definition, cell
+  and control identities to check the presented evidence before saving anything. The regression
+  verifies refusal with no campaign changes or trial dispatch, then a refreshed proposal with 20
+  new selected-peer pilot trials and successful confirmation against the new owning judge version.
+  All 275 focused optimizer checks passed. Evidence: `temp/shared-confirm-final-GSnk8G/focused/`.
+  The corrected watcher and pilot freshness repair are together at `408cfe7a4` in
+  [build 44899651851](https://github.com/holdmyspot-com/cat/actions/runs/44899651851).
+  Local verification of that commit with a nonexistent home and no build-cache reuse recorded
+  6,337 tests in 461 reports, one skip and no failures or errors. It excluded the same two
+  methods requiring `/sys`. Evidence: `temp/shared-confirm-final-GSnk8G/report-summary.json`.
+  The hosted result passed Linux x64, Linux ARM64, macOS x64, and Windows x64. On macOS ARM64,
+  the writable-peer refusal and trusted-peer launch tests both timed out before receiving a
+  response. Both used a fixture that scanned continuously. The logs do not establish where
+  the requests stopped or which operation delayed them.
+  The peer fixture now wakes the scan after publishing the request, yields while reading the
+  response, and reports the server exit and publication state on failure. The three peer cases
+  and all 184 other focused runner and testability checks passed at `52cc65257`.
+  All 55 affected request-server and testability checks also passed with a nonexistent home and
+  no build-cache reuse. The same four platforms passed
+  [build 44901858156](https://github.com/holdmyspot-com/cat/actions/runs/44901858156).
+  All three peer cases passed on macOS ARM64. Three different request-server tests timed out
+  waiting for streamed sessions on that platform.
+  Evidence: `temp/hosted-matrix-check-ctjSLB/terminal-44899651851.json` and its macOS ARM64 log,
+  plus `temp/peer-server-signaled-ugrInL/` for the focused reports and new build identity.
+  On the connected macOS ARM64 worker in
+  [run 44902675312](https://github.com/holdmyspot-com/cat/actions/runs/44902675312),
+  both unchanged Maven verifications passed all 33 request-server tests. Its diagnostic shell
+  inherited umask `0077`, which exposed a separate workspace-staging fixture defect twice.
+  The fixture modeling an author's unchanged files copied the contents with permissions
+  `0600` instead of the source files' `0644`. It now copies the source attributes.
+  Under the same mask, all 82 focused checks passed and the full Maven verification reported
+  6,339 tests, 11 skips, and no failures or errors. All 72 shell checks passed.
+  Limiting the JVM virtual-thread scheduler to one carrier on the same worker stalled the
+  original request-server fixture. Thread dumps captured the server scanning on a virtual
+  thread while broker requests and client replies waited. The diagnostic was stopped after
+  retaining those dumps. The fixture now runs its server and output observer on platform
+  threads, as the server CLI already does for its own scan loop. The broker still serves and
+  launches requests through its normal path. Under the same one-carrier constraint, all 33
+  request-server checks passed. The exact cause of the original CI timeouts remains unconfirmed.
+  A clean macOS ARM64 build with both fixture repairs and the default scheduler reported
+  6,339 tests, 11 skips and no failures or errors. All 72 shell checks passed. The SSH session
+  exited, the runner cleaned up, and the downloaded receipts matched the recorded hashes.
+  Rehearsal commit `186c6e3ea` passed the clean build on Linux x64, Linux ARM64,
+  macOS x64, macOS ARM64, and Windows x64.
+  See [build 44905064058](https://github.com/holdmyspot-com/cat/actions/runs/44905064058).
+  Evidence: `temp/macos-relay-preflight-XHWqqV/ssh.log`, `published/operator-sha256.txt`,
+  `published/combined.result`, `worker-terminal.json`, and `matrix-44905064058.json`
+  in the same directory.
+  The first whole-client build found a stale store fixture and a peer metadata test that used the current
+  directory. The regenerated format 50 fixture changes only the version and the singleton Claude evaluator
+  fields. The peer test now uses a path relative to its temporary project. Both checks and the host-location
+  audit passed in the select-all verification that omits the two build-admission methods requiring `/sys`.
+  That verification also found that Codex start could report a missing target before the required owner
+  identity. Start now reads the owner ID first. The regression verifies the missing-ID refusal leaves the
+  project unchanged, and 257 focused common, Codex and Claude Code optimizer tests passed.
+- **Installed acceptance.** Prepare a clean copy of the checked-in deficient fixture at
+  `client/common/cli/src/test/resources/optimizer/e2e/deficient/`. Keep its shared `AGENTS.md` and Claude
+  `CLAUDE.md` import. Put both evaluator entries in `.cat/tests/AGENTS/prompt.json`, copying the Claude entry
+  from the fixture's separate Claude target configuration. Run one installed campaign scoped to one ordinary
+  factual test and the approved weakest trial profiles. Save one owner and campaign identity, the proposal and
+  pilot for each harness, development assignments
+  and outcomes for the same candidate in both, and the formal records with one attempt index and the same frozen
+  snapshot in every required cell. Verify the delivered Git diff once, match the shared file and loader inputs
+  against the certificate, and prove both native loaders use those inputs.
+  Both Linux archives at `1.0+b30730961acbe` passed their checksums. A disposable Claude Code install
+  had the same runtime bytes as its archive and the Codex artifact selector resolved its installed runner.
+  The installed optimizer refused the first shared start before campaign creation because only the Codex
+  entry was in the shared target's configuration. After adding both entries, the same Codex owner
+  `01a1fee4-b947-7400-8d5f-926e68250acb` created campaign `20261121T162015Z-992492` for `AGENTS.md`.
+  The saved campaign header names both evaluators. The Git baseline, route and campaign header receipt
+  are in `temp/shared-installed-campaign-RQIxXn/verified-shared-start.json`. Both evaluator pilots saved
+  20 distinct outcomes with no recorded infrastructure failures or pending trials. The CLI then failed
+  while rendering the certification choices because the renderer looked up the weakest cell in the
+  aggregate owner ranking. The campaign remains unconfirmed. The pilot receipt and native exit trace are
+  in `temp/shared-installed-campaign-RQIxXn/`. The focused proposal regression reproduced the same error
+  with disjoint evaluator rankings. The renderer now uses each evaluator's weakest cells and qualifies
+  each profile with its evaluator. All 320 focused proposal, cell-tier and optimizer CLI tests passed.
+  Both rebuilt Linux archives passed their checksums and are retained in the fixture's
+  `shared-scope-repair-packages/` directory. The disposable installation selected the matching repaired
+  Claude Code runner. Reopening the original campaign refused with `evaluator_conditions_changed`
+  because the installed peer runtime had changed. The pilot bytes and request ID inventory matched
+  before and after the refusal. The installed acceptance restarted from the same clean Git baseline
+  under the repaired evaluator pair in `temp/shared-installed-repaired-hkSieB/`. Codex owner
+  `01a1fef7-ab6c-7581-9fe8-a57436290d5f` created campaign `20261121T163707Z-fb98e4`. It decided 20
+  pilot trials per evaluator with no infrastructure failures. Both factual accuracy guards passed
+  20 of 20. The installed proposal rendered both scope choices with Claude `haiku/low` and Codex
+  `gpt-6-luna/low` as the weakest cells. It found no conflict or certification blocker.
+  The same owner reopened the campaign, confirmed `weakest_cell` and entered development with
+  both evaluator cells on snapshot `8273e3239f`. The fixture retains the proposal and pilot
+  checksums, the pilot receipt and `verified-shared-confirmation.json`. Keep the original pilot
+  and refusal as upgrade evidence. Obtain development decisions in both evaluators and joint
+  certification evidence under the repaired pair.
+  After the first incumbent failure in Claude Code, CAT compared three proposed edits. The same
+  snapshot `40e234725f` recorded 27 of 28 comparison trials passing in Claude Code and 26 of 26
+  in Codex. `verified-shared-race.json` records the decided sequences and each trial record's
+  checksum. The observed native models were Claude Haiku 5.5 and GPT-6 Luna. Codex also reported
+  low reasoning. The comparison evidence does not establish a promotion or a certification.
+  CAT finished the comparison and selected edit 2 with 99 of 100 passing on Claude Code and 85 of 100
+  on Codex. Edit 3 finished at 97 of 100 and 73 of 100 respectively. CAT promoted the selected edit to
+  shared working candidate 1, snapshot `9bab6ae86d`. The comparison result and campaign snapshots are
+  retained beside the pilot receipt. The new working candidate still needs both development gates and
+  one joint held-out certification. It passed its first Claude Code development trial and one of its
+  first three Codex development trials. CAT began another edit round. After the operator connection
+  ended, the same Codex owner thread reopened the saved campaign with its existing evaluator pair.
+  CAT completed the second comparison and selected edit 6 after 99 of 100 trials passed on Claude Code
+  and all 100 passed on Codex. Edit 4 passed 100 on Claude Code and 99 on Codex. Edit 5 passed 99 on each.
+  The comparison and selection receipts in the same fixture retain the three contender snapshots and
+  the winner. The campaign still listed candidate 1 as its working candidate at that selection checkpoint.
+  After promotion trials, CAT installed the resulting snapshot `eef0744852` as working candidate 2.
+  `verified-second-shared-promotion.json` records development assignments to both evaluators on that
+  snapshot, with five Claude Code passes and two Codex passes at the checkpoint. No held-out attempt had started.
+  Candidate 2 later recorded 26 passes and one failure on Claude Code and 26 passes on Codex. The campaign
+  selected Claude Code for the next edit and adopted working candidate 3, snapshot `fe244a98c7`, in a new
+  development series. `verified-third-shared-working.json` records the two snapshots, the prior counts and
+  the new candidate's first Claude Code pass. In the third comparison, edit 8 passed 97 of 100 trials
+  on Claude Code and 99 of 100 on Codex. CAT selected it and adopted snapshot `1ccffef9d6` as shared
+  working candidate 4. Its development counts and the comparison results are retained in
+  `verified-fourth-shared-working.json`. In the next round CAT adopted edit 12 as working candidate 5.
+  At the checkpoint, Codex and Claude Code had respectively passed four and six development trials on
+  snapshot `629106eaca1636feee3f45f4a20770ae7dd1a205fd24ee37a1ae3f4b53215e23`.
+  The campaign receipt `verified-fifth-shared-working.json` records the new snapshot and both counts.
+  CAT then froze candidate 5 for attempt 1, covering both harness cells. The first freeze receipt recorded
+  103 of 104 passing Codex development trials and 106 of 106 passing Claude Code development trials.
+  `verified-first-joint-freeze.json` records the attempt index, exact snapshot and both cells.
+  Both evaluators then passed all 93 held-out trials in their respective cells. The single delivered
+  certificate records that snapshot and both evaluator configurations. The delivered prompt matched
+  the archived frozen bytes. The Git patch covers `AGENTS.md`, the certificate and the two test files,
+  with the index and HEAD unchanged. The patch passed a reverse-apply check.
+  The trial and delivery receipts are in `certification-evidence-IZMpai/shared-delivery-latest.json`,
+  and the patch is `delivered.diff` beside it. A follow-up verified each of the 186 trial records against
+  its receipt checksum and the frozen attempt. Both harnesses drew from the same nine held-out cases
+  within the single `factual_answer` test. Each recorded question and expected answer matched its
+  common contract case. All records used the same contract and judge identity. The delivery patch
+  contains one scenario and one values file for that test. The owner exited with status 0. The campaign directory
+  was removed and only the original Git worktree remained registered.
+- **Exit.** Write focused behavioral tests before changing production behavior. The focused CLI, store, scheduler,
+  driver and delivery checks, clean whole-client build, and installed shared-candidate acceptance pass. Use the
+  existing model-free test ports in Java tests. Closes R-L6 to R-L9.
 
 ## 6. Dependency order
 
@@ -8519,6 +10392,7 @@ blocks only the part of a work item that it names.
 | WI-146 | WI-142, WI-143, WI-145 |
 | WI-147 | WI-146 |
 | WI-148 | every §9 gate (runs at the end of the plan) |
+| WI-149 | WI-3, WI-4, WI-8, WI-9, WI-10, WI-11, WI-13, WI-142, WI-146 and WI-147. Installed acceptance needs the final artifact with WI-149 integrated. |
 | WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57, WI-60 to WI-69, WI-90, WI-91, WI-92, WI-93, WI-95, WI-96, WI-97, WI-98, WI-99, WI-100, WI-101, WI-102, WI-103, WI-104, WI-105, WI-107, WI-108, WI-109, WI-110, WI-114, WI-115 and WI-116. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
@@ -8534,17 +10408,17 @@ distinct from the harness-evidence IDs `Hn` of `design.md` §11.
 
 | Handoff | Producer → consumer | Ready when | Identity and authority | Failure and resumption | Proof |
 |---|---|---|---|---|---|
-| H-1 Confirmed contract | WI-10 → WI-3, WI-2 | The user's `confirm` on proposal revision `r` | Contract hash and lineage `ℓ`. Only the confirmation event freezes it. | A missing confirmation blocks every admission. A revision creates `ℓ + 1`. | `DriverTest` "nothing runs before confirmation" |
-| H-2 Assignment | WI-3 `Scheduler` → WI-4 → WI-9 → WI-8 | The assignment record is durable | Campaign, purpose, snapshot, category, sequence and test case. The draw comes from the stream's persisted position. | Started without an outcome means rerun, same identity. | `ReconciliationTest` |
+| H-1 Confirmed contract | WI-10 → WI-3, WI-2 | The user's `confirm` on proposal revision `r` | Contract hash and lineage `ℓ`. Only the confirmation event freezes it. | Only guard-pilot trials may run before confirmation. A revision creates `ℓ + 1`. | `DriverTest`, WI-149 shared-campaign check |
+| H-2 Assignment | WI-3 `Scheduler` → WI-4 → WI-9 → WI-8 | The assignment record is durable | Campaign, purpose, candidate snapshot, cell (test, evaluator and profile), sequence and test case. The draw comes from the stream's persisted position. | Recovery keeps the assignment identity and evaluator. It resumes a between-turn checkpoint or repeats the trial in a fresh session after a mid-turn interruption. | `ReconciliationTest`, WI-149 shared-campaign check |
 | H-3 Trial result → judge | WI-8 → WI-9 (WI-17 checks) → WI-8 (judge) | Session completed, children reconciled and an assertion remains that no deterministic check decided, a trial that failed a check included. Otherwise CAT records the outcome without a judge session (`design.md` §6.4). | Logical trial identity. The judge receives read-only evidence and the deterministic results, which it cannot override. | Interruption or infrastructure failure means rerun the trial. An invalid judge result means rerun the judge with the same evidence. | `DriverTest` (trace 16), `DeterministicCheckTest`, `JudgeVerdictTest` |
 | H-4 Outcome → adoption | WI-9 → WI-3 | Outcome durable, and every earlier sequence number adopted | Sequence order per category and purpose | A crash between write and adoption is adopted during reconciliation. | `AdoptionTest`, `ReconciliationTest` |
 | H-5 Prompt author delta → candidate | WI-7 → WI-6, WI-18 → WI-3, WI-20 → WI-7 | Delta captured; inventory and manifest validated; promotion replays passed; in a weak round, the attempt won the selection; the minimality pass finished (`design.md` §2.7) | Overlay hash. Authority comes from the contract. | A rejected attempt is retained with no candidate. The prompt author reruns as a new attempt. | `InventoryDiffTest`, `PromptAuthorManifestTest`, `PromotionTest`, `AttemptSelectionTest`, `MinimalityTest`, `DriverTest` |
-| H-6 Commit | WI-3 → WI-1 → WI-4 | Commit gate and baseline met | Certification index `i`, `α_i`, `β_i`, frozen `UI(k)` and `LI(k)`, `DecisionBoundaries` and caps, all persisted before the first draw | Calibration failure leaves the attempt uncommitted and blocks admission. | `CommitTest`, `AdmissionTest` |
+| H-6 Commit | WI-3 → WI-1 → WI-4 | The same candidate meets the commit gate in every required development cell, and the required baseline is ready | One frozen snapshot, the certification cells and their evaluator conditions, certification index `i`, `α_i`, `β_i`, frozen `UI(k)` and `LI(k)`, `DecisionBoundaries` and caps, all persisted before the first draw | Calibration failure leaves the attempt uncommitted and blocks admission. | `CommitTest`, `AdmissionTest`, WI-149 joint certification check |
 | H-7 Decision → delivery or user | WI-3 → WI-11 or WI-12 → skill | Attempt terminal and in-flight trials drained | Attempt and candidate identity. A keep-improvement choice names the qualifying attempt. | A pending choice, including the keep-improvement pause, survives restart. Delivery resumes from the journal. | `DecisionTableTest`, `KeepImprovementTest`, `DeliveryTest` |
 | H-8 Status → skill → choice | WI-12 → WI-14 → WI-13 | `run` returned | Campaign identity and choice identifier. Only listed choices are accepted. | An unknown or stale choice is rejected with no change. | `CommandsTest`, E-scenarios |
 | H-9 Capacity permit | WI-5 → WI-8 | `tryAcquire` succeeded | One permit per nested session | Process death releases the file lock. | `HarnessCapacityTest` |
 | H-10 Host interrupt | WI-8 → WI-9 | An interrupt record later than the driver start | Host thread or session ID from the environment | Stop admissions, interrupt sessions, persist, exit within 15 seconds. | `RolloutInterruptSignalTest`, `DriverTest`, E2 |
-| H-11 Trial profile | WI-16 (`ProfileInventory`, profile sets) → WI-9 → WI-8 | Confirmation froze the profile set | Cell (category, profile). A trial session runs under its cell's profile; contract author, judge and prompt author sessions run under the role profile. The observed profile in the harness events decides comparability. | A run whose observed profile differs from its trial's measurement identity yields no outcome, and CAT pauses as `MEASUREMENT_CHANGED` (`design.md` §5). | `ProfileSetTest`, `ClaudeSessionsTest`, `CodexSessionsTest`, `MeasurementIdentityTest`, `DriverTest` (trace 15) |
+| H-11 Trial profile | WI-16 (`ProfileInventory`, profile sets) → WI-9 → WI-8 | The assignment selects the evaluator and profile. Confirmation freezes the set used for development and formal trials. | The cell in H-2 determines the trial's evaluator and profile. Contract author, judge and prompt author sessions use their role profiles. The observed evaluator and profile determine comparability. | A mismatch with the trial's measurement identity yields no outcome, and CAT pauses as `MEASUREMENT_CHANGED` (`design.md` §5). | `ProfileSetTest`, `ClaudeSessionsTest`, `CodexSessionsTest`, `MeasurementIdentityTest`, `DriverTest` (traces 15 and 22) |
 | H-12 Failure evidence → prompt author | WI-9 → WI-10, WI-18 (prompt author prompt) | A development round starts its prompt author attempts (`design.md` §2.7) | The failing test cases' identities, which the manifest must cite, with their judge rationales or failed-check records and diagnostic reruns. Never a test case of a certification attempt in progress. | An attempt that cites an unknown test case is rejected and retained (H-5). | `DriverTest` (prompt author input during a formal attempt; traces 16 and 17), `PromptAuthorManifestTest` |
 | H-13 Needed edits → authority warning | WI-10 (prompt author prompt) → WI-9 → WI-6 (`Authority`) → WI-3 → WI-12 | A prompt author session completed and its report lists the edits it needed, each naming a requirement of the confirmed contract | Each needed edit's requirement, path, operation and target, checked against the campaign's edit authority (`design.md` §4.3) | A malformed report, or one naming an unknown requirement, fails the attempt as an infrastructure failure with no candidate. Otherwise the attempt's candidate is submitted as usual. A warning is raised only while the campaign is active, confirmed and not revising its contract; it is an `awaiting-user` decision that survives restart. | `DriverTest`, `AuthorityWarningsTest`, `AuthorityTest`, `StatusReportTest` |
 | H-14 Candidate overlay | WI-9 → WI-4 (`CandidateOverlays`) → WI-9, WI-11 | The overlay is saved before the event that records its snapshot | The snapshot, which is the overlay's identity. The campaign records only the snapshot. | Saving an overlay that is already saved does nothing. A recorded snapshot without a saved overlay, or an overlay file that is malformed, on another fork or for a different candidate, is a read failure that names the file; CAT never reconstructs an overlay. | `CandidateOverlaysContract` through `FileCandidateOverlaysTest` and `InMemoryOverlaysTest`, `DriverTest` |
@@ -8596,9 +10470,16 @@ Use-case traces that `DriverTest` must cover, each as one test that starts from 
 20. **Concurrent attempts:** a weak working candidate's round starts 3 attempts; two pass the promotion rule and the one
 	with more passing promotion replays is minimized and promoted, while the others are retained; once the candidate is no
 	longer weak, the next round makes one attempt.
-21. **Held-out test cases:** development, targeted runs and prompt author briefs see only development test cases; formal
+21. **Held-out test cases:** development trials, targeted trials and prompt author briefs see only development test cases; formal
 	and baseline trials draw only held-out ones; after a failed attempt the prompt author brief names the failure's
 	cell, test and requirements but holds no held-out test case, reply or rationale.
+22. **Shared candidate:** one owner starts with both evaluation harnesses. The proposed contract has one shared prompt
+	test and a completed guard pilot in each evaluator. Verify that both runners receive the same scenario, cases and
+	expected outcomes and that their results use the same assertions. Verify that a runner that cannot supply a required
+	observation is reported before dispatch. Confirmation enables both evaluators to record a
+	development result for that same candidate. Reopening the campaign retains both outcomes. A later formal
+	attempt freezes one candidate, and delivery waits for all its required cells to pass. WI-149 checks the start
+	through development first, then adds the resume and joint certification checks.
 
 ## 8. Test-suite rules
 
@@ -8641,6 +10522,343 @@ These rules restate `design.md` §10 as checks for reviewers:
 	review defect. Every integration lists the tests at or over 1 second from the surefire reports.
 
 ## 9. Final gates
+
+An uncached whole-client `clean verify` passed on the current client inputs based on
+`0fc33e2e4643165bee5c7e9c95120dac351efc7e`. The source manifest matched before and after.
+The 461 Surefire reports counted 6,349 tests, zero failures or errors, and the expected
+PowerShell-only skip on POSIX. Ten Checkstyle and ten PMD reports contain no active findings.
+Both built Linux x64 archives match their checksums. This passes gate 1 for these client inputs.
+Root retains the command, log, source manifests, reports and archive checks in
+`temp/final-client-verify-u4iRC5/` through final reconciliation.
+
+The separate uncached clean verification with an absent home passed on the same client manifest.
+The build process received a nonexistent `HOME`. All 461 Surefire reports record that path as
+`user.home` and record the separate JVM temporary directory. The home remained absent after verification.
+The test totals and quality results match the normal-home build, and both rebuilt Linux archives
+match their checksums. This passes the missing-home clause of gate 6 on the current inputs.
+Root retains the command, environment paths, log, source manifests, reports and archive checks in
+`temp/final-client-absent-home-s8SHO6/` through final reconciliation. The native checks remain open.
+
+The uncached whole-client clean build that includes the unfinished-pilot status fix passed on the working
+tree based on `0fc33e2e4643165bee5c7e9c95120dac351efc7e`. Its 461 Surefire reports contain 6,346 tests,
+zero failures or errors, and one skip. Both Linux x64 archives match `SHA256SUMS.txt`. The disposable Codex
+installation reports `consistent: true`; its common CLI module is byte-identical to the built module with
+SHA-256 `6e5c568f2ff528b51206891561a21d1cda013f9bb64ee00eea2175ff40c5200d`. The version string reflects
+the base commit, so identify this working-tree artifact by its digest. Native Codex owner
+`01a20155-fd12-7be2-b83f-d5e81193428c` ran a read-only status comparison in workspace-write with
+`gpt-6-luna/low`. The old and new installed commands both returned `awaiting_user` for a completed
+pilot. On a disposable copy of the E5 records, the verifier retained 18 of 20 parallel decisions and
+supplied the saved checkpoint indications for an expired slice and a stopped process. The old command
+returned `awaiting_user` for both inputs. The new command returned `running` by campaign ID and target
+for both, leaving the pilot record unchanged. All nine calls and the owner exited zero. These are
+controlled records. No campaign was started or confirmed in the comparison. Root owns
+`temp/final-pilot-status-build-UDBJMH/` through the final gate audit.
+It contains the build and owner receipts, artifact hashes, frozen reports and the machine-readable
+`status-fixture/.cat/verified-installed-pilot-status.json` comparison.
+
+The same client inputs passed a separate uncached whole-reactor run with the test process's `HOME` and
+test JVMs' `user.home` pointing at the same nonexistent directory. That directory remained absent.
+All 461 Surefire reports name the expected `user.home` and the owned JVM temporary directory. They
+record 6,346 tests, zero failures or errors, and one skipped PowerShell test. The tracked diff and
+untracked client manifest match the normal-home build and stayed unchanged through execution. This
+passes the missing-home execution clause of gate 6 for this revision. Root retains the command,
+exit-zero receipt and frozen reports in `temp/final-status-absent-home-OWhapu/` through the final audit.
+
+The G3 local statistical and reporting evidence also carries forward to these frozen reports. All 42
+mapped methods in 12 test classes ran, with 53 passing cases across the 10 mapped claims. Eleven test
+classes and the inherited store contract match their earlier reviewed source hashes. The remaining class,
+`StatusReportTest`, matches the accepted frozen-judge build's source manifest. Compare
+`temp/oshi-absent-home-OIYf7R/trace/g3-current-methods.json`,
+`temp/frozen-judge-clean-4EkNr6/source.before`, and
+`temp/final-status-absent-home-OWhapu/surefire-reports.zip`.
+
+The refreshed traceability inventory in that directory's `traceability/` joins 2,578 requirement tags
+from 605 Java test source files to passing cases in the 461 frozen normal-home reports of the same
+client inputs. It finds no unknown tags or unmapped test methods. Of 146 requirements, R-I1 alone has
+no Java tag. R-I1 names an installed proof in both harnesses. Both newly built wrappers reference
+their packaged `first-use.md`, and the two bodies have the same SHA-256
+`f6e882e2bbc96cafeb4406ff1c5419a40635589afc25b3ee27af1f3bc35c5adb`. That comparison establishes the
+shared body. The traceability gate still needs evidence that the passing assertions prove each
+requirement and that the installed receipts cover the required end-to-end behavior.
+
+The two WI-15 E1 installations at `1.0+b08307c76ca2a` also package byte-identical skill bodies.
+Their receipts show start, proposal revision after a conflict, confirmation, development,
+held-out certification and delivery in each harness. Claude Code's native driver reported
+delivery directly. The Codex foreground wrapper timed out before its final report, and public
+target status and the delivered Git patch establish that outcome. The newer shared body differs
+in the initial status check and how it obtains or reuses the evaluator selection. WI-149's
+installed shared campaign establishes explicit two-harness execution and delivery from a Codex
+owner. The remaining R-I1 check is to observe each installed wrapper ask before starting when the
+user omits evaluator selection, and retain the recorded selection when reopening a campaign.
+
+The installed Codex missing-selection check failed. The only operator message requested
+optimization of `AGENTS.md`. The owner offered Codex alone and both harnesses, then called
+`start AGENTS.md --harness codex` without another user turn and created unconfirmed campaign
+`20261122T035321Z-1d40c2`. The initial sandboxed launch could not read CAT rules because of the
+masked app-server socket directory. The recorded failure is from the host-launched retry with
+native workspace-write enabled, which read both skill files and exited zero. See
+`temp/r-i1-codex-U3C3Ri/host-owner.events.jsonl`. Claude Code read the same shared body and
+offered all three choices without calling `start` or creating a campaign. See
+`temp/r-i1-claude-jRCs0K/owner.events.jsonl`. Correct the shared skill's turn boundary and
+repeat the missing-selection check before crediting the current Codex flow. The next check must
+also distinguish a user's explicit selection from recovery of a campaign's recorded selection.
+
+The shared skill owns this decision because only the host agent can receive the user's
+conversation reply. A new Codex campaign with no selection must wait, and a new Claude Code
+campaign with no selection must wait for the same reason. A named evaluator set goes directly
+to the new-campaign path, and an existing campaign uses its durable selection. The harness
+wrappers route to one body. The public launcher validates supplied arguments and retains its
+own documented defaults for direct callers. Put the selection before request-server setup in
+the shared body and make the question end the turn. Verify the turn and absence of a start or
+campaign record, then verify explicit selection and recorded selection at the launcher boundary.
+
+The full client verification passed and both Linux x64 archives match their build checksums.
+Both disposable installations contain the revised shared body with SHA-256
+`03112f031576c4dc077dc78e58e1585f1a68ce5c57c98054c070d525063bfcfc`.
+The first build invocation set `JAVA_TOOL_OPTIONS`, which emitted a line into two process
+test protocols. The passing invocation supplied the temporary-directory property directly to
+Maven. The rebuilt Claude Code profile passed the missing-selection case. Its final reply
+offered Codex only, Claude Code only and both. The native trace contains no request-server or
+start call, and the disposable project contains no campaign directory. Build, install, native
+turn and verifier evidence are retained in `temp/r-i1-skill-build-jcbJQl/`.
+The rebuilt Codex profile also passed on the disposable workspace-write settings used by the
+original test. The fresh profile's first turn stopped on the network-disabled refusal from
+`status`. In the matching test profile, the native turn asked all three choices and ended
+with no request-server call, start call or campaign directory. Both passing receipts are
+`verified-missing-selection.json` under the respective harness directories. The earlier
+Claude Code baseline owner was closed after its native result because it still held its
+background request server. The remaining selection evidence is forwarding a user's explicit
+choice and reopening a saved selection through the revised installed wrappers.
+
+The same two native owners then received "Codex only." and "Claude Code only." respectively.
+Each installed wrapper passed the matching `--harness` flag to `start`, and each campaign
+header retained that evaluator. The owner IDs match the preceding unanswered turns, and
+`verified-explicit-selection.json` in each harness directory binds the reply, launcher arguments
+and saved scope. The Codex foreground fallback created its campaign before refusing access to
+the disposable CAT state directory. Its wrapper also passed the generic request to improve the
+file as a prompt goal. Claude Code omitted the goal and started its pilot in the background.
+
+Claude Code completed 20 pilot decisions for each of its two tests. The reopened native owner
+used `status` with the saved campaign ID, retained the Claude-only evaluator, and began its
+reply with the exact saved proposal. The campaign, pilot and proposal hashes remained identical.
+Its `verified-reopen.json` records all three checks. Codex reopened its original owner and
+retried the same campaign without a `--harness` flag. The first retry wrapped the request-server
+command and CAT refused it. The standalone invocation restored the request-server connection,
+and the next `start` returned the same campaign ID and kept the Codex-only evaluator. CAT
+reached the contract-author launch and refused the missing disposable npm and Maven cache
+write grants. `verified-reopen-scope.json` records this boundary.
+
+The disposable Codex owner then verified create, read and remove access in both cache
+directories and retried through the standalone request server. The same campaign started
+its contract author and resumed through the guard pilot with the saved evaluator. When the
+fixture controller timed out, the retained pilot held 20 `fact_lookup`, 20
+`short_explanation`, and 16 `paired_facts` decisions, with four pending in the last cell
+and no recorded trial execution failures. The retry reached the pilot in the original
+campaign. A completed pilot and proposal on the reopened Codex owner remain unverified.
+A subsequent reopen reached the original native thread, but its first shell call failed
+before reading CAT session rules. Codex reported that the app-server socket directory
+must be owned by the user with mode `0700`. The pilot checkpoint still held the same
+56 decisions and four pending positions. The native result is in
+`temp/r-i1-skill-build-jcbJQl/codex/finish-pilot.events.jsonl`.
+The approved host launch then resumed the original native thread under workspace-write. Public
+status and the saved header retain the original campaign and its Codex-only evaluator. The saved
+pilot records all 20 positions exactly once in each of its three tests, with no pending trials or
+failed executions. The owner exited zero and left the campaign unconfirmed. The installed launcher
+reported the saved proposal path. The owner's final reply matched 282 of the 283 proposal lines
+and omitted one sentence fragment about capitalization, hyphenation, and formatting in its judge
+rubric. The full verbatim display check remains open. Preserve the finished pilot as selection and
+recovery evidence, and reuse the saved proposal for the display regression. The native turn is
+`temp/r-i1-skill-build-jcbJQl/codex/finish-pilot-host.events.jsonl`. The proposal's SHA-256 is
+`3f032382b372b11e4600912ccbacd592cb71ffd3c38e81db19536e41de5129f5`.
+
+The same owner then reopened the saved proposal through a read-only status call and exited zero.
+Both native tool results contain the complete 28,107-byte Markdown, including line 170.
+Both final replies omit the same 74-character fragment of that line. The installed instruction
+to reproduce the file verbatim matches the current source. The second run reused the first
+reply's conversation context, so it cannot distinguish copying from history from an omission
+that also occurs in a fresh context. Use the long-proposal fixture in a fresh conversation, with
+the same proposal bytes and no previous assistant copy, before changing the delivery procedure.
+The read-only replay is `temp/r-i1-skill-build-jcbJQl/codex/display-proposal.events.jsonl`.
+
+A fresh Codex conversation received the same `proposal_file` and no earlier assistant copy.
+Its first turn read the skill and refused to display the proposal because it had already sent
+progress commentary. Its next turn read the same file and reproduced all 283 lines verbatim
+at the start of the review reply, followed by the request for feedback or confirmation.
+No optimizer command ran in either turn. This shows the omission can be absent without changing
+the proposal file, and it exposed a separate interruption in the review workflow. The shared
+skill now says that earlier progress commentary does not require a new turn. The existing
+long-proposal regression scenario now includes that branch. Require one successful review turn
+on the revised installed skill before closing the check. The two native receipts are
+`display-fresh.events.jsonl` and `display-fresh-retry.events.jsonl` in the same Codex fixture.
+
+Full client verification passed on retry after a transient missing-file error during JAR assembly.
+The revised skill in a fresh Codex installation read the same proposal and completed the review in
+the same turn as its progress commentary. The reply included the full rubric and the review
+question. The byte comparison found two extra trailing spaces on each of lines 248 and 259 and no
+other proposal differences. Keep the exact Markdown requirement open and retain the finished pilot
+and the same-turn review result. The native receipt is
+`temp/proposal-review-BGWGfk/codex/display-fresh.events.jsonl`.
+
+A local CommonMark parse of the two changed lines and their following `Weakest cells:` lines
+shows that the saved proposal separates those fields with soft breaks. The reply's inserted
+spaces make both breaks hard. A blank line between the fields produces two paragraphs without
+trailing whitespace. The native transcript does not establish the model's reason for changing the
+breaks. Fix the ambiguous layout in the shared proposal renderer, verify the field separation in
+the generated Markdown, and use the saved campaign inputs for an installed display check against
+the newly rendered proposal. Keep D147's verbatim comparison and review-question requirement.
+
+The shared renderer now separates those fields with a blank line. The focused assertion failed
+with the old renderer, then all 125 `ProposalTest` cases and full client Maven verification passed
+with the change. The rebuilt Codex archive was installed in `temp/proposal-layout-t5CbVJ/codex`.
+For the isolated display check, keep the original saved proposal intact and give Codex a copy
+with only the two blank lines added. This combines a production renderer regression test with
+a native display test on the long proposal, without scheduling another pilot. It does not by
+itself prove the same installed owner regenerated and displayed the proposal in one turn.
+
+The isolated display turn exited zero. Its reply began with all 28,109 proposal bytes unchanged
+and ended with the review question. No prompt optimizer invocation appeared in the turn. The
+receipt is `temp/proposal-layout-t5CbVJ/codex/display-fresh.events.jsonl`, thread
+`01a204ca-76cd-7282-8ad8-e185caafdadf`. The changed fixture's SHA-256 is
+`05a4ba3a4347659bee66fb72553dd206fac6a6c8cf1639d91f85ab162d16496b`.
+
+The original disposable owner's installer updated the copy in place and the installed optimizer
+JAR matched the rebuilt archive byte for byte. The owner then tried to regenerate the proposal,
+and the installed launcher returned a missing request-server diagnostic. The turn read the old
+proposal and returned a changed copy without asking the review question. The proposal and finished
+pilot files kept their pre-update hashes. This run established installation only. Recover the
+request server for that owner before rerunning the connected check. The transcript is
+`temp/r-i1-skill-build-jcbJQl/codex/proposal-layout-owner.events.jsonl`.
+
+The next owner turn launched the request server and wrapped the optimizer in `run-part` with
+`--background`. The wrapper put the optimizer in the Codex sandbox and CAT refused that mode.
+The following turn used the standalone request server and absolute foreground optimizer command.
+It returned `awaiting_user` and `unconfirmed` for the original campaign and wrote a 28,109-byte
+proposal with the two blank lines. The saved pilot file matched its pre-update hash. The native
+reply asked for review and matched 284 of the 285 proposal lines. On line 172 it inserted a
+backslash inside the JSON schema and rephrased part of a schema description. D147 remains open.
+The successful regeneration and the failed byte comparison are in
+`temp/r-i1-skill-build-jcbJQl/codex/proposal-layout-foreground.events.jsonl`; the generated proposal
+hash is `84b851bc35e3ae1271084fc40e818672fe2d009313629891bf1fbf3449c175ba`.
+
+A fresh connected Codex owner on installed `1.0+b0fc33e2e4643` later stopped at the unconfirmed
+proposal for campaign `20261122T200701Z-5c3a42`. Its completed native reply starts with all 22,596 saved
+bytes and ends with the feedback question. This passes the D147 display observation for this campaign.
+The native transcript is `temp/e7-matched-fixture-lpea8zky/codex-proposal.events.jsonl`.
+`verify-proposal-reply.py` in the same directory verifies the exact prefix and question against
+`codex-first-proposal.md`, retained separately so the campaign's next revision can replace its proposal.
+The owner resumed for the cache probe in the same profile. The normal tool sandbox ran the installed
+`plugin-info`, matched the prepared CLI digest, and wrote and read temporary files in its npm, Maven
+and CAT lock directories. The receipt is `temp/e7-matched-fixture-lpea8zky/codex-cache-probe.events.jsonl`.
+The connected campaign provides the same profile's standalone request-server and nested provider evidence.
+It began before this preflight was added.
+
+The supported stock Codex interfaces inspected expose assistant text as output events. History injection
+supplies model-visible context, and hook output is displayed separately. Claude Code's MessageDisplay hook
+can replace rendered text while leaving the native transcript and verbose view unchanged. A deterministic
+delivery mechanism meeting D147 across both native harnesses remains unverified. Retain the same shared
+native reply check and use the existing passing receipt when it covers the acceptance question.
+
+R-I1 receipt reconciliation: in `temp/r-i1-skill-build-jcbJQl/`, both
+`verified-missing-selection.json` files show all three choices and no start or campaign. Both
+`verified-explicit-selection.json` files show the operator's choice reaching the saved evaluator set.
+Codex's `verified-reopen-scope.json` and Claude Code's `verified-reopen.json` show the recorded
+scope surviving a reopen with no new campaign. The current assembled skill bodies are byte-identical.
+Claude Code's reopen reply contains the exact proposal prefix and gives conflict-resolution directions,
+then ends by describing what CAT will do after resolution. It does not establish D147's required
+question at the end of the reply. Keep that observation open for the applicable native review path.
+The separate matched E7 Claude Code reply reproduced the complete 28,941-byte proposal. It described
+the certification scopes and ended with the last option, without a question. The shared skill now
+places an explicit confirmation-or-feedback question after the scope list and asks only for feedback
+when the proposal reports a condition that prevents confirmation. Use the saved proposal to verify
+the changed review instruction without repeating its pilot. Full Maven verification passed, and
+both assembled harnesses package the same revised skill body.
+
+Fresh disposable installations replayed the same 28,941-byte saved proposal with the revised skill
+after its artifact digest was verified for each harness. The Claude Code reply reproduced every byte
+and ended with the requested confirmation-or-feedback question. The Codex reply changed one JSON
+schema description at byte 21090 and ended with a generic question. The operator request used for
+both replays asked what to do next, which leaves the cause of the generic question unresolved.
+The replies are in `temp/e7-review-replay-zlwEm8/{codex,claude}/replay.events.jsonl`.
+Both native commands exited zero. The replays exercised review of a saved proposal without
+starting a campaign. Keep the connected E7 authority warning and delivery checks open, and keep
+the Codex long-proposal reproduction failure open under D147.
+
+The two recorded Codex near-matches changed prose inside the judge schema on a single long
+Markdown line. The shared proposal renderer is the component that places the entire schema in
+one inline code span. The completed proposal-read command in the retained Codex replay records
+all 28,941 bytes of the saved proposal, including the 944-byte schema line. The final reply
+first differs at byte 21090. The command record establishes that the read returned the complete
+file. It leaves open what the model received and why the reply changed the schema.
+A model-free comparison prepared a diagnostic copy at
+`temp/e7-schema-layout-rbUnoH/proposal.md`: only line 156 becomes a fenced, multiline schema.
+Both schemas parse to the same JSON value, and all bytes outside that line match. The candidate
+copy has SHA-256 `e46b08a5fdc464beb0cf0bee6b95113a95b3b86312098192f99372888b5ade5c`.
+Use the saved original and this copy for a Codex review comparison with the same installed
+skill, model, settings, and operator wording. Compare the complete reply prefix to the assigned
+file, including the schema, and record the closing question separately. A layout change can
+address the observed copying error only if that comparison supports it. Check for recurrence
+elsewhere in the reply before changing the shared renderer.
+
+The two Codex layout runs, the closed-stdin control, and a short reply probe all emitted
+`turn.completed` with zero input and output tokens and no assistant reply. Their exit-zero
+records establish only that the native command returned. The proposal verifier rejected both
+layout runs because neither contained a completed reply. Keep the earlier Claude Code display
+pass and Codex copying failure. The new receipts in
+`temp/e7-review-replay-zlwEm8/codex/layout-*.events.jsonl` establish no comparison outcome.
+The current tool shell also received HTTP 403 from the configured local gateway's management
+page. That request does not establish the cause of the native turn behavior. Require a native
+reply from the same profile before repeating the layout comparison.
+
+After the two native `plugin-info` smoke checks passed, the serving Codex request server ran the
+two saved-proposal variants with the same freshly built plugin, `gpt-6-luna/low`, and one shared
+operator message. The current inline proposal replay passed: the native reply starts with all
+28,941 proposal bytes and ends with a question asking for feedback or a certification scope to
+confirm. The fenced diagnostic produced a short refusal to display an alleged truncated read.
+Its trace shows the skill reads but no command reading the assigned proposal. The fenced run
+therefore supplies no evidence for changing the shared renderer. This closes the Codex saved
+long-proposal replay observation. Claude Code's unresolved-conflict reopen and the connected
+E7 authority-warning check still require their own outcomes. Root retains both transcripts,
+runner receipts, assigned inputs and exact reply comparison in `temp/d147-served-replay-53BY24/`
+through final reconciliation.
+
+The Claude Code conflict replay reached the serving request server, which refused before starting
+Claude Code. The Codex owner's policy permits writes to the installed Claude marketplace artifact
+that the server uses to validate the launch. Selecting the new plugin as an input does not remove
+that validation dependency. The launcher requires a new owner session whose sandbox denies writes
+to that installed artifact. The saved conflict proposal and shared replay input are ready in the
+same evidence directory. Continue independent Codex acceptance with the serving owner.
+
+The saved proposal verifier now requires a completed reply from the last native turn and the
+applicable question as its exact final line. In
+`temp/e7-matched-fixture-lpea8zky/verified-review-checks.json`, both retained exact replies pass.
+The verifier rejects the Codex schema edit at byte 21090 and the Claude Code conflict reopen
+because its complete proposal is followed by directions without the required question. It also
+rejects an empty Codex turn, a prior reply followed by an empty turn, and a question appended to
+other text on the last line. No new optimizer trial or native reply was generated for these checks.
+
+The shared skill now directs each branch that cannot offer confirmation to put the feedback
+question on its own final line, after the conflict resolutions, model ranking request, or
+explanation. The focused distribution build passed 23 tests. The Codex and Claude Code packaged
+`first-use.md` files are byte-identical, with SHA-256
+`7c7db87249bf0c864eadb4b01429fee8e3a7771967d21257eba8c6548f96b12b`. The native conflict-reopen
+check still must show the complete saved proposal and that closing question together.
+
+The generic optimization request and an analogous request to improve a named instruction
+without describing its intended behavior both omit `--goal`. A request that says how the
+prompt should behave supplies that description verbatim. The decision depends on the user's
+words, so it belongs in the shared skill rather than either harness wrapper or the launcher
+that validates an explicitly supplied goal. The proposed check observes the arguments in
+native turns for both request forms.
+
+The full client build passed after the wording change. Both assembled skill bodies have
+SHA-256 `5fa7db05ea1af752522508bcd9f17262ed78a49e3460860218d416ff56c99e1a`.
+The fresh Codex installation passed the artifact comparison. A disposable request that
+asked to improve the file passed `--harness codex` and omitted `--goal`. The launcher
+stopped at the absent prompt-test configuration before running a trial. Evidence is in
+`temp/r-i1-goal-build-E4ECt3/verified-goal-arguments.json`. After the operator supplied the
+harness in the same native conversation, the explicit-behavior case passed the original
+sentence as one `--goal` argument. CAT refused that start because no request server served
+the fixture. Both traces establish the arguments at the installed launcher boundary.
 
 Root claims the unresolved delegation test phase measurement for gate 6. Its disposable source and
 diagnostic evidence live in this session's `temp/delegation-phase-probe-rAMadO/`; root owns cleanup
@@ -8879,6 +11097,23 @@ That refresh is complete and accepted. Session `01a1ddcf-b2cc-7dc1-b309-8770d830
 `method-issues.json` establish 585 source files, 452 final reports, 139 requirements,
 2,473 passing tagged-method mappings, no unknown tags and no method attribution issues.
 Only R-I1 lacks passing tagged Java evidence; its declared proof is E in both harnesses.
+The shared-optimizer refresh at `temp/shared-trace-CEX28C/audit/` used the 461 reports from
+the post-teardown local verification. It maps 2,569 passing tagged methods across 605 test
+sources and 146 requirements, with no unknown tags or method attribution issues. The four
+new WI-149 requirements have 9, 6, 10 and 6 passing Java method mappings respectively.
+R-I1 remains the only requirement without passing tagged Java evidence, and the WI-149
+installed campaign receipts remain open.
+After the pilot freshness fix, `temp/shared-confirm-final-GSnk8G/traceability/` maps 2,578
+passing tagged methods using 461 reports, with no unknown tags or method attribution issues.
+The test source hashes match `408cfe7a4`. R-L6 through R-L9 have 10, 9, 11 and 10 passing mappings
+respectively. The required native receipts remain open.
+The delta through `186c6e3ea` contains only the two fixture repairs. All other test-source
+hashes match the previous audit. All four mappings in changed sources point to the same
+requirement tags and passed in fresh reports. The six affected suites totaled 262 tests with
+no failures, errors or skips. Their reports record the absent Java home, and the shared
+location for `HOME` and `user.home` stayed absent. The count of 2,578 passing tag mappings
+and the native evidence requirement for R-I1 are unchanged.
+Evidence: `temp/fixture-repairs-absent-home-MFLM84/traceability-delta.json`.
 The original extractor inputs were recovered from session
 `01a16de4-2163-75d0-9e45-481a1850fb3e`'s `temp/tagged-method-audit-xkl06G/`;
 generated namespaced extractors were not substituted for those inputs. Root retains the
@@ -8892,10 +11127,11 @@ receipts, including the still-pending usage measurement. No inventory count pass
 		its proof names. An agent checks this by extracting the IDs from this file and the tags from the sources and
 		test reports.
 	- No ID is untagged, and no tag names an unknown ID.
-	- Every E proof has a receipt from WI-15.
+	- Every E proof has a receipt from WI-15 or WI-149, as named by the requirement.
 3. **No model in Java tests:** an audit finds no Java test that starts a runner, a harness process or a model, and no
 	`native` test group or Maven profile.
-4. **End-to-end:** E1–E8 pass in both harnesses through the installed artifacts.
+4. **End-to-end:** E1–E8 pass in both harnesses through the installed artifacts. WI-149's installed campaign also
+	delivers and certifies one shared prompt snapshot across both harnesses.
 5. **Design acceptance:** each G1–G10 row of `design.md` §14 maps to passing evidence from gates 1–4.
 6. **Testability audit:** the §8 rules hold, and the G9 check, unit tests run with `HOME` and `user.home` pointing at a
 	nonexistent directory, passes.
@@ -8905,10 +11141,245 @@ receipts, including the still-pending usage measurement. No inventory count pass
 	`client/`, `docs/` and `.cat/` finds no reference to `design.md`, this plan, `plan-history.md`, or their section
 	numbers and identifiers (§1).
 
+The gate 7 ledger records P12 and P13 in §4 and `design.md` §12. P12 has installed Haiku evidence. Opus,
+Sonnet and Fable still need native trial evidence. P13 has observed Codex model and effort and observed
+Claude model. The Claude run records its configured effort, and the native events leave observed effort
+unreported. WI-96 has its installed exit on the recorded build. Compare its determining inputs before
+carrying the result forward to final acceptance.
+
 A mock-only run, a successful contract extraction, a candidate diff or a statistical unit test is intermediate
 evidence. None of them proves the product outcome by itself.
 
+The current worktree passed the complete Maven verification with cache reuse enabled.
+`temp/current-build-Sghkuf/` retains the terminal exit and identical before-and-after client
+source manifests. Compared with the absent-home receipt, only the packaged expensive-verification
+rule changed. Both generated distributions contain identical new guidance and route to it
+from their testing and build rules. The two Linux x64 release archives contain the same
+rule, route, and shared optimizer skill body as their generated runtimes.
+`temp/current-build-Sghkuf/release-content.json` records the archive and member hashes.
+
+Gate 3's static audit passes at `809aae7f1c5932bc52063bd8188679826a792d23`. The audit covered 600 tracked compiled
+Java test sources and 28 reactor POMs. Compared with the retained source manifest, it matched 348 test sources and
+22 POMs byte for byte, and reviewed 219 changed and 33 new test sources, six changed POMs, and the production launch
+seams. The changed process paths launch owned shell, Java, and fake CLI fixtures. No real runner, native harness,
+or model launch enters the Java tests, and no native test group or Maven profile remains. This audit is scoped to
+the named commit. The delta through `2bff909e7` changes four runner classes and two test classes, adds no
+process entry point or requirement tag, and exercises the nested launch with a test-owned harness.
+The next commit, `0fc33e2e4`, changes only the bundled runner rule. The Java test and reactor audit
+applies through that commit.
+The five-platform snapshot at `a57fc5edb` changes 43 Java test sources and no reactor POM. Its
+test launch seams use recorded adapters, in-memory session ports or owned fixture processes.
+The delta and the inventory of all 28 reactor POMs are in `temp/shared-no-model-audit-eGMaD4/`.
+The same snapshot passed local verification with both home settings pointing to an absent
+directory. The directory remained absent at command exit and all 459 retained reports record the
+requested Java home. Two methods requiring `/sys` were excluded, and a subsequent focused check
+replaced two reports. Evidence: `temp/shared-absent-home-Sb2ahn/report-summary.json` and
+`verify.log` in that directory.
+The bundled-runtime commit `b4060268f76f44a6f63633eab116037218577e42` changes four Java test
+sources and no reactor POM. The runner test passes a file-copy stub for Codex installation, the
+installer test uses the recording integration, and the other test changes inspect fixture files
+and archive entries. The Java tests add no native harness or model launch. The live launcher and
+resume checks run separately through the installed artifact.
+The four passing methods are listed with their Surefire reports in
+`temp/wi146-native-bundled-update-Arm10C/build-evidence/bundled-runtime-test-audit.json`.
+The delta from that commit through `08307c76ca2a5f9449b99479c6cf2dbdf1b237f0` changes no reactor POM
+or production Java source. Its only Java test diff adds Terra to the expected ranking and updates the
+expected source date in `CodexProfileInventoryTest`. The test still supplies the recorded inventory
+through its injected launcher. The other changes are packaged resources and Markdown rule scenarios.
+Gate 3's source audit therefore covers the integrated commit.
+The later audit compares the frozen-judge build's audited inputs with the clean manifest
+in `temp/e5-spawn-release-build-niynGZ/source.after`. The manifest still matches the live
+client sources. The eight changed Java tests use saved events, a fixture transcript, an
+in-process Git fixture on a refused launch path, or Javadoc changes. The production changes
+record a child-launch event and update the judge version. All 28 reactor POMs are unchanged.
+The Java test and reactor audit covers the current manifest.
+The local clean-build precheck could not find `/sys`
+in either shell environment. The next isolated Linux workflow is prepared to run the uncached clean build with an
+absent test home and retain its Surefire XML for traceability; its template and checker are under
+`temp/wi146-clean-trace-o9dZ7L/`.
+
 ### Current semantic reconciliation and repair frontier
+
+The five-platform clean build for client snapshot `05a2b1f21` passed on both Linux and both macOS targets.
+Windows failed in `CodexRunPartTest.streamsFirstLineBeforeSavedCommandExits` and
+`CodexRunPartTest.streamsFirstLineWithoutThreadBudget`. Both tests timed out waiting for the first line.
+[Build 44927166262](https://github.com/holdmyspot-com/cat/actions/runs/44927166262) used the same workflow,
+build settings and shell test commands as the passing rehearsal at `186c6e3ea`.
+The first-line assertions and latch expected LF only. A packaged Linux `run-part` probe forced CRLF,
+received `first\r\n` before the child exited, and showed that the LF-only match rejected those bytes.
+The test change uses the existing platform line separator for the child's output. Focused Linux verification
+reported 38 passes and one Windows-only skip. A connected `windows-2025` worker reproduced both original
+timeouts with Git Bash and Zulu 27, verified the test patch's checksum, and then passed all 39 focused tests
+in the same checkout. Full Maven verification could not find `shellcheck` on its launch-time `PATH`.
+Bats rejected a drive-letter path during test discovery. The diagnostic shell ended and retained both failed
+checks. [Windows diagnostic run 44928867621](https://github.com/holdmyspot-com/cat/actions/runs/44928867621)
+The follow-up Windows worker verified and applied the same test patch before signaling readiness. GitHub Actions
+installed the regular Windows CI tools. Maven `verify` and all six regular Bats suites passed in the CI job's Git
+Bash. The diagnostic shell exited and the job completed cleanup. The uploaded `windows-session-result` artifact
+records all three step outcomes and the shell exit. [Windows follow-up run 44933031323](https://github.com/holdmyspot-com/cat/actions/runs/44933031323)
+Clean verification passed on all five platforms at client snapshot `189773d673a7dfb5d27b2c91bdcd294d66fe88aa`,
+which adds only the test fix to the first clean snapshot. [Build 44934122595](https://github.com/holdmyspot-com/cat/actions/runs/44934122595)
+The verification workflow retains failure reports only. A separate Linux job checked out that exact commit, passed Maven
+verification, and uploaded both Linux archives with the commit stamped into the distribution. Both downloaded archives
+matched their published checksums. The disposable Codex install reported `1.0+b189773d673a7` and matched the archive's
+files, alongside the installer's generated `bin/aot` directory. [Archive build 44935184673](https://github.com/holdmyspot-com/cat/actions/runs/44935184673)
+The source delta, receipts, CRLF probe and worker logs are in `temp/shared-current-clean-HZUd1b/`.
+The same directory's `no-model-test-delta.txt` audits all four Java test files changed from `186c6e3ea`.
+The E5 replay uses a recorded app server, the broker uses a scripted child, the proposal uses static
+fixtures, and the streaming tests run only shell commands that print controlled output.
+
+The integrated local `verify` stopped at two build-admission tests and the scenario inventory check.
+The inventory check identified two repeated-scenario fixtures that omitted required variables. Both fixtures
+now vary an input used by their scenario, and all 13 `RegressionScenariosTest` cases passed on the
+focused rerun. The same two build-admission checks also failed on base `0fc33e2e4643` in this
+tool sandbox, which has no `/sys`. Both failures report OSHI's missing system path.
+The three invocation logs are in `temp/integrated-verification-RFZl4M/` under session
+`01a1f722-8002-7742-8a1f-0d65e844b167`.
+Build run `44860561301` passed on all five platforms for snapshot `6a1791ec19b8d5e3371c93650f6c825e84fb537a`
+on `rehearsal/integrated-verify-b4fbaa41`. The isolated Git index includes the 40 changed source and test paths
+under `client/`. The snapshot manifest and push receipt are in `temp/integrated-hosted-verification-scvPqc/`.
+
+Linux build admission now gives OSHI an empty temporary sysfs root when the default `/sys` is absent.
+The modular CLI and real process-tree checks reproduced the initialization failure before the change and
+both passed afterward. The current worktree passed the full local Maven `verify` with neither check
+excluded. The Codex and Claude bundles from that build each ran the modular build-admission reconcile
+operation with `/sys` absent and removed their temporary root at JVM exit.
+An uncached `clean verify` then ran with `HOME` and every test JVM's `user.home` pointing to the same
+nonexistent directory. The 461 reports contain 6,344 tests, zero failures or errors, and one skip.
+Both OSHI integration checks passed. The directory remained absent and the client source manifest
+matched before and after. The log, manifests and `report-summary.json` are in
+`temp/oshi-absent-home-OIYf7R/` under session `01a1f722-8002-7742-8a1f-0d65e844b167`.
+The traceability refresh joined 605 compiled Java test sources with all 461 frozen reports.
+All 2,578 requirement-tag comments mapped to passing tests, with no unknown IDs or unresolved
+mappings. The current inventory has 146 requirement IDs. R-I1 is the only one without tagged Java
+evidence and explicitly requires installed proof in both harnesses. R-L6 through R-L9 each map to
+passing tests. The source hashes and per-method results are in `trace/method-traceability.json`
+under the same proof directory. This verifies execution attribution. The native receipts and
+the review of what those assertions prove require their own evidence.
+
+The latest absent-home build confirms the tag mappings on the current source. Its 461
+Surefire reports contain passing cases for all 2,578 tagged comments. The verifier matched
+600 compiled test source hashes to the build manifest and matched the other five to their
+verified Javadoc-only edits. Of the 146 requirement IDs, only R-I1 has no Java tag because it
+requires installed skill evidence in both harnesses. All tag IDs are known. Root retains
+`temp/final-g2-trace-t1Ljwp/method-traceability.json` and
+`source-and-report-verification.json` for the final traceability and native receipt review,
+then owns cleanup.
+
+The later build that includes Codex app-server delegation evidence matches 603 of 605
+test-source hashes in that Gate 2 ledger. The two changed sources are `CodexEvidenceTest`
+and `CodexTrialRecordTest`. The bounded review found all 314 tags across the eight audited
+suites still attached to the same requirements and methods. All 312 attributed cases passed
+in the current primary reports. The two changed mappings cover R-E21, where a recorded
+delegation is attributed once as `spawn_agent`, and R-C9, where the recorded call drives the
+tool-used and tool-unused checks. E5, E7 and R-I1 still require separate installed evidence.
+The exact updated source and report hashes, tag coordinates, and passing cases are in
+`temp/gate-2-delta-3Yq5RO/traceability-delta.json`. The delta binds the two reports from
+the isolated absent-home build to the preceding ledger and verifies that all 605
+test-source hashes match the current worktree.
+
+A clean build of the same app-server sources in an isolated checkout passed 6,344 tests
+with zero failures or errors and one skip. All 461 Surefire reports used a nonexistent
+Java home, that directory remained absent, and both checkouts matched the input manifest.
+The initial fixture invocation added a JVM startup banner that interfered with process
+readiness assertions. Passing the home and temp settings directly to Maven and Surefire
+resolved it, and both affected fixtures also passed in the full run.
+`temp/e5-absent-home-WxUIsG/report-summary.json` retains the manifest and receipt.
+
+The review of the shared campaign checked the following assertions against the frozen passing reports:
+
+- R-L6. `OptimizerCoreTest` starts a direct CLI campaign with the owning harness when selection is
+  omitted. An explicit change on resume returns a refusal, preserves the saved campaign bytes and
+  sends no further requests. A peer-only campaign keeps its original owner and resumes with only
+  the recorded peer as evaluator. The installed skill's first-use question still requires native evidence.
+- R-L7. `GuardPilotTest` measures two distinct harnesses and retains the unchanged pilot records
+  exactly when a peer runtime changes or the other harness's prompt dependents change.
+  `OptimizerCoreTest` refuses confirmation after a judge version change without modifying either
+  saved record, then refreshes the affected peer pilot before allowing confirmation.
+- R-L8. `DriverTest` dispatches every required development cell with the same working snapshot
+  and records each result under its original trial key. `CommitGateTest` refuses when either
+  evaluator has 99 outcomes even if the other has 101, and admits the tested case at 100 each.
+- R-L9. `CommitTest` freezes one attempt, candidate, cell union and formal budget.
+  `SharedCertificationTest` withholds delivery after only one evaluator passes, reopens the same
+  attempt, retries only the interrupted trial on the same snapshot and writes one certificate
+  with both evaluators' cells after both pass. `StatusReportTest` verifies distinct per-harness
+  counts and weakest cells. Installed joint certification and delivery remain open.
+
+The G3 report reconciliation found all 40 previously accepted statistical methods in the current
+reports. Two additional methods verify the shared formal budget and per-harness weakest profiles.
+All 53 reported cases across those 42 methods passed. `trace/g3-current-methods.json` records the
+report hashes and the seven changed test classes. A comparison against the earlier reviewed
+source found unchanged bodies for the 40 retained methods, including the inherited file-store
+test. The review also found conflicting descriptions of the judge in the design. The shared
+campaign uses its owner's frozen judge for every evaluator. The status claim now explicitly
+names that harness. The two targeted tests failed on the missing attribution before the correction.
+The complete 77-case `StatusReportTest` suite passed after it, including the single-harness claim
+and the shared claim with distinct weakest profiles. Full uncached local `clean verify` then
+passed 6,344 tests with zero failures or errors and one skip. All 461 test reports record the
+nonexistent Java home. The home remained absent and the client source manifest matched before
+and after. `temp/frozen-judge-clean-4EkNr6/report-summary.json` retains the verification receipt.
+
+Gate 3's source audit now covers that same local source manifest. It reviewed the 44 changed and
+five added compiled Java test files against the previously audited base, including evaluator,
+broker and hook dispatch. The tests use recorded adapters, controlled process fixtures, or
+in-memory ports at those boundaries. The 28 reactor POMs are unchanged and define no native
+test profile or group. The inventory covers all 605 compiled Java test sources.
+`temp/frozen-judge-clean-4EkNr6/java-model-launch-audit.json` retains the launch-boundary review
+and the source manifest hash.
+
+The current compiled-test and reactor inventory retains all 605 Java test paths and 28 POMs.
+Every POM is byte-identical to that audit. Eleven test files changed. The recording and
+diagnostic assertions read fixed inputs, and the result-copy cases use local directories.
+The new served-evaluator check delegates through `RequestingNestedSession` to
+`FakeHarnessCli`. The optimizer CLI cases use `SessionScript`, and the driver cases use
+`FakeSessionPort`. Three process-fixture files changed only explanatory comments. The
+native owner probes run outside Java verification. The input comparison for this Gate 3
+refresh is retained in `temp/r-i1-skill-build-jcbJQl/no-model-scope-delta.json`.
+
+The next Gate 3 source audit found seven changed Java tests, no changed POMs, and no additions or
+removals across the 605 test sources and 28 POMs. The two harness contract suites replay recordings
+or use scripted bridges. The Codex prompt-source test reads recorded events. The two CLI suites
+use fake session ports or a fake harness CLI. The delivery and proposal tests use local files and
+constructed inputs. These changes add no live model use to the Java tests. Root retains the
+source hashes and path inventory in `temp/gate3-final-delta-qwHBSE/` through final reconciliation.
+This covers the source audit on the current test inputs. Final clean verification remains open.
+
+The current absent-home build also passed all 22 `TestabilityAuditTest` checks, all 31
+`HarnessCapacityTest` checks and all 19 `CapCalibrationTest` checks. The reactor configures four
+test threads with method parallelism. The source audit checks the restrictions on static and test
+fields, sleeping paths and production Git construction. The optimizer's test sources still call
+the real calibration only from `CapCalibrationTest`.
+
+The §8 Git ownership check passed on a fresh uncached full build with the absent home. The
+focused Codex routing fixture originally launched one real `git check-ignore` when it
+created its owner's session directory. The fixture now opens that session during setup
+through its existing test dependency, as an already-started owner would. All three focused
+cases passed with zero Git launches after the change. The full build passed 6,344 tests with
+zero failures or errors and one skip. All 461 reports used the absent Java home, the
+directory stayed absent, and the before and after client source manifests matched. The
+verifier assigned all 587 logged Git launches to the allowed test fixtures or the
+distribution build's revision lookup. An earlier process trace also attributed all 64
+observed Git-internal launches to the Git processes of three allowed fixtures.
+`temp/git-ownership-audit-N0Ndtl/` retains `route-red.tsv`, `route-green.tsv`,
+`final-operation-summary.json` and `git-implementation-children.json` through final
+acceptance. Root owns cleanup after that review.
+
+The same build reported 32 executed cases at or above one second. The inherited real-process
+cases in `SystemBuildProcessStopsContractTest` carry their setup rationale on
+`BuildProcessStopsContract`. `DriverTest.weakRoundSharesWorkingReference` also documents the
+reason on its declaration, above the requirement tag. Five `OptimizerCoreTest` methods
+(`measuresBothEvaluatorsFromCli`, `resumesPeerOnlyPilotFromCli`, `resumeRefusesGoalAddedToNone`,
+`resumeRefusesPermissionsAddedToNone` and `resumeRefusesPermissionsRemoved`) and
+`DriverTest.sharedHoldLeavesOtherEvaluatorRunning` now explain the saved campaigns, pilots,
+and execution states their assertions require. The two cases of
+`NestedSessionManagerTest.stoppedRunnerRecordsNoEnd` and
+`StartupCacheTrainerTest.stoppedTrainingLeavesNoCache` exercise live fixture process
+termination. `SessionSlotsTest.refusesRetainedSlotThatCannotResume` exercises reacquisition
+and refusal against a real retained directory. Their Javadoc now explains those boundaries.
+The audit directory retains the whole-case timing inventory
+(`final-surefire-timing-annotations.json`) and the exact comparison with the preceding build
+inputs (`timing-javadoc-only.json`), which found nine Javadoc-only insertions across five test
+sources. The next integration build verifies those documentation changes.
 
 Root accepted the four bounded semantic reviews of all 139 requirement rows against the unchanged
 `final-isolated-clean-p3iu7k7m` source and frozen passing reports. These reviews establish what the
@@ -9068,9 +11539,17 @@ search with no matches and joined current frozen reports: all 13 RegressionScena
 ProposalTest.refusesMissingRecordedPromptTests, and both scenario-confirmation/start checks
 passed. The accepted prior semantic disposition for R-I3:1 is reused; this audit closes R-I3:2,
 not an E receipt or the separate R-I10 artifact scan.
-R-I10's current two-artifact stripping scan is accepted: the production SourceOnlyContent.remove
-operation found no remaining source-only content or invalid Markdown among 237 Claude and 207
-Codex artifact files. Root also joined the frozen SourceOnlyContentTest, ProjectRuleLoaderTest,
+The separate failure-reporting acceptance follows WI-15. The primary-agent wording in `goal.md`
+still says the incident itself invokes the optimizer. D13 and the current failure route direct the
+primary agent to correct user-owned guidance and record regressions during the incident. A separately
+approved installed campaign evaluates that behavior in both harnesses. The subagent case must record
+an actual report to its delegator, with attribution and evidence of the affected guidance. The three
+existing causal incidents also need individual outcomes. No retained receipt identified by the audit
+proves those installed cases. Keep approval for rule delivery separate from disposable evaluation.
+R-I10's two-artifact stripping scan was repeated on the build that includes the dedicated prompt-versus-CLI rule.
+The production `SourceOnlyContent.remove` operation left all 242 Claude and 213 Codex Markdown files unchanged.
+The scan and per-file hashes are retained in `temp/guidance-artifact-scan-nKfk6M/`. Root also joined the earlier
+frozen SourceOnlyContentTest, ProjectRuleLoaderTest,
 PromptTemplateTest and PluginArtifactBuilderTest checks. This closes the artifact-scan subclaim;
 it does not establish that the remaining guidance achieves every declared goal. The guidance
 audit owner recovered the earlier WI-124 full-corpus audit's unchanged-file boundary. Root
@@ -9106,8 +11585,8 @@ records and all 23 assigned compositions, retaining 17 finding records. This doe
 unresolved findings. The optimizer schema composition observations are closed as compatible through
 the actual production schema transformations. The original immutable review remains separate from
 subsequent repairs. `temp/guidance-review-capture-ZjCWI1/repair_dispositions.json` tracks every
-finding: 16 have source repairs awaiting verification; the SharedSecrets/test-access conflict
-awaits the user's policy choice. Its repair must preserve the selected test-access boundary.
+finding. At that checkpoint, 16 had source repairs awaiting verification and the SharedSecrets companion
+still conflicted with the module rule's test-access guidance. The source reconciliation below resolves that conflict.
 
 Root repaired the independent source defects from these reviews: the project documentation index now ends
 its Design Goals before its two executable routes, and contract-design checks source declarations
@@ -9155,10 +11634,12 @@ and the prompt-author placement composition. Root accepted their static closure 
 `temp/guidance-review-capture-ZjCWI1/group_02_reconciliation.json`,
 `group_11_reconciliation.json` and `group_15_reconciliation.json`; the additive
 `repair_dispositions.json` preserves the original immutable findings and unaffected judgments.
-No further source repair was required by those reviews. The SharedSecrets policy choice remains
-pending, and applicable behavior/native/model cases remain unrun. Earlier references above to
-pending static reconciliation are superseded by these receipts; R-I10 remains unmet. No client
-source changed after the accepted integration build.
+No further source repair was required by those reviews. The SharedSecrets companion now follows the parent
+Java module rule for direct access through a test-only qualified export and for fake override hooks. Other
+cross-module non-public access still uses the owning module’s typed façade. A source check verified all three
+cases in the guidance with the Design Goals omitted. The Java examples and reflection restrictions are
+unchanged. The model-side behavior checks remain unrun, so R-I10 remains unmet. No client source changed
+after the accepted integration build.
 
 The repaired Java route now also has accepted production delivery evidence: nine generated Codex
 SessionStart wrapper invocations exited zero with empty stderr and delivered the route into each
@@ -9183,11 +11664,66 @@ fixture paths and locks. The reviewer inspected the finite declaration matrix an
 adapters from pure decisions, then reused the accepted behavioral receipts and current frozen
 execution reports. No additional source defect was found. Root accepts these local qualitative
 T1/T2/T4 dispositions; native qualifications below remain separate.
-T3's current fake/real shared-contract checks pass; installed E1–E8 execution and new native
-recordings remain unrun. T5's accepted clock/completion/blocking-boundary evidence is retained.
+T3's current shared-contract checks pass. The isolated absent-home build's primary reports cover
+15 fake, 19 Codex adapter and 16 Claude adapter cases, with zero failures, errors or skips.
+Both adapter suites replay file and text outputs from recent native captures (Codex 0.171.0
+and Claude Code 2.1.326).
+The Codex shared two-turn trial check now replays both complete Codex 0.171.0 streams from the replacement
+trial in the native discard-and-replay rehearsal. The focused adapter suite passed all 19 cases.
+Stream provenance and source hashes are in the Codex optimizer session recordings README, and the
+focused build receipt is `temp/t3-two-turn-replay-PyWNu5/`.
+The separate Codex `wi146-integrated-runtime-Izw3OV` broker results contain the complete 17-line
+0.171.0 stream of an interrupted turn, including the interrupt response and terminal `interrupted` status.
+The adapter now replays that stream, validates the interrupt's thread and turn IDs, and checks full transcript
+retention. All 19 suite cases passed in `temp/t3-interrupt-replay-TnWrwz/`.
+The Claude E5 fixture supplies a complete 168-line 2.1.326 stream. Its session manifest matches the recorded
+session ID, and the stream retains the successful control response and `aborted_tools` result. The adapter
+replay verifies one interrupt request and an interrupted outcome. All 16 suite cases passed in
+`temp/t3-claude-interrupt-replay-Z3HZCL/`. The Claude shared two-turn trial check now also uses both completed
+2.1.326 streams from one R-I1 trial. Its two questions match a case in the saved proposal, and all 16 adapter
+cases passed in `temp/t3-claude-two-turn-HtkCFm/`. The inventory of completed pairs in eight retained fixtures is
+in `temp/t3-recording-inventory-VadsjL/inventory.json`. Keep the remaining multi-turn per-role recordings open.
+The Codex hook-source fixture now replays the two SessionStart notifications from a retained 0.171.0 owner stream.
+The recordings README identifies the complete source stream and its SHA-256. The focused source-attribution
+and adapter suites passed all 59 cases, with reports in `temp/t3-versioned-hooks-5MoQU7/`.
+Both adapters replay dedicated native recordings for all six roles. The Codex role check now uses completed triage
+and approach-ranking turns and the Claude role check uses the completed approach-ranking turn from E5. The recordings
+READMEs identify the source sessions and hashes. The focused checks passed all 19 Codex and 16 Claude cases in
+`temp/t3-codex-role-replay-mjLLV3/` and `temp/t3-claude-role-replay-As5rBA/`. These new streams exercise one turn each.
+Both adapters also replay a complete two-turn contract-author session. The Claude replay uses the E7 proposal and
+same-session link correction, with the second turn sent through the follow-up callback. The Codex replay uses the
+existing deriver pair. All 17 Claude adapter cases passed in `temp/t3-claude-correction-replay-AakSBY/`.
+The production judge, triage, approach ranker, and prompt author requests each supply one turn and no follow-up.
+The contract author can send correction turns. Repeating ordinary campaigns cannot yield multi-turn streams for the
+four single-turn roles. Keep their existing native recordings as evidence of the production requests. For the
+remaining recordings, send the same two prompts per role to both harnesses through the existing optimizer
+`SessionPort` with that role. This preserves the Claude judge's read-and-search tool restrictions. Before adding
+each replay, verify two successful turns with one native session ID and check the second reply against the same
+expected result in both harnesses. Capture Codex first and reuse its disposable installation across roles.
+The scratch driver and shared case in `temp/t3-role-capture-mxpI3v/` compile on the current CAT modules.
+The request constructor accepts both turns for all four Codex roles, with the judge assigned to the held-out part.
+The installed Codex request server could not identify the Codex process that owns this tool shell. Obtain the new
+recordings from a Codex owner whose request server starts successfully. Keep the compiled driver and verifier until
+root has consumed the new recordings or replaced this capture procedure.
+With the serving Codex request server, the driver captured two completed turns in one native session for
+each of judge, triage, approach ranker and prompt author at `gpt-6-luna/low`. All four distinct sessions
+returned the exact shared second reply. The verifier joined the two completed native turn IDs to their
+session and recorded both stream hashes in `temp/t3-role-capture-mxpI3v/served-codex/verified-roles.json`.
+The Codex adapter now replays all four recording pairs as parameterized contract tests. Each replay
+checks both replies in order and the archived transcript. The focused Codex adapter suite passed all
+23 tests, including the four new cases. The corresponding Claude Code captures still need their own
+native session receipts and replay coverage.
+T5's accepted clock/completion/blocking-boundary evidence is retained.
 T6's accepted 20 file-store fault points and crash-after-assignment/outcome checks remain the local
 persistence evidence. WI-15's T6 driver-crash check supplies the separate real-kill qualification once per harness;
 record its two native receipts here before passing that qualification. These native qualifications remain unmet.
+
+The Linux job in [build 44792561390](https://github.com/holdmyspot-com/cat/actions/runs/44792561390)
+also satisfies the missing-home check for `b4060268f76f44a6f63633eab116037218577e42`.
+Its successful Verify step checks that the home path is absent before and after the build, sets
+`HOME` to that path, and disables Maven build-cache reuse. Each of the 456 Surefire reports
+records the same absent `user.home` and the separate build temporary directory. The job log,
+reports, and 14 cases lasting at least one second are in `temp/wi146-native-bundled-update-Arm10C/build-evidence/`.
 
 The consolidation identified five additional T7 unit methods needing setup rationale. The
 exclusive repair writer added method-local explanations to four public-confirmation refusal
@@ -9207,6 +11743,15 @@ and frozen reports. This passed gate 1 and the missing-home subclaim on that cap
 gate 1 needs the integration build after the guidance repairs above. The previous
 execution-attribution and unaffected semantic receipts retain their stated scopes.
 The local qualitative T1/T2/T4 review is complete; the T7 repair retains its focused receipt above.
+Both changed tests passed in the integration build that includes the dedicated prompt-versus-CLI rule.
+`OptimizerCoreTest.measuresBothEvaluatorsFromCli` checks both 20-trial model-free pilots, public
+confirmation, development results for all confirmed cells on the shared working snapshot, the prepared
+plugin supplied to each evaluator's trial requests, and retention of the development evidence on reopen.
+`RequestServerTest.conversationEndsAfterResultsAreCopied` observes the end marker from the requester
+and checks that the retained session metadata and last copied artifact are already in place. The earlier
+deliberate publication-order change showed the fixture can observe a premature marker. The current
+report and source hashes are in `temp/shared-integration-receipts-0C4Gr0/results.json`. These checks cover
+the model-free integration paths. The native qualifications above remain open.
 The accepted bounded
 build/delegation closures and no-model/slow-case dispositions remain reusable within their scope.
 Native acceptance E1–E8 is authorized in both harnesses (user ruling, 2026-11-16); Claude is also
@@ -9244,8 +11789,76 @@ session `01a16de4-2163-75d0-9e45-481a1850fb3e`.
 | G3 | Passed | `temp/tracked-link-checkout-gN9ItB/g3-acceptance.json`: 42 references pass on the 2026-11-07 reports with no changed body in effect. Design row unchanged. |
 | G4 | Partial on the 2026-11-07 build | Local clauses pass on the 2026-11-07 reports (35 of 37 references plus replacements): the two detector methods are removed by the isolation ruling and replaced by `DriverTest.judgesSeeOnlyTheirOwnTrial` and `StagedSourceRunnerCopyTest.trialsKeepProjectsAndHomesPrivate`; `failedAttemptReproducesBeforeDevelopment` shrank and its removed assertions are proven by `ReproductionTest`, `SchedulerTest.reproductionRunsBeforeDevelopment`, `CommitGateTest.gateWaitsForReproduction`, `GeneratorTest` and `ValuesPromptTest`. The native held-out denial receipts (Claude 2026-10-28 on `598cfbed13`, Codex 2026-11-02 on `8f0d5bbce7`, session `3184ae68-7dad-45b6-b48f-c68707926440`) predate the runner launcher, policy and deny-read changes: rerun the native held-out denial check in both harnesses on the gate 4 artifact, alongside E1. |
 | G5 | Passed locally on the 2026-11-07 build | `temp/tracked-link-checkout-gN9ItB/g5-acceptance.json`: 72 references pass; six changed bodies (typed size records, cap-unreachable wording, `Commands` platform argument) prove the same outcomes. The native campaigns remain gate 4. |
-| G6 | Partial; background native acceptance remains | Retain the accepted E2 real-ESC receipts and composed recorded-adapter-to-driver resume checks, including Codex stopping admissions within 15 seconds, retained outcomes/assignments and the unchanged certification index; revalidate only changed determining inputs. Retain persistence-fault recovery and the unit cross-harness refusal (`OptimizerCoreTest.refusesOtherHarnessBeforeAnyChange`, `RegistryTest.refusesOtherHarness`). WI-15 E6 proves same-harness live-session refusal; it does not require an installed cross-harness run. Remaining: one recorded optimizer background execution per supporting harness on an applicable final artifact, showing automatic idle-session wakeup through the Claude host exit notice or the Codex queued message, and a host ESC during a later unrelated turn leaving its background driver running. Map the remaining background clauses to passing final unit evidence: notice only after state/delivery storage and lock release (`OptimizerCoreTest.backgroundNoticeAfterPilot`, `removalIsReported(true)`); queue refusal visible in the next status (`CodexExitNoticeTest.queueFailureIsExplicit` and those core checks); sandbox-bound Codex background refusal (`CodexOptimizerBoundaryTest.sandboxedBackgroundNamesReason`, with a native refusal observation when that host condition applies); snapshot/driver status, second-run busy, mutator refusal and bounded resumable cancellation (`OptimizerCoreTest.backgroundLockAndCancellation`, `backgroundCancelWaitIsBounded`, `DriverTest.backgroundIgnoresSliceAndInterrupt`); and admission beyond the foreground slice limit (`DriverTest.backgroundIgnoresSliceAndInterrupt`, `GuardPilotTest.backgroundPilotHasNoTimeCutoff`, `OptimizerCoreTest.backgroundRunsUntilDecision`). The recorded host invocation must use the shell tool own background mode without shell ampersand/nohup, contain no unsolicited turn-start tests, and follow the shared harness-neutral skill. Native cancellation retains and reaps the actual driver/child handles; the default grace plus 30 seconds is 90 seconds. Record unrun or inconclusive branches explicitly; H38/H39 feasibility or a sandbox refusal cannot substitute for successful optimizer idle wakeup. |
-| G7 | Partial (feasibility mapping) | Local: fixtures with generated values, failed built-in tools, paired control trials, the shared capacity bound across two JVMs (`HarnessCapacityTest.holdBlocksAnotherJvmUntilExpiry`), two-plugin trial installs and project-built plugins pass. Remaining: E1 (all roles through the runners, observed profile), E5 (host tool, replay recordings with judge sessions), E4 (persistent-write refusal), E8 (two concurrent processes, user-deferred); trial-plugin loading is proven by E1's loading record in both harnesses; delivery of values files and the eligibility cases need a method-level map. |
+| G6 | Native lifecycle checks passed on recorded builds | Retain the accepted E2 real-ESC receipts and composed recorded-adapter-to-driver resume checks, including Codex stopping admissions within 15 seconds, retained outcomes/assignments and the unchanged certification index; revalidate only changed determining inputs. Retain persistence-fault recovery and the unit cross-harness refusal (`OptimizerCoreTest.refusesOtherHarnessBeforeAnyChange`, `RegistryTest.refusesOtherHarness`). WI-15 E6 proves same-harness live-session refusal; it does not require an installed cross-harness run. The WI-15 G6 records establish automatic idle-session wakeup and proposal retrieval on Claude Code (`1.0+b08307c76ca2a`) and Codex (`1.0+b0fc33e2e4643`). The separate Codex workspace-write fixture establishes conditional sandbox refusal with no campaign created. The refusal used the earlier diagnostic wording. The 16 focused checks in `CodexServedSessionTest` and `CodexOptimizerBoundaryTest` cover the source correction. Both harnesses recorded native unrelated-turn Escape with the same optimizer driver still running. Native cancellation reaped the Codex driver, eight runners and 16 descendants, and the Claude Code driver, six runners and seven descendants. Each campaign remained resumable. See the WI-15 G6 receipts above. Compare their determining inputs with the final artifact before closing this row. Retained Surefire reports show 13 passing cases for the two cross-harness refusal methods above and the background methods here. The method map covers notice after state and delivery storage and lock release (`OptimizerCoreTest.backgroundNoticeAfterPilot`, `removalIsReported(boolean)`), queue refusal visible in the next status (`CodexExitNoticeTest.queueFailureIsExplicit` and those core checks), the Codex sandbox diagnostic (`CodexOptimizerBoundaryTest.sandboxedBackgroundNamesReason`), snapshot and driver status, second-run busy, mutator refusal and bounded resumable cancellation (`OptimizerCoreTest.backgroundLockAndCancellation`, `backgroundCancelWaitIsBounded`, `DriverTest.backgroundIgnoresSliceAndInterrupt`), and admission beyond the foreground slice limit (`DriverTest.backgroundIgnoresSliceAndInterrupt`, `GuardPilotTest.backgroundPilotHasNoTimeCutoff`, `OptimizerCoreTest.backgroundDriverRunsUntilDecision(boolean)`). The recorded host invocation must use the shell tool own background mode without shell ampersand/nohup, contain no unsolicited turn-start tests, and follow the shared harness-neutral skill. Native cancellation retains and reaps the actual driver/child handles; the default grace plus 30 seconds is 90 seconds. Record unrun or inconclusive branches explicitly; H38/H39 feasibility or a sandbox refusal cannot substitute for successful optimizer idle wakeup. |
+| G7 | Partial | Local evidence covers generated fixtures, delivery of values and test files, external-effect admission and refusal, failed built-in tools, paired control trials, the shared capacity bound across two JVMs (`HarnessCapacityTest.holdBlocksAnotherJvmUntilExpiry`), two-plugin trial installs and project-built plugins. The E5 text and file replays cover trial and judge evidence in both adapters. Reconcile E1 role and profile evidence, E5 native host-tool evidence, E4 persistent-write refusal, E8 concurrent campaigns, and native trial-plugin loading with the final artifact. |
 | G8 | Passed locally on the 2026-11-07 build | `temp/tracked-link-checkout-gN9ItB/g8-acceptance.json`: 67 of 73 references pass; the six removed concurrency methods are replaced against the new design text by `ConcurrencyPolicyTest` (starting windows, drop at a consuming failure, unchanged window at other failures, halving after infrastructure attempts, cell limit, ceilings) and `SchedulerTest.promotionRunsAreAdmitted`. E8 is required in both harnesses (user ruling, 2026-11-16), run alone per harness. |
 | G9 | Passed locally on the 2026-11-09 build | Fresh clean build of `5e9a6a7a4` on 2026-11-09 (142 s): 5,276 tests, 0 failures, 6 skipped, all 413 reports at a nonexistent `user.home` with `HOME` pointing at the same missing folder; no test created it (only the Maven wrapper's download cache appeared there); `TestabilityAuditTest` (22) passes. The calibration clause is fixed by `2d2d9513a`: the optimizer fixtures use `FixedCalibrator`, which shares `CapCalibratorContract` with `CapCalibrationTest`, and only `CapCalibrationTest` runs `CapCalibration`. PMD record errors and R-I1 native review not re-derived. |
 | G10 | Passed locally on the 2026-11-07 build | Re-derived because the earlier evidence file is gone: `PromptOptimizerLauncherTest` (2) and the built `runtime/claude` and `runtime/codex` artifacts hold the skill (identical `first-use.md`) and the launcher; no reference to the old procedure; `failure-regression-promotion.md` unchanged and follows D13; `RegressionScenariosTest` (13) passes; `ProposalTest.refusesMissingRecordedPromptTests` and `requiresEveryScenarioOfTheTarget`, plus `OptimizerCoreTest.startRequiresOnlyTargetScenarios` and `confirmChecksNewRecordedScenario`, refuse omission of a recorded scenario at their respective proposal/start/confirmation boundaries. The other two optimizer cases establish inclusion and delivery retention. |
+
+The current worktree passed 39 focused checks for G4. The shared driver keeps held-out cases and detailed
+failure evidence out of development, the command scope finds held-out directories across project campaigns,
+and session requests enforce the allowed parts by role. The Codex and Claude Code adapters pass the expected
+read restrictions to development sessions. Claude Code also reports incompatible host settings and generates
+the expected isolated read restrictions. Root retains the seven Surefire reports in
+`temp/g4-focused-vey9Ui/` through final reconciliation. These checks establish decisions and generated
+settings. The peer launch carries the owner's held-out paths. Before starting Claude Code, the peer runner
+applies those paths and checks whether copied project or managed settings would widen the trial's access.
+A focused Claude CLI reactor verification passed 15 refusal cases and one compatible-settings case
+(`temp/g4-focused-vey9Ui/claude-settings-widening.xml`, retained by the same owner).
+G4 still needs installed enforcement in both harnesses, including a restricted trial routed to a peer evaluator.
+
+The retained E1 proposals name `AGENTS.md` in Codex and `CLAUDE.md` with its `AGENTS.md` import in Claude Code.
+The trial records report loader conditions for those fixtures. G2 still needs installed evidence in each harness
+for a prompt file loaded only under a condition or at a later turn. Join the complete proposal's source listing to
+the native trial's observed prompt-file load and verify that the loader configuration is fixed through delivery.
+The shared fixture in `temp/g2-late-load-9UZ6J5/` is ready for Codex proposal preparation, then Claude Code
+with the same cases. It contains a one-turn question that leaves the trigger absent and a two-turn question
+sequence that first triggers the guide on turn two. Each population has 16 distinct draft outcomes. The
+desk labels occur only in the referenced guide and the operator's expected outcomes, outside trial turns.
+The fixture's README names the native read, reply, source listing, and delivery checks. Root retains the
+fixture through those checks and removes it after final reconciliation. The Codex owner collected the
+original `start` handle's successful exit. Campaign `20261123T000426Z-7522d7` was unconfirmed with no
+saved proposal at that point. The owner is advancing that same campaign. The draft partitions and native
+behavior remain unverified.
+The focused shared CLI test `OptimizerCoreTest.measuresBothEvaluatorsFromCli` passed with changed owner loader
+settings before confirmation and again before development. Both commands refused with
+`evaluator_conditions_changed`, named Claude Code, preserved the campaign snapshot byte for byte, and
+dispatched no sessions to either evaluator. Restoring the recorded setting let the same campaign confirm and
+advance. The existing peer runtime change check after reopening still passes.
+
+Delivery now compares the measured inventory with live worktree entries at the applicable project loader paths.
+Evaluator reports carry those paths even when their files were absent at the fork. Older reports remain readable and
+carry only the peer loader paths that they recorded. Delivery preserves a loader-only base edit and reports the result
+as historical with `loader_configuration` changed. The focused verification passed 36 tests, including
+`DeliveryTest.baseOnlyLoaderAdditionIsHistorical` and `PromptOptimizerCliTest.reportsStagedEvaluatorMetadata`.
+The former checks the saved history record and unchanged live loader bytes; the latter checks that an absent setting's
+path survives the report round trip. The installed delivery check with a peer loader absent from the original
+proposal remains open.
+
+`OptimizerCoreTest.acceptedTradeOffReportsLoaderChange` exercises the public `choose` command with a saved
+certification and a loader file added after the fork. The JSON delivery response reports `historical` and
+`loader_configuration`, the candidate is delivered, the new loader bytes survive, and the history still holds the
+measured loader identity. The existing retain-incumbent branch passed in the same focused build. These use scripted
+sessions and a seeded certification, so they do not supply the installed evaluator evidence.
+
+G7's focused reports and method map are in `temp/g7-delivery-eligibility-fuCmfV/`. Nine cases passed. The delivery
+contract reads back values, scenarios and fixtures for created and edited tests at all four delivery outcomes. The
+public keep-incumbent test also checks the unchanged prompt and campaign cleanup. The workspace test checks the
+generated value in the staged file. Both eligible effect classifications dispatch only the guard pilot and confirm;
+the ineligible classification dispatches no trial on start, retry or revision. The eligibility cases use a supplied
+contract-author classification. Native classification and installed behavior still require their applicable receipts.
+
+The retained E4 campaigns from Codex r2 and Claude Code r6 have matching prompt source bytes for each of the
+four unsupported cases. Their saved proposals contain the expected certification limitation, their pilot files
+record 20 trials per test, and their held-out trial directories are empty. The comparison and source hashes are
+in `temp/t3-role-capture-mxpI3v/e4-retained-evidence.json`. These observations cover the recorded
+`1.0+b0821deabed06` proposals. Codex r2 stopped before confirmation. Reconcile the current artifact and any
+post-confirmation claim separately.
+
+The retained persistent-write campaigns ran a guard pilot. The current CLI skips that pilot once the
+contract author reports an ineligible trial effect. The public CLI test
+`OptimizerCoreTest.startAndReviseSkipIneligibleTrialEffect` now also confirms the proposal and advances
+the campaign. It verifies the stored unavailable outcome and the absence of trial dispatch, counted
+trials and certification attempts. The focused Maven check passed in `temp/e4-confirm-Y2X6Se/`.
+Use that result for the current CLI behavior after classification. The installed check still needs
+to observe the classification and the skipped pilot together.
