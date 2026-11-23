@@ -26,4 +26,5 @@ instructions.
 - `unsupported/`: one prompt system per unsupported case, each expected to end in its
 	`certification unavailable` outcome or refusal: `remote-instruction` (a remote response supplies governing
 	instructions), `image-output` (a material requirement produces an image), `response-contingent` (an obligation needs
-	a follow-up turn chosen from the reply) and `persistent-write` (a required write outside the trial copy).
+	a follow-up turn chosen from the reply) and `persistent-write` (a required write to a shared log at an absolute path
+	outside the project copy and home that each trial discards).

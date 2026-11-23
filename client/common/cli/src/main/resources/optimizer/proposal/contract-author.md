@@ -249,8 +249,11 @@ the `evidence`: the file and the text that show it.
 - `unsupported_instruction_source`: a remote or MCP response supplies governing instructions, for the agent or for a
 	child agent. The source's role decides this, not its wording; a response used only as task data does not count.
 - `unsupported_output`: a material requirement needs image, audio or video output.
-- `ineligible_trial_effect`: a required trial path writes persistent state outside the trial's project copy, or
-	needs an external service without read-only credentials or disposable fixtures.
+- `ineligible_trial_effect`: a required trial path writes persistent state outside the trial, or needs an external
+	service without read-only credentials or disposable fixtures. Each trial runs in its own copy of the project with
+	its own home directory, which holds the harness's configuration directory, and CAT deletes both after the trial.
+	A write under the project, `~` or `${HOME}` therefore stays inside the trial, whatever the prompt says the file is
+	for; a write to a shared package cache, to any other absolute path or to an external service is persistent.
 - `unsupported_test_interaction`: a material obligation applies after a turn of the user that answers something the
 	agent said, and what the agent must do depends on that answer. Examples are the user's answer to the agent's own
 	clarifying question, the user's choice among options that the agent offered, and the user's approval of a plan that

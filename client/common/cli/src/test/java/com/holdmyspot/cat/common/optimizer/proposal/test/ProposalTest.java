@@ -2112,6 +2112,28 @@ public final class ProposalTest
 	}
 
 	/**
+	 * Verifies that the contract author is told that a write under the trial's own home directory, which holds the
+	 * harness's configuration directory, stays inside the trial, while a write to a shared package cache, another
+	 * absolute path or an external service is persistent, so that both harnesses decide an ineligible trial effect
+	 * alike.
+	 */
+	@Test
+	public void requestCountsTheTrialHomeAsDisposable()
+	{
+		// Requirement: R-C6
+		// The prompt wraps its lines, so the phrases are matched with every run of whitespace as one space
+		String prompt = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), List.of(), SALT).turns().getFirst().
+			replaceAll("\\s+", " ");
+
+		requireThat(prompt, "prompt").
+			contains("its own home directory, which holds the harness's configuration directory").
+			contains("A write under the project, `~` or `${HOME}` therefore stays inside the trial").
+			contains("a write to a shared package cache, to any other absolute path or to an external service is " +
+				"persistent").
+			doesNotContain("outside the trial's project copy");
+	}
+
+	/**
 	 * Verifies that a requirement whose trigger is the user's answer to the agent's own question is shown as an
 	 * unsupported test interaction, and that confirming records that outcome so that no certification trial runs.
 	 *
