@@ -59,7 +59,8 @@ prerequisites of "Outside a nested session". When it does not, skip "Inside a ne
 Run the launcher by its absolute path, as one command with nothing in front of it, such as a variable assignment, `env`
 or `cd`, and no pipe or redirection. Before you run it, write the launch's records with a file-writing tool into a file,
 one line per turn, `{"type":"turn","prompt":"<task>"}`, followed by one `{"type":"complete"}` line, and name that file
-with `--input <file>`. `--input` takes only that records file, never a prompt file; prompt files are for the
+with `--input <file>`. For an existing prompt, have code read its source and serialize the turn record.
+`--input` takes only that records file, never a prompt file; prompt files are for the
 `request-session` launcher. Use a command timeout of 600000 milliseconds and keep waiting while the launcher writes
 `waiting` records, which it repeats every 30 seconds while a turn writes nothing else. When a turn's prompt depends on
 the reply to the turn before it, hold a conversation instead, as "Conversations" describes.
@@ -222,6 +223,8 @@ Append one JSON object per line to `<folder>/to-child.jsonl` for each message:
 - `{"interrupt": true}` ends the turn in progress, and the conversation goes on.
 - `{"end": true}` ends the conversation.
 
+When a turn uses an existing prompt, have code read the prompt and serialize the record before appending it.
+
 The session's records go to `<folder>/from-child.jsonl` as they arrive, except the harness's own events, which go to
 `<folder>/events.jsonl`. `from-child.jsonl` holds only what you need to drive the conversation: the
 `turn_completed` and `turn_failed` records, one line for each turn's end, `waiting` records that repeat while a turn
@@ -251,7 +254,8 @@ Inside a nested session, give the launcher that `CAT_REQUEST_SESSION` names in p
 
 It prints only that turn's final reply, followed by the lines `exit_code: <status>` and `error: <text>` when the
 harness's exit status is not `0` or its standard error is not empty, or `turn <n> failed: <reason>` for a turn that
-failed. Relay that output as the reply; do not read `from-child.jsonl` or `events.jsonl` for it. A line of yours that is not one of
+failed. When passing the reply onward, capture the command's complete output in a readable file and send that path.
+Read the reply through this command rather than through `from-child.jsonl` or `events.jsonl`. A line of yours that is not one of
 these messages is refused in `from-child.jsonl` with a `refused` line and changes nothing. The last line in that file,
 however the session ends, is `{"ended": "<status>"}`, with the status of the request; once it is there, no `turn_end`
 line that you wait for will come. The launcher then exits as it does without `--conversation`.
@@ -270,11 +274,15 @@ runner launcher of its harness and a new conversation folder:
 --resume <session-id> --model <model> --effort <effort> --conversation <new-folder>
 ```
 
-The session continues in its session folder, with the project, plugins and options that its first launch gave it. Do not
-pass `--project`, `--plugin`, `--install-cat`, `--workspace`, `--read-only-evidence`, `--deny-read`,
-`--instruction-files`, `--session-role`, `--tool-output-token-limit` or `--agent`; the launcher refuses them. Other
-options work as for any launch. Its turns go on after the last turn that ended. The turn that was in progress when it
-stopped has no reply, so send that turn again as your first `turn` message.
+The session keeps its project, plugins, and completed turns in the same session folder. Do not pass `--project`,
+`--plugin`, `--install-cat`, `--workspace`, `--read-only-evidence`, `--deny-read`, `--instruction-files`,
+`--session-role`, `--tool-output-token-limit` or `--agent`; the launcher refuses them. Other options apply to the
+resumed launch. If the resumed session needs to launch child sessions, pass `--session-requests` again with the
+intended total allowance. Pass `--request-depth` again if those children need to launch sessions of their own. The
+previously used request count still applies. The turn that was in progress when the session stopped has no reply, so
+use the original prompt in the first `turn` message. Have code select the interrupted turn's input record from the
+previous conversation and append it to the new conversation's `to-child.jsonl`. If the interrupted record cannot be
+identified, report the missing input before replaying it.
 
 Only the session that launched a nested session can resume it, and only while CAT retains it: a nested session that
 ended on its own cannot be resumed. The launcher exits with `2` when it cannot resume the session, such as for an ID
@@ -284,16 +292,12 @@ either case.
 
 ### Replies
 
-The transcript is a JSON Lines file of the runner's records: one JSON object per line, whose `type` field comes first.
-Relay each turn's reply from its record that begins `{"type":"turn_completed"`, one for each turn that completed, in
-turn order. Its `assistant_response` field holds the session's final reply of that turn. Its `exit_code` and `error`
-fields hold the harness's exit status and standard error; when `exit_code` is not `0` or `error` is not empty, report
-them with the reply. A turn that failed ends with a record that begins `{"type":"turn_failed"` instead, whose `error`
-field gives the reason; report that reason in place of a reply. The transcript also holds other records, such as
-`harness_event` records that carry the harness's own events, so do not read the whole transcript to find the replies:
-pass `--output <transcript>`, or for a session request use the file that its response's `transcript` field names,
-search that file with your shell's search command for the lines that contain `"type":"turn_`, and read only those
-lines.
+The transcript is a JSON Lines file of the runner's records. Each line starts with its `type` field. Locate the turn
+records by the prefix `{"type":"turn_` in the file named by `--output` or by the session response's `transcript` field.
+A record beginning `{"type":"turn_completed"` supplies `assistant_response`, `exit_code`, and `error`. A record
+beginning `{"type":"turn_failed"` supplies its reason in `error`. When passing replies onward, have code extract
+these records in turn order into a readable file and send its path. Report failed turns or nonzero exit status with
+that path.
 
 ### Git in the copied project
 

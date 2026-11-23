@@ -36,9 +36,9 @@ change what it covers. List the changed files with `git diff --name-status` and 
 When the changed files include `.java` files or a `META-INF/services` file, read `java.md` in this skill's directory
 before step 3.
 
-Create a temporary directory under `${CAT_TEMP}` and write a ledger there: one row per changed hunk, with its file, its
-changed line range, and its status (initially unreviewed). Update the ledger whenever a hunk is shown or classified,
-and read it again after the conversation is compacted.
+Create a temporary directory under `${CAT_TEMP}`. Have code consume the Git diff and initialize a ledger there with
+one row per changed hunk, including its file, changed line range, and status (initially unreviewed). Update the ledger
+whenever a hunk is shown or classified, and read it again after the conversation is compacted.
 
 ### 2. Derive the use cases
 

@@ -198,6 +198,8 @@ acceptance check for the required behavior. Preserve a decision-debugging record
 settings, recipient, execution mode, exact task, every available governing instruction's rendered text or hash, role,
 order, and occurrence count, relevant hook and tool events, exact raw output, deterministic validation result, and each
 known unavailable input. Classify each diagnostic statement as an observation, an inference, or an unresolved unknown.
+Have code capture existing evidence directly from the source records or record their readable paths and selectors.
+Write the diagnostic interpretation separately.
 
 When a diagnosis relies on an observation whose producer can still advance it, treat the observation as provisional.
 This includes a nonterminal workflow record such as `unclaimed`, `claimed`, `running`, or `publishing`, a partial

@@ -20,6 +20,8 @@ statement that establishes the fact. This includes identifiers, paths, request v
 opaque tokens. Later use an unambiguous reference such as “that input” or “that path”; repeat the literal only when the
 later statement could identify a different fact or the reader must use its exact characters. A descriptive value may be
 paraphrased when its characters do not affect the decision.
+If the reader must submit, execute, or otherwise consume the payload, give the authoritative artifact's location
+or a code-generated file the reader can use. Use the prose to identify the affected input or operation.
 
 Use this decision sequence, in order:
 

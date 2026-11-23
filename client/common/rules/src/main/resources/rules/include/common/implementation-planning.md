@@ -13,6 +13,8 @@
 	that changes implementation, and let a runnable connected acceptance check precede further isolated verification.
 - Cover consequential user-experience transitions and actor goals without requiring redundant documents or treating a
 	coverage representation as a mandatory assignment boundary.
+- Deliver and verify the happy path early enough to expose design or architecture problems before dependent work
+	accumulates. Order follow-up work by its cost and benefit to end users and developers.
 
 ## Guidance
 
@@ -85,10 +87,24 @@ or list of components can support this check but cannot replace demonstrating th
 
 ## Select the Work and Its Order
 
-Apply this section when writing a plan and again when choosing the next work while executing one. Choose the smallest
-coherent, verifiable portion of a use case or equivalent contract that preserves coupled decisions and useful acceptance
-evidence. It must end in a result an agent can implement and verify with the context it receives. A whole journey, whole
-use case, screen, or individual interaction is not automatically an assignment. Compare only alternatives that could
+Apply this section when creating or updating a plan and again when choosing the next work while executing one.
+Work backward from the successful outcome to identify the smallest end-to-end implementation of the normal successful
+flow. Schedule that happy path and its connected acceptance check as early as the required dependencies allow. Use the
+intended entry point and the boundaries whose feasibility matters to the design. If an unresolved design or architecture
+question could prevent that flow from working, resolve it at the earliest step that can produce evidence. Include the
+fixes, constraints, and checks needed for the flow to work correctly. Keep the remaining cases and acceptance gates in
+the plan.
+
+Once the happy path passes, revisit the remaining fixes, optimizations, and other work using what implementation
+revealed. Respect dependencies and required acceptance gates. Among ready items, weigh expected benefits for end users
+and developers against implementation and ongoing maintenance costs. Count a developer benefit on its own merits.
+For example, a build cache that substantially shortens repeated development builds may deserve early priority even
+when it leaves the shipped product unchanged. Use observed costs and benefits where available and identify estimates
+as estimates.
+
+Choose the smallest coherent, verifiable portion of a use case or equivalent contract that preserves coupled decisions
+and useful acceptance evidence. It must end in a result an agent can implement and verify with the context it receives.
+A whole journey, whole use case, screen, or individual interaction is not automatically an assignment. Compare only alternatives that could
 change a dependency, verification boundary, ownership boundary, or exposure to rework:
 
 - Use a behavior slice when exercising its connected path can resolve a consequential integration or design question

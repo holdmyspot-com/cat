@@ -17,8 +17,10 @@ command sandboxed. Write the command so that its text is final:
 
 - Write every path out in full as an absolute path, and every value literally. Do not use a variable, `$(...)`,
 	backticks, `~`, or a relative path where a rule names an absolute one.
-- When a command needs a value that is known only at runtime, run a first command that prints it, then write the second
-	command with that value typed in.
+- When a command needs data known only at runtime, use a readable file argument if the command and its approval
+	rule support one. Otherwise use a tool that binds the runtime value into the final invocation before the harness
+	checks that invocation for approval. If neither is available, report the missing transfer capability. Keep
+	approval on the exact invocation that would execute.
 - Run one command per call. Do not put an assignment, `env NAME=value`, or `cd … &&` in front of it, and do not append
 	`;`, `&&`, `||`, a pipe, or a redirection to it.
 - Read the exit status from the tool result. Do not append `; echo exit=$?` or similar.

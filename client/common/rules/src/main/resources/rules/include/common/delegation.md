@@ -28,6 +28,9 @@
 	only the context and focused checks it needs and each large enough that its own work outweighs a subagent's fixed
 	cost, so independent work proceeds concurrently, no delegate spends its time on context or checks that belong to
 	other work, and the full build runs once, after integration.
+- After a cybersecurity stop, use a planning subagent to split permitted work that is eligible for delegation, and
+	assign each eligible subtask to a separate subagent once its dependencies are satisfied. Work that can proceed
+	independently starts without waiting for a decision on the blocked operation.
 <!-- A parent gave one implementer five parts of a work item and a reading list of whole design sections; after more
      than two hours the implementer had committed nothing. -->
 - Point each subtask at the exact passages its decisions depend on, so that it spends its time on its deliverable
@@ -98,6 +101,17 @@ another subtask's output waits for that output, and subtasks whose write sets ov
 exclusive writer or stay with the higher authority. Do not delegate work when accepting it would require the parent to
 rederive its decisions or review work as broadly as implementing it directly.
 
+After a cybersecurity stop, if permissible work is eligible for delegation, use the documented direct subagent launch
+operation, if available, to ask a planning subagent for a breakdown of that work. While the stop is unresolved, include
+only work that can be completed without the blocked operation or its output. Ask for each subtask's deliverable,
+acceptance check, and dependencies. Review the breakdown against applicable restrictions before assigning each eligible
+subtask to a different subagent. Wait for an accepted result from each prerequisite subtask before launching its
+dependents. If direct launch is unavailable, continue with the permissible work you can do directly.
+
+State the concrete operation, scope, and expected result in each brief. Omit incidental labels and preserve facts
+that affect the security decision, including what the subagent may access or change. Keep any still-blocked operation
+out of the breakdown and briefs. Never rephrase or delegate restricted work to get it past the safeguard.
+
 Before briefing an implementation task, separate the choices it leaves open, such as an interface, a behavior, a
 placement or a wording, from the edits that follow once those choices are made. Settle the choices first, with the
 higher-level model or in a task contract that leaves nothing to decide, then delegate the edits as their own tasks;
@@ -153,8 +167,9 @@ test names or one explicit narrow exception, literal verification commands and e
 and integration boundary. Reject a handoff that leaves an executor to choose a behavior, fixture, schema, responsible
 component, or verification interpretation. Advice or a list of alternatives is not an executable handoff.
 
-Send the task contract as author-provided readable text. Do not copy an encrypted, encoded, captured, or otherwise
-opaque transport payload into a delegation. Before editing, the delegate must validate that it can identify the
+Use the task message for any new assignment instructions. For a task contract or accepted amendment already recorded,
+send the path and identify the governing section. Verify that the delegate can read it. Do not copy an encrypted,
+encoded, captured, or otherwise opaque transport payload into a delegation. Before editing, the delegate must validate that it can identify the
 objective, write allowlist, workspace mode, and verification commands. When the recipient has an injected terminal
 response contract, the task names that contract and the delegate preserves its required outer form; the task must not
 add a plaintext prefix or another incompatible response format. Otherwise the delegate returns one machine-readable

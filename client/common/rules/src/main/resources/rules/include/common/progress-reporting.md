@@ -29,10 +29,9 @@ This rule covers work that you perform yourself. When the work also needs a stat
 produces, such as a hosted build finishing, a background process exiting or a subagent returning, lazy load
 `external-waits.md` and send no regular report about that wait.
 
-Immediately before appending an estimate, read the authoritative current clock and record the returned timestamp
-exactly; do not predict, round forward, or manually invent it. Verify that it is not earlier than the preceding history
-entry. If the clock or stored history makes that impossible, stop and correct the record before reporting rather than
-emitting a future or out-of-order update. Record each estimate with this observed time, completed and total units for
+When appending an estimate, have code read the authoritative current clock, compare it with the preceding history
+entry, and record the observed timestamp directly. If the clock or stored history makes that impossible, stop and
+correct the record before reporting. Record each estimate with this observed time, completed and total units for
 each component, remaining duration in precise minutes, and the observed basis for the estimate. At each later report,
 compare the previous forecast with elapsed component work. Revise the estimate from that observed rate and state how
 much it changed and why. If there is no prior measurement, say so instead of claiming improved accuracy. Do not use an

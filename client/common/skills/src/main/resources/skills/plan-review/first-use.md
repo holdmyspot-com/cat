@@ -58,6 +58,7 @@ other internal design choices into user questions.
 	retained guarantee's necessary safeguards together with it; never offer to remove evidence validity, safety, or
 	recovery while claiming the same outcome. Use the available user-question channel. Silence is not a choice.
 4. Interpret each answer as a product-scope decision and record it in the live review ledger before assigning edits.
+	Keep the ledger in a file that the writer can read. Record the confirmed scope there once.
 	Keep the user's authority and question queue with the interviewing agent. If the user keeps an element, split it
 	into user-facing features, use cases, or scope boundaries that each pass step 2's incremental materiality test. Add
 	those children to the **same** queue and rerank it against every remaining element. Stop splitting when the next
@@ -70,10 +71,12 @@ other internal design choices into user questions.
 	only a question whose alternatives depend on an unresolved product-policy gap or evidence the pending edit must
 	establish. If a later review invalidates a question already asked, correct it before using its answer.
 6. After every confirmed choice, including a kept element, send its documentation work to one exclusive write-capable
-	subagent when direct launch is available. Give it the exact decision, source snapshot and governing document
-	revisions, preserved guarantees, affected outcomes and acceptance gates, worktree mode, exact write allowlist, and
-	literal focused verification commands. Include any design record that the current plan requires at this stage in
-	that allowlist. The subagent is not alone in the codebase: it must preserve others' edits, avoid unrelated files,
+	subagent when direct launch is available. Send the readable ledger path and identify the decision entry. Use
+	the governing document paths and source snapshot to identify the revisions. Give the writer the preserved
+	guarantees, affected outcomes and acceptance gates, worktree mode, and exact write allowlist. Refer to existing
+	verification commands through the file and section that defines them. If the assignment needs new focused
+	commands, record them in the ledger entry before sending it. Include any design record that the current plan
+	requires at this stage in the allowlist. The subagent is not alone in the codebase: it must preserve others' edits, avoid unrelated files,
 	and report an unresolved product-policy question instead of choosing for the user. Do not edit the same documents
 	concurrently. If the writer is busy when another answer arrives, queue the new decision for that writer's next
 	revision, preserving answer order and the current document snapshot. If no direct launch is available, the

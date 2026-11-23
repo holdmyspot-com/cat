@@ -2,8 +2,8 @@
 
 ## Design Goals
 
-- Before the changed commands of a workflow run on a remote runner, the agent holds an authenticated Upterm session to
-	that worker and has verified that a command sent through it takes effect in the job's workspace.
+- When an agent tests changed workflow commands or investigates a failure that needs the worker's state, the commands
+	under test run only after the agent verifies authenticated access to the job's workspace through Upterm.
 - The project's workflow integration supplies every piece that such a session needs on its runner provider; the agent
 	finds a missing piece by inspecting that integration and repairs it before the remote test.
 - A failure is diagnosed and retried on the same worker and workspace, keeping valid completed outputs and the original
@@ -27,23 +27,22 @@
 
 ## Guidance
 
-Use this skill when a task tests changed workflow commands on a remote runner, on any runner provider or operating
-system, and when the user asks to set up, connect to, or troubleshoot an Upterm session on a runner. Work within the
-authority the task already has to run remote jobs, change workflows, and publish results. Open the session before the
-changed commands run and keep it open through testing and retries, even when you expect them to pass. A provider that
-has already destroyed a worker cannot give it back: starting Upterm afterwards does not recover it, so arrange to keep
-the worker before teardown.
+Use this skill when testing changed workflow commands or investigating an unresolved remote failure that needs the
+worker's state or a retry in its workspace, even if the workflow and command are unchanged. Use it also when the user
+asks to set up, connect to, or troubleshoot an Upterm session. Work within the task's authority to run remote jobs,
+change workflows, and publish results. Arrange the session before dispatching the run. Connect before the commands under
+test run and keep the session open through testing and retries, even when you expect those commands to pass.
 
 ### 1. Check the project's integration
 
 Before you dispatch the remote test, inspect the project's own workflow files and the scripts and actions they run on
 the worker, and find where each of these is supplied. Read their current values from those files; do not assume them.
 
-1. **The worker outlives the changed commands.** A step at the end of the job, or a hook that the provider runs before
-	teardown, waits until the remote shell exits. The wait runs whether the changed commands pass or fail.
-2. **The changed commands start only once you are connected.** Either the workflow waits for a readiness signal that
+1. **The worker outlives the commands under test.** A step at the end of the job, or a hook that the provider runs before
+	teardown, waits until the remote shell exits. The wait runs whether the commands pass or fail.
+2. **The commands under test start only once you are connected.** Either the workflow waits for a readiness signal that
 	you send through the session, such as a file that you create in a directory that the job owns, or you run the
-	changed commands through the connected shell yourself. A detached session lets the workflow's later steps continue
+	commands through the connected shell yourself. A detached session lets the workflow's later steps continue
 	at once, so it needs one of the two.
 3. **You can read the connection details while the worker runs.** The integration publishes the SSH command that
 	Upterm prints through a channel that the provider lets a client read during the job, not one that it releases only
@@ -72,8 +71,7 @@ the worker, and find where each of these is supplied. Read their current values 
 
 Reuse what the provider and the integration already supply, and add only what is missing. An integration that works on
 one provider does not show that its lifecycle holds on another; check each provider that the test uses. If a piece is
-missing or fails, report it and repair the integration before you run the remote test; do not run the changed commands
-unattended instead.
+missing or fails, report it and repair the integration within the task's authority before you run the remote test.
 
 ### 2. Supply access
 
@@ -120,7 +118,7 @@ Upterm sessions. The prompt may carry terminal control sequences. On Windows Git
 client waiting for a prompt that had already appeared. Handle the sequences that actually arrive, or set `PS1` and
 clear `PROMPT_COMMAND` through the open connection. A prompt-detection timeout is not an authentication failure.
 
-Before you start the changed commands, send a short command whose effect you can check in the job's workspace, such as
+Before you start the commands under test, send a short command whose effect you can check in the job's workspace, such as
 listing the directory that the job owns, and verify its output. A login banner or a published connection command does
 not show that you can run commands.
 
@@ -138,8 +136,9 @@ leave the shell at its prompt for longer than the idle limit less the time you n
 
 ### 5. Send files through the shell
 
-Ordinary short commands need no special handling. To send a file through the interactive shell, encode its bytes as
-text, such as base64, and send it in lines whose length, including the shell syntax around the payload, stays below the
+Ordinary short commands need no special handling. To send a file through the interactive shell, have the local
+client code read the source file, encode its bytes as text, such as base64, and send lines whose length, including
+the shell syntax around the payload, stays below the
 remote terminal's input limit. On native macOS, 512-byte base64 chunks arrived intact, while chunks of about 1,000
 bytes plus their shell syntax made the terminal ring its bell and drop input. After each chunk, wait for an
 acknowledgement that only that chunk's command prints before sending the next; a successful write to your local
@@ -186,7 +185,8 @@ as caches, and use the smallest replacement run that can reproduce the failure.
 
 Release the worker yourself as soon as no remaining command, retry or required verification needs it; do not leave it
 to reach its idle limit or the job's timeout. First record the session's results and copy every output that later work
-needs from the worker, such as by printing it encoded through the session and checking its SHA-256 hash. Then end the
+needs from the worker. Have the local client code capture the shell's encoded output, decode it directly into a
+local file, and compare its size and SHA-256 hash with the remote source. Then end the
 keepalive, run `exit` in the remote shell, wait for the SSH process to end, and check that the session has ended.
 Disconnecting your client without running `exit` leaves the session waiting at its prompt and the worker held.
 

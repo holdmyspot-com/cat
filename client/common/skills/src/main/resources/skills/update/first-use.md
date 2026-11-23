@@ -8,7 +8,8 @@
 	user's policy approves.
 - Treat CAT's Java runtime, installer and plugin as one bundle that moves between releases together.
 - Leave setting up the trusted installer to the user, because that operation changes what the installer trusts.
-- Leave a change that the agent's sandbox blocks to the user, instead of working around the sandbox.
+- Obtain the harness's required authorization before running an install. Give control to the user when that
+	authorization is unavailable.
 - Give the user the exact command that a blocked change needs, so that they can apply it without asking for it.
 - Give the user an entry command that installs into this session's harness home, and rely on its effect only once
 	the session has confirmed it there.
@@ -73,13 +74,13 @@
 	After the user says the command is done, and before you rely on it, check that a version folder of CAT's plugin
 	under the session's harness home now holds the launcher. When none does, the command acted on another harness
 	home: ask the user for the command's printed output instead of continuing.
-3. Run the launcher:
+3. Run the launcher. Before a direct install command, apply any authorization instructions in this skill's entry
+	file.
 	- When the user asks to install or update CAT to a release they name, run
-		`<launcher> install --harness <h> <tag> --json`, with the release's tag such as `v1.1`. This is also how to move
-		to a release other than the one that the installation runs. An install of another release moves the Java runtime,
-		the installer and the plugin together.
-	- When the user asks to go back to an earlier release, run `<launcher> install --harness <h> <tag> --json` with the
-		tag of the release they name, such as `v1.1`. When they do not name one, ask the user which release to go back
+		`<launcher> install --harness <h> <tag> --json`, with the release's tag such as `v1.1`. An install of another
+		release moves the Java runtime, the installer and the plugin together.
+	- When the user asks to go back to an earlier release, run `<launcher> install --harness <h> <tag> --json` with
+		the tag of the release they name, such as `v1.1`. When they do not name one, ask the user which release to go back
 		to. An install without a release never goes back to an earlier one.
 	- When the user asks only whether a newer release exists, or which release is active, run
 		`<launcher> status --harness <h> --json`, report what it prints, and stop. Its `version` names the active
@@ -93,16 +94,13 @@
 		When installed status omits `update_command`, report its `message` and give the user the entry command from
 		step 2 to run in their terminal, then ask them to restart the harness after repair. Do not construct an update
 		command from a launcher path in that case.
-		When status reports `installed` as false, run `<launcher> install --harness <h> --json` through the harness's
-		normal authorization. A named-release install uses the named-release command above and its normal authorization;
-		do not modify `update_command` to select a release. Handle a failed status as step 4 directs.
+		When status reports `installed` as false, use the direct command `<launcher> install --harness <h> --json`.
+		Handle a failed status as step 4 directs.
 4. Because the command ends with `--json`, the launcher prints one line of JSON. Act on its `result` field:
-	- `installed`: tell the user that the release that `version` names is installed and registered, and that it takes
-		effect once they restart or resume the session. In Codex, also say that Codex asks them to review a new or
-		changed CAT hook before it runs.
-	- `updated`: tell the user that the release that `version` names replaced the one that `previous_version` names,
-		and that it takes effect once they restart or resume the session. In Codex, also say that Codex asks them to
-		review a new or changed CAT hook before it runs.
+	- `installed`: tell the user that the release that `version` names is installed and registered.
+	- `updated`: tell the user that the release that `version` names replaced the one that `previous_version` names.
+	- After `installed` or `updated`, in Codex follow the post-install handoff in the session's CAT Environment
+		guidance. In Claude Code, tell the user that the release takes effect once they restart or resume the session.
 	- `up_to_date`: tell the user that the active CAT release, which `version` names, is already the release they asked
 		for, so no other release was installed. Also report the result's `message`, which names the permission entries
 		that the install repaired, if any.
@@ -133,11 +131,12 @@
 
 	When the launcher prints anything else, report its output.
 
-When the launcher exits with status 77, or its `result` is `not_writable`, or the harness refuses to run the launcher
-command, the user's sandbox or permission settings block the operation, at a path that the result's `paths` may name.
-Say that running the entry command from step 2 again repairs the installation and its permission entries. Then end
-your turn with a reply that names that path, if the result names one, shows that entry command in its own code block,
-and asks the user to run it in a terminal outside the sandbox or, in Claude Code only, to type it at the prompt prefixed
-with `! `. Ask them to restart the harness after repair. Do no other work in
-that turn, including work the user asked for earlier. Do not run it again, with other permissions, or in any other way
-to get around the sandbox.
+When the user or the harness denies an approval request, report the denial and end the update attempt. Do not offer
+another path to run the denied command.
+
+When the tool cannot request required approval, the harness reports a sandbox write restriction, or the launcher
+exits with status 77 or returns `not_writable`, prepare the entry command from step 2 with the exact release tag if the
+user named one. Then end your turn with a reply that names that path if the result names one in `paths`, explains
+what prevented the update, and shows that entry command in its own code block. Ask the user to run the command in a
+terminal outside the sandbox or, in Claude Code only, at the prompt prefixed with `! `. Ask them to restart the harness
+after repair. Do no other work in that turn. Do not run it again with other permissions or through a different tool.

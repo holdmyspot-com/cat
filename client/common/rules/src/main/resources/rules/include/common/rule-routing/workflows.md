@@ -19,9 +19,9 @@ multi-step plan whose next work unit you choose.
 Before delegating work to a subagent, or when designing, updating, or executing a prompt-driven workflow that delegates
 work, lazy load `../delegation.md`.
 
-Before sending a task, result, correction request, or other information to another agent, when you receive the path of
-an artifact that another agent wrote and that is too large to read in one tool output, or when designing a workflow
-whose agents exchange information, lazy load `../agent-handoffs.md`.
+Before sending information to another agent, when you receive the path of an artifact that another agent wrote and that
+is too large to read in one tool output, or before designing, updating, or executing a workflow that delivers data
+to another step, program, or model, lazy load `../agent-handoffs.md`.
 
 When creating, using, or handing off temporary files or directories, lazy load `../temporary-resources.md`.
 

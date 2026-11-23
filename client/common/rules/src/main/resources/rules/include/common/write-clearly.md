@@ -211,3 +211,6 @@ When the draft repeats an exact identifier, path, command, input, or other machi
 reported result or next action, copy it from the evidence and compare every repeated occurrence with that evidence
 before finalizing. Do not paraphrase, shorten, or alter a decision-bearing value. If the reader does not need its exact
 form to understand or take the next action, describe its role instead of repeating it.
+When the reader needs to submit, execute, or otherwise consume an existing payload, point to its authoritative
+artifact or provide a code-generated file the reader can use. Keep identifiers and short evidence excerpts in
+the prose when they help the reader identify the affected operation.

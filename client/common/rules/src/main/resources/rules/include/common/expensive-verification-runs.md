@@ -2,11 +2,13 @@
 
 ## Design Goals
 
-- A run of verification that is expensive or draws on shared capacity runs on a revision whose result will count: not on
-	one that a decided or in-progress change will replace or that is already superseded, and a result on an earlier
-	revision never stands as the claim for its replacement.
-- A run is not started when a running or finished run already answers its question on the same revision, and agents
-	working at once know which runs exist.
+- An expensive or shared-capacity run verifies a revision whose result will count, and a gate that requires evidence
+	for a specific revision gets it from that revision.
+- A passing result prevents a repeat while it still answers the verification question, unless a new failure warrants
+	rechecking the behavior or the verification requires a fresh run. Agents working at once know which runs exist and
+	wait for an in-progress run that already answers the question.
+- Before committing resources to an expensive run, confirm its prerequisites and any claimed comparability between
+	targets with the earliest inexpensive observations the workflow supports.
 - Spend a slow or scarce target's run only when it is likely to answer for the revision that ships: after the other
 	targets pass while the workflow is being changed or repaired, and without waiting for them once the round is
 	expected to pass.
@@ -28,12 +30,32 @@
 
 ## Guidance
 
-This rule applies before you start, dispatch or request a run of a build, test suite, workflow or probe that takes
-many minutes or draws on capacity that others share, such as the runners of a hosted workflow, when a job of such a
-run that you started has failed while other jobs of it are queued or running, when you have other work that needs a
-runner while such a run is in progress, before you publish a new build while such a run uses the current one, and when
-a change lands while such a run that you started is in progress. It does not apply to a run that finishes in seconds on
-your own machine.
+This rule applies before preparing, starting, dispatching or requesting a run of a build, test suite, workflow or probe
+whose setup or execution takes many minutes or draws on shared capacity, such as the runners of a hosted workflow.
+It also applies when a job of such a run that you started has failed while other jobs are queued or running, when you
+have other work that needs a runner while such a run is in progress, before you publish a new build while such a run
+uses the current one, and when a change lands while such a run that you started is in progress.
+
+Before repeating a slow or expensive check, look for a recorded pass. Reuse it when the inputs and environment that
+affect the result still match and the check covers the current question. Start a new run only when a new failure
+points to the behavior it checks, the question still needs evidence that the earlier result cannot provide, or the
+verification requires a fresh run, such as when repetition is the measurement.
+
+Before expensive setup or dispatch, identify which prerequisites could fail early and invalidate the result. Use
+the smallest supported check that observes the relevant boundary in the environment that will run the work. For
+example, confirm which executable and version the launcher actually selects, that the request reaches the intended
+service, or that the test process can use a required directory or acquire its lock. When the test depends on a
+provider response and a cheaper check cannot confirm it, use the smallest authorized request through the same
+client and configured route. If the check needs some setup, run it as soon as that setup makes the boundary
+available. Reuse an observation while the inputs and environment that it covers still match. Resolve a failed
+prerequisite before spending on work that needs it.
+
+When an expensive suite claims to test the same contract across targets, use a shared definition for the cases, expected
+outcomes, and assertions. Target setup can adapt how it supplies inputs or observes results while preserving that
+contract. Before running a pilot or the full suite, confirm what each target will actually use. If the workflow
+materializes something only during execution, check it at the first supported point it can be observed. Resolve any
+mismatch before collecting comparable results. Verify any boundary the inexpensive check cannot exercise in the required
+run. Report a target whose required observation is unavailable as unverified.
 
 Name the revision that the run verifies. When a change that you have decided to make, or that is in progress, will
 replace that revision, such as a rebase or merge onto a new base, a dependency or upstream update, or a fix you are
@@ -41,8 +63,7 @@ about to make, do not run the full verification on the revision that goes away: 
 earlier revision run only a quick check, such as a lint or repository check, and only when its result would change your
 next action. A change that is only possible, or whose necessity this run would settle, does not replace the revision,
 and neither does a task that requires a run of the revision as it stands. Do not start a run on a revision that is
-already superseded. A result on an earlier revision does not support the claim for the replacement: verify the
-replacement itself.
+already superseded. Verify the replacement itself for a gate that requires evidence for that revision.
 
 When the build or workflow must pass on several targets, such as platforms, runners or jobs, and one target is much
 slower or has scarcer capacity than the others, choose when to start it from whether a failure on another target is
@@ -59,11 +80,10 @@ The ordering decides when to start each target. It never removes a target that t
 
 Before you dispatch onto shared capacity, look at what is queued and running there, including runs that other agents or
 people started, and at the record that the agents on this task share, such as the plan or task record. Start the run
-only when no running or finished run already answers the same question on the same revision; when one does, wait for it
-or use its result. Repeating a run is the exception when repetition is the measurement. Record each run you start, with
-its revision, its question and its identity, where the other agents read it. When several agents work at once and no
-shared record states which runs exist, the agent that coordinates the work decides which runs are dispatched, and the
-others ask it instead of dispatching their own.
+only when no running or finished run already provides the evidence you need; when one does, wait for it or use its
+result. Record each run you start, with its revision, its question and its identity, where the other agents read it.
+When several agents work at once and no shared record states which runs exist, the agent that coordinates the work
+decides which runs are dispatched, and the others ask it instead of dispatching their own.
 
 When a newer run supersedes one that you started, such as a rerun after a fix, cancel the earlier run once nothing needs
 its result, neither the current diagnosis nor other work. Cancel only a superseded run that you started. A run that
@@ -107,7 +127,7 @@ branch, an unrelated verification, or a reproduction on a hosted worker, start e
 another run's result, up to the provider's concurrency limit, instead of serializing them behind that run. Do independent
 local work in the meantime. Work that needs another run's result waits for it, such as a verification of a revision that
 a fix in progress will replace. This section never makes a run necessary: each run you start still passes the tests
-above, including that no running or finished run already answers its question on the same revision.
+above, including that no running or finished run already provides the evidence you need.
 
 Find the concurrency limit in the provider's documentation or in the account's or plan's settings. When it is not
 stated, infer it from how many of the runs that you started run at once while the rest queue. Start no more runs than

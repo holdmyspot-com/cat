@@ -35,10 +35,12 @@ ones. Reject an option whose cost buys protection against no failure that a requ
 Stop and report, without working around it, when you find a contradiction between the design, the plan, and the code,
 or a failure whose fix lies outside the write allowlist. Continue only work that does not depend on it.
 
-Run the delegation's verification commands and exit check on your final tree. Report:
+Run the delegation's verification commands and exit check on your final tree. Have the execution tool capture their
+output and exit results. If it does not retain a readable artifact, have code write the output and exit results to
+a file the delegating agent can read. Report:
 
 - the files you changed;
-- each command you ran and its outcome, quoting the failure output of any command that failed;
+- each command you ran and its outcome, with a readable path or tool record for any failure output;
 - whether the exit check passed;
 - each internal decision and its reason;
 - each blocker or product-policy or material design choice, with its evidence and alternatives.

@@ -20,8 +20,9 @@ After you read the log of a job that failed on another machine, and before you c
 `../upstream-fallbacks.md` when the log shows a download from an upstream server that failed because the server could
 not be reached, whether or not you loaded `../ci-debugging.md`.
 
-When running a CI or hosted workflow on a remote runner to test changed commands that it runs there, lazy load
-`../remote-runner-testing.md` before dispatching the run.
+Before dispatching a CI or hosted run to test changed workflow commands, or to investigate an unresolved project
+failure that needs the failing worker's state or a retry in its workspace, lazy load `../remote-runner-testing.md`.
+The diagnostic trigger applies even when the workflow and command are unchanged.
 
 Before starting a run of a workflow that publishes, such as by pushing a release tag or dispatching a deployment, lazy
 load `../publishing-workflows.md`.
@@ -30,10 +31,10 @@ Before changing testable production behavior, lazy load `../tdd.md`.
 
 When designing, changing, running to verify a change, or reviewing tests, lazy load `../testing.md`.
 
-Before starting, dispatching or requesting a build, test suite, workflow run or probe that takes many minutes or draws
-on capacity that others share, such as the runners of a hosted workflow, before publishing a new build while such a run
-uses the current one, when a change lands while such a run that you started is in progress, and when a job of such a
-run that you started has failed while other jobs of it are queued or running, lazy load
+Before preparing, starting, dispatching or requesting a build, test suite, workflow run or probe whose setup or
+execution takes many minutes or draws on shared capacity, such as the runners of a hosted workflow, before publishing
+a new build while such a run uses the current one, when a change lands while such a run that you started is in
+progress, and when a job of such a run that you started has failed while other jobs of it are queued or running, lazy load
 `../expensive-verification-runs.md`.
 
 When a test's outcome varies between runs of unchanged code and inputs, a test that should reproduce a problem

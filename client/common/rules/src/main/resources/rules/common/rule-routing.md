@@ -93,6 +93,9 @@ Before recommending, designing, implementing, or reviewing a change to code, con
 plan, lazy load `../include/common/backward-design.md`, then `../include/common/design-quality.md`. A local rename,
 formatting edit, or other mechanical change that preserves the existing design does not need them.
 
+Before designing, implementing, reviewing, or auditing a workflow that assigns operations to a model, lazy load
+`../include/common/prompt-vs-cli.md` to decide which operations code can perform.
+
 When writing, changing, reviewing, or auditing source code or configuration, including a command-line option, launch,
 build, container or sandbox setting, manifest entry, or module declaration, or accessing environment-dependent state, lazy load
 `../include/common/rule-routing/code.md`.
@@ -119,8 +122,9 @@ across existing code or documentation, lazy load `../include/common/rule-routing
 Before changing testable production behavior or selecting or reporting a command as evidence that a project's build
 passes, and when creating, designing, changing, reviewing, or debugging tests, a build script, pipeline, or multi-step
 build, or a CI or hosted workflow; when the project's build, tests or scripts fail on a machine other than the local
-one, whatever the task is called, including a release step; when running a build or test suite, starting, dispatching
-or requesting a workflow run or probe that takes many minutes, draws on capacity that others share, or publishes,
+one, whatever the task is called, including a release step; when running a build or test suite; before preparing,
+starting, dispatching or requesting a build, test suite, workflow run or probe whose setup or execution takes many
+minutes or draws on shared capacity, or before starting a run that publishes;
 selecting, configuring, or reusing a build or workflow cache, building a dependency once for a workflow's jobs to share,
 or running such a workflow on a remote runner; or when introducing or repairing an expensive many-unit workflow, lazy
 load `../include/common/rule-routing/testing-and-builds.md`.
@@ -142,11 +146,17 @@ analyzing, preventing, suppressing, or working around one, or disabling, excludi
 invoking an operation that can modify multiple artifacts or whose actual write set is unproven, lazy load
 `../include/common/rule-routing/failures.md`.
 
+Before attempting an operation whose effects or required access may cross an applicable safety or authorization
+boundary, assembling a harness or provider request directly, or changing how CAT constructs such a request, lazy
+load `../include/common/terminal-turn-errors.md`. Also lazy load it when a safeguard stops an operation or the
+available turn record shows a non-retryable policy or invalid-request error.
+
 Before creating, reviewing, or revising an implementation plan for AI agents, delegating work, starting or requesting a
 new agent session yourself, for example to test a plugin or a fresh installation in a separate session, including from
 inside a nested session, or sending information to another agent, when you receive the path of an artifact that another
 agent wrote and that is too large to read in one tool output, and when designing, updating, or executing a workflow that
-delegates work, exchanges information between agents, or hands off, retries, or resumes progress; before installing,
+delegates work, exchanges information between agents, delivers data to another workflow step or recipient, or hands
+off, retries, or resumes progress; before installing,
 updating or uninstalling CAT or any plugin, including repair or reinstall; when executing a multi-step plan or goal;
 when dispatching independent work units to run concurrently; when applying a skill would cause you to ask for permission
 or confirmation, pause, leave requested work unfinished, or diverge from the user's intent; when creating, using, or
