@@ -11,6 +11,26 @@
 	stop.
 - Let a campaign continue after the session that drove it ends, without discarding it or starting another for the same
 	target unless the user chooses.
+- Start a new campaign with the user's choice of evaluation harnesses and continue an existing campaign with its
+	recorded choice. If the user has yet to choose for a new campaign, ask and wait for their answer before starting it.
+
+## Evaluation harnesses
+
+For a request to start or continue optimization, identify the target prompt file first. If the user named a directory,
+ask which prompt file to optimize and end the turn. For a new campaign, use the evaluation harnesses the user explicitly
+selected. For an existing campaign, use its recorded selection.
+
+If the user omitted the selection and the conversation leaves it unclear whether they are starting or continuing a
+campaign, call `status <target>`. A result with `lifecycle` `active` or `cancelled` identifies a campaign that
+can continue. Follow its status and any notice that directs you to resume its owning session. A result with
+`lifecycle` `finished` or `closed`, a certification history with a null `campaign`, or a refusal with
+`reason` `no_campaign_or_certification_record` lets you proceed with the new campaign procedure. For any other
+refusal or error, show its `message` and stop.
+
+If a new campaign still needs a selection, ask which harnesses the prompt should support. Offer all three choices:
+Codex only, Claude Code only, and both. If an input tool returns the user's explicit selection, use it. If the question
+is pending, end the turn. If an input tool is unavailable or its call fails, ask in your reply and end the turn.
+Proceed to request-server setup and `start` only after receiving the user's choice.
 
 ## Supported environments
 
@@ -22,9 +42,9 @@ way, such as by running the launcher through `wsl`. Inside WSL2, Java reports Li
 supported there.
 
 Trials also need CAT's request server, `bin/request-server` beside the launcher, which starts every trial's session
-outside this session's sandbox, inside that harness's own sandbox. Before step 1's `start`, start it once in the
-background, by its absolute path, as a command of its own with no arguments, through the shell tool's own background
-mode. It serves this session until the session ends. When a result shows a reason that says that no request server
+outside this session's sandbox, inside that harness's own sandbox. After settling the evaluation harnesses and before
+step 1's `start`, start the server once by its absolute path as a separate command with no arguments, using the shell
+tool's own background mode. It serves this session until the session ends. When a result says no request server
 serves this session, start it that way and run the command again. When the request server exits with status `2` because
 this session is a nested session that a CAT runner started, skip the request server: that runner starts the sessions
 that this session requests. Continue with step 1. When it exits with status `2` for any other reason than another
@@ -66,13 +86,19 @@ that reason to the user. While a background driver holds the lock, `status` read
 and start time, a second `run` is `busy`, and a refusal of `revise`, `choose` or `confirm` names `status` and `cancel`.
 A failed exit notice does not change the outcome; the next `status` reports the failure.
 
-1. **Start.** Run `start <target>` with the prompt file the user named. A campaign optimizes one prompt file, so if the
-	user named a directory, ask which prompt file in it to optimize. When the user stated what the prompt should
-	achieve, add `--goal <text>` with the user's own words, quoted as one argument; otherwise leave it out. When the
-	user says the campaign's sessions need writes or hosts beyond their own, such as a package registry, write them
+1. **Start.** For a new campaign, add the user's explicit selection to `start <target>` as
+	`--harness codex`, `--harness claude`, or both flags. When reopening an existing campaign with
+	`start <target>`, omit `--harness` to keep the recorded selection.
+
+	Add `--goal <text>` only when the user describes the outcome or behavior the optimized prompt should produce.
+	Pass that description in the user's own words as one argument that reaches `start` character for character: quote
+	it for the shell, and write each apostrophe in it as the apostrophe itself, never as an escape such as `\x27`,
+	which a shell passes unchanged and `start` then records as part of the goal. If the user only asks to improve or
+	optimize the file, omit `--goal`. When the user says the campaign's sessions need writes or hosts beyond
+	their own, such as a package registry, write them
 	with a file-writing tool into `{"format_version":1,"writes":["<absolute path>"],"hosts":["<host name>"]}` and add
-	`--extra-permissions <file>`; otherwise leave it out. It creates a campaign or resumes the one that already exists
-	for that target. Use its `campaign` value in every later command.
+	`--extra-permissions <file>`; otherwise leave it out. Run `start` with the resulting arguments. Use its
+	`campaign` value in every later command.
 	- A resumed campaign keeps the goal and the extra permissions it started with. When `start` is refused because the
 		`--goal` or the file differs from the campaign's, show its `message` to the user and ask whether to continue the
 		campaign without that option, or to cancel it and start a new campaign with it. Never cancel on the user's
@@ -125,10 +151,14 @@ A failed exit notice does not change the outcome; the next `status` reports the 
 2. **Confirm the contract.** While the result's `proposal_file` names a file, that file holds the proposal. Each
 	result that names a proposal file replaces that file's text, so read the file again for every such result, even when
 	its path is the one that an earlier result named. Read all of the file, including every part that arrives
-	separately, before anything else. Then begin your first message with the file's text exactly as the file has it,
-	from its first line to its last, section by section, with no introduction, summary or comment before it. End that
-	same message with the question that this step asks. Read no other file or rule and run no other command between
-	reading the proposal file and that message. The proposal holds the contract, the warnings and each certification
+	separately, before responding to the proposal. Once you have read it, begin the proposal reply with the file's
+	text exactly as the file has it, from its first line to its last, section by section. The reply's first character
+	is the file's first character: write no introduction, summary, status update or comment before it. Put any status
+	that the user needs after the proposal, before the final question, never before the proposal. An earlier progress
+	update does not require a new turn. Keep the proposal first in the reply and end that same reply with the question
+	that this step asks, as its last sentence: write nothing after it, such as an instruction on how to answer or a
+	statement of what you will do after the answer. Read no other file or rule and run no other command between
+	reading the proposal file and that reply. The proposal holds the contract, the warnings and each certification
 	scope choice, and the user confirms only what your message shows. Its length, tens of thousands
 	of characters, is expected, and no guidance to keep a message short, to report an interruption briefly or to write a
 	one-paragraph update shortens the proposal or comes before it. Asking the question is this skill's own procedure,
@@ -144,13 +174,17 @@ A failed exit notice does not change the outcome; the next `status` reports the 
 		pilot decided and runs only the others. Do not run `run` for it. Ask the user nothing while `status` is
 		`running`: the proposal is shown once the pilot ends.
 	- If the proposal lists conflicts, confirmation is refused until each is resolved. After the proposal, for each
-		conflict, ask the user to choose one of its resolutions, naming the recommended one and its reason, or to
-		describe another. Do not offer confirmation. Run `revise <campaign> <feedback>` with the user's resolutions and
-		repeat this step with its result.
+		conflict, present the resolutions, name the recommended one and its reason, and invite another resolution.
+		Do not offer confirmation, the certification scopes or the confirmation question. End the reply with the
+		feedback question when confirmation is unavailable, given below. Run `revise <campaign> <feedback>` with the
+		user's resolutions and repeat this step with its result.
 	- If the proposal names unranked models, confirmation is refused until the user ranks their families. Ask the user
-		where each family ranks, run `revise <campaign> <feedback>` with the user's words and repeat this step with its
-		result.
-	- Otherwise, ask the user to give feedback or to confirm. Tell the user that certification covers `weakest_cell`
+		where each family ranks and end the reply with the feedback question when confirmation is unavailable, given
+		below. Run `revise <campaign> <feedback>` with the user's words and repeat this step with its result.
+	- If the proposal reports an unavailable certification condition, explain what feedback can address it.
+		Do not offer confirmation while the condition remains. End the reply with the feedback question when
+		confirmation is unavailable, given below.
+	- Otherwise, tell the user that certification covers `weakest_cell`
 		unless the user chooses other cells, and present these choices with their tradeoffs, naming each choice's cells,
 		weakest cells and minimum session count from the proposal's "Certification scope" section:
 		- `weakest_cell`: certification covers only each category's weakest cell, the lowest effort of the least capable
@@ -162,6 +196,10 @@ A failed exit notice does not change the outcome; the next `status` reports the 
 			delivery. It claims nothing about an older version in the inventory, and certification trials grow with the
 			number of cells.
 		- Other: the user describes the cells in their own words.
+		After the choices, finish the reply with this question: "What feedback would you like CAT to incorporate,
+		or which certification scope would you like to confirm?"
+	- The feedback question when confirmation is unavailable is "What feedback, if any, would you like CAT to
+		incorporate?" Put it on its own final line, after any explanation of what happens next.
 	- On feedback, run `revise <campaign> <feedback>` with the user's words and repeat this step with its result.
 	- When the user chooses other, map the user's description to profiles of the proposal's trial profile inventory,
 		run `revise <campaign> <feedback>` with feedback that describes the certification scope as those profiles, and
