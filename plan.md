@@ -4227,6 +4227,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-161 | `optimize-xhigh` | Changes what every judge session reads, how a trial's judged assertions are grouped into sessions, which verdicts are recorded and reused, the scenario and proposal formats, the contract author's instructions and the outcome review; an error judges an assertion about actions without the trial's activity, reuses a verdict whose evidence differed, records or waits on an `actions` verdict, starts more than one session per scope, or loses a stored contract. |
 | WI-162 | `optimize-high` | Carries the user's Codex hook approvals into a trial copy of CAT that the project builds by declaration hash; an error approves a hook of another plugin or a changed declaration, runs a hook that Codex does not report as trusted, or leaves CAT's built hooks skipped. |
 | WI-163 | `optimize-xhigh` | Adds a built-in tool that runs a program of the test's own, sandboxed, on every trial, and changes the scenario format, the proposal checks, outcome coverage, the guard pilot and the runtime; an error passes a trial that the program fails, lets a trial or judge see the program, lets the program reach the network, write outside its scratch directory or read held-out content, accepts a program that its examples contradict, or makes a host problem count as a failure. |
+| WI-164 | `optimize-high` | Changes what the Claude runner does when Claude Code's command sandbox fails to start and, under option (b) of Q27, the environment of every Claude session's commands and hooks; an error lets a session's command run outside its sandbox, counts a sandbox failure as the model's pass or fail outcome, or gives the Claude process a temporary folder whose socket paths exceed the system limit. |
 | WI-108 | `optimize-medium` | Changes how every CAT launcher starts its JVM; an error makes launchers fail outside a sandbox too, or lets two JVMs in separate PID namespaces write the same perf-data file. |
 | WI-107 | `optimize-medium` | Changes what every nested session may read and which host permissions a Claude session receives; an error lets trials and judges read the user's project again, denies a session its own run or evidence, or removes a grant that trials need. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
@@ -5428,11 +5429,12 @@ models that `codex debug models` reports and asked; given `gpt-6-luna`, `low`, i
 | WI-156 | Not started; designed 2026-11-23 (`design.md` "Outcome coverage" steps 2 and 3, "Coverage and the held-out part", D158, D159). Not ready: waits for the user's choice of how a condition that no tool covers is checked. Needs WI-155. Closes R-L16. |
 | WI-157 | Not started; designed 2026-11-23 (`design.md` §6.4, "Outcome coverage", "Contracts and campaigns from before this ruling", D158). Not ready: waits for the user's choices of how stored campaigns are treated, whether the judge still receives the expected outcome and whether a covering assertion may name no requirement. Needs WI-155 and WI-156. Closes R-L17. |
 | WI-158 | Implemented 2026-11-23 (`9d20fd2df`, `b4ed36bc4`; clone full build 6407 tests, 0 failures; `design.md` §7 "Revision request", D161). Closes R-L18. |
-| WI-159 | Not started; designed 2026-11-23 (`design.md` §8 "Claude authentication", D162, H42, H43, H45, P20 and P22) and revised the same day by the user's source-home ruling, which settles Q17 and Q21. The user ruled Q22 to Q24 the same day: "Q22-Q24: a". P20 and P22 ran 2026-11-23 inside a sandboxed agent session where Claude Code's command sandbox could not start: P20 passed except the sandbox's denial, and P22 established the token and CAT's hooks but not a command's environment or CAT's commands; neither fallback applies, and those parts run again where the sandbox starts. Needs WI-142 and WI-147. Closes R-I14. |
+| WI-159 | Not started; designed 2026-11-23 (`design.md` §8 "Claude authentication", D162, H42, H43, H45, P20 and P22) and revised the same day by the user's source-home ruling, which settles Q17 and Q21. The user ruled Q22 to Q24 the same day: "Q22-Q24: a". Order step 1 is done: P20 and P22 passed 2026-11-23 from a shell in which Claude Code's command sandbox started (receipts kept in the parent session `fab0ed75-654f-4a5c-b939-08335a367474`), and neither fallback applies. Steps 2 to 5 are ready. Needs WI-142 and WI-147. Closes R-I14. |
 | WI-160 | Not started; designed 2026-11-23 (`design.md` §8 "Codex authentication", D163, H44, H45, P24 and P26) and revised the same day by the user's source-home ruling. The user ruled Q22 to Q24 the same day: "Q22-Q24: a"; the ruling on Q22 refuses a ChatGPT sign-in, which replaces P26. P24 is not run. Needs WI-159. Closes R-I15. |
 | WI-161 | Steps 1 and 2 implemented 2026-11-23 (full build 6492 tests, 0 failures); step 3 open, blocked on WI-156. Designed 2026-11-23 (`design.md` §6.3 test design rule 5 and the outcome review, §6.4 "Evidence scope", "Sessions by scope", "Why the scopes stay when assertions are split" and "Consistent verdicts", D164, D165) with the user's rulings of the same day. Step 1 needs WI-150; step 3 needs WI-156. Steps 1 and 2 close R-L19 except its outcome-review clause; step 3 closes that clause and R-L20. Closes R-L19 and R-L20. |
 | WI-162 | Implemented 2026-11-23 (clone full build 6472 tests, 0 failures; `design.md` "Each trial installs every trial plugin", D167). Codex campaigns whose trial plugin is CAT built from the project, such as `20261123T152244Z-94bfcc`, measured trials without session rules until a build with WI-162 is installed. Amends R-W12. |
 | WI-163 | Not started; designed 2026-11-23 (`design.md` §6.4 "Check programs", §6.3 test design rule 5, the scenario format and "Outcome coverage" step 1, §6.1 "Guard pilot" and "Assertion agreement", D168, H46 and P27). Not ready: waits for P27, for its macOS part only (the user ruled Q25 and Q26 on 2026-11-23). Needs WI-155, WI-156 and WI-161. Closes R-L21 and R-L22. |
+| WI-164 | Not started; designed 2026-11-23 (`design.md` §8 "Sandbox start", D169, H47 and P28). Step 1 (P28) is ready; step 4 waits for the user's choice Q27. Needs WI-147. Closes R-I16. |
 | WI-145 | Implemented 2026-11-16 (Claude implementer; `87db96986`..`a378c7aa5`; clean full build 6034 tests, 0 failures, 0 errors, 6 skipped): one in-place registrar (`GitWorktreeRegistrar`) for add, recreate, remove and repair behind `Fork`, `GitForks` and the session-start sweep; worktree requests (`worktree-<uuid>.tar`, document of operation and campaign only) served on a thread of their own by the request server (with the `.git/config`/`.git/hooks` write check against the session's policy) and by a run's runner (the one campaign of that identifier in the run's project; refused when the run allows no requests), counted against no limit; the client (`WorktreeRequestClient`) sends by the launch route, sends nothing for intact links, and `start`, `run`, `choose` and `cancel` refuse with status 2 before any change when no server serves the session; the Claude runner's `.git/worktrees` grant removed (session environment version 25); the build-command limit stated in the prompt-optimizer skill. Remaining: the live checks in Claude Code and Codex. Decided 2026-11-16: the code stays (`status` never reconnects; a campaign without its worktree is not a fork, `ForksContract.missingWorktreeIsNotAFork`), and the live check names the next command that reconnects (`run` or `choose`) instead. Probe evidence: `~/cat/worktrees/gitwt-probe4/` and `gitwt-probe3/`. |
 | Incremental build-workflow rule (user request, 2026-10-25) | Done 2026-10-27 (Codex; `ebe1687e7d`, released in v1.0). Record: [history](plan-history.md). |
 | G9 Git diff owner (`4da627d85c`) | Done 2026-10-27 (Claude `optimize-high`). Record: [history](plan-history.md). |
@@ -5961,6 +5963,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-I13 | The runner's terms follow the user's rulings of 2026-11-19: a run is a nested session, `run.json` is `session.json`, the run root is the results folder, and a nested session's ID is its harness's own session ID, Claude's `session_id` from its `init` event or Codex's thread ID from its `thread/start` response, which CAT adopts once the harness reports it; slots keep their names. `--keep-run` is removed: every nested session's results are copied to the results folder under its session ID once that ID is known, and the folder's owner deletes them once nothing needs them, the optimizer's cleanup included. Every name and value that CAT gives a nested session, its folder, its results copy or its slot says so, such as `CAT_NESTED_SESSION` for `CAT_RUN` (user ruling, 2026-11-20). | §8 (renamed by WI-147), D151 | WI-147 | U: the renamed runner, slot, forwarder and optimizer tests; a results copy named by the reported ID; R: a scan of code, rules, skills and documentation for the old terms |
 | R-I14 | A Claude session authenticates with the authentication parts of a source home's `.claude` folder, which are `apiKeyHelper`, the `env` entries `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY` and `CLAUDE_CODE_OAUTH_TOKEN` of `settings.json`, and the stored login `.credentials.json`; the source home is the folder that `--home <dir>` names, or else the runner's home folder, whose `.claude` folder is then the one that the runner's `CLAUDE_CONFIG_DIR` names when set. Only those parts reach the session's isolated home, the helper in its settings, wrapped to run with the source home as its home folder, and the tokens in the Claude process's environment with `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`, while the stored login is never copied: the runner sets `CLAUDE_SECURESTORAGE_CONFIG_DIR` to the source `.claude` folder, and the session's Claude Code reads and refreshes that login in place; no hook, permission, plugin, MCP server or other source setting does, and Claude Code ranks the parts by its own order. A source home with no Claude authentication, or whose settings select a credential that the runner does not copy, refuses the launch before a capacity slot or nested session, with a message that never quotes a secret. Every source file that holds a secret is a regular file, not a link, that denies group and other access and that the requesting session's sandbox lets it read; the session's commands and file tools, and those of every session that it requests, are denied the file and its copies. The session gets none of the runner's `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `CLAUDE_CODE_OAUTH_TOKEN` and `CLAUDE_SECURESTORAGE_CONFIG_DIR`, and a project or managed settings file that sets one of them or `apiKeyHelper` refuses the session. `--gateway-login-class <subscription|api_key>` is required when the copied parts set `ANTHROPIC_BASE_URL`, and `CAT_HOST_LOGIN` states the class of the credential that Claude Code's order selects. Requested sessions of both harnesses get the runner's source home and class, never a session's home, and `--home` or the class inside a nested session is refused. One class covers the base URLs of both harnesses, and a request for the other harness whose credential uses a base URL, from a launch that named no class, is refused, naming the option. The prompt optimizer records them per launch, outside its measurement identity, so a resume may change them. `session.json`, the receipt and each response record the source home, the names of the copied parts and the class, never a value. | §8 "Claude authentication", D162, P20, P22 | WI-159 | P: P20, P22; U: `ClaudeRunnerCliTest`, `SecretFileTest`, `ClaudeRunnerTest`, `ClaudeConnectionSettingsTest`, `ParentPolicyTest`, `NestedSessionManagerTest`, `SessionRequestBrokerTest`, `SessionRequestForwarderTest`, `SessionRequestCliTest`, optimizer command tests; E: one live launch from a source home whose settings hold only `apiKeyHelper`, whose `init` reports `apiKeySource` `apiKeyHelper`, and one through the user's local gateway, each with results that hold no secret |
 | R-I15 | A Codex session authenticates with the authentication parts of the source home's `.codex` folder, which are an `auth.json` that holds an API key, while one that holds a ChatGPT sign-in refuses the launch, and the `model_provider`, `openai_base_url` and `forced_login_method` settings of `config.toml` with the selected `[model_providers.<id>]` table, with R-I14's source home, whose `.codex` folder is, without `--home`, the one that the runner's `CODEX_HOME` names when set, and with its refusals, checks of a secret file, requester's read check, denied reads, inheritance, gateway class, optimizer treatment and evidence. An inline provider secret reaches Codex in a variable of the app-server's environment that the provider's `env_key` or `env_http_headers` names, never in the session's `config.toml`; a provider's token command runs with the source home as its home folder; and the copy of `auth.json` is readable by its owner alone and removed when the app-server ends. The session's Codex gets neither of the runner's `CODEX_API_KEY` and `OPENAI_API_KEY`, apart from a variable that the selected provider names, and a system or managed layer that sets `openai_base_url`, `forced_login_method`, `model_provider` or `model_providers` refuses the session. The session's `CODEX_HOME` is its home's `.codex` folder, and a resume of a session in the earlier layout moves its files there first. | §8 "Codex authentication", D163, P24, P26 | WI-160 | P: P24; U: `CodexRunnerCliTest`, `CodexRunnerTest`, `CodexConnectionConfigurationTest`, `CredentialsTest`, the optimizer's Codex session tests and WI-159's common tests for Codex; E: one live launch from a source home whose `auth.json` holds an API key and one through a provider's token command, each with results that hold no secret |
+| R-I16 | No command of a nested Claude session runs outside its sandbox. When Claude Code's command sandbox fails to start, the session runs no command outside a sandbox, the runner ends the session, and its turn is an infrastructure failure whose reason names the sandbox failure, never a pass or fail outcome. On Linux and macOS, the Claude process's environment holds no `TMPDIR`, `TMP` or `TEMP`, so its sandbox's sockets lie in `/tmp`. Whether the runner stops the session on Claude Code's failure report or every session runs with `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` is the user's choice Q27. | §8 "Sandbox start", D169, H47, P28 | WI-164 | P: P28; U: `ClaudeRunnerTest` (`processEnvironment`), `ClaudeProcessTest` replaying recorded sandbox failures; E: one live launch whose sandbox cannot start runs no command and ends as an infrastructure failure |
 | R-T1 | The testability contract T1–T7 holds. | §10 | WI-1 | U: `TestabilityAuditTest` (source scan of the optimizer and capacity code: no non-`final` static fields, no `Thread.sleep`, no reads of `HOME`, `user.home` or `System.getenv` outside `main` classes and harness production scopes, only `final` fields in test classes); review audit at each work item's exit |
 | R-T2 | Packages, ports and adapters follow §9: the harness-neutral core imports no harness package, and production sources import no test-support type. | §9 | WI-1 | U: `TestabilityAuditTest` (import scan) |
 
@@ -10656,15 +10659,10 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 	a base URL. Q22, Q23 and Q24, "Q22-Q24: a", as the choices below state: a stored Claude login is shared through
 	`CLAUDE_SECURESTORAGE_CONFIG_DIR` instead of copied, and a Codex ChatGPT sign-in is refused; without `--home`, the
 	runner's own `CLAUDE_CONFIG_DIR` and `CODEX_HOME` move the source home's folders; one class covers both harnesses.
-- **Order:** (1) P20 and P22, which need no CAT code. Run each with the working Claude Code executable (2.1.330), model
-	`haiku` and effort `low`, in a disposable `CLAUDE_CONFIG_DIR` and a disposable source home under the task directory,
-	with the five variables unset but those that the premise sets, and with the key file or token that the user names,
-	at mode `0600`, from a shell in which Claude Code's command sandbox can start, which a sandboxed agent session that
-	forbids Unix sockets is not. Each prompt asks the session, in operator wording, to check whether the file can be
-	opened by a command that reads zero bytes (`head -c0`) and to print the names of any `ANTHROPIC_` or
-	`CLAUDE_CODE_OAUTH` variables in its environment; P22's session also runs with CAT installed and reports what its
-	hooks gave it. The agent never reads, prints or copies a secret. A failed premise selects its fallback before
-	step 2. (2) The tests
+- **Order:** (1) Done 2026-11-23: P20 and P22 passed (`design.md` P20, P22), each run with Claude Code 2.1.330, model
+	`haiku` and effort `low`, in a disposable `CLAUDE_CONFIG_DIR` and source home, from a shell in which Claude Code's
+	command sandbox started; the receipts are kept in the parent session `fab0ed75-654f-4a5c-b939-08335a367474`, and
+	neither fallback applies. (2) The tests
 	below, failing first. (3) The parts that the source-home ruling decides: the source home and `--home`, the copy of
 	every part but a stored login, the helper's wrapper, the token environment and the scrub, the refusals, the
 	secret-file check, the requester's read check, the stripping of the runner's variables, the settings refusal, the
@@ -10784,11 +10782,7 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 	`SessionRequestForwarder`, `SessionRequestCli`, `SessionRequestBroker`, `RequestedRunner`, the request server and
 	`ParentPolicy`, `NestedSessionManager`, `Session`, `ClaudeRunnerRelay` and `CodexRunnerCli`.
 - **Tier and dependencies:** `optimize-xhigh`. Needs WI-142 and WI-147, which change the same runner classes and rule.
-	Steps 1 to 4 are ready once WI-147's renames are merged; steps 2 to 4 still follow P20 and P22. Step 1 ran on
-	2026-11-23 inside a sandboxed agent session that forbids Unix sockets, where the session's command sandbox could not
-	start: P20 passed except the sandbox's denial, and P22 established the token and CAT's hooks but not a command's
-	environment or CAT's commands in the scrub's process namespace (`design.md` P20, P22). Neither fallback applies.
-	Those parts of step 1 run again from a shell in which Claude Code's sandbox starts, and steps 2 to 4 wait for them.
+	Step 1 is done: P20 and P22 passed on 2026-11-23, and WI-147's renames are merged, so steps 2 to 5 are ready.
 - **Exit:** P20 and P22 passed, tests (a) to (k) pass and failed before, the clean full offline build passes, and both
 	end-to-end checks passed. Closes R-I14.
 
@@ -11127,6 +11121,78 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 	offline build passes, both end-to-end pilots passed, and no design or plan ID appears in code. Closes R-L21 and
 	R-L22.
 
+### WI-164 — Nested Claude sessions whose sandbox fails to start (2026-11-23)
+
+- **Problem:** when Claude Code 2.1.330 cannot start its command sandbox, it reports the failure as the result of the
+	session's first Bash call and runs every later call without the sandbox, although the settings that the runner writes
+	hold `sandbox.enabled: true` and `allowUnsandboxedCommands: false` (H47). Only with
+	`CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`, which the runner sets for no session today, did it refuse the commands instead.
+	Neither the runner nor `ClaudeProcess` reads the report, so such a session's commands run unsandboxed and its turn
+	ends as a pass or fail outcome. The sandbox's sockets lie in the Claude process's `TMPDIR`, else `/tmp`, and the
+	sandbox fails when a socket path exceeds Linux's 108-byte limit, as P20's first attempts showed with a 110-byte
+	`TMPDIR`. CAT gives the Claude process no `TMPDIR` on Linux and macOS: `ClaudeRunner.processEnvironment` starts from
+	`HarnessEnvironment.scrub`, which copies `TEMP` and `TMP` on Windows only, and nothing else adds one, so the sockets
+	lie in `/tmp`, at most 39 bytes long. `CLAUDE_CODE_TMPDIR`, which the isolated settings set to the nested session's
+	`claude` folder, does not move them. No CAT path lengthens them, but the sandbox can still fail from a shell that
+	forbids Unix sockets, without bubblewrap or `socat`, on a kernel that forbids unprivileged user namespaces, or through
+	a project or managed settings `env` that sets `TMPDIR`, if Claude Code applies it before its sandbox starts, which is
+	unverified.
+- **Scope:** `client/claude/cli/src/main/java/com/holdmyspot/cat/claude/runner/` (`ClaudeRunner`, and `ClaudeProcess`
+	with the reader of its stream), their tests and recorded streams under `client/claude/cli/src/test/resources/runner/`,
+	`docs/security-model.md`, this design and plan.
+- **Change:** as `design.md` §8 "Sandbox start" and D169 define it. The runner recognizes Claude Code's report that its
+	sandbox failed to start in the result of a Bash call, by the forms that 2.1.330 recorded: "Sandbox is enabled but
+	failed to initialize" and, under the scrub, "Sandbox is required but failed to initialize". On the first report it
+	stops the Claude process and reports the turn as an infrastructure failure whose reason quotes the report. A test
+	keeps the Claude process's environment free of `TMPDIR`, `TMP` and `TEMP` on Linux and macOS. Under option (b) of
+	Q27, `processEnvironment` also sets `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` for every session, the Claude session
+	environment version increments, and `design.md` "Trial limits", which sets the scrub only for a session with a token,
+	changes with it.
+- **Order:** (1) P28, which needs no CAT code. Run it as P20 was run, with Claude Code 2.1.330, `haiku`, `low` and P20's
+	authentication, and a prompt that issues three Bash calls that each print a marker in one message, then a fourth:
+	(i) with an 80-byte `TMPDIR` and the scrub, (ii) the same without the scrub, and (iii) with the scrub from a shell
+	whose own sandbox forbids Unix sockets. A marker printed after the failure report shows a call that ran outside a
+	sandbox. Keep each stream, with local paths replaced, as a test resource. A failed clause applies P28's fallback
+	before step 4. (2) The user's choice Q27. (3) The tests below, failing first. (4) The change, for the chosen option.
+	(5) `docs/security-model.md` states that a session whose sandbox does not start ends as an infrastructure failure,
+	and, under option (b), that every session runs with the scrub. (6) The clean full offline build. (7) The end-to-end
+	check.
+- **Verification:** write these first; none starts a harness or a model.
+	(a) `ClaudeProcessTest`: each recorded stream of step 1 replays into a turn that ends as an infrastructure failure
+	whose reason holds Claude Code's report; the runner stops the process at the first report and sends it no further
+	input. A stream whose Bash calls fail for other reasons, such as a denied permission or an exit status of 1, ends
+	as before.
+	(b) `ClaudeRunnerTest`, `processEnvironment`: a runner environment that sets `TMPDIR`, `TMP` and `TEMP` to a 200-byte
+	folder gives a Claude process environment without them on Linux and macOS. Under option (b) of Q27, every
+	environment holds `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`, with or without a token, and WI-159's test (c), whose source
+	with only `apiKeyHelper` gives no scrub, expects the scrub instead.
+	End-to-end check: one live `claude-runner` launch on `haiku`/`low` from a shell in which Claude Code's sandbox cannot
+	start, such as one whose own sandbox forbids Unix sockets, with a prompt that runs two commands that print markers:
+	no marker appears in a result after the failure report, the receipt records an infrastructure failure that names the
+	sandbox failure, and no pass or fail outcome is recorded.
+- **Choices (open; each awaits the user's ruling):**
+	- **Q27, how the runner keeps a session's commands inside its sandbox when Claude Code's sandbox fails to start.**
+		CAT's rule is that every nested session runs inside its harness's sandbox, and Claude Code 2.1.330 breaks it when
+		its sandbox fails (H47). Under either option the runner reads the failure report and ends the turn as an
+		infrastructure failure. (a) Stop the session on the report: what the commands see is unchanged, but the guarantee
+		rests on an undocumented message and on stopping Claude Code before it runs the next call, which a call issued in
+		the same message may beat (P28 measures this), and a release that words the message differently fails open without
+		notice. (b) Also set `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` for every session, so that Claude Code itself refuses
+		every command when its sandbox fails, whatever the cause and the wording: every Claude session's commands and hooks
+		then lose `CLAUDE_CONFIG_DIR` and every credential-shaped variable and run in a process namespace of their own,
+		which P22 showed CAT's hooks and commands tolerate; the Claude session environment version changes, so Claude
+		certifications under the earlier version become historical (D21); and the refusal is undocumented, was seen once
+		and needs P28. Recommended: (b), because its guarantee holds at Claude Code's own boundary for every cause of
+		failure, while (a) leaves a window in which a command runs unsandboxed and depends on a message that CAT does not
+		control.
+- **Classes affected:** `ClaudeRunner`, `ClaudeProcess` and its stream reader.
+- **Tier and dependencies:** `optimize-high`. Needs WI-147, whose merged renames change the same runner classes. Step 1
+	needs no CAT code and is ready now; step 4 waits for Q27. It is independent of WI-159, but both change
+	`processEnvironment`: whichever lands second keeps the other's environment, and under option (b) WI-159's scrub for a
+	session with a token becomes the scrub for every session.
+- **Exit:** P28 ran and the fallback of any failed clause is applied, the user ruled on Q27, the tests above pass and
+	failed before the change, the clean full offline build passes, and the end-to-end check passed. Closes R-I16.
+
 ## 6. Dependency order
 
 A work item starts once every work item it needs is integrated. A premise gate listed in [§4](#4-premise-gates-wi-0)
@@ -11285,6 +11351,7 @@ blocks only the part of a work item that it names.
 | WI-161 | WI-150; its step 3 also needs WI-156 |
 | WI-162 | WI-81 |
 | WI-163 | WI-161; its step 3 also needs WI-155 and WI-156 |
+| WI-164 | WI-147; its step 4 also needs the user's choice Q27 |
 | WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57, WI-60 to WI-69, WI-90, WI-91, WI-92, WI-93, WI-95, WI-96, WI-97, WI-98, WI-99, WI-100, WI-101, WI-102, WI-103, WI-104, WI-105, WI-107, WI-108, WI-109, WI-110, WI-114, WI-115 and WI-116. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
