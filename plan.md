@@ -4226,6 +4226,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-160 | `optimize-xhigh` | Changes how every Codex session gets its credential, where its Codex files live (`CODEX_HOME` moves to the session home's `.codex` folder), what its environment and configuration hold and what its commands may read, and replaces the copy of the user's Codex login; an error lets a session's command read a secret or the login copy, leaves a login copy behind after its app-server ends, writes an inline token into a file that commands read, starts a session under a credential or host other than the source home's, loses a resumed session's files in the move, or breaks Codex sessions that a Claude session requests. |
 | WI-161 | `optimize-xhigh` | Changes what every judge session reads, how a trial's judged assertions are grouped into sessions, which verdicts are recorded and reused, the scenario and proposal formats, the contract author's instructions and the outcome review; an error judges an assertion about actions without the trial's activity, reuses a verdict whose evidence differed, records or waits on an `actions` verdict, starts more than one session per scope, or loses a stored contract. |
 | WI-162 | `optimize-high` | Carries the user's Codex hook approvals into a trial copy of CAT that the project builds by declaration hash; an error approves a hook of another plugin or a changed declaration, runs a hook that Codex does not report as trusted, or leaves CAT's built hooks skipped. |
+| WI-163 | `optimize-xhigh` | Adds a built-in tool that runs a program of the test's own, sandboxed, on every trial, and changes the scenario format, the proposal checks, outcome coverage, the guard pilot and the runtime; an error passes a trial that the program fails, lets a trial or judge see the program, lets the program reach the network, write outside its scratch directory or read held-out content, accepts a program that its examples contradict, or makes a host problem count as a failure. |
 | WI-108 | `optimize-medium` | Changes how every CAT launcher starts its JVM; an error makes launchers fail outside a sandbox too, or lets two JVMs in separate PID namespaces write the same perf-data file. |
 | WI-107 | `optimize-medium` | Changes what every nested session may read and which host permissions a Claude session receives; an error lets trials and judges read the user's project again, denies a session its own run or evidence, or removes a grant that trials need. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
@@ -5431,6 +5432,7 @@ models that `codex debug models` reports and asked; given `gpt-6-luna`, `low`, i
 | WI-160 | Not started; designed 2026-11-23 (`design.md` §8 "Codex authentication", D163, H44, H45, P24 and P26) and revised the same day by the user's source-home ruling. P24 and P26 are not run; Q22 to Q24 await the user's rulings. Needs WI-159. Closes R-I15. |
 | WI-161 | Not started; designed 2026-11-23 (`design.md` §6.3 test design rule 5 and the outcome review, §6.4 "Evidence scope", "Sessions by scope", "Why the scopes stay when assertions are split" and "Consistent verdicts", D164, D165) with the user's rulings of the same day. Step 1 needs WI-150; step 3 needs WI-156. Closes R-L19 and R-L20. |
 | WI-162 | Implemented 2026-11-23 (clone full build 6472 tests, 0 failures; `design.md` "Each trial installs every trial plugin", D167). Codex campaigns whose trial plugin is CAT built from the project, such as `20261123T152244Z-94bfcc`, measured trials without session rules until a build with WI-162 is installed. Amends R-W12. |
+| WI-163 | Not started; designed 2026-11-23 (`design.md` §6.4 "Check programs", §6.3 test design rule 5, the scenario format and "Outcome coverage" step 1, §6.1 "Guard pilot" and "Assertion agreement", D168, H46 and P27). Not ready: waits for the user's choices Q25 and Q26 and for P27, each blocking only its part. Needs WI-155, WI-156 and WI-161. Closes R-L21 and R-L22. |
 | WI-145 | Implemented 2026-11-16 (Claude implementer; `87db96986`..`a378c7aa5`; clean full build 6034 tests, 0 failures, 0 errors, 6 skipped): one in-place registrar (`GitWorktreeRegistrar`) for add, recreate, remove and repair behind `Fork`, `GitForks` and the session-start sweep; worktree requests (`worktree-<uuid>.tar`, document of operation and campaign only) served on a thread of their own by the request server (with the `.git/config`/`.git/hooks` write check against the session's policy) and by a run's runner (the one campaign of that identifier in the run's project; refused when the run allows no requests), counted against no limit; the client (`WorktreeRequestClient`) sends by the launch route, sends nothing for intact links, and `start`, `run`, `choose` and `cancel` refuse with status 2 before any change when no server serves the session; the Claude runner's `.git/worktrees` grant removed (session environment version 25); the build-command limit stated in the prompt-optimizer skill. Remaining: the live checks in Claude Code and Codex. Decided 2026-11-16: the code stays (`status` never reconnects; a campaign without its worktree is not a fork, `ForksContract.missingWorktreeIsNotAFork`), and the live check names the next command that reconnects (`run` or `choose`) instead. Probe evidence: `~/cat/worktrees/gitwt-probe4/` and `gitwt-probe3/`. |
 | Incremental build-workflow rule (user request, 2026-10-25) | Done 2026-10-27 (Codex; `ebe1687e7d`, released in v1.0). Record: [history](plan-history.md). |
 | G9 Git diff owner (`4da627d85c`) | Done 2026-10-27 (Claude `optimize-high`). Record: [history](plan-history.md). |
@@ -5933,6 +5935,8 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-L18 | A confirmed campaign keeps each revision request and its feedback from `revise`, a chosen requirement change and a conflict's last resolution until the revised contract is confirmed or the campaign stops. A failed derivation (a failed, interrupted, rate-limited or refused session, an invalid proposal, or a session that cannot be prepared) is retried up to 3 times with the saved feedback, except after an interruption by CAT or a failure that no new session changes; then the campaign pauses with `retry` and `stop`, and `retry` derives from the saved feedback. `status` and `run` report `awaiting_user` with the same text, which says whether the revision is being derived, failed or waits for confirmation, and carry no `proposal_file`; `confirm` and `start` are refused while a derivation is pending. | §7, §8 | WI-158 | U: `TransitionsTest`, `FileCampaignStoreTest`, `StatusReportTest`, `OptimizerCoreTest`, `DriverTest` |
 | R-L19 | Every judged assertion declares an evidence scope, `response` (the turns and the replies) or `actions` (tool activity, tool results and file changes as well as the replies), with `actions` when it needs both or is unclear. CAT refuses `evidence_scope` on a mechanical assertion, a value other than `response` or `actions`, `response` on an assertion whose tool examines more than the replies, and a judged assertion of a proposal or test revision without it; a recorded scenario without it parses, and a contract stored without it judges every assertion as `actions`. A trial's judged assertions are decided in at most one fresh session per scope: a `response` session's prompt holds the test case and the replies and no evidence section, tool result or path, and it is granted no evidence root; an `actions` session's prompt is unchanged. Only `response` verdicts are recorded and reused, keyed on the replies and not on tool activity or the transcript; an `actions` verdict is never recorded, looked up or waited for. The outcome review refuses a `response` assertion that depends on what the agent did and warns on an `actions` assertion that depends only on the replies. The judge version increments in both harnesses. | §6.3, §6.4, D164 | WI-161 | U: `ScenarioTest`, `ProposalSchemaTest`, `ProposalTest`, `ContractCheckTest`, `FileCampaignStoreTest`, `JudgePromptTest`, `VerdictKeyTest`, `DriverTest`, `GuardPilotTest`, `DevelopmentJudgeDriverTest`, `OutcomeCoverageTest` |
 | R-L20 | Where a requirement is about an action, the contract author splits its assertions: a built-in tool decides whether the action happened and a narrow judged assertion only the part that needs meaning, whose judge reason names that part; the contract author's and test revision's instructions state this duty. The outcome review warns, naming the tool, on an `actions` assertion whose happening a built-in tool could decide; the proposal lists the warning under "Judged assertions", the revision brief repeats it, `confirm` is not refused for it, and a test with any judged assertion gets an outcome review. | §6.3 test design rule 5, §6.4, D165 | WI-161 | U: `PromptTemplateTest`, `OutcomeCoverageTest`, `ProposalTest` |
+| R-L21 | A prompt test may decide an assertion with `check-program <program> [<argument>...]`, a program in its `checks/` directory that no trial project and no judge prompt holds, which CAT runs once after the trial's last turn in the campaign owner's driver, for a trial of either harness, with a read-only input directory holding the trial's final project, initial project, activity (activity format version 1) and replies, a new scratch directory as its working directory, its filled arguments and a fixed environment. The program has no network, writes only its scratch directory and cannot read the held-out directory, the held-out results folder or the driver's denied reads: under bubblewrap on Linux and Seatbelt on macOS, and native Windows refuses it. Exit 0 passes and 1 fails; any other status, the 60-second time limit, the 16 KiB output limit and a program that does not start are program errors, which `on_tool_failure` handles as a failure; a host fault is an infrastructure failure. The output is the observed value. A test with a check program never ends early. The program's files are part of the confirmed contract and are delivered with the test. | §6.4 "Check programs", §3.2, D168 | WI-163 | U: `ScenarioTest`, `BuiltInToolTest`, `CheckProgramTest`, `DriverTest`, `EarlyTrialEndTest`, `JlinkImageBuilderTest`; E: a guard pilot with a check program in each harness on Linux |
+| R-L22 | CAT refuses a check-program assertion without a passing example for each boundary class of its test and a failing example for each effect condition that it covers (or one of each when it covers none), and a program that, in either of two runs, fails or errs on a passing example or does not fail a failing one; a program under `fail` that passes every passing example and fails every failing one covers its effect conditions mechanically, and the outcome review is not asked about them. The guard pilot runs each program twice per pilot trial and `confirm` refuses one whose outcomes differ or whose run takes more than half its time limit. `contract check` runs the examples; a problem names the test, assertion, example and outputs and never a part; a revision that changes a test's scenario, `checks/`, `check-examples/` or test cases reruns its examples. The author instructions document the tool, its inputs and its examples. | §6.1, §6.3 "Outcome coverage", §6.4 "Check programs", D168 | WI-163 | U: `ProposalTest`, `ContractCheckTest`, `OutcomeCoverageTest`, `GuardPilotTest`, `PromptTemplateTest` |
 
 ### 3.7 Reporting, interface and testability
 
@@ -10973,6 +10977,132 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 - **Classes affected:** `CodexRunner`, `CodexPluginHooks`, `Proposal`.
 - **Exit:** the tests pass and (a) failed before; no design or plan ID appears in code. Amends R-W12.
 
+### WI-163 — Check programs that a prompt test supplies (user ruling, 2026-11-23)
+
+- **Problem:** the built-in tools observe fixed kinds of fact: reply text, a file's existence or exact content, the
+	files changed, tool calls by name and input, a command's exit status, and how much of a file was read. Whether an
+	action happened often shows only in another fact, such as a configuration file that parses and names the new
+	service, an edit that leaves every other entry of a file unchanged, or tool calls in a given order. D165 leaves such
+	an action to a judged `actions` assertion, which costs a judge session in every trial, is never reused, and is a
+	model's verdict. The user asked on 2026-11-23: "Can we reliably check 'did it do it' mechanically? If so, add this
+	to the plan." It can, for any fact that the trial's final project, its activity or its replies show, when a program
+	that the test supplies decides it, hidden from the trial, sandboxed, run twice where CAT checks it, and validated
+	against examples.
+- **Scope:** `client/common/cli/src/main/java/com/holdmyspot/cat/common/optimizer/` `contract/` (`BuiltInTool`,
+	`ToolLine`, `ScenarioParser`, `PromptTest`, `PromptTestFiles`, `TrialRecord`), `evidence/` (the activity file that
+	`cli/PeerTrialEvidence` writes today, moved here so that both use it), `execution/` (`TrialEvidence`, `Driver`,
+	`InFlight`, `GuardPilot`, `EarlyTrialEnd`, a new `CheckProgram` and its sandbox launcher), `proposal/`
+	(`ProposalCheck`, `TestRevisionCheck`, `Markdown`, and WI-156's `OutcomeCoverage`), the delivery that writes a
+	prompt test's files, `client/common/distribution` (`DistributionMain`, which chooses the runtime's modules), the
+	resources `optimizer/proposal/contract-author.md`, `prompt-tests.md` and `test-revision.md`, their tests, this
+	design and plan.
+- **Change:** as `design.md` §6.4 "Check programs", the `check-program` rows of §6.4, §6.3 test design rule 5, the
+	scenario format and "Outcome coverage" step 1, §6.1 "Guard pilot" and "Assertion agreement", §3.2's settled list and
+	D168 define it.
+	1. **Declaration and files.** `BuiltInTool` gains `CheckProgram(program, arguments)`, with the behaviors
+		`check_program_failed` and `check_program_error`; `ToolLine` reads `check-program <program> [<argument>...]`.
+		`ScenarioParser` refuses a program path that is absolute, leaves `checks/`, or holds a placeholder.
+		`PromptTestFiles` reads `checks/` and `check-examples/` as it reads `workspace/`, refusing a link or a file that is
+		not regular in either, and a program that `checks/` does not hold. The confirmed contract records each file's
+		SHA-256, so an edit is a test revision, and delivery writes the files with the scenario. Staging already leaves
+		the prompt test directory out of every trial (`PromptTestLocations`); a test pins that.
+	2. **Running (needs Q25 for the launch, Q26 for native Windows and P27 for macOS).** `TrialRecord` gains the final
+		and initial project directories and the activity, which `TrialEvidence` supplies from `SessionResult.Completed`
+		and `SessionEvidence`. `CheckProgram` builds the input directory (`project/`, `initial/`, `activity.json` in the
+		activity format version 1 that a peer evaluator's `evaluator-evidence.json` uses, `replies.json`, `checks/`)
+		read-only, a new scratch directory and the fixed environment, starts the program as an argument list without a
+		shell under the platform's sandbox, applies the 60-second and 16 KiB limits, maps the exit status to a decision
+		or a program error, keeps the output as the observed value, and deletes the scratch directory. The sandbox
+		launcher denies the network and every write outside the scratch directory and masks the held-out directory, the
+		held-out results folder and the driver session's denied reads, as `CodexHookInspection.readOnlyView` and
+		`applyReadDenials` do on Linux; on macOS it writes a Seatbelt profile; on native Windows a proposal with a check
+		program is refused. `Driver` runs each check program of an ended trial as in-flight work beside its judgings,
+		applies `on_tool_failure` to a failure or program error, and treats a launch fault of the host as an
+		infrastructure failure; `EarlyTrialEnd` never ends a test with a check program early. `GuardPilot` runs each
+		program twice per pilot trial and reports a differing outcome or a run longer than half the time limit as a
+		proposal problem.
+	3. **Examples and coverage (needs WI-155 and WI-156).** `ProposalCheck`, `TestRevisionCheck` and `contract check`
+		run each program twice on each example of `check-examples/<assertion id>/`, with the example's defaults and the
+		placeholders of its class's first test case in values-file order, and refuse the problems of `design.md` "Check
+		programs" (examples and determinism) and "Outcome coverage" step 1, naming the test, assertion, example and both
+		outputs and never a part. `OutcomeCoverage` counts a program under `fail` that passes every passing example and
+		fails every failing example as covering its effect conditions mechanically, and the outcome review is not asked
+		about those conditions. A revision reruns the examples of each test whose scenario, `checks/`,
+		`check-examples/` or test cases it changes.
+	4. **Author duties (needs WI-161 step 2).** `contract-author.md`, `prompt-tests.md` and `test-revision.md` state
+		that a check program decides whether an action happened when no fixed tool does, and document the program form,
+		the input directory, the formats of `activity.json` and `replies.json`, the exit statuses, the limits, the
+		example directories and the refusals. `Markdown` shows each check-program assertion with its program and its
+		examples' results. WI-161 step 3's warning on an `actions` assertion whose happening a tool could decide names
+		`check-program` when no fixed tool applies.
+	5. **Runtime (under Q25's option (a)).** `DistributionMain` adds `jdk.compiler` to the modules of the runtime that
+		both harness artifacts ship. The tool's version covers the input format and the runtime's Java feature version.
+- **Premise:** P27 (`design.md` §12) runs on a macOS host with Claude Code 2.1.330 and Codex: a Java program from the
+	bundled runtime under a CAT-written `sandbox-exec` profile, once inside Claude Code's Bash sandbox and once outside
+	any sandbox, prints its input, fails to connect to a public address, fails to write outside its scratch directory
+	and to read a denied directory, and writes its scratch directory. The receipt records versions and outputs. If it
+	fails, the fallback refuses check programs on macOS. H46 records the Linux equivalent.
+- **Verification:** write these tests first and see each fail on the current tree, with CAT's real classes, the
+	existing model-free session port and no model. (a) `ScenarioTest` and `BuiltInToolTest`: `check-program
+	checks/Check.java {{service}}` parses and fills its argument; an absolute program, one with `..` that leaves
+	`checks/` and one with a placeholder are refused. (b) A `PromptTestFiles` test: a link or a non-regular file in
+	`checks/` or `check-examples/`, and a program that `checks/` lacks, are refused; staged trial sources hold no file of
+	the prompt test directory. (c) `CheckProgramTest` (new), which runs real Java source programs under the real
+	sandbox, bubblewrap on Linux and `sandbox-exec` on macOS, and on another platform is skipped with the reason:
+	exit 0 passes and 1 fails; exit 2, a sleep past a shortened time limit, output past the limit and a program that
+	does not compile are program errors whose observed value holds the cause and the output up to the limit, standard
+	output first; the program reads each input with its documented content and receives its filled arguments and only
+	the documented environment; a connection to a public address, a write to the input directory and outside the
+	scratch directory, and a read of a masked directory fail inside the program; the scratch directory is gone after
+	the run; a host where the sandbox does not start gives an infrastructure failure, not a program error. A test with
+	the native Windows platform refuses the proposal. (d) `DriverTest` with a fake `SessionPort` and a recorded trial of
+	each harness: the program runs once after the last turn, in the owner's process, for a trial of either harness from
+	the same input layout; under `fail` a failure and a program error fail the assertion and start no judge session;
+	under `judge` they send the assertion to the judge with the observed value and no program text; the judge prompt
+	never holds the program or an example. `EarlyTrialEndTest`: a test with a check program does not end early. (e)
+	`GuardPilotTest`: a program whose two runs on one pilot trial differ, and one whose run exceeds half the limit, are
+	proposal problems that `confirm` refuses. (f) `ProposalTest`, `ContractCheckTest` and, for step 3,
+	`OutcomeCoverageTest`: a missing passing example for a class, a missing failing example for a covered condition,
+	one that covers none and lacks either, a program that fails a passing example, passes a failing one, errs on a
+	passing one or differs between its two runs, and a run past half the limit are refused with test, assertion,
+	example and outputs and no part; a program under `fail` that passes every passing example and fails every failing
+	one covers its effect conditions mechanically, and the outcome review receives no question about them; `judge` with
+	`evidence_scope: response` is refused; an edit to a file of `checks/` is a test revision that reruns the examples.
+	(g) `PromptTemplateTest`: the three author instructions state the duty, the input layout and the examples. (h)
+	`JlinkImageBuilderTest` or a distribution test: the runtime holds `jdk.compiler` and runs a source program. Then
+	the clean full offline build, reporting every test taking at least one second and the time of one check-program run
+	on the build host. Gate 3's list of processes that tests start gains `bwrap` and `sandbox-exec`. End to end, on
+	Linux, one campaign in each harness whose prompt test has a check-program assertion with passing and failing
+	examples runs its guard pilot to the proposal, and the proposal shows each pilot trial's verdict from the program.
+- **Open choices (for the user; each blocks only the parts that depend on it):**
+	- **Q25, how a check program is launched:** (a) a Java source program, `checks/<Name>.java` with any other `.java`
+		files of `checks/`, run in source-file mode by the Java runtime that CAT ships in both artifacts, without a shell.
+		A program decides alike on Linux, macOS and Windows and needs nothing on the host; authors and the contract
+		author's model write Java; the runtime grows by `jdk.compiler`, by a size not yet measured, and each run starts a
+		JVM and compiles in memory. (b) A command that the author names, such as `python3 checks/check.py`, run from the
+		host's `PATH` without a shell: any language, but the verdict depends on the host's interpreter and its version,
+		which the measurement identity would have to record, a host without the interpreter refuses the proposal, and
+		interpreter names differ between platforms (`python3` is not on a default Windows `PATH`). Recommended: (a),
+		because a verdict that one host's interpreter shapes is not reproducible on another host of the same campaign.
+	- **Q26, what native Windows does with a check program:** CAT has no sandbox for a program there, and already
+		refuses sandboxed Claude sessions on native Windows. (a) Refuse a proposal with a check program and direct the
+		user to WSL2. (b) Run the program there without a sandbox and warn in the proposal: the program, which the
+		contract author's model wrote, could then reach the network, write the user's files and read held-out content
+		into a rationale that development reads. (c) Build a Windows sandbox for it, such as an AppContainer with a
+		restricted token, which CAT has no code for. Recommended: (a), because it matches the existing Windows rule and
+		costs nothing, while (b) breaks the held-out separation and (c) adds a platform-specific sandbox to maintain.
+- **Classes affected:** `BuiltInTool`, `ToolLine`, `ScenarioParser`, `PromptTest`, `PromptTestFiles`, `TrialRecord`,
+	`TrialEvidence`, `PeerTrialEvidence` and the moved activity writer, `CheckProgram` and its sandbox launcher (new),
+	`Driver`, `InFlight`, `EarlyTrialEnd`, `GuardPilot`, `ProposalCheck`, `TestRevisionCheck`, `Markdown`, the
+	prompt-test delivery, `DistributionMain`, and WI-156's `OutcomeCoverage`.
+- **Tier and dependencies:** `optimize-xhigh`. Steps 1 and 2 need WI-161 step 1, whose scope rule refuses `response`
+	on this tool; step 2's launch waits for Q25, its Windows part for Q26 and its macOS part for P27. Step 3 needs
+	WI-155 and WI-156, whose conditions, classes, coverage replies and outcome review it extends. Step 4 needs WI-161
+	step 2, which rewrites the same author instructions.
+- **Exit:** P27 passed or its fallback is applied, the tests above pass and failed before the change, the clean full
+	offline build passes, both end-to-end pilots passed, and no design or plan ID appears in code. Closes R-L21 and
+	R-L22.
+
 ## 6. Dependency order
 
 A work item starts once every work item it needs is integrated. A premise gate listed in [§4](#4-premise-gates-wi-0)
@@ -11130,6 +11260,7 @@ blocks only the part of a work item that it names.
 | WI-160 | WI-159 |
 | WI-161 | WI-150; its step 3 also needs WI-156 |
 | WI-162 | WI-81 |
+| WI-163 | WI-161; its step 3 also needs WI-155 and WI-156 |
 | WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57, WI-60 to WI-69, WI-90, WI-91, WI-92, WI-93, WI-95, WI-96, WI-97, WI-98, WI-99, WI-100, WI-101, WI-102, WI-103, WI-104, WI-105, WI-107, WI-108, WI-109, WI-110, WI-114, WI-115 and WI-116. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
