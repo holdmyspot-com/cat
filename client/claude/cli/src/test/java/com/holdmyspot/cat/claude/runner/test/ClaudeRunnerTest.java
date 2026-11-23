@@ -1419,6 +1419,56 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
+	 * Verifies a resumed nested session starts against the spill-context alias that its first start created: the
+	 * resumed start neither fails nor changes the alias.
+	 *
+	 * @throws IOException if the session folder cannot be created
+	 */
+	@Test
+	public void resumedSessionKeepsSpillContextAlias() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path capture = cleanup.add(Files.createTempDirectory("claude-capture-"));
+			Path directory = Files.createDirectories(capture.resolve("results/claude/abc123-def456"));
+			NestedSession nestedSession = new NestedSession("claude", "abc123-def456", directory);
+			Path hookResults = ClaudeRunner.createHookResultsDirectory(directory.resolve("home"), nestedSession);
+			String parentName = ClaudeRunner.claudeProjectDirectory(capture.resolve("results").toAbsolutePath().normalize());
+			Path alias = hookResults.resolve(parentName).resolve("claude/abc123-def456-project");
+			Path target = Files.readSymbolicLink(alias);
+
+			Path resumedHookResults = ClaudeRunner.createHookResultsDirectory(directory.resolve("home"), nestedSession);
+
+			requireThat(resumedHookResults, "resumedHookResults").isEqualTo(hookResults);
+			requireThat(Files.readSymbolicLink(alias), "aliasTarget").isEqualTo(target);
+		}
+	}
+
+	/**
+	 * Verifies that a start refuses a spill-context alias that another session left in its place, so that the
+	 * session cannot read that session's hook results.
+	 *
+	 * @throws IOException if the session folder cannot be created
+	 */
+	@Test(expectedExceptions = IOException.class)
+	public void refusesForeignSpillContextAlias() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path capture = cleanup.add(Files.createTempDirectory("claude-capture-"));
+			Path directory = Files.createDirectories(capture.resolve("results/claude/abc123-def456"));
+			NestedSession nestedSession = new NestedSession("claude", "abc123-def456", directory);
+			Path hookResults = ClaudeRunner.createHookResultsDirectory(directory.resolve("home"), nestedSession);
+			String parentName = ClaudeRunner.claudeProjectDirectory(capture.resolve("results").toAbsolutePath().normalize());
+			Path alias = hookResults.resolve(parentName).resolve("claude/abc123-def456-project");
+			Files.delete(alias);
+			Files.createSymbolicLink(alias, Path.of("elsewhere"));
+
+			ClaudeRunner.createHookResultsDirectory(directory.resolve("home"), nestedSession);
+		}
+	}
+
+	/**
 	 * Verifies that a session is denied reading the runner's records of its own nested session, namely the nested
 	 * session's artifacts, manifest, lock and initial project, its own settings, and the other nested sessions and
 	 * workspaces under the results folder, besides the paths that the caller denies, and any login file in its home. The

@@ -724,12 +724,14 @@ public final class ClaudeRunner
 	}
 
 	/**
-	 * Creates the session-owned directory Claude may read for spilled hook context.
+	 * Creates the session-owned directory Claude may read for spilled hook context. A resumed nested session finds the
+	 * alias that its first start created and keeps it.
 	 *
 	 * @param isolatedHome the isolated Claude configuration directory
 	 * @param nestedSession the owned Claude run
 	 * @return the directory containing spilled hook context
-	 * @throws IOException if the directory or its narrowly scoped Claude path alias cannot be created
+	 * @throws IOException if the directory or its narrowly scoped Claude path alias cannot be created, or if the
+	 *   alias's location holds anything other than this session's alias
 	 */
 	public static Path createHookResultsDirectory(Path isolatedHome, NestedSession nestedSession) throws IOException
 	{
@@ -743,12 +745,21 @@ public final class ClaudeRunner
 		Path reportedParent = Files.createDirectories(hookResults.resolve(claudeProjectDirectory(resultsFolder)).
 			resolve(harnessDirectory.getFileName()));
 		Path reportedProjectDirectory = reportedParent.resolve(nestedSession.id() + "-project");
+		Path aliasTarget = reportedParent.relativize(canonicalProjectDirectory);
 		if (Files.exists(reportedProjectDirectory, NOFOLLOW_LINKS))
+		{
+			// A resumed nested session starts in the home that its first start prepared, so it finds its own alias
+			if (Files.isSymbolicLink(reportedProjectDirectory) &&
+				Files.readSymbolicLink(reportedProjectDirectory).equals(aliasTarget))
+			{
+				return hookResults;
+			}
 			throw new IOException("Claude spill-context alias already exists: " + reportedProjectDirectory);
+		}
 		// Claude writes the canonicalized path but reports the runner's <harness> directory uncanonicalized
 		// to a worktree subagent. This symlink exposes only that nested session's already-authorized hook-results directory
 		// at the reported location; it neither grants access to the isolated home nor changes a model-supplied path.
-		Files.createSymbolicLink(reportedProjectDirectory, reportedParent.relativize(canonicalProjectDirectory));
+		Files.createSymbolicLink(reportedProjectDirectory, aliasTarget);
 		return hookResults;
 	}
 
