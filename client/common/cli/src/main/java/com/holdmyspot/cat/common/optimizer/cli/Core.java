@@ -217,7 +217,8 @@ public interface Core
 	 * @param feedback the user's feedback
 	 * @return the result, which presents the regenerated proposal
 	 * @throws CommandRefusedException if the campaign does not exist, the other harness started it, another process
-	 *   runs it, or its state does not permit a revision
+	 *   runs it, its state does not permit a revision, or no request server serves the host session, in which case
+	 *   the campaign is unchanged
 	 * @throws IOException if the store, the workspace or a session fails
 	 * @throws InterruptedException if the thread is interrupted while it waits for a session
 	 */
@@ -248,8 +249,9 @@ public interface Core
 	 * @param campaign the campaign's identifier
 	 * @param resolution the 1-based position among the current conflict's resolutions
 	 * @return the next conflict's status, or the revised proposal
-	 * @throws CommandRefusedException if another process runs the campaign or the campaign does not offer this
-	 *   resolution now
+	 * @throws CommandRefusedException if another process runs the campaign, the campaign does not offer this
+	 *   resolution now, or the resolution is the final one and no request server serves the host session, in which
+	 *   case the campaign is unchanged
 	 * @throws IOException if the store, workspace or session fails
 	 * @throws InterruptedException if derivation is interrupted
 	 */

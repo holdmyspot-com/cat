@@ -499,6 +499,15 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 		this.launchRefusal = refusal;
 	}
 
+	/**
+	 * Lets this scope's host session start sessions again, as when the user has started the request server that the
+	 * refusal named.
+	 */
+	void allowLaunches()
+	{
+		this.launchRefusal = null;
+	}
+
 	@Override
 	protected RandomGenerator random()
 	{

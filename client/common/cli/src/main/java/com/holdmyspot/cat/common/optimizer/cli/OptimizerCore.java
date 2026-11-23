@@ -3260,13 +3260,16 @@ public final class OptimizerCore implements Core
 	 * @param lock the campaign's write lock, which the caller holds
 	 * @param sliceStart when the command started, which bounds the guard pilot that the command runs
 	 * @return the result
-	 * @throws CommandRefusedException if the campaign cannot be revised
+	 * @throws CommandRefusedException if the campaign cannot be revised, or every session would be refused because no
+	 *   request server serves the host session. The campaign is unchanged: a revision request that the contract
+	 *   author never answered would leave it waiting for a revised contract that does not exist.
 	 * @throws IOException if the store, the workspace or the session fails
 	 * @throws InterruptedException if the thread is interrupted while it waits for the session
 	 */
 	private CommandResult reviseBody(String campaign, String feedback, CampaignLock lock, Instant sliceStart)
 		throws CommandRefusedException, IOException, InterruptedException
 	{
+		refuseUnlaunchable();
 		Path root = scope.projectRoot();
 		CampaignStore store = scope.store();
 		Campaign loaded = require(store, campaign, true);

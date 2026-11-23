@@ -1616,6 +1616,85 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Verifies that {@code revise} refuses with the refusal's message, before it starts a session or requests a
+	 * contract revision, when no request server serves the host session, and that it revises once the server runs.
+	 * <p>
+	 * A revision request that the contract author never answers leaves the campaign waiting for a revised contract
+	 * that does not exist: it offers the user nothing to confirm and no decision to make.
+	 *
+	 * @throws Exception if the repository cannot be written or the command fails for another reason
+	 */
+	@Test
+	public void reviseRefusesWithoutServer() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.scope().refuseLaunches(LAUNCH_REFUSAL);
+			int requests = repository.sessions().requests().size();
+
+			String refusal = refusal(() -> repository.core().revise(id, "Exempt detailed safety explanations."));
+
+			requireThat(refusal, "refusal").isEqualTo(LAUNCH_REFUSAL);
+			requireThat(repository.sessions().requests().size(), "requests").isEqualTo(requests);
+			requireThat(repository.load(id).revisionRequested(), "revisionRequested").isFalse();
+
+			repository.scope().allowLaunches();
+			CommandResult revised = repository.core().revise(id, "Exempt detailed safety explanations.");
+			requireThat(proposalText(revised), "proposal").contains("## Requirements");
+			requireThat(repository.load(id).revisionRequested(), "revisionRequested").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that the last resolution of a conflict pause refuses with the refusal's message, before it starts a
+	 * session or requests a contract revision, when no request server serves the host session, and that the campaign
+	 * then still offers the resolution.
+	 * <p>
+	 * The pause is the user's only way to resolve the conflict. A resolution that consumed it and then failed to start
+	 * the contract author left the campaign with a revision request, no pending decision and no proposal, so
+	 * {@code run} reported that a revision waited for confirmation while {@code status} reported {@code running}.
+	 *
+	 * @throws Exception if the repository cannot be written or the command fails for another reason
+	 */
+	@Test
+	public void resolutionRefusesWithoutServer() throws Exception
+	{
+		// Requirement: R-D13
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			pauseConflicts(repository, id);
+			output(repository, List.of("choose", id, "resolution_2"));
+			repository.scope().refuseLaunches(LAUNCH_REFUSAL);
+			int requests = repository.sessions().requests().size();
+
+			String refusal = refusal(() -> repository.core().resolveConflict(id, 1));
+
+			requireThat(refusal, "refusal").isEqualTo(LAUNCH_REFUSAL);
+			requireThat(repository.sessions().requests().size(), "requests").isEqualTo(requests);
+			requireThat(repository.load(id).revisionRequested(), "revisionRequested").isFalse();
+			requireThat(repository.load(id).pending(), "pending").isNotNull();
+			requireThat(output(repository, List.of("status", id)).get("choices").get(0).get("label").asString(),
+				"offered").isEqualTo("Exempt greetings.");
+
+			repository.scope().allowLaunches();
+			ObjectNode last = output(repository, List.of("choose", id, "resolution_1"));
+			requireThat(proposalText(last), "proposal").contains("## Requirements");
+			requireThat(repository.load(id).revisionRequested(), "revisionRequested").isTrue();
+			requireThat(repository.load(id).pending(), "pending").isNull();
+		}
+	}
+
+	/**
 	 * Verifies that each command that changes or may remove a campaign's optimization worktree refuses with the
 	 * refusal's message, before it starts any session or changes anything, when nothing can carry out the operations
 	 * on the worktree's registration for it.
