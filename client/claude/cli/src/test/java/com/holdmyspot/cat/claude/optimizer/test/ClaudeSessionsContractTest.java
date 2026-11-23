@@ -18,6 +18,12 @@ import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
 import com.holdmyspot.cat.common.optimizer.execution.contract.test.DriverInterruptReplayContract;
 import com.holdmyspot.cat.common.optimizer.adapter.fakes.test.RoleRuleFixtures;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
+import com.holdmyspot.cat.common.optimizer.contract.Assertion;
+import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
+import com.holdmyspot.cat.common.optimizer.contract.JudgedAssertion;
+import com.holdmyspot.cat.common.optimizer.contract.OnToolFailure;
+import com.holdmyspot.cat.common.optimizer.contract.Requirement;
+import com.holdmyspot.cat.common.optimizer.contract.TestWorkspace;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.port.RateLimitWindow;
 import com.holdmyspot.cat.common.optimizer.port.SessionHandle;
@@ -25,11 +31,19 @@ import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
+import com.holdmyspot.cat.common.optimizer.execution.Judgment;
+import com.holdmyspot.cat.common.optimizer.execution.prompt.JudgePrompt;
 import com.holdmyspot.cat.common.optimizer.port.contract.test.SessionPortContract.Subject;
 import com.holdmyspot.cat.common.optimizer.port.contract.test.SessionPortContract;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 
 import java.io.IOException;
+import java.io.BufferedReader;
+import java.io.FilterReader;
+import java.io.InputStream;
+import java.io.Reader;
+import java.io.StringReader;
+import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -39,13 +53,17 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.JsonNode;
 
 /**
@@ -149,7 +167,7 @@ public final class ClaudeSessionsContractTest
 		// Requirement: R-E6
 		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			contract(jvm, List.of(recorded("two-turn-trial-turn-1.jsonl"), recorded("two-turn-trial-turn-2.jsonl"))).
+			contract(jvm, List.of(recorded("r-i1-trial-turn-1.jsonl"), recorded("r-i1-trial-turn-2.jsonl"))).
 				completesWithEvidenceOfEveryTurn();
 		}
 	}
@@ -171,6 +189,97 @@ public final class ClaudeSessionsContractTest
 	}
 
 	/**
+	 * Replays the native E5 file trial and judge, supplies the captured file as read-only evidence, and applies the
+	 * production judge parser to the recorded assertion set.
+	 *
+	 * @throws IOException          if a recording or test-owned file cannot be read or written
+	 * @throws InterruptedException if the test thread is interrupted
+	 * @throws ExecutionException   if Claude's recorded turn cannot be classified
+	 * @throws TimeoutException     if the recorded turn does not complete
+	 */
+	@Test(timeOut = 60_000)
+	public void replaysE5FileTrialAndJudge()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "claude-e5-file-replay-"));
+				AtomicReference<List<String>> trialArguments = new AtomicReference<>();
+				AtomicReference<String> trialInput = new AtomicReference<>();
+				SessionResult.Completed trial = replay(jvm, root, SessionRole.TRIAL, "e5-file-trial-turn-1.jsonl",
+					List.of(), "Replay the recorded E5 file trial.", trialArguments, trialInput);
+				byte[] answer = e5Answer();
+				String trialReply = trialText(trial);
+				requireThat(trialReply, "trialReply").isNotBlank();
+				List<String> writes = writesToAnswer(trial.transcript());
+				requireThat(writes.size(), "answerWrites").isEqualTo(1);
+				requireThat(writes.getFirst(), "recordedAnswer").isEqualTo(new String(answer, UTF_8));
+
+				Path answerFile = trial.effects().resolve("answer.md");
+				Files.write(answerFile, answer);
+				byte[] evidenceBeforeJudge = Files.readAllBytes(answerFile);
+				AtomicReference<List<String>> judgeArguments = new AtomicReference<>();
+				AtomicReference<String> judgeInput = new AtomicReference<>();
+				SessionResult.Completed judge = replay(jvm, root, SessionRole.JUDGE, "e5-file-judge-turn-1.jsonl",
+					List.of(answerFile), trialReply, judgeArguments, judgeInput);
+
+				requireThat(judgeArguments.get(), "judgeArguments").contains("--read-only-evidence").contains(
+					answerFile.toString());
+				requireThat(inputContains(judgeInput.get(), trialReply), "judgeReceivesTrialReply").isTrue();
+				requireThat(Files.readAllBytes(answerFile), "answerAfterJudge").isEqualTo(evidenceBeforeJudge);
+				Judgment decision = judgePrompt(root).judgment(judge, fileJudgeAssertions()).orElseThrow();
+				requireThat(decision.failures().size(), "fileJudgeFailureCount").isEqualTo(2);
+				requireThat(decision.rationale(), "fileJudgeRationale").
+					contains("- `acknowledgement_one_short_sentence`: fail (acknowledgement_too_long).").
+					contains("- `chat_reply_not_the_answer`: fail (answer_given_in_chat_instead_of_file).").
+					contains("- `file_explains_question`: pass.").
+					contains("- `expected_outcome`: pass.");
+			}
+		}
+	}
+
+	/**
+	 * Replays the native E5 text trial and judge, then applies the production judge parser to the recorded assertion set.
+	 *
+	 * @throws IOException          if a recording cannot be read
+	 * @throws InterruptedException if the test thread is interrupted
+	 * @throws ExecutionException   if Claude's recorded turn cannot be classified
+	 * @throws TimeoutException     if the recorded turn does not complete
+	 */
+	@Test(timeOut = 60_000)
+	public void replaysE5TextTrialAndJudge()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "claude-e5-text-replay-"));
+				AtomicReference<List<String>> trialArguments = new AtomicReference<>();
+				AtomicReference<String> trialInput = new AtomicReference<>();
+				SessionResult.Completed trial = replay(jvm, root, SessionRole.TRIAL, "e5-text-trial-turn-1.jsonl",
+					List.of(), "Replay the recorded E5 text trial.", trialArguments, trialInput);
+				String trialReply = trialText(trial);
+				requireThat(trialReply, "trialReply").isNotBlank();
+				AtomicReference<List<String>> judgeArguments = new AtomicReference<>();
+				AtomicReference<String> judgeInput = new AtomicReference<>();
+				SessionResult.Completed judge = replay(jvm, root, SessionRole.JUDGE, "e5-text-judge-turn-1.jsonl",
+					List.of(), trialReply, judgeArguments, judgeInput);
+
+				requireThat(inputContains(judgeInput.get(), trialReply), "judgeReceivesTrialReply").isTrue();
+				Judgment decision = judgePrompt(root).judgment(judge, textJudgeAssertions()).orElseThrow();
+				requireThat(decision.failures().size(), "textJudgeFailureCount").isEqualTo(1);
+				requireThat(decision.rationale(), "textJudgeRationale").
+					contains("- `one_sentence`: fail (more_than_one_sentence).").
+					contains("- `answers_accurately`: pass.").
+					contains("- `expected_outcome`: pass.");
+			}
+		}
+	}
+
+	/**
 	 * Verifies the shared contract check that an interrupt ends a running turn as interrupted, over a turn that Claude
 	 * ended in answer to CAT's interrupt request, and that the adapter wrote exactly one interrupt request to Claude.
 	 *
@@ -185,7 +294,7 @@ public final class ClaudeSessionsContractTest
 			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
 				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "claude-contract-"));
-				RecordedClaude claude = new RecordedClaude(List.of(recorded("interrupted-judge-turn-1.jsonl")));
+				RecordedClaude claude = new RecordedClaude(List.of(recorded("interrupted-session-turn-1.jsonl")));
 
 				new SessionPortContract(() -> new RecordedSubject(new TemporaryDirectories(), port(jvm, root, claude), root,
 					claude)).interruptEndsARunningTurnAsInterrupted();
@@ -424,6 +533,107 @@ public final class ClaudeSessionsContractTest
 	}
 
 	/**
+	 * Returns the optimizer roles with a recorded two-turn case-number session.
+	 *
+	 * @return each session role, its recording filename prefix and the reply that the recording gives to the first
+	 *         turn
+	 */
+	@DataProvider
+	public static Object[][] twoTurnRoleRecordings()
+	{
+		return new Object[][]
+		{
+			{SessionRole.JUDGE, "two-turn-judge", "Noted: case number 308. I'm ready for your next question."},
+			{SessionRole.TRIAGE, "two-turn-triage",
+				"Noted: case number 308. I'll keep it in mind for your next question. What would you like to ask?"},
+			{SessionRole.APPROACH_RANKER, "two-turn-approach-ranker", "Noted: case number 308. What's your question?"},
+			{SessionRole.PROMPT_AUTHOR, "two-turn-prompt-author", "Noted: case number 308. Ready for your next question."}
+		};
+	}
+
+	/**
+	 * Verifies that the adapter returns both replies in turn order and archives the complete replay in one
+	 * transcript for each optimizer role.
+	 *
+	 * @param role       the role that ran the recorded session
+	 * @param recording  the filename prefix for the role's two turns
+	 * @param firstReply the reply that the recording gives to the first turn
+	 * @throws IOException          if a fixture cannot be created or read
+	 * @throws InterruptedException if the test is interrupted
+	 * @throws ExecutionException   if classification fails
+	 * @throws TimeoutException     if the replay does not finish
+	 */
+	@Test(dataProvider = "twoTurnRoleRecordings", timeOut = 60_000)
+	public void replaysBothTurnsOfEachRole(SessionRole role, String recording, String firstReply)
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		// Requirement: R-E13
+		// Requirement: R-E16
+		try (TestJvmScope jvm = new TestJvmScope(); TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "claude-contract-"));
+			RoleRuleFixtures.write(root);
+			List<String> first = recorded(recording + "-turn-1.jsonl");
+			List<String> second = recorded(recording + "-turn-2.jsonl");
+			ClaudeSessions sessions = port(jvm, root, new RecordedClaude(List.of(first, second)));
+
+			SessionResult result = await(sessions.start(request(root, role,
+				"Please note case number 308 for my next question.",
+				"What case number did I give you? Reply with just the number.")));
+
+			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+			SessionResult.Completed completed = (SessionResult.Completed) result;
+			requireThat(completed.responses(), "responses").isEqualTo(List.of(List.of(firstReply), List.of("308")));
+			List<String> all = new ArrayList<>(first);
+			all.addAll(second);
+			requireThat(Files.readAllLines(completed.transcript(), UTF_8), "transcript").isEqualTo(
+				RecordedClaude.asServed(all, completed.transcript()));
+		}
+	}
+
+	/**
+	 * Verifies that a contract author's correction follows the initial reply in the same session transcript.
+	 *
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the test is interrupted
+	 * @throws ExecutionException if classification fails
+	 * @throws TimeoutException if the replay does not finish
+	 */
+	@Test(timeOut = 60_000)
+	public void recordsContractAuthorCorrection()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		try (TestJvmScope jvm = new TestJvmScope(); TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "claude-contract-"));
+			RoleRuleFixtures.write(root);
+			List<String> first = recorded("contract-author-correction-turn-1.jsonl");
+			List<String> second = recorded("contract-author-correction-turn-2.jsonl");
+			ClaudeSessions sessions = port(jvm, root, new RecordedClaude(List.of(first, second)));
+			SessionRole role = SessionRole.CONTRACT_AUTHOR;
+			SessionRequest proposal = new SessionRequest(role, partOf(role), root, List.of("Revise the proposal."),
+				List.of(), LIMIT, new TrialProfile("haiku", "low"), TestWorkspace.NONE, List.of(), Optional.of(initial ->
+				{
+					requireThat(initial.responses().size(), "initialTurns").isEqualTo(1);
+					requireThat(initial.responses().getFirst().getLast(), "initialReply").
+						contains("I revised the proposal using resolution 1");
+					return Optional.of("Correct the two refused links.");
+				}));
+
+			SessionResult result = await(sessions.start(proposal));
+
+			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+			SessionResult.Completed completed = (SessionResult.Completed) result;
+			requireThat(completed.responses().size(), "completedTurns").isEqualTo(2);
+			requireThat(completed.responses().getLast().getLast(), "correctionReply").contains("I fixed both refused links");
+			List<String> all = new ArrayList<>(first);
+			all.addAll(second);
+			requireThat(Files.readAllLines(completed.transcript(), UTF_8), "transcript").isEqualTo(
+				RecordedClaude.asServed(all, completed.transcript()));
+		}
+	}
+
+	/**
 	 * Verifies that the observed model, cumulative usage and rate-limit utilization come from Claude's records
 	 * rather than from the requested alias.
 	 *
@@ -482,7 +692,7 @@ public final class ClaudeSessionsContractTest
 				RoleRuleFixtures.write(root);
 				Map<SessionRole, List<String>> events = Map.of(SessionRole.TRIAL, recorded("trial-turn-1.jsonl"),
 					SessionRole.JUDGE, recorded("judge-turn-1.jsonl"), SessionRole.TRIAGE, recorded("triage-turn-1.jsonl"),
-					SessionRole.APPROACH_RANKER, recorded("triage-turn-1.jsonl"),
+					SessionRole.APPROACH_RANKER, recorded("approach-ranker-turn-1.jsonl"),
 					SessionRole.PROMPT_AUTHOR, recorded("prompt-author-turn-1.jsonl"), SessionRole.CONTRACT_AUTHOR,
 					recorded("contract-author-turn-1.jsonl"));
 				// The contract author's recording replies with an interim message before its tool calls and then its result
@@ -514,6 +724,232 @@ public final class ClaudeSessionsContractTest
 				requireThat(effects.size(), "effects.size").isEqualTo(SessionRole.values().length);
 			}
 		}
+	}
+
+	/**
+	 * Starts a captured turn through ClaudeSessions and records the arguments it passes to the harness bridge.
+	 *
+	 * @param jvm the test-owned process scope
+	 * @param root the test-owned source and results directory
+	 * @param role the recorded session's role
+	 * @param recording the event resource to replay
+	 * @param readOnly the evidence files supplied to the session
+	 * @param turn the prompt supplied for this turn
+	 * @param observedArguments receives the arguments passed to the bridge
+	 * @param observedInput receives the protocol request passed to the bridge
+	 * @return the completed session
+	 * @throws IOException if the event resource cannot be read
+	 * @throws InterruptedException if the test thread is interrupted
+	 * @throws ExecutionException if the adapter cannot classify the recorded turn
+	 * @throws TimeoutException if the recorded turn does not complete
+	 */
+	private static SessionResult.Completed replay(JvmScope jvm, Path root, SessionRole role, String recording,
+		List<Path> readOnly, String turn, AtomicReference<List<String>> observedArguments,
+		AtomicReference<String> observedInput)
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		TrialProfile profile;
+		if (role == SessionRole.JUDGE)
+			profile = new TrialProfile("opus", "high");
+		else
+			profile = new TrialProfile("haiku", "low");
+		Bridge bridge = (arguments, input, output) ->
+		{
+			observedArguments.set(List.copyOf(arguments));
+			StringWriter request = new StringWriter();
+			Reader recordingInput = new FilterReader(input)
+			{
+				@Override
+				public int read(char[] characters, int offset, int length) throws IOException
+				{
+					int count = super.read(characters, offset, length);
+					if (count > 0)
+						request.write(characters, offset, count);
+					return count;
+				}
+
+				@Override
+				public int read() throws IOException
+				{
+					int character = super.read();
+					if (character >= 0)
+						request.write(character);
+					return character;
+				}
+			};
+			new RecordedClaude(List.of(recorded(recording))).serve(arguments, recordingInput, output);
+			observedInput.set(request.toString());
+		};
+		SessionRequest request = new SessionRequest(role, partOf(role), root, List.of(turn),
+			readOnly, LIMIT, profile);
+		SessionResult result = await(port(jvm, root, bridge).start(request));
+		requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+		return (SessionResult.Completed) result;
+	}
+
+	/**
+	 * Returns all text replies from a completed trial in turn order.
+	 *
+	 * @param trial the completed recorded trial
+	 * @return its assistant messages in turn order
+	 */
+	private static String trialText(SessionResult.Completed trial)
+	{
+		return trial.responses().stream().flatMap(List::stream).collect(java.util.stream.Collectors.joining("\n"));
+	}
+
+	/**
+	 * Checks whether the bridge's captured JSONL request contains the trial reply in one of its text fields.
+	 *
+	 * @param request the protocol request read by the harness bridge
+	 * @param text the assistant reply sent in the judge turn
+	 * @return {@code true} when a request field contains the full reply
+	 * @throws IOException if the bridge request is malformed
+	 */
+	private static boolean inputContains(String request, String text) throws IOException
+	{
+		JsonMapper json = JsonMapper.builder().build();
+		try (BufferedReader reader = new BufferedReader(new StringReader(request)))
+		{
+			for (String line = reader.readLine(); line != null; line = reader.readLine())
+			{
+				if (containsText(json.readTree(line), text))
+					return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Finds the trial reply in a JSON value supplied to the bridge.
+	 *
+	 * @param value a protocol value
+	 * @param text the complete trial reply
+	 * @return {@code true} when a string value contains the reply
+	 */
+	private static boolean containsText(JsonNode value, String text)
+	{
+		if (value.isString())
+			return value.asString("").contains(text);
+		if (value.isArray())
+		{
+			for (JsonNode child : value)
+			{
+				if (containsText(child, text))
+					return true;
+			}
+		}
+		if (value.isObject())
+		{
+			for (String field : value.propertyNames())
+			{
+				if (containsText(value.path(field), text))
+					return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Returns the E5 answer file stored with the Claude session recordings.
+	 *
+	 * @return the exact captured file bytes
+	 * @throws IOException if the resource cannot be read
+	 */
+	private static byte[] e5Answer() throws IOException
+	{
+		try (InputStream stream = ClaudeSessionsContractTest.class.getResourceAsStream(
+			"/optimizer/sessions/e5-answer.md"))
+		{
+			requireThat(stream, "answerResource").isNotNull();
+			return stream.readAllBytes();
+		}
+	}
+
+	/**
+	 * Finds the contents passed to Claude's recorded Write tool for {@code answer.md}.
+	 *
+	 * @param transcript the adapter-owned session transcript
+	 * @return the captured contents of each write to {@code answer.md}
+	 * @throws IOException if the transcript cannot be read
+	 */
+	private static List<String> writesToAnswer(Path transcript) throws IOException
+	{
+		JsonMapper json = JsonMapper.builder().build();
+		List<String> writes = new ArrayList<>();
+		try (BufferedReader reader = Files.newBufferedReader(transcript, UTF_8))
+		{
+			for (String line = reader.readLine(); line != null; line = reader.readLine())
+			{
+				JsonNode event = json.readTree(line);
+				if (!event.path("type").asString("").equals("assistant"))
+					continue;
+				for (JsonNode block : event.path("message").path("content"))
+				{
+					if (!block.path("type").asString("").equals("tool_use") ||
+						!block.path("name").asString("").equals("Write"))
+						continue;
+					JsonNode input = block.path("input");
+					Path writtenFile = Path.of(input.path("file_path").asString(""));
+					if (writtenFile.getFileName().toString().equals("answer.md"))
+						writes.add(input.path("content").asString(""));
+				}
+			}
+		}
+		return writes;
+	}
+
+	/**
+	 * Creates the production judge parser for the replayed session.
+	 *
+	 * @param root the test-owned directory for judge state
+	 * @return the production parser
+	 */
+	private static JudgePrompt judgePrompt(Path root)
+	{
+		return new JudgePrompt(JsonMapper.builder().build(), root.resolve("judge"));
+	}
+
+	/**
+	 * Returns the E5 file trial's exact recorded assertion IDs and accepted failure behaviors.
+	 *
+	 * @return the assertions the recorded judge decided
+	 */
+	private static List<JudgedAssertion> fileJudgeAssertions()
+	{
+		return List.of(
+			judged("file_explains_question", AssertionKind.EFFECT, "inaccurate_file_explanation"),
+			judged("acknowledgement_one_short_sentence", AssertionKind.GUARD, "acknowledgement_too_long"),
+			judged("chat_reply_not_the_answer", AssertionKind.GUARD, "answer_given_in_chat_instead_of_file"),
+			new JudgedAssertion(Assertion.expectedOutcome(AssertionKind.EFFECT), null));
+	}
+
+	/**
+	 * Returns the E5 text trial's exact recorded assertion IDs and accepted failure behaviors.
+	 *
+	 * @return the assertions the recorded judge decided
+	 */
+	private static List<JudgedAssertion> textJudgeAssertions()
+	{
+		return List.of(
+			judged("answers_accurately", AssertionKind.GUARD, "inaccurate_answer"),
+			judged("one_sentence", AssertionKind.EFFECT, "more_than_one_sentence"),
+			new JudgedAssertion(Assertion.expectedOutcome(AssertionKind.EFFECT), null));
+	}
+
+	/**
+	 * Creates a recorded assertion with one behavior accepted by its requirement.
+	 *
+	 * @param id the assertion identifier
+	 * @param kind whether the prompt should cause or guard the behavior
+	 * @param behavior the behavior that the assertion can fail with
+	 * @return the judged assertion
+	 */
+	private static JudgedAssertion judged(String id, AssertionKind kind, String behavior)
+	{
+		Assertion assertion = new Assertion(id, kind, null, OnToolFailure.FAIL, "The recorded E5 assertion is satisfied.");
+		Requirement requirement = new Requirement(id, assertion.statement(), Requirement.GOAL, null, List.of(behavior));
+		return new JudgedAssertion(assertion, requirement);
 	}
 
 	/**
