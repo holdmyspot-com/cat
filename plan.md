@@ -5428,7 +5428,7 @@ models that `codex debug models` reports and asked; given `gpt-6-luna`, `low`, i
 | WI-156 | Not started; designed 2026-11-23 (`design.md` "Outcome coverage" steps 2 and 3, "Coverage and the held-out part", D158, D159). Not ready: waits for the user's choice of how a condition that no tool covers is checked. Needs WI-155. Closes R-L16. |
 | WI-157 | Not started; designed 2026-11-23 (`design.md` §6.4, "Outcome coverage", "Contracts and campaigns from before this ruling", D158). Not ready: waits for the user's choices of how stored campaigns are treated, whether the judge still receives the expected outcome and whether a covering assertion may name no requirement. Needs WI-155 and WI-156. Closes R-L17. |
 | WI-158 | Implemented 2026-11-23 (`9d20fd2df`, `b4ed36bc4`; clone full build 6407 tests, 0 failures; `design.md` §7 "Revision request", D161). Closes R-L18. |
-| WI-159 | Not started; designed 2026-11-23 (`design.md` §8 "Claude authentication", D162, H42, H43, H45, P20 and P22) and revised the same day by the user's source-home ruling, which settles Q17 and Q21. The user ruled Q22 to Q24 the same day: "Q22-Q24: a". P20 and P22 are not run. Needs WI-142 and WI-147. Closes R-I14. |
+| WI-159 | Not started; designed 2026-11-23 (`design.md` §8 "Claude authentication", D162, H42, H43, H45, P20 and P22) and revised the same day by the user's source-home ruling, which settles Q17 and Q21. The user ruled Q22 to Q24 the same day: "Q22-Q24: a". P20 and P22 ran 2026-11-23 inside a sandboxed agent session where Claude Code's command sandbox could not start: P20 passed except the sandbox's denial, and P22 established the token and CAT's hooks but not a command's environment or CAT's commands; neither fallback applies, and those parts run again where the sandbox starts. Needs WI-142 and WI-147. Closes R-I14. |
 | WI-160 | Not started; designed 2026-11-23 (`design.md` §8 "Codex authentication", D163, H44, H45, P24 and P26) and revised the same day by the user's source-home ruling. The user ruled Q22 to Q24 the same day: "Q22-Q24: a"; the ruling on Q22 refuses a ChatGPT sign-in, which replaces P26. P24 is not run. Needs WI-159. Closes R-I15. |
 | WI-161 | Steps 1 and 2 implemented 2026-11-23 (full build 6492 tests, 0 failures); step 3 open, blocked on WI-156. Designed 2026-11-23 (`design.md` §6.3 test design rule 5 and the outcome review, §6.4 "Evidence scope", "Sessions by scope", "Why the scopes stay when assertions are split" and "Consistent verdicts", D164, D165) with the user's rulings of the same day. Step 1 needs WI-150; step 3 needs WI-156. Steps 1 and 2 close R-L19 except its outcome-review clause; step 3 closes that clause and R-L20. Closes R-L19 and R-L20. |
 | WI-162 | Implemented 2026-11-23 (clone full build 6472 tests, 0 failures; `design.md` "Each trial installs every trial plugin", D167). Codex campaigns whose trial plugin is CAT built from the project, such as `20261123T152244Z-94bfcc`, measured trials without session rules until a build with WI-162 is installed. Amends R-W12. |
@@ -10659,10 +10659,12 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 - **Order:** (1) P20 and P22, which need no CAT code. Run each with the working Claude Code executable (2.1.330), model
 	`haiku` and effort `low`, in a disposable `CLAUDE_CONFIG_DIR` and a disposable source home under the task directory,
 	with the five variables unset but those that the premise sets, and with the key file or token that the user names,
-	at mode `0600`. Each prompt asks the session, in operator wording, to check whether the file can be opened by a
-	command that reads zero bytes (`head -c0`) and to print the names of any `ANTHROPIC_` or `CLAUDE_CODE_OAUTH`
-	variables in its environment; P22's session also runs with CAT installed and reports what its hooks gave it. The
-	agent never reads, prints or copies a secret. A failed premise selects its fallback before step 2. (2) The tests
+	at mode `0600`, from a shell in which Claude Code's command sandbox can start, which a sandboxed agent session that
+	forbids Unix sockets is not. Each prompt asks the session, in operator wording, to check whether the file can be
+	opened by a command that reads zero bytes (`head -c0`) and to print the names of any `ANTHROPIC_` or
+	`CLAUDE_CODE_OAUTH` variables in its environment; P22's session also runs with CAT installed and reports what its
+	hooks gave it. The agent never reads, prints or copies a secret. A failed premise selects its fallback before
+	step 2. (2) The tests
 	below, failing first. (3) The parts that the source-home ruling decides: the source home and `--home`, the copy of
 	every part but a stored login, the helper's wrapper, the token environment and the scrub, the refusals, the
 	secret-file check, the requester's read check, the stripping of the runner's variables, the settings refusal, the
@@ -10782,7 +10784,11 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 	`SessionRequestForwarder`, `SessionRequestCli`, `SessionRequestBroker`, `RequestedRunner`, the request server and
 	`ParentPolicy`, `NestedSessionManager`, `Session`, `ClaudeRunnerRelay` and `CodexRunnerCli`.
 - **Tier and dependencies:** `optimize-xhigh`. Needs WI-142 and WI-147, which change the same runner classes and rule.
-	Steps 1 to 4 are ready once WI-147's renames are merged; steps 2 to 4 still follow P20 and P22, which are not run.
+	Steps 1 to 4 are ready once WI-147's renames are merged; steps 2 to 4 still follow P20 and P22. Step 1 ran on
+	2026-11-23 inside a sandboxed agent session that forbids Unix sockets, where the session's command sandbox could not
+	start: P20 passed except the sandbox's denial, and P22 established the token and CAT's hooks but not a command's
+	environment or CAT's commands in the scrub's process namespace (`design.md` P20, P22). Neither fallback applies.
+	Those parts of step 1 run again from a shell in which Claude Code's sandbox starts, and steps 2 to 4 wait for them.
 - **Exit:** P20 and P22 passed, tests (a) to (k) pass and failed before, the clean full offline build passes, and both
 	end-to-end checks passed. Closes R-I14.
 
