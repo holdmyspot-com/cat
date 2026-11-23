@@ -154,6 +154,61 @@ public sealed interface CampaignEvent
 	}
 
 	/**
+	 * The campaign keeps the feedback of a revision that the contract author has not derived yet. The contract author
+	 * has not started, or a crash or a derivation that did not complete left the revision unanswered.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is thread-safe.
+	 *
+	 * @param feedback the feedback that the revised contract must incorporate
+	 */
+	record AwaitRevision(String feedback) implements CampaignEvent
+	{
+		/**
+		 * Creates the event.
+		 *
+		 * @param feedback the feedback that the revised contract must incorporate
+		 * @throws NullPointerException if {@code feedback} is null
+		 * @throws IllegalArgumentException if {@code feedback} is blank
+		 */
+		public AwaitRevision
+		{
+			requireThat(feedback, "feedback").isNotBlank();
+		}
+	}
+
+	/**
+	 * Every derivation of the awaited revision failed, so the campaign keeps the feedback and asks the user to retry
+	 * or stop.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is thread-safe.
+	 *
+	 * @param failure why the last derivation failed
+	 */
+	record FailRevision(String failure) implements CampaignEvent
+	{
+		/**
+		 * Creates the event.
+		 *
+		 * @param failure why the last derivation failed
+		 * @throws NullPointerException if {@code failure} is null
+		 * @throws IllegalArgumentException if {@code failure} is blank
+		 */
+		public FailRevision
+		{
+			requireThat(failure, "failure").isNotBlank();
+		}
+	}
+
+	/**
+	 * The contract author derived the awaited revision and CAT stored its proposal, which waits for confirmation.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is thread-safe.
+	 */
+	record ProposeRevision() implements CampaignEvent
+	{
+	}
+
+	/**
 	 * Requests assignment and recording of a trial before its session starts.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is thread-safe.

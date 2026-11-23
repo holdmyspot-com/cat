@@ -129,6 +129,8 @@ final class UserChoices
 	 */
 	private static void retry(Draft draft, PendingDecision pending)
 	{
+		if (pending instanceof PendingDecision.ContractRevision)
+			throw new IllegalArgumentException("Derive the revision again from the saved feedback");
 		if (!(pending instanceof PendingDecision.TrialFailures))
 		{
 			draft.resolve();

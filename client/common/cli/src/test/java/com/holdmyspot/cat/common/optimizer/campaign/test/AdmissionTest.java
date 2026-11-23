@@ -85,6 +85,72 @@ public final class AdmissionTest
 	}
 
 	/**
+	 * Verifies that an awaited contract revision keeps its feedback, offers retry and stop, blocks admission and
+	 * answers a retry or a proposal without losing the revision request until the proposal is stored.
+	 */
+	@Test
+	public void awaitedRevisionOffersRetryAndStop()
+	{
+		// Requirement: R-L18
+		Campaign campaign = new Builder().confirmed().build();
+		campaign = Transitions.apply(campaign, new CampaignEvent.Revise());
+		campaign = Transitions.apply(campaign, new CampaignEvent.AwaitRevision("Drop r2."));
+
+		requireThat(campaign.revisionRequested(), "revisionRequested").isTrue();
+		requireThat(campaign.pending(), "awaiting").isEqualTo(new PendingDecision.ContractRevision("Drop r2.", ""));
+		requireThat(campaign.choices(), "awaitingChoices").containsExactly(List.of(Choice.RETRY, Choice.STOP));
+		requireThat(Scheduler.plan(campaign, NOW, 8), "plan").isEmpty();
+
+		campaign = Transitions.apply(campaign, new CampaignEvent.FailRevision("The author was rate-limited"));
+		requireThat(campaign.pending(), "failed").
+			isEqualTo(new PendingDecision.ContractRevision("Drop r2.", "The author was rate-limited"));
+		requireThat(((PendingDecision.ContractRevision) campaign.pending()).hasFailed(), "hasFailed").isTrue();
+		requireThat(campaign.choices(), "failedChoices").containsExactly(List.of(Choice.RETRY, Choice.STOP));
+
+		campaign = Transitions.apply(campaign, new CampaignEvent.ProposeRevision());
+		requireThat(campaign.pending(), "proposed").isNull();
+		requireThat(campaign.revisionRequested(), "stillRequested").isTrue();
+	}
+
+	/**
+	 * Verifies that only a campaign that awaits a revision records its failure or its proposal, and that a user
+	 * choice cannot answer the awaited revision.
+	 */
+	@Test
+	public void revisionEventsNeedAwaitedRevision()
+	{
+		// Requirement: R-L18
+		Campaign confirmed = new Builder().confirmed().build();
+		try
+		{
+			Transitions.apply(confirmed, new CampaignEvent.FailRevision("x"));
+			throw new AssertionError("A failure without an awaited revision must be refused");
+		}
+		catch (IllegalStateException _)
+		{
+			// Expected
+		}
+		try
+		{
+			Transitions.apply(confirmed, new CampaignEvent.ProposeRevision());
+			throw new AssertionError("A proposal without an awaited revision must be refused");
+		}
+		catch (IllegalStateException _)
+		{
+			// Expected
+		}
+		try
+		{
+			Transitions.apply(confirmed, new CampaignEvent.AwaitRevision("x"));
+			throw new AssertionError("A feedback without a revision request must be refused");
+		}
+		catch (IllegalStateException _)
+		{
+			// Expected
+		}
+	}
+
+	/**
 	 * Verifies that a pending calibration failure blocks every admission.
 	 */
 	@Test

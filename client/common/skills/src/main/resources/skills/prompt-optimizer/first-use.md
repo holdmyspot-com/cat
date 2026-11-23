@@ -234,6 +234,13 @@ A failed exit notice does not change the outcome; the next `status` reports the 
 	- When the chosen entry is `retry` on a guard pilot pause (the summary says a guard pilot trial ran without an
 		outcome), the result of `choose` names a proposal file or has `status` `running` while the guard pilot is
 		unfinished: continue with step 2.
+	- For a contract revision pause (the summary says the contract author could not derive the contract revision, or
+		that a contract revision is being derived from the feedback that the campaign kept), show the `summary` in full.
+		CAT already retried the derivation 3 times. The campaign kept the user's feedback, and the choices are `retry`,
+		which derives the revision again from that feedback, and `stop`. The user may also give other feedback; pass it
+		as `revise <campaign> <feedback>`. After `retry` or `revise`, continue with step 2. While the summary says that a
+		revised contract waits for confirmation, run `start <target>` to show its proposal, then ask for confirmation
+		or feedback as in step 2.
 	- Continue with the step that the new result's `status` selects.
 5. **Busy.** When `status` is `busy`, another process is running the campaign. Show the `summary` and stop.
 6. **Report.** For any other `status`, the campaign has reached an outcome. Show the `summary` in full, including its

@@ -559,6 +559,39 @@ public final class StatusReportTest
 	}
 
 	/**
+	 * Verifies that an awaited contract revision reports awaiting_user, with retry and stop, in each state of its
+	 * derivation.
+	 */
+	@Test
+	public void reportsAwaitedContractRevision()
+	{
+		// Requirement: R-L18
+		Campaign deriving = new Builder().confirmed().revisionRequested().
+			pending(new PendingDecision.ContractRevision("Drop r2.", "")).build();
+		Campaign failed = new Builder().confirmed().revisionRequested().
+			pending(new PendingDecision.ContractRevision("Drop r2.", "The author was rate-limited")).build();
+		Campaign proposed = new Builder().confirmed().revisionRequested().build();
+
+		StatusReport derivingReport = StatusReport.of(deriving, ReportEvidence.NONE);
+		StatusReport failedReport = StatusReport.of(failed, ReportEvidence.NONE);
+		StatusReport proposedReport = StatusReport.of(proposed, ReportEvidence.NONE);
+		for (StatusReport report : List.of(derivingReport, failedReport, proposedReport))
+		{
+			requireThat(report.toJson(JsonMapper.builder().build()).get("status").asString(), "status").
+				isEqualTo("awaiting_user");
+		}
+		requireThat(derivingReport.summary(ZoneOffset.UTC), "deriving").contains("being derived").
+			contains("choose retry");
+		requireThat(failedReport.summary(ZoneOffset.UTC), "failed").contains("could not derive").
+			contains("The author was rate-limited").contains("retry");
+		requireThat(proposedReport.summary(ZoneOffset.UTC), "proposed").contains(StatusReport.REVISION_PENDING);
+		JsonNode choices = failedReport.toJson(JsonMapper.builder().build()).get("choices");
+		requireThat(choices.size(), "choiceCount").isEqualTo(2);
+		requireThat(choices.get(0).get("id").asString(), "firstId").isEqualTo("retry");
+		requireThat(choices.get(1).get("id").asString(), "lastId").isEqualTo("stop");
+	}
+
+	/**
 	 * Verifies that a blocked test revision reports its reasons and offers its proposed requirement change, then stop.
 	 */
 	@Test

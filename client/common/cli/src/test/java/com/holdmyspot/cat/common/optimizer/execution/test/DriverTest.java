@@ -4373,7 +4373,7 @@ public final class DriverTest
 				requireThat(harness.running(), "running").isEmpty();
 				requireThat(result.status().status(), "status").
 					isEqualTo(new ReportStatus.Active(Status.AWAITING_USER));
-				requireThat(result.status().pending(), "pending").isEqualTo(SliceReports.REVISION_PENDING);
+				requireThat(result.status().pending(), "pending").isEqualTo(StatusReport.REVISION_PENDING);
 			}
 			int before = harness.sessions().sessions().size();
 			try (Driver driver = harness.open())
@@ -8316,7 +8316,7 @@ public final class DriverTest
 		StatusReport report = StatusReport.of(new Builder().confirmed().working(1).build(), ReportEvidence.NONE);
 		StatusReport waiting = SliceReports.ofSlice(report, null, true);
 		requireThat(waiting.status(), "status").isEqualTo(new ReportStatus.Active(Status.AWAITING_USER));
-		requireThat(waiting.pending(), "pending").isEqualTo(SliceReports.REVISION_PENDING);
+		requireThat(waiting.pending(), "pending").isEqualTo(StatusReport.REVISION_PENDING);
 		requireThat(SliceReports.ofSlice(report, null, false), "unchanged").isEqualTo(report);
 	}
 

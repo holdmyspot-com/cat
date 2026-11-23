@@ -211,7 +211,10 @@ public interface Core
 	CommandResult confirm(String campaign, CertificationScope scope) throws CommandRefusedException, IOException;
 
 	/**
-	 * Regenerates the proposal from the user's feedback.
+	 * Regenerates the proposal from the user's feedback. When the contract author does not derive a revised contract
+	 * of a confirmed campaign, the command retries the derivation up to 3 times. If every try fails, the campaign
+	 * keeps the feedback and offers {@link Choice#RETRY} and {@link Choice#STOP}, and {@code status} reports
+	 * {@code awaiting_user}.
 	 *
 	 * @param campaign the campaign's identifier
 	 * @param feedback the user's feedback
@@ -244,7 +247,8 @@ public interface Core
 
 	/**
 	 * Records a resolution of the current conflict. After the final conflict's choice, regenerates the proposal
-	 * from every chosen resolution, awaiting confirmation.
+	 * from every chosen resolution, awaiting confirmation. If the contract author does not derive it, the failure
+	 * handling of {@link #revise} applies.
 	 *
 	 * @param campaign the campaign's identifier
 	 * @param resolution the 1-based position among the current conflict's resolutions

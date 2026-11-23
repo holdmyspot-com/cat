@@ -133,6 +133,12 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	 */
 	static final String INFRASTRUCTURE_FAILURE = "infrastructure failure";
 	/**
+	 * The decision that a confirmed campaign waits for after a revision request, once the contract author's revised
+	 * proposal is stored and no pending decision remains.
+	 */
+	public static final String REVISION_PENDING = "A revised contract waits for confirmation. `start` shows its " +
+		"proposal, `confirm` accepts it and `revise` changes it";
+	/**
 	 * The limitations that every result carries.
 	 */
 	private static final List<String> FIXED_LIMITATIONS = List.of(
@@ -396,7 +402,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 		return new StatusReport(status(campaign, evidence), campaign.header().id(), campaign.lifecycle(),
 			phase, attemptIndex,
 			candidate.number(), candidate.snapshot().hex(), outcome, outcomeDetail, delivery, deliveryAttempt,
-			describe(campaign), choices(campaign), authorityWarnings(campaign), cells, allocation,
+			describe(campaign, evidence), choices(campaign), authorityWarnings(campaign), cells, allocation,
 			benchmark, trialProfiles, CellTierReport.of(campaign), RemainingWork.of(campaign),
 			TokenStatistics.of(campaign.optimization().tokenUsage()),
 			concurrency(campaign, evidence.sharedHoldUntil(), commands(campaign, phase, attemptIndex)),
@@ -467,7 +473,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 			{
 				if (evidence.pilotUnfinished())
 					yield new ReportStatus.Active(Status.RUNNING);
-				if (!campaign.isConfirmed() || campaign.pending() != null)
+				if (!campaign.isConfirmed() || campaign.pending() != null || campaign.revisionRequested())
 					yield new ReportStatus.Active(Status.AWAITING_USER);
 				yield new ReportStatus.Active(Status.RUNNING);
 			}
@@ -478,15 +484,21 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	 * Describes the decision that a campaign waits for.
 	 *
 	 * @param campaign the campaign
-	 * @return the description, or {@code null} if the campaign is inactive or has no pending decision
+	 * @param evidence what the campaign does not persist
+	 * @return the description, or {@code null} if the campaign is inactive or waits for no decision
 	 */
-	private static String describe(Campaign campaign)
+	private static String describe(Campaign campaign, ReportEvidence evidence)
 	{
 		if (campaign.lifecycle() != Lifecycle.ACTIVE)
 			return null;
 		PendingDecision pending = campaign.pending();
 		if (pending == null)
+		{
+			// A revised proposal that a command left with its guard pilot unfinished is not yet ready to confirm
+			if (campaign.isConfirmed() && campaign.revisionRequested() && !evidence.pilotUnfinished())
+				return REVISION_PENDING;
 			return null;
+		}
 		return switch (pending)
 		{
 			case PendingDecision.MeasurementChanged changed ->
@@ -502,6 +514,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 			case PendingDecision.CalibrationFailure failure -> "calibration failed: " + failure.detail();
 			case PendingDecision.PilotFailure failure ->
 				"a guard pilot trial ran without an outcome and needs a retry: " + failure.detail();
+			case PendingDecision.ContractRevision revision -> describeRevision(revision);
 			case PendingDecision.CheckpointReached checkpoint ->
 				"review checkpoint reached in cell " + checkpoint.cell() + " after " + checkpoint.outcomes() +
 					" outcomes";
@@ -522,6 +535,24 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 			case PendingDecision.TestRevisionBlocked blocked -> describeBlocked(blocked);
 			case PendingDecision.DevelopmentStalled stalled -> describeStalled(campaign, stalled);
 		};
+	}
+
+	/**
+	 * Describes a contract revision that the contract author has not derived.
+	 *
+	 * @param revision the pending decision
+	 * @return what the campaign kept and what the user may do, true of whether a derivation failed
+	 */
+	private static String describeRevision(PendingDecision.ContractRevision revision)
+	{
+		if (!revision.hasFailed())
+		{
+			return "a contract revision is being derived from the feedback that the campaign kept. If no command is " +
+				"deriving it, choose retry to derive it again";
+		}
+		return "the contract author could not derive the contract revision: " + revision.failure() + "\nThe " +
+			"campaign kept the feedback. Choose retry to derive the revision from it again, or revise with other " +
+			"feedback";
 	}
 
 	/**

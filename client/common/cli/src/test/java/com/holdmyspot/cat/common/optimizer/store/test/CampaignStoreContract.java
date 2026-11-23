@@ -1373,6 +1373,7 @@ public abstract class CampaignStoreContract
 			pending(new PendingDecision.TrialFailures(baselineKey)).
 			pending(new PendingDecision.CalibrationFailure("cap exceeds 300")).
 			pending(new PendingDecision.PilotFailure("Pilot trial 6 of `safety` ended without an outcome 3 times")).
+			pending(new PendingDecision.ContractRevision("Drop r2.\nKeep r1.", "The author was refused")).
 			pending(new PendingDecision.CheckpointReached("safety", 200)).
 			pending(new PendingDecision.DevelopmentStalled(List.of("safety", "formatting"))).
 			stalls("safety", new StallProgress(Map.of("safety", 2.0 / 3.0), 1,

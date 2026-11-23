@@ -761,6 +761,86 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
+	 * Why the contract author's derivation produced no proposal.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is thread-safe.
+	 *
+	 * @param reason what went wrong, as a sentence
+	 * @param advice what the user does next when the failure ends a first derivation, or empty
+	 * @param repeatable {@code true} if another contract author session may succeed: a failed, refused or
+	 *   rate-limited session, or an invalid proposal. An interruption, and a failure before any session can start,
+	 *   are not repeated.
+	 */
+	private record DerivationFailure(String reason, String advice, boolean repeatable)
+	{
+		/**
+		 * Returns a failure that another session may not repeat.
+		 *
+		 * @param reason what went wrong
+		 * @param advice what the user does next, or empty
+		 * @return the failure
+		 */
+		static DerivationFailure unrepeatable(String reason, String advice)
+		{
+			return new DerivationFailure(reason, advice, false);
+		}
+
+		/**
+		 * Returns a failure that another session may repeat.
+		 *
+		 * @param reason what went wrong
+		 * @param advice what the user does next, or empty
+		 * @return the failure
+		 */
+		static DerivationFailure repeatable(String reason, String advice)
+		{
+			return new DerivationFailure(reason, advice, true);
+		}
+
+		/**
+		 * Returns the notice for a derivation that no revision waits for.
+		 *
+		 * @return the reason, followed by the advice if any
+		 */
+		String message()
+		{
+			if (advice.isEmpty())
+				return reason;
+			return reason + " " + advice;
+		}
+	}
+
+	/**
+	 * Signals that the contract author's derivation produced no proposal.
+	 */
+	private static final class DerivationFailed extends Exception
+	{
+		private static final long serialVersionUID = 1L;
+		private final transient DerivationFailure failure;
+
+		/**
+		 * Creates the exception.
+		 *
+		 * @param failure why the derivation failed
+		 */
+		DerivationFailed(DerivationFailure failure)
+		{
+			super(failure.reason());
+			this.failure = failure;
+		}
+
+		/**
+		 * Returns why the derivation failed.
+		 *
+		 * @return the failure
+		 */
+		DerivationFailure failure()
+		{
+			return failure;
+		}
+	}
+
+	/**
 	 * Builds or copies the selected trial plugins in a provisional worktree and verifies their native loader inputs.
 	 *
 	 * @param root the project root
@@ -1213,6 +1293,8 @@ public final class OptimizerCore implements Core
 		}
 		if (campaign.pending() instanceof PendingDecision.PilotFailure)
 			return report(root, campaign, null, pilotPausedNotice(campaign));
+		if (campaign.pending() instanceof PendingDecision.ContractRevision)
+			return report(root, campaign, null, revisionPausedNotice(campaign));
 		if (campaign.isConfirmed() && !campaign.revisionRequested())
 			return report(root, campaign, null, null);
 		try (CampaignLock _ = lock(header.id()))
@@ -2875,7 +2957,8 @@ public final class OptimizerCore implements Core
 	 */
 	private CommandResult reportSavedStatus(Path root, Campaign campaign) throws IOException
 	{
-		if (campaign.lifecycle() == Lifecycle.ACTIVE && !campaign.isConfirmed() && campaign.pending() == null)
+		if (campaign.lifecycle() == Lifecycle.ACTIVE && (!campaign.isConfirmed() || campaign.revisionRequested()) &&
+			campaign.pending() == null)
 		{
 			Map<String, PilotResult> pilots = pilotFile(campaign).read();
 			if (GuardPilot.hasUnfinishedCheckpoint(pilots) && GuardPilot.pauseReason(pilots).isEmpty())
@@ -2962,6 +3045,11 @@ public final class OptimizerCore implements Core
 		{
 			throw new CommandRefusedException("Campaign " + campaign + " has no proposal to confirm yet. " +
 				pilotPausedNotice(loaded));
+		}
+		if (loaded.pending() instanceof PendingDecision.ContractRevision)
+		{
+			throw new CommandRefusedException("Campaign " + campaign + " has no proposal to confirm yet. " +
+				revisionPausedNotice(loaded));
 		}
 		ForkView fork = openFork(root, loaded);
 		try
@@ -3253,7 +3341,11 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
-	 * Derives a revised proposal from the user's feedback.
+	 * Derives a revised proposal from the user's feedback. A confirmed campaign keeps the feedback as an awaited
+	 * revision while the contract author derives it. If the contract author fails, is interrupted, is rate-limited, is
+	 * refused or returns an invalid proposal, the command derives it again until it made
+	 * {@link Campaign#REVISION_RETRIES} retries, then records the failure so that the user chooses {@code retry} or
+	 * {@code stop}.
 	 *
 	 * @param campaign the campaign's identifier
 	 * @param feedback the user's feedback
@@ -3277,12 +3369,15 @@ public final class OptimizerCore implements Core
 		ForkView fork = openFork(root, loaded);
 		DerivedProposal previous = stored(root, loaded).orElseThrow(() -> new CommandRefusedException(
 			"Campaign " + campaign + " has no proposal to revise. Run `start` again to derive one."));
-		if (loaded.isConfirmed() && !loaded.revisionRequested())
-		{
-			apply(root, loaded, List.of(new CampaignEvent.Revise()), lock);
-			loaded = require(store, campaign, true);
-		}
-		return derive(root, store, loaded, fork, previous, feedback, sliceStart);
+		if (!loaded.isConfirmed())
+			return derive(root, store, loaded, fork, previous, feedback, sliceStart);
+		// The feedback is kept until the revision's proposal is stored, so that no failure can lose it
+		List<CampaignEvent> events = new ArrayList<>();
+		if (!loaded.revisionRequested())
+			events.add(new CampaignEvent.Revise());
+		events.add(new CampaignEvent.AwaitRevision(feedback));
+		apply(root, loaded, events, lock);
+		return deriveRevision(root, store, campaign, fork, previous, feedback, sliceStart);
 	}
 
 	@Override
@@ -3305,6 +3400,12 @@ public final class OptimizerCore implements Core
 				{
 					// The contract author derives the revised contract from the change, which the user then confirms
 					return reviseBody(campaign, blocked.proposedChange(), lock, sliceStart);
+				}
+				if (choice == Choice.RETRY && loaded.choices().contains(choice) &&
+					loaded.pending() instanceof PendingDecision.ContractRevision revision)
+				{
+					// The contract author derives the revision again from the feedback that the campaign kept
+					return reviseBody(campaign, revision.feedback(), lock, sliceStart);
 				}
 				boolean retriesPilot = choice == Choice.RETRY && loaded.pending() instanceof PendingDecision.PilotFailure &&
 					loaded.choices().contains(choice);
@@ -3500,11 +3601,90 @@ public final class OptimizerCore implements Core
 	 * @param feedback the user's feedback, or {@code null} for the first derivation
 	 * @param sliceStart when the command started, which bounds the guard pilot that the command runs
 	 * @return the result. If the contract author fails, the result carries the reason instead of a proposal.
+	 * @throws CommandRefusedException if the campaign no longer exists
 	 * @throws IOException if the store, the workspace or the session fails
 	 * @throws InterruptedException if the thread is interrupted while it waits for the session
 	 */
 	private CommandResult derive(Path root, CampaignStore store, Campaign campaign, ForkView fork,
-		DerivedProposal previous, String feedback, Instant sliceStart) throws IOException, InterruptedException
+		DerivedProposal previous, String feedback, Instant sliceStart)
+		throws CommandRefusedException, IOException, InterruptedException
+	{
+		try
+		{
+			return deriveOrFail(root, store, campaign, fork, previous, feedback, sliceStart);
+		}
+		catch (DerivationFailed e)
+		{
+			// The failure may follow the contract author's usage, which the campaign stored
+			return report(root, require(store, campaign.header().id(), true), null, e.failure().message());
+		}
+	}
+
+	/**
+	 * Derives a confirmed campaign's revised proposal from the feedback that the campaign kept. A derivation that
+	 * fails is repeated up to {@value Campaign#REVISION_RETRIES} times, except after an interruption or a failure that
+	 * another session cannot change. If every derivation fails, the campaign keeps the feedback and asks the user
+	 * whether to retry or stop.
+	 * <p>
+	 * The caller holds the campaign's write lock and has recorded the feedback.
+	 *
+	 * @param root the project root
+	 * @param store persists the campaign
+	 * @param id the campaign's identifier
+	 * @param fork the campaign's fork
+	 * @param previous the proposal that the user gave feedback on
+	 * @param feedback the feedback
+	 * @param sliceStart when the command started, which bounds the guard pilot that the command runs
+	 * @return the result, which presents the proposal or reports the decision that the campaign waits for
+	 * @throws CommandRefusedException if the campaign no longer exists
+	 * @throws IOException if the store, the workspace or the session fails
+	 * @throws InterruptedException if the thread is interrupted while it waits for the session
+	 */
+	private CommandResult deriveRevision(Path root, CampaignStore store, String id, ForkView fork,
+		DerivedProposal previous, String feedback, Instant sliceStart)
+		throws CommandRefusedException, IOException, InterruptedException
+	{
+		DerivationFailure failure;
+		int attempt = 0;
+		while (true)
+		{
+			++attempt;
+			try
+			{
+				return deriveOrFail(root, store, require(store, id, true), fork, previous, feedback, sliceStart);
+			}
+			catch (DerivationFailed e)
+			{
+				failure = e.failure();
+			}
+			if (!failure.repeatable() || attempt > Campaign.REVISION_RETRIES)
+				break;
+		}
+		Campaign failed = Transitions.apply(require(store, id, true), new CampaignEvent.FailRevision(failure.reason()));
+		store.replaceSnapshot(failed);
+		return report(root, failed, null, null);
+	}
+
+	/**
+	 * Runs the contract author once and presents its proposal.
+	 * <p>
+	 * The caller holds the campaign's write lock, so no other process writes the campaign meanwhile.
+	 *
+	 * @param root the project root
+	 * @param store persists the campaign's observed usage
+	 * @param campaign the campaign
+	 * @param fork the campaign's fork
+	 * @param previous the proposal that the user gave feedback on, or {@code null} for the first derivation
+	 * @param feedback the user's feedback, or {@code null} for the first derivation
+	 * @param sliceStart when the command started, which bounds the guard pilot that the command runs
+	 * @return the result, which presents the proposal
+	 * @throws DerivationFailed if the contract author produced no valid proposal
+	 * @throws IOException if the store, the workspace or the session fails
+	 * @throws InterruptedException if the thread is interrupted while it waits for the session
+	 */
+	private CommandResult deriveOrFail(Path root, CampaignStore store, Campaign campaign, ForkView fork,
+		DerivedProposal previous, String feedback, Instant sliceStart)
+		throws DerivationFailed, IOException, InterruptedException
 	{
 		Path directory = campaignDirectory(campaign.header().id());
 		Overlay incumbent = new FileCandidateOverlays(directory, fork.inventory(), fork::version, scope.json(),
@@ -3515,7 +3695,7 @@ public final class OptimizerCore implements Core
 		ProfileEvidence profiles = profileEvidence(staged);
 		String unsupported = unsupportedBindings(profiles);
 		if (!unsupported.isEmpty())
-			return report(root, campaign, null, unsupported);
+			throw new DerivationFailed(DerivationFailure.unrepeatable(unsupported, ""));
 		Map<Harness, EvaluatorMetadata> evaluators = Map.of();
 		Set<Harness> selected = campaign.header().evaluationHarnesses();
 		if (!selected.equals(Set.of(scope.harness())))
@@ -3527,7 +3707,7 @@ public final class OptimizerCore implements Core
 			}
 			catch (CommandRefusedException e)
 			{
-				return report(root, campaign, null, e.getMessage());
+				throw new DerivationFailed(DerivationFailure.unrepeatable(e.getMessage(), ""));
 			}
 			Map<Harness, ProfileEvidence> observations = new EnumMap<>(Harness.class);
 			evaluators.forEach((harness, metadata) -> observations.put(harness, metadata.profiles()));
@@ -3542,7 +3722,7 @@ public final class OptimizerCore implements Core
 		List<DerivedSource> loaded = proposalSources(root, bases, evaluators);
 		Optional<String> failedHooks = checkHooks(root, campaign, fork, incumbent, staged, loaded, evaluators);
 		if (failedHooks.isPresent())
-			return report(root, campaign, null, failedHooks.get());
+			throw new DerivationFailed(DerivationFailure.unrepeatable(failedHooks.get(), ""));
 		SessionRequest request;
 		long salt;
 		String invalidRetry;
@@ -3574,12 +3754,13 @@ public final class OptimizerCore implements Core
 			case SessionResult.Completed ended -> completed = ended;
 			case SessionResult.Failed failed ->
 			{
-				return report(root, campaign, null, "The contract author session did not complete: " + failed.reason() +
-					". Run `start` again to retry.");
+				throw new DerivationFailed(DerivationFailure.repeatable("The contract author session did not complete: " +
+					failed.reason() + ".", "Run `start` again to retry."));
 			}
 			case SessionResult.LaunchRefused refused ->
 			{
-				return report(root, campaign, null, "The contract author session did not start. " + refused.reason());
+				throw new DerivationFailed(DerivationFailure.repeatable(
+					"The contract author session did not start. " + refused.reason(), ""));
 			}
 			case SessionResult.Refused refused ->
 			{
@@ -3590,20 +3771,22 @@ public final class OptimizerCore implements Core
 					retry = "Run `start` again after " + end + ".";
 				if (refused.afterLongestHold())
 				{
-					return report(root, campaign, null, "The provider refused " + scope.harness().commandName() +
-						" requests after a 30-minute hold. " + retry);
+					throw new DerivationFailed(DerivationFailure.repeatable("The provider refused " +
+						scope.harness().commandName() + " requests after a 30-minute hold.", retry));
 				}
 				if (held)
 				{
-					return report(root, campaign, null, "The provider refused the contract author session until " +
-						end + ". Run `start` again after that time.");
+					throw new DerivationFailed(DerivationFailure.repeatable(
+						"The provider refused the contract author session until " + end + ".",
+						"Run `start` again after that time."));
 				}
-				return report(root, campaign, null, "The provider refused the contract author session. " + retry);
+				throw new DerivationFailed(DerivationFailure.repeatable(
+					"The provider refused the contract author session.", retry));
 			}
 			case SessionResult.Interrupted _ ->
 			{
-				return report(root, campaign, null, "The contract author session was interrupted. " +
-					"Run `start` again to retry.");
+				throw new DerivationFailed(DerivationFailure.unrepeatable(
+					"The contract author session was interrupted.", "Run `start` again to retry."));
 			}
 			case SessionResult.RateLimited limited ->
 			{
@@ -3614,8 +3797,8 @@ public final class OptimizerCore implements Core
 					until = " until " + limited.hold().endsAt();
 					retry = "Run `start` again after that time.";
 				}
-				return report(root, campaign, null,
-					"The provider rejected the contract author session because of a rate limit" + until + ". " + retry);
+				throw new DerivationFailed(DerivationFailure.repeatable(
+					"The provider rejected the contract author session because of a rate limit" + until + ".", retry));
 			}
 		}
 
@@ -3633,8 +3816,8 @@ public final class OptimizerCore implements Core
 		}
 		catch (InvalidProposalException e)
 		{
-			return report(root, campaign, null, "The contract author's proposal is invalid: " +
-				String.join("; ", e.problems()) + ". " + invalidRetry);
+			throw new DerivationFailed(DerivationFailure.repeatable("The contract author's proposal is invalid: " +
+				String.join("; ", e.problems()) + ".", invalidRetry));
 		}
 		derived = derived.withDerivedSources(proposalSources(root, bases, evaluators));
 		// The draft's values files hold the expected outcomes of both parts, so it moves into the held-out directory
@@ -3643,6 +3826,12 @@ public final class OptimizerCore implements Core
 		// A new proposal replaces the revised contract of a test revision, whose draft directory the write removes
 		revisionFile(campaign.header().id()).delete();
 		new ProposalFile(heldOut, scope.json(), scope.fileReplacer()).write(derived, profiles, evaluators);
+		if (campaign.pending() instanceof PendingDecision.ContractRevision)
+		{
+			// The proposal is stored, so the revision no longer waits for a derivation
+			campaign = Transitions.apply(campaign, new CampaignEvent.ProposeRevision());
+			store.replaceSnapshot(campaign);
+		}
 		return present(root, store, campaign, fork, derived, sliceStart);
 	}
 
@@ -3970,6 +4159,23 @@ public final class OptimizerCore implements Core
 		return "The proposal is not shown, and cannot be confirmed, because its guard pilot paused. To run the " +
 			"pilot's remaining trials, which keeps the trials it decided, run `choose " + id + " " +
 			new ChoiceItem(Choice.RETRY, 0, false, 0).id() + "`. To stop the campaign, run `choose " + id + " " +
+			new ChoiceItem(Choice.STOP, 0, false, 0).id() + "`.";
+	}
+
+	/**
+	 * Returns the notice that tells the user how to answer a contract revision that the contract author has not
+	 * derived.
+	 *
+	 * @param campaign the campaign
+	 * @return the notice
+	 */
+	private static String revisionPausedNotice(Campaign campaign)
+	{
+		String id = campaign.header().id();
+		return "The stored proposal is not shown, and cannot be confirmed, because the contract revision that the " +
+			"feedback asked for is not derived. To derive it again from the feedback that the campaign kept, run " +
+			"`choose " + id + " " + new ChoiceItem(Choice.RETRY, 0, false, 0).id() + "`. To derive it from other " +
+			"feedback, run `revise " + id + " <feedback>`. To stop the campaign, run `choose " + id + " " +
 			new ChoiceItem(Choice.STOP, 0, false, 0).id() + "`.";
 	}
 

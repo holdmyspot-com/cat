@@ -2641,6 +2641,12 @@ final class CampaignJson
 				node.put("type", "pilot_failure");
 				node.put("detail", failure.detail());
 			}
+			case PendingDecision.ContractRevision revision ->
+			{
+				node.put("type", "contract_revision");
+				node.put("feedback", revision.feedback());
+				node.put("failure", revision.failure());
+			}
 			case PendingDecision.CheckpointReached checkpoint ->
 			{
 				node.put("type", "checkpoint_reached");
@@ -2756,6 +2762,8 @@ final class CampaignJson
 			case "trial_failures" -> new PendingDecision.TrialFailures(readKey(field(node, "key")));
 			case "calibration_failure" -> new PendingDecision.CalibrationFailure(text(node, "detail"));
 			case "pilot_failure" -> new PendingDecision.PilotFailure(text(node, "detail"));
+			case "contract_revision" ->
+				new PendingDecision.ContractRevision(text(node, "feedback"), text(node, "failure"));
 			case "checkpoint_reached" ->
 				new PendingDecision.CheckpointReached(text(node, "cell"), integer(node, "outcomes"));
 			case "development_stalled" ->

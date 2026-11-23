@@ -26,7 +26,8 @@ public enum Choice
 	 */
 	RESUME,
 	/**
-	 * Retry the paused trial after an attempt ended without a pass or fail result, or retry trial-cap calibration.
+	 * Retry the paused trial after an attempt ended without a pass or fail result, retry trial-cap calibration, or
+	 * derive a contract revision again from the feedback that the campaign kept.
 	 */
 	RETRY,
 	/**

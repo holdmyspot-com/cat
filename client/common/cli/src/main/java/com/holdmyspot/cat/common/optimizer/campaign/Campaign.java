@@ -77,6 +77,11 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 	 * interruptions do not count toward the limit.
 	 */
 	public static final int INFRASTRUCTURE_FAILURE_LIMIT = 3;
+	/**
+	 * The number of times that CAT derives a contract revision again, after the first derivation fails, before it asks
+	 * the user whether to retry or stop.
+	 */
+	public static final int REVISION_RETRIES = 3;
 
 	/**
 	 * Creates a campaign state.
@@ -580,8 +585,8 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 			}
 			case PendingDecision.ConflictFound _ -> choices.add(Choice.RESOLUTION);
 			case PendingDecision.UnownedChange _ -> choices.add(Choice.RESUME);
-			case PendingDecision.TrialFailures _, PendingDecision.CalibrationFailure _, PendingDecision.PilotFailure _ ->
-				choices.add(Choice.RETRY);
+			case PendingDecision.TrialFailures _, PendingDecision.CalibrationFailure _, PendingDecision.PilotFailure _,
+				PendingDecision.ContractRevision _ -> choices.add(Choice.RETRY);
 			case PendingDecision.CheckpointReached _ ->
 			{
 				choices.add(Choice.MORE_EVIDENCE);

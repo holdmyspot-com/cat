@@ -122,6 +122,44 @@ public sealed interface PendingDecision
 	}
 
 	/**
+	 * The user's feedback asked for a revised contract, which the contract author has not yet derived. The campaign
+	 * keeps the feedback so that the revision survives a crash and a failed derivation; the revised contract that the
+	 * user then confirms replaces the confirmed one. The user may retry the derivation from the saved feedback.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is thread-safe.
+	 *
+	 * @param feedback the feedback that the revised contract must incorporate
+	 * @param failure why the last derivation failed, or empty if a derivation has not failed since the feedback was
+	 *   saved
+	 */
+	record ContractRevision(String feedback, String failure) implements PendingDecision
+	{
+		/**
+		 * Creates the decision.
+		 *
+		 * @param feedback the feedback that the revised contract must incorporate
+		 * @param failure why the last derivation failed, or empty if none has failed
+		 * @throws NullPointerException if any argument is null
+		 * @throws IllegalArgumentException if {@code feedback} is blank
+		 */
+		public ContractRevision
+		{
+			requireThat(feedback, "feedback").isNotBlank();
+			requireThat(failure, "failure").isNotNull();
+		}
+
+		/**
+		 * Indicates whether a derivation has failed.
+		 *
+		 * @return {@code false} if the contract author is deriving the revision or a crash ended its derivation
+		 */
+		public boolean hasFailed()
+		{
+			return !failure.isEmpty();
+		}
+	}
+
+	/**
 	 * Cap calibration failed, so the attempt stays uncommitted.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is thread-safe.

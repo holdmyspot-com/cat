@@ -440,7 +440,7 @@ public final class Driver implements AutoCloseable
 	 * never incorporated.
 	 *
 	 * @param event a {@link CampaignEvent.Confirm}, {@link CampaignEvent.ExtendFork}, {@link CampaignEvent.Revise},
-	 *   {@link CampaignEvent.Choose},
+	 *   {@link CampaignEvent.AwaitRevision}, {@link CampaignEvent.Choose},
 	 *   {@link CampaignEvent.ResolveConflict}, {@link CampaignEvent.Cancel}, {@link CampaignEvent.Close},
 	 *   {@link CampaignEvent.ReportUnavailable}, {@link CampaignEvent.ReviseTests},
 	 *   {@link CampaignEvent.ReportTestSound} or {@link CampaignEvent.BlockTestRevision}
@@ -457,7 +457,8 @@ public final class Driver implements AutoCloseable
 		switch (event)
 		{
 			// A user's command
-			case CampaignEvent.Confirm _, CampaignEvent.ExtendFork _, CampaignEvent.Revise _, CampaignEvent.Choose _,
+			case CampaignEvent.Confirm _, CampaignEvent.ExtendFork _, CampaignEvent.Revise _,
+				CampaignEvent.AwaitRevision _, CampaignEvent.Choose _,
 				CampaignEvent.ResolveConflict _, CampaignEvent.Cancel _, CampaignEvent.Close _,
 				CampaignEvent.ReportUnavailable _, CampaignEvent.PilotFailed _,
 				// A test revision's result, which the run command records before the slice starts
@@ -3420,9 +3421,14 @@ public final class Driver implements AutoCloseable
 		DeliveryResult delivered = null;
 		if (delivery != null)
 			delivered = delivery.result();
-		boolean revisionPending = campaign.lifecycle() == Lifecycle.ACTIVE && campaign.revisionRequested() &&
-			isDrained();
-		report = SliceReports.ofSlice(report, delivered, revisionPending);
+		boolean revisionWaits = campaign.lifecycle() == Lifecycle.ACTIVE && campaign.revisionRequested() &&
+			campaign.pending() == null;
+		report = SliceReports.ofSlice(report, delivered, revisionWaits && isDrained());
+		if (revisionWaits && !isDrained() && StatusReport.REVISION_PENDING.equals(report.pending()))
+		{
+			// Trials that are still ending finish before the revision waits for the user, so the host calls again
+			report = SliceReports.awaiting(report, new ReportStatus.Active(Status.RUNNING), null);
+		}
 		if (infrastructureFailure != null && report.status().label().equals("running"))
 		{
 			// A running status sends the host agent to run the campaign again at once, which meets the same failure

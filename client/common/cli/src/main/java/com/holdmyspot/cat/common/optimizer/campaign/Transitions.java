@@ -65,6 +65,9 @@ public final class Transitions
 			case CampaignEvent.Confirm confirm -> confirm(draft, confirm);
 			case CampaignEvent.ExtendFork extend -> extendFork(draft, extend);
 			case CampaignEvent.Revise _ -> revise(draft);
+			case CampaignEvent.AwaitRevision await -> awaitRevision(draft, await.feedback());
+			case CampaignEvent.FailRevision fail -> failRevision(draft, fail.failure());
+			case CampaignEvent.ProposeRevision _ -> proposeRevision(draft);
 			case CampaignEvent.Assign assign -> assign(draft, assign.admission());
 			case CampaignEvent.Start start -> start(draft, start.key());
 			case CampaignEvent.Complete complete ->
@@ -326,6 +329,52 @@ public final class Transitions
 		draft.endRunningAttempt(Outcome.STOPPED_FOR_CONTRACT_REVISION);
 		draft.revisionRequested = true;
 		draft.pendingDecisions.clear();
+	}
+
+	/**
+	 * Keeps the feedback of a revision that the contract author has not derived. Any decision that waited before is
+	 * answered by the new revision.
+	 *
+	 * @param draft the state
+	 * @param feedback the feedback
+	 * @throws IllegalStateException if the campaign is not active, has no confirmed contract or has no revision request
+	 */
+	private static void awaitRevision(Draft draft, String feedback)
+	{
+		requireConfirmed(draft);
+		if (!draft.revisionRequested)
+			throw new IllegalStateException("The campaign has no revision request");
+		draft.pendingDecisions.clear();
+		draft.raise(new PendingDecision.ContractRevision(feedback, ""));
+	}
+
+	/**
+	 * Records why every derivation of the awaited revision failed.
+	 *
+	 * @param draft the state
+	 * @param failure why the last derivation failed
+	 * @throws IllegalStateException if the campaign does not await a revision
+	 */
+	private static void failRevision(Draft draft, String failure)
+	{
+		requireConfirmed(draft);
+		if (!(draft.pending() instanceof PendingDecision.ContractRevision awaited))
+			throw new IllegalStateException("The campaign does not await a derived revision");
+		draft.pendingDecisions.set(0, new PendingDecision.ContractRevision(awaited.feedback(), failure));
+	}
+
+	/**
+	 * Answers the awaited revision with a stored proposal that waits for confirmation.
+	 *
+	 * @param draft the state
+	 * @throws IllegalStateException if the campaign does not await a revision
+	 */
+	private static void proposeRevision(Draft draft)
+	{
+		requireConfirmed(draft);
+		if (!(draft.pending() instanceof PendingDecision.ContractRevision))
+			throw new IllegalStateException("The campaign does not await a derived revision");
+		draft.resolve();
 	}
 
 	/**

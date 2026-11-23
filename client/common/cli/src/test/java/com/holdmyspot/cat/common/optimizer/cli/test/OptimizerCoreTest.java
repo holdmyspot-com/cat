@@ -1160,9 +1160,12 @@ public final class OptimizerCoreTest
 	 * @param core     the core
 	 * @param trialEnd how a trial session ends instead of completing, by the trial session's position among all trial
 	 *   sessions that the script started, counted from 1; {@code null} lets the trial complete
+	 * @param authorEnd how a contract author session ends instead of completing, by the session's position among all
+	 *   contract author sessions that the script started, counted from 0; {@code null} lets the session complete
 	 */
 	private record Repository(Path root, TestOptimizerCommandScope<FakeSessionPort> scope, SessionScript sessions,
-		OptimizerCore core, AtomicReference<IntFunction<SessionResult>> trialEnd)
+		OptimizerCore core, AtomicReference<IntFunction<SessionResult>> trialEnd,
+		AtomicReference<IntFunction<SessionResult>> authorEnd)
 	{
 		/**
 		 * Returns the forks.
@@ -1317,10 +1320,18 @@ public final class OptimizerCoreTest
 		AtomicInteger contractAuthors = new AtomicInteger();
 		AtomicInteger trials = new AtomicInteger();
 		AtomicReference<IntFunction<SessionResult>> trialEnd = new AtomicReference<>(_ -> null);
+		AtomicReference<IntFunction<SessionResult>> authorEnd = new AtomicReference<>(_ -> null);
 		Function<SessionRequest, SessionResult> script = request -> switch (request.role())
 		{
-			case CONTRACT_AUTHOR -> Objects.requireNonNullElseGet(contractAuthorEnd, () -> contractAuthorResult(request,
-				scratch, transcript, initialProject, contractAuthor.apply(contractAuthors.getAndIncrement())));
+			case CONTRACT_AUTHOR ->
+			{
+				int number = contractAuthors.getAndIncrement();
+				SessionResult ended = authorEnd.get().apply(number);
+				if (ended != null)
+					yield ended;
+				yield Objects.requireNonNullElseGet(contractAuthorEnd, () -> contractAuthorResult(request, scratch,
+					transcript, initialProject, contractAuthor.apply(number)));
+			}
 			case TRIAL ->
 			{
 				int number = trials.incrementAndGet();
@@ -1360,7 +1371,8 @@ public final class OptimizerCoreTest
 				throw new IOException(e.getMessage(), e);
 			}
 		}
-		return new Repository(root, command, sessions.get(), new OptimizerCore(command), trialEnd);
+		return new Repository(root, command, sessions.get(), new OptimizerCore(command), trialEnd,
+			authorEnd);
 	}
 
 	/**
@@ -1691,6 +1703,257 @@ public final class OptimizerCoreTest
 			requireThat(proposalText(last), "proposal").contains("## Requirements");
 			requireThat(repository.load(id).revisionRequested(), "revisionRequested").isTrue();
 			requireThat(repository.load(id).pending(), "pending").isNull();
+		}
+	}
+
+	/**
+	 * Returns each way that a contract author session can end without completing.
+	 *
+	 * @return the session result
+	 */
+	@DataProvider
+	public Object[][] revisionFailures()
+	{
+		Object[][] ends = contractAuthorEndsWithoutCompleting();
+		Object[][] failures = new Object[ends.length][];
+		for (int i = 0; i < ends.length; ++i)
+			failures[i] = new Object[]{ends[i][0]};
+		return failures;
+	}
+
+	/**
+	 * Verifies that a contract author that cannot derive a revision leaves the campaign waiting for the user's choice
+	 * to retry or stop, with the feedback kept, and that {@code status} and {@code run} both say so.
+	 * <p>
+	 * The campaign repeats a failed derivation 3 times, except after an interruption, which starts no further session.
+	 * The first design left a confirmed campaign that waited for a revision that nothing derived: {@code run} said that
+	 * a revision waited for confirmation, {@code status} said {@code running}, and the feedback was gone.
+	 *
+	 * @param end how every contract author session ends after the campaign is confirmed
+	 * @throws Exception if the repository cannot be written or a command fails
+	 */
+	@Test(dataProvider = "revisionFailures")
+	public void failedRevisionOffersRetryAndStop(SessionResult end) throws Exception
+	{
+		// Requirement: R-L18
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.authorEnd().set(_ -> end);
+			int sessions = repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).size();
+			int expected = 4;
+			if (end instanceof SessionResult.Interrupted)
+				expected = 1;
+
+			ObjectNode revised = output(repository, List.of("revise", id, "Exempt detailed safety explanations."));
+
+			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).size() - sessions, "sessions").
+				isEqualTo(expected);
+			requireThat(revised.get("status").asString(), "status").isEqualTo("awaiting_user");
+			requireThat(revised.get("proposal_file").isNull(), "proposalFile").isTrue();
+			requireThat(choiceIds(revised), "choices").isEqualTo(List.of("retry", "stop"));
+			requireThat(repository.load(id).revisionRequested(), "revisionRequested").isTrue();
+			for (String command : List.of("status", "run"))
+			{
+				ObjectNode shown = output(repository, List.of(command, id));
+				requireThat(shown.get("status").asString(), command + "Status").isEqualTo("awaiting_user");
+				requireThat(shown.get("proposal_file").isNull(), command + "ProposalFile").isTrue();
+				requireThat(shown.get("pending").asString(), command + "Pending").
+					isEqualTo(revised.get("pending").asString());
+				requireThat(choiceIds(shown), command + "Choices").isEqualTo(List.of("retry", "stop"));
+			}
+			requireThat(refusal(() -> repository.core().confirm(id, CertificationScope.LATEST_VERSIONS)),
+				"confirmRefusal").contains("retry");
+			requireThat(output(repository, List.of("start", "CLAUDE.md")).get("message").asString(), "startMessage").
+				contains("retry");
+
+			repository.authorEnd().set(_ -> null);
+			ObjectNode retried = output(repository, List.of("choose", id, "retry"));
+			requireThat(proposalText(retried), "proposal").contains("## Requirements");
+			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).getLast().turns().getFirst(),
+				"feedback").contains("Exempt detailed safety explanations.");
+			requireThat(repository.load(id).pending(), "pending").isNull();
+			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			requireThat(repository.load(id).lineages().size(), "lineages").isEqualTo(2);
+		}
+	}
+
+	/**
+	 * Verifies that a derivation that fails and then succeeds within its repeats presents the proposal and leaves no
+	 * decision for the user.
+	 *
+	 * @throws Exception if the repository cannot be written or a command fails
+	 */
+	@Test
+	public void revisionRecoversFromTransientFailures() throws Exception
+	{
+		// Requirement: R-L18
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			int sessions = repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).size();
+			repository.authorEnd().set(number ->
+			{
+				if (number < sessions + 3)
+					return new SessionResult.Failed("The contract author crashed", List.of());
+				return null;
+			});
+
+			CommandResult revised = repository.core().revise(id, "Exempt detailed safety explanations.");
+
+			requireThat(proposalText(revised), "proposal").contains("## Requirements");
+			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).size() - sessions, "sessions").
+				isEqualTo(4);
+			requireThat(repository.load(id).pending(), "pending").isNull();
+			requireThat(repository.load(id).revisionRequested(), "revisionRequested").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that the last resolution of a conflict pause survives a contract author that fails, and that
+	 * {@code retry} derives the revision from it once the contract author works.
+	 *
+	 * @throws Exception if the repository cannot be written or a command fails
+	 */
+	@Test
+	public void failedResolutionKeepsItsFeedback() throws Exception
+	{
+		// Requirement: R-D13, R-L18
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			pauseConflicts(repository, id);
+			output(repository, List.of("choose", id, "resolution_2"));
+			repository.authorEnd().set(_ -> new SessionResult.Failed("The contract author crashed", List.of()));
+
+			ObjectNode last = output(repository, List.of("choose", id, "resolution_1"));
+
+			requireThat(last.get("status").asString(), "status").isEqualTo("awaiting_user");
+			requireThat(choiceIds(last), "choices").isEqualTo(List.of("retry", "stop"));
+			requireThat(last.get("pending").asString(), "pending").contains("The contract author crashed");
+			repository.authorEnd().set(_ -> null);
+			ObjectNode retried = output(repository, List.of("choose", id, "retry"));
+			requireThat(proposalText(retried), "proposal").contains("## Requirements");
+			SessionRequest request = repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).getLast();
+			requireThat(request.turns().getFirst(), "feedback").contains("r1, r2").contains("r3, r4").
+				contains("Drop brevity.").contains("Exempt greetings.");
+			requireThat(repository.load(id).pending(), "pending").isNull();
+		}
+	}
+
+	/**
+	 * Verifies that {@code revise} with other feedback replaces the feedback that a failed derivation kept.
+	 *
+	 * @throws Exception if the repository cannot be written or a command fails
+	 */
+	@Test
+	public void reviseReplacesTheKeptFeedback() throws Exception
+	{
+		// Requirement: R-L18
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.authorEnd().set(_ -> new SessionResult.Failed("The contract author crashed", List.of()));
+			output(repository, List.of("revise", id, "First feedback."));
+			output(repository, List.of("revise", id, "Second feedback."));
+
+			repository.authorEnd().set(_ -> null);
+			ObjectNode retried = output(repository, List.of("choose", id, "retry"));
+
+			requireThat(proposalText(retried), "proposal").contains("## Requirements");
+			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).getLast().turns().getFirst(),
+				"feedback").contains("Second feedback.").doesNotContain("First feedback.");
+		}
+	}
+
+	/**
+	 * Verifies that a revision whose derivation a crash ended is reported as waiting for a derivation, with the
+	 * choice to retry or stop, by {@code status} and {@code run} alike.
+	 *
+	 * @throws Exception if the repository cannot be written or a command fails
+	 */
+	@Test
+	public void crashedRevisionOffersRetryAndStop() throws Exception
+	{
+		// Requirement: R-L18
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.authorEnd().set(_ ->
+			{
+				throw new IllegalStateException("The process ended");
+			});
+			try
+			{
+				repository.core().revise(id, "Exempt detailed safety explanations.");
+			}
+			catch (RuntimeException | IOException _)
+			{
+				// The command ended without an answer, as a crash does
+			}
+			repository.authorEnd().set(_ -> null);
+
+			ObjectNode status = output(repository, List.of("status", id));
+
+			requireThat(status.get("status").asString(), "status").isEqualTo("awaiting_user");
+			requireThat(status.get("pending").asString(), "pending").contains("being derived");
+			requireThat(choiceIds(status), "choices").isEqualTo(List.of("retry", "stop"));
+			ObjectNode retried = output(repository, List.of("choose", id, "retry"));
+			requireThat(proposalText(retried), "proposal").contains("## Requirements");
+			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).getLast().turns().getFirst(),
+				"feedback").contains("Exempt detailed safety explanations.");
+		}
+	}
+
+	/**
+	 * Verifies that {@code status} and {@code run} report a revised proposal that waits for confirmation as
+	 * {@code awaiting_user} with the same text, and that neither carries a proposal file.
+	 *
+	 * @throws Exception if the repository cannot be written or a command fails
+	 */
+	@Test
+	public void waitingRevisionIsReportedAlike() throws Exception
+	{
+		// Requirement: R-L18
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			CommandResult revised = repository.core().revise(id, "Exempt detailed safety explanations.");
+			requireThat(proposalText(revised), "proposal").contains("## Requirements");
+
+			ObjectNode status = output(repository, List.of("status", id));
+			ObjectNode run = output(repository, List.of("run", id));
+
+			requireThat(status.get("status").asString(), "status").isEqualTo("awaiting_user");
+			requireThat(status.get("proposal_file").isNull(), "statusProposalFile").isTrue();
+			requireThat(status.get("pending").asString(), "pending").contains("waits for confirmation");
+			requireThat(run.get("status").asString(), "runStatus").isEqualTo("awaiting_user");
+			requireThat(run.get("proposal_file").isNull(), "runProposalFile").isTrue();
+			requireThat(run.get("pending").asString(), "runPending").isEqualTo(status.get("pending").asString());
 		}
 	}
 
@@ -2775,7 +3038,7 @@ public final class OptimizerCoreTest
 			requireThat(peer.requests(SessionRole.TRIAL).size(), "peerTrials").isGreaterThan(20);
 			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "ownerTrials").isGreaterThan(20);
 			Repository reopened = new Repository(repository.root(), repository.scope(), repository.sessions(),
-				new OptimizerCore(repository.scope()), repository.trialEnd());
+				new OptimizerCore(repository.scope()), repository.trialEnd(), repository.authorEnd());
 			resumeSharedCampaign(reopened, target, peer, measured);
 			sharedTrialPlugins(reopened, peer, id);
 			peer.port().sessionEnvironmentVersion(peer.port().sessionEnvironmentVersion() + 1);
@@ -2832,7 +3095,7 @@ public final class OptimizerCoreTest
 			requireThat(repository.sessions().requests(SessionRole.TRIAL), "ownerTrials").isEmpty();
 
 			Repository reopened = new Repository(repository.root(), repository.scope(), repository.sessions(),
-				new OptimizerCore(repository.scope()), repository.trialEnd());
+				new OptimizerCore(repository.scope()), repository.trialEnd(), repository.authorEnd());
 			resumeSharedCampaign(reopened, target, peer, campaign);
 			requireThat(JSON.readTree(Files.readString(pilotFile)), "resumedPilot").isEqualTo(pilots);
 			output(reopened, List.of("confirm", id));

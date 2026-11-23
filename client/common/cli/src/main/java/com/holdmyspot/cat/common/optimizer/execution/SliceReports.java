@@ -24,11 +24,6 @@ import java.util.StringJoiner;
 public final class SliceReports
 {
 	/**
-	 * The decision that a campaign waits for after a revision request, once its running trials have ended.
-	 */
-	public static final String REVISION_PENDING = "A contract revision waits for confirmation";
-
-	/**
 	 * Prevents instantiation.
 	 */
 	private SliceReports()
@@ -62,8 +57,8 @@ public final class SliceReports
 	 *
 	 * @param report the campaign's report
 	 * @param delivery the slice's delivery result, or {@code null} if the slice delivered nothing
-	 * @param revisionPending {@code true} if an active campaign's revision request waits for confirmation and no trial
-	 *   runs
+	 * @param revisionPending {@code true} if an active campaign's revised proposal waits for confirmation, no pending
+	 *   decision remains and no trial runs
 	 * @return the report
 	 * @throws NullPointerException if {@code report} is null
 	 */
@@ -74,7 +69,7 @@ public final class SliceReports
 		if (delivery != null && !(delivery instanceof DeliveryResult.Delivered))
 			return awaiting(report, awaiting, describe(delivery));
 		if (revisionPending)
-			return awaiting(report, awaiting, REVISION_PENDING);
+			return awaiting(report, awaiting, StatusReport.REVISION_PENDING);
 		return report;
 	}
 
