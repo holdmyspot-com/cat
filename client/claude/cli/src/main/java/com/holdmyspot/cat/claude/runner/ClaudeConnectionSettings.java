@@ -400,20 +400,9 @@ public final class ClaudeConnectionSettings
 
 	/**
 	 * Writes settings for an isolated Claude instance, as
-	 * {@link #writeIsolatedSettings(HarnessRunnerScope, Path, Path, Path, Path, List, Path, List, String,
-	 * SessionRequestAccess, Path, Path, ChildPolicy, ExtraPermissions, String)} does, except that the settings also set
-	 * the lifetime of the instance's prompt cache when {@code promptCacheTtl} is not empty. Claude Code's
-	 * {@code promptCacheTtl} setting alone switches every cache write to that lifetime, so the settings set no
-	 * environment variable for it.
-	 * <p>
-	 * When {@code sandboxed} is {@code false}, the instance runs without a sandbox, because the {@code tools} that its
-	 * model is offered include no command and no tool that writes. The settings then have no {@code sandbox} section, do
-	 * not allow the {@code Skill} and editing tools, commands, or requested sessions' responses that a sandboxed
-	 * session needs, and do not require Claude Code to start a sandbox. Its file tools stay out of the paths that
-	 * {@code deniedReads} names through the same {@code Read} rules in {@code permissions.deny} as a sandboxed session's,
-	 * and every MCP tool is denied, because such a tool runs outside any sandbox. The returned policy and its read
-	 * denials are the same either way. The session is refused when {@code tools} is empty, which offers every tool, or
-	 * names a tool that {@link ClaudeSessionSandbox#READ_ONLY_TOOLS} does not list.
+	 * {@link #writeIsolatedSettings(HarnessRunnerScope, Path, Path, Path, Path, List, Path, List, List, String,
+	 * SessionRequestAccess, Path, Path, ChildPolicy, ExtraPermissions, String, String, boolean, List)} does, for an
+	 * instance with no read-only evidence.
 	 *
 	 * @param scope                    services shared for the runner process lifetime
 	 * @param source                   the host Claude settings file
@@ -458,6 +447,82 @@ public final class ClaudeConnectionSettings
 		boolean sandboxed, List<String> tools)
 		throws IOException
 	{
+		return writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory, claudeHome, dependencyCaches,
+			isolationRoot, deniedReads, List.of(), instructionFilesMode, requestAccess, project, sessionFolder, bound,
+			extraPermissions, modelHost, promptCacheTtl, sandboxed, tools);
+	}
+
+	/**
+	 * Writes settings for an isolated Claude instance, as
+	 * {@link #writeIsolatedSettings(HarnessRunnerScope, Path, Path, Path, Path, List, Path, List, String,
+	 * SessionRequestAccess, Path, Path, ChildPolicy, ExtraPermissions, String)} does, except that the settings also set
+	 * the lifetime of the instance's prompt cache when {@code promptCacheTtl} is not empty. Claude Code's
+	 * {@code promptCacheTtl} setting alone switches every cache write to that lifetime, so the settings set no
+	 * environment variable for it.
+	 * <p>
+	 * When {@code sandboxed} is {@code false}, the instance runs without a sandbox, because the {@code tools} that its
+	 * model is offered include no command and no tool that writes. The settings then have no {@code sandbox} section, do
+	 * not allow the {@code Skill} and editing tools, commands, or requested sessions' responses that a sandboxed
+	 * session needs, and do not require Claude Code to start a sandbox. Its file tools stay out of the paths that
+	 * {@code deniedReads} names through the same {@code Read} rules in {@code permissions.deny} as a sandboxed session's,
+	 * and every MCP tool is denied, because such a tool runs outside any sandbox. The returned policy and its read
+	 * denials are the same either way. The session is refused when {@code tools} is empty, which offers every tool, or
+	 * names a tool that {@link ClaudeSessionSandbox#READ_ONLY_TOOLS} does not list.
+	 * <p>
+	 * A read denial of a directory that holds the instance's files, such as the host project that holds its session
+	 * folder, becomes a denial of every file and directory in it except the paths that the instance reads: its
+	 * commands' write roots, {@code readOnlyEvidence}, the link-targets directory and, when the instance may request
+	 * sessions, the responses directory.
+	 *
+	 * @param scope                    services shared for the runner process lifetime
+	 * @param source                   the host Claude settings file
+	 * @param destination              the isolated Claude settings file
+	 * @param claudeTemporaryDirectory the CAT-owned directory for Claude temporary files
+	 * @param claudeHome               the CAT-owned home directory for the isolated Claude process
+	 * @param dependencyCaches         the parent's shared dependency caches that the isolated instance may write
+	 * @param isolationRoot            the directory above which the isolated instance loads no instruction file
+	 * @param deniedReads              the existing files and directories that the isolated instance must not read
+	 * @param readOnlyEvidence         the completed evidence directories and files that the isolated instance reads,
+	 *                                 which no read rule denies even if a directory in {@code deniedReads} or in
+	 *                                 {@code bound}'s read denials holds them
+	 * @param instructionFilesMode     the choice of which instruction files load, or an empty string to keep the
+	 *                                 parent's choice
+	 * @param requestAccess            the session's access to requested sessions, or {@code null} if it may request
+	 *                                 none
+	 * @param project                  the instance's project, which Claude Code lets its commands write, or
+	 *                                 {@code null} if the instance has none
+	 * @param sessionFolder            the instance's session folder, which {@code bound} always lets it write
+	 * @param bound                    the policy that bounds the instance's, or {@code null} if nothing bounds it
+	 * @param extraPermissions         the writes and hosts that the instance's commands need beyond what Claude Code
+	 *                                 needs
+	 * @param modelHost                the host of the instance's model provider
+	 * @param promptCacheTtl           the lifetime of the instance's prompt cache, such as {@code 5m}, or an empty
+	 *                                 string to keep Claude Code's default
+	 * @param sandboxed                {@code true} if Claude Code confines the instance's commands in a sandbox,
+	 *                                 {@code false} if the instance runs without one
+	 * @param tools                    the only tools that the instance's model is offered, or none if it is offered
+	 *                                 every tool
+	 * @return the instance's sandbox policy
+	 * @throws NullPointerException     if {@code readOnlyEvidence}, {@code instructionFilesMode},
+	 *                                  {@code sessionFolder}, {@code extraPermissions}, {@code modelHost},
+	 *                                  {@code promptCacheTtl} or {@code tools} are null
+	 * @throws IllegalArgumentException if {@code modelHost} is blank
+	 * @throws SessionRefusedException  if {@code sandboxed} is {@code false} and {@code tools} is empty or names a tool
+	 *                                  beyond {@link ClaudeSessionSandbox#READ_ONLY_TOOLS}; or if {@code bound} does not
+	 *                                  let the instance's commands write what Claude Code writes, or lacks a write or
+	 *                                  host that the instance needs; or if {@code sandboxed} is {@code true} and the
+	 *                                  read denials are too many for Claude Code to sandbox the instance's commands
+	 * @throws IOException              if settings I/O fails
+	 */
+	public static ChildPolicy writeIsolatedSettings(HarnessRunnerScope scope, Path source, Path destination,
+		Path claudeTemporaryDirectory, Path claudeHome, List<Path> dependencyCaches, Path isolationRoot,
+		List<Path> deniedReads, List<Path> readOnlyEvidence, String instructionFilesMode,
+		SessionRequestAccess requestAccess, Path project, Path sessionFolder, ChildPolicy bound,
+		ExtraPermissions extraPermissions, String modelHost, String promptCacheTtl, boolean sandboxed,
+		List<String> tools)
+		throws IOException
+	{
+		requireThat(readOnlyEvidence, "readOnlyEvidence").isNotNull();
 		requireThat(promptCacheTtl, "promptCacheTtl").isNotNull();
 		requireThat(instructionFilesMode, "instructionFilesMode").isNotNull();
 		requireThat(sessionFolder, "sessionFolder").isNotNull();
@@ -519,7 +584,16 @@ public final class ClaudeConnectionSettings
 		}
 		if (sandboxed)
 			grants.add(SANDBOXED_COMMAND_GRANT);
-		denyReadRules(settings, policy.readDenials(), policy.writeRoots());
+		// A denial of a directory that holds the instance's files, such as its host project, leaves out what the instance
+		// reads beyond its write roots: the evidence that its launch names and what the grants above let it read
+		List<Path> readable = new ArrayList<>(readOnlyEvidence);
+		readable.add(NestedSessionManager.linkTargets(sessionFolder));
+		if (sandboxed && requestAccess != null)
+			readable.add(requestAccess.responses());
+		List<Path> carvedOut = new ArrayList<>(policy.writeRoots());
+		for (Path path : readable)
+			carvedOut.add(RealPaths.resolve(path.toAbsolutePath().normalize()));
+		denyReadRules(settings, policy.readDenials(), carvedOut);
 		if (!sandboxed)
 			denyMcpTools(settings);
 		excludeInstructionsAbove(settings, isolationRoot);
@@ -1258,33 +1332,34 @@ public final class ClaudeConnectionSettings
 	 * parent's settings deny, with each rule naming its path as {@link #rulePattern(Path)} gives it. Does nothing if
 	 * {@code deniedReads} is empty.
 	 * <p>
-	 * A directory that holds one of {@code writeRoots}, such as the project that holds the session folder of a session,
-	 * is denied as every file and directory in it except the write roots and the directories that lead to them. A Read
-	 * rule that covered a write root would stop the instance's Write tool there, since that tool also refuses a path
-	 * that a Read rule denies. A file or directory that appears in such a directory after this method returns is not
-	 * denied.
+	 * A directory that holds one of {@code readable}, such as the project that holds the session folder of a session,
+	 * is denied as every file and directory in it except the readable paths and the directories that lead to them. A
+	 * Read rule that covered a write root would stop the instance's Write tool there, since that tool also refuses a
+	 * path that a Read rule denies, and one that covered read-only evidence would stop the instance's file tools reading
+	 * it. A file or directory that appears in such a directory after this method returns is not denied.
 	 *
 	 * @param settings    the isolated settings
 	 * @param deniedReads the existing files and directories to deny
-	 * @param writeRoots  the directories that the instance's commands may write
-	 * @throws IOException if a directory that holds a write root cannot be listed
+	 * @param readable    the resolved paths that the instance's file tools or commands use: the directories that its
+	 *                    commands may write and the paths that it reads
+	 * @throws IOException if a directory that holds a readable path cannot be listed
 	 */
-	private static void denyReadRules(ObjectNode settings, List<Path> deniedReads, List<Path> writeRoots)
+	private static void denyReadRules(ObjectNode settings, List<Path> deniedReads, List<Path> readable)
 		throws IOException
 	{
 		assert settings != null;
 		assert deniedReads != null;
-		assert writeRoots != null;
+		assert readable != null;
 		if (deniedReads.isEmpty())
 			return;
 		Set<Path> rulePaths = new LinkedHashSet<>();
 		for (Path deniedRead : deniedReads)
 		{
 			List<Path> inside = new ArrayList<>();
-			for (Path writeRoot : writeRoots)
+			for (Path path : readable)
 			{
-				if (writeRoot.startsWith(deniedRead) && !writeRoot.equals(deniedRead))
-					inside.add(writeRoot);
+				if (path.startsWith(deniedRead) && !path.equals(deniedRead))
+					inside.add(path);
 			}
 			if (inside.isEmpty())
 				rulePaths.add(deniedRead);

@@ -248,8 +248,9 @@ public final class ClaudeRunner
 				hostConfiguration.resolve("settings.json"), isolatedConfiguration.resolve("settings.json"),
 				claudeTemporaryDirectory, isolatedProcessHome, caches.directories(), nestedSession.directory(),
 				sessionDeniedReads(manager, nestedSession, readOnlyEvidence, deniedReads, environment, requestAccess),
-				instructionFilesMode, requestAccess, worktree, nestedSession.directory(), bound, extraPermissions,
-				ClaudeConnectionSettings.modelHost(isolatedEnvironment), promptCacheTtl(role), sandboxed(role), tools(role));
+				readOnlyEvidence, instructionFilesMode, requestAccess, worktree, nestedSession.directory(), bound,
+				extraPermissions, ClaudeConnectionSettings.modelHost(isolatedEnvironment), promptCacheTtl(role),
+				sandboxed(role), tools(role));
 			requireNoWidening(scope, Platform.current(), worktree, policy, isolatedProcessHome);
 			policyListener.accept(policy);
 			// The copied project already has its owned baseline. A second initial commit
