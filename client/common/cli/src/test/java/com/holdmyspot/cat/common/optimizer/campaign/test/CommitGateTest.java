@@ -185,7 +185,7 @@ public final class CommitGateTest
 		requireThat(CommitGate.isMet(attempt.build()), "reproducing").isFalse();
 		for (FailureGroup.Status status : List.of(FailureGroup.Status.REPRODUCED, FailureGroup.Status.ABANDONED))
 		{
-			FailureGroup group = new FailureGroup("safety", testCase.testId(), failed, 1, FailureGroup.ROUNDS,
+			FailureGroup group = new FailureGroup("safety", testCase.testId(), "", failed, 1, FailureGroup.ROUNDS,
 				List.of(new ReproductionRound("safety", List.of())), status);
 			requireThat(CommitGate.isMet(attempt.groups(List.of(group)).build()), status.name()).isTrue();
 		}

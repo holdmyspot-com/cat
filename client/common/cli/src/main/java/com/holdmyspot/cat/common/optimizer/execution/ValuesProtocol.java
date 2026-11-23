@@ -14,8 +14,10 @@ import com.holdmyspot.cat.common.optimizer.port.SessionRole;
  * reproduction round, and validates the test cases that it writes, for the {@link Driver}.
  * <p>
  * The session receives the group's test with only its development test cases, never the salt or a held-out test case,
- * together with the group's cell, failed requirement, behavior and formal failure count, and the test cases that the
- * group's earlier rounds tried with their reproduction counts, never a trial's reply.
+ * together with the group's cell, boundary class, failed requirement, behavior and formal failure count, and the test
+ * cases that the group's earlier rounds tried with their reproduction counts, never a trial's reply or a value of a
+ * failed test case. The session writes test cases of the group's class but does not tag them: the group gives each
+ * test case that CAT accepts the class of the failed test cases.
  */
 public interface ValuesProtocol
 {

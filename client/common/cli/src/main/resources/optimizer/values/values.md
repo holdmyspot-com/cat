@@ -2,9 +2,10 @@
 
 ## Design Goals
 
-- Write at least 4 new test cases of the failed test below that lead an assistant to fail the failed assertion through
-	the behavior below, so that development trials reproduce that failure and prompt editing can correct it; report
-	exhaustion with a reason when four valid new cases cannot be written without changing the confirmed test.
+- Write at least 4 new test cases of the failed test below, each of the failed boundary class below, that lead an
+	assistant to fail the failed assertion through the behavior below, so that development trials reproduce that
+	failure and prompt editing can correct it; report exhaustion with a reason when four valid new cases cannot be
+	written without changing the confirmed test.
 - Make every new test case's values differ from those of every existing test case of the test, and its expected
 	outcome differ from every held-out expected outcome, so that the new test cases add content that the test does not
 	already hold and never reveal a held-out answer.
@@ -37,13 +38,16 @@ The failure group, as JSON:
 	with its `path`, its `content` and the `source` file it was copied from.
 - `other_test_cases`: the test cases that earlier rounds added to the test. It is empty when there are none.
 - `cell`: the cell, a model with a reasoning effort, in which the formal failures occurred.
+- `boundary_class`: the boundary class of the test cases that failed: the kind of input boundary that they exercise,
+	which development test cases of the test carry too. It is empty when the failed test cases were untagged. The failed
+	test cases' values are held out from you; this label is all that CAT tells you of them.
 - `assertion`: the failed assertion, with its `id`, its `statement`, the `requirement` whose compliance it shows, with
 	its `id` and `description`, and its `behaviors`, the distinct ways in which a trial can fail it. `requirement` is
 	`null` for the assertion `expected_outcome`, which compares the reply's result with the test case's expected outcome.
 - `behavior`: the behavior through which the formal failures failed the assertion. It is `other` when none of the
 	listed behaviors describes them.
 - `formal_failures`: how many certification trials of the test failed the assertion through the behavior in that
-	cell. Certification test cases are held out from you, so the failures give nothing else.
+	cell. Certification test cases are held out from you, so the failures give only this count and `boundary_class`.
 - `tried_rounds`: the rounds of reproduction trials that ran on your earlier test cases for this group, in order. Each
 	gives the `cell` it ran in and, for each test case, its values, its expected outcome, its `trials` and its
 	`failures`: the trials that failed the assertion through the behavior. A round ends once 2 trials fail that way, so
@@ -57,6 +61,10 @@ The failure group, as JSON:
 - Write at least 4 test cases unless the domain is exhausted as described below. Each gives one value for every
 	variable of the test, and for no other variable, and
 	states its `expected_outcome`: the result that a compliant reply gives for those values.
+- Write every test case as a case of `boundary_class`: choose content whose input boundary is the kind that the class
+	names, as the development test cases of that class in `test` do, because a test case of another class does not
+	reproduce the failure however well it provokes the behavior. CAT tags each accepted test case with that class, so
+	do not write it. When `boundary_class` is empty, any kind of input may be used.
 - Aim each test case at the behavior: choose content under which an assistant that fails the assertion through that
 	behavior would show it in its reply or its effects, while the test's turns and expected behaviour still apply
 	unchanged. A failure of the assertion through another behavior does not reproduce the group.

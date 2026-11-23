@@ -75,10 +75,12 @@ public record Failure(DrawnTestCase testCase, String rationale, List<FailedAsser
 	/**
 	 * Returns what development may learn of this failure when its test case is held out.
 	 *
-	 * @return the failure's cell, test and failed assertions with their behaviors
+	 * @return the failure's cell, test, the boundary class of its test case and its failed assertions with their
+	 *   behaviors
 	 */
 	public FailureSummary summary()
 	{
-		return new FailureSummary(testCase.cellId(), testCase.testId(), failedAssertions);
+		return new FailureSummary(testCase.cellId(), testCase.testId(), testCase.testCase().boundaryClass(),
+			failedAssertions);
 	}
 }

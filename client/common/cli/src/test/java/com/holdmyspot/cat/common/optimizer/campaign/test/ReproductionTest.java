@@ -146,6 +146,37 @@ public final class ReproductionTest
 	}
 
 	/**
+	 * Returns the formal failures' test case tagged with a boundary class.
+	 *
+	 * @param boundaryClass the kind of input boundary that the test case exercises
+	 * @return the test case
+	 */
+	private static DrawnTestCase failedOfClass(String boundaryClass)
+	{
+		return new DrawnTestCase(BIG_MEDIUM, FAILED.testId(), FAILED.testCase().withBoundaryClass(boundaryClass),
+			FAILED.turns(), FAILED.expectedBehaviour(), FAILED.generator(), FAILED.streamKind(),
+			FAILED.streamPosition(), FAILED.targeted());
+	}
+
+	/**
+	 * Returns a campaign builder whose first certification attempt failed with the given formal failures, before any
+	 * reproduction ran.
+	 *
+	 * @param failures the formal failures
+	 * @return the builder
+	 */
+	private static Builder.AttemptBuilder failedWith(List<Failure> failures)
+	{
+		Header header = new Header("campaign-1", Path.of("/project").toAbsolutePath(),
+			Path.of("/project/AGENTS.md").toAbsolutePath(), Harness.CLAUDE, Lifecycle.ACTIVE);
+		Builder.AttemptBuilder attempt = new Builder().header(header).confirmed(TierFixtures.tieredContract(), 1).
+			working(1).readyBaseline().readyDevelopment().certificationAttempt(1);
+		for (Failure failure : failures)
+			attempt = attempt.failure(failure);
+		return attempt.outcome(Outcome.BELOW_MINIMUM);
+	}
+
+	/**
 	 * Returns a failure group of the failed attempt with given rounds.
 	 *
 	 * @param rounds the rounds
@@ -166,7 +197,8 @@ public final class ReproductionTest
 	 */
 	private static FailureGroup group(String cellId, FailureGroup.Status status, ReproductionRound... rounds)
 	{
-		return new FailureGroup(cellId, FAILED.testId(), WRONG_TONE, 2, FailureGroup.ROUNDS, List.of(rounds), status);
+		return new FailureGroup(cellId, FAILED.testId(), "", WRONG_TONE, 2, FailureGroup.ROUNDS, List.of(rounds),
+			status);
 	}
 
 	/**
@@ -228,6 +260,94 @@ public final class ReproductionTest
 			requireThat(group.status(), "status").isEqualTo(FailureGroup.Status.REPRODUCING);
 			requireThat(group.awaitsValues(), "awaitsValues").isTrue();
 			requireThat(group.round().cellId(), "round().cellId()").isEqualTo(group.cellId());
+		}
+	}
+
+	/**
+	 * Verifies that failures with the same cell, test, failed assertion and behavior but different boundary classes
+	 * make different groups, and that failures of one class join one group.
+	 */
+	@Test
+	public void classesSplitFailureGroups()
+	{
+		// Requirement: R-L12
+		DrawnTestCase crossing = failedOfClass("crosses_midnight");
+		DrawnTestCase exactly = failedOfClass("arrives_exactly_at_midnight");
+		List<Failure> failures = List.of(
+			new Failure(crossing, "", List.of(WRONG_TONE), null, List.of(), List.of(), Builder.FILES),
+			new Failure(exactly, "", List.of(WRONG_TONE), null, List.of(), List.of(), Builder.FILES),
+			new Failure(crossing, "", List.of(WRONG_TONE), null, List.of(), List.of(), Builder.FILES));
+
+		List<FailureGroup> groups = FailureGroup.of(failures);
+
+		requireThat(groups.stream().map(group -> List.of(group.cellId(), group.testId(), group.boundaryClass(),
+			group.failed(), group.formalFailures())).toList(), "groups").isEqualTo(List.of(
+			List.of(BIG_MEDIUM, FAILED.testId(), "crosses_midnight", WRONG_TONE, 2),
+			List.of(BIG_MEDIUM, FAILED.testId(), "arrives_exactly_at_midnight", WRONG_TONE, 1)));
+	}
+
+	/**
+	 * Verifies that the group's round adds only test cases that carry the group's boundary class, whatever class the
+	 * contract author's test cases had.
+	 */
+	@Test
+	public void addedTestCasesCarryTheGroupsClass()
+	{
+		// Requirement: R-L12
+		Failure failure = new Failure(failedOfClass("arrives_exactly_at_midnight"), "", List.of(WRONG_TONE), null,
+			List.of(), List.of(), Builder.FILES);
+		Campaign failed = failedWith(List.of(failure, failure)).build();
+
+		Campaign campaign = Transitions.apply(failed, new CampaignEvent.ReproductionValues(1, 1, testCases("a")));
+
+		List<AddedTestCase> added = campaign.attempt(1).group(1).round().added();
+		requireThat(added.size(), "added.size()").isEqualTo(4);
+		requireThat(campaign.attempt(1).group(1).boundaryClass(), "group.boundaryClass").
+			isEqualTo("arrives_exactly_at_midnight");
+		for (AddedTestCase testCase : added)
+		{
+			requireThat(testCase.testCase().boundaryClass(), "boundaryClass").
+				isEqualTo("arrives_exactly_at_midnight");
+		}
+		for (AddedTestCase testCase : campaign.lineage().added().testCases())
+		{
+			requireThat(testCase.testCase().boundaryClass(), "lineage.boundaryClass").
+				isEqualTo("arrives_exactly_at_midnight");
+		}
+	}
+
+	/**
+	 * Verifies that a failure of a covering assertion through the desk-label behavior in one boundary class is a
+	 * different group from the same behavior in another class, so reproducing the second does not satisfy a round of
+	 * the first.
+	 */
+	@Test
+	public void otherClassDoesNotReproduceGroup()
+	{
+		// Requirement: R-L12
+		FailedAssertion deskLabel = new FailedAssertion("arrival_time_stated", "desk_label");
+		Failure exactly = new Failure(failedOfClass("arrives_exactly_at_midnight"), "", List.of(deskLabel), null,
+			List.of(), List.of(), Builder.FILES);
+		Failure crossing = new Failure(failedOfClass("crosses_midnight"), "", List.of(deskLabel), null,
+			List.of(), List.of(), Builder.FILES);
+		Campaign failed = failedWith(List.of(exactly, crossing)).build();
+		requireThat(failed.attempt(1).groups().size(), "groups").isEqualTo(2);
+		requireThat(failed.attempt(1).group(1).boundaryClass(), "firstClass").isEqualTo("arrives_exactly_at_midnight");
+		requireThat(failed.attempt(1).group(2).boundaryClass(), "secondClass").isEqualTo("crosses_midnight");
+
+		Campaign campaign = Transitions.apply(failed, new CampaignEvent.ReproductionValues(1, 1, testCases("a")));
+		campaign = reproduce(campaign, Verdict.FAIL, deskLabel);
+		campaign = reproduce(campaign, Verdict.FAIL, deskLabel);
+
+		requireThat(campaign.attempt(1).group(1).status(), "firstStatus").isEqualTo(FailureGroup.Status.REPRODUCED);
+		FailureGroup second = campaign.attempt(1).group(2);
+		requireThat(second.status(), "secondStatus").isEqualTo(FailureGroup.Status.REPRODUCING);
+		requireThat(second.awaitsValues(), "secondAwaitsValues").isTrue();
+		requireThat(second.failures(), "secondFailures").isEqualTo(0);
+		for (AddedTestCase testCase : campaign.lineage().added().testCases())
+		{
+			requireThat(testCase.testCase().boundaryClass(), "boundaryClass").
+				isEqualTo("arrives_exactly_at_midnight");
 		}
 	}
 

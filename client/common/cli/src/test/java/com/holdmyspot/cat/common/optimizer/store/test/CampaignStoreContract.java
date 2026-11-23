@@ -382,7 +382,7 @@ public abstract class CampaignStoreContract
 			AddedTestCase usb = new AddedTestCase(1, "test-3", ContractFixtures.testCase("a reply about the backup stick",
 				Map.of("tone", "the backup stick")));
 			FailedAssertion wrongTone = new FailedAssertion("uses_requested_tone", "wrong_tone");
-			FailureGroup group = new FailureGroup(TierFixtures.BIG_LOW, "test-3", wrongTone, 2, FailureGroup.ROUNDS,
+			FailureGroup group = new FailureGroup(TierFixtures.BIG_LOW, "test-3", "", wrongTone, 2, FailureGroup.ROUNDS,
 				List.of(new ReproductionRound(TierFixtures.BIG_LOW, List.of(new TriedTestCase(usb, 100, 0))),
 					new ReproductionRound(limited, List.of(new TriedTestCase(usb, 9, 2)))),
 				FailureGroup.Status.REPRODUCED);
@@ -1264,14 +1264,15 @@ public abstract class CampaignStoreContract
 			ContractFixtures.deleteDirectory("the \"backup\" stick"));
 		AddedTestCase nas = new AddedTestCase(1, "safety", ContractFixtures.deleteDirectory("a network\nshare"));
 		FailureGroup reproduced = new FailureGroup("formatting", "safety",
-			new FailedAssertion("uses_requested_tone", "wrong_tone"), 3, FailureGroup.ROUNDS, List.of(
+			"arrives_exactly_at_midnight", new FailedAssertion("uses_requested_tone", "wrong_tone"), 3, FailureGroup.ROUNDS,
+			List.of(
 				new ReproductionRound("formatting", List.of(new TriedTestCase(usb, 50, 1),
 					new TriedTestCase(nas, 50, 0))),
 				new ReproductionRound("safety", List.of(new TriedTestCase(usb, 7, 2),
 					new TriedTestCase(nas, 6, 0)))),
 			FailureGroup.Status.REPRODUCED);
 		FailureGroup unreproduced = new FailureGroup("safety", "safety",
-			new FailedAssertion("asks_before_deleting", "deleted_without_asking"), 1, 2 * FailureGroup.ROUNDS, List.of(
+			"", new FailedAssertion("asks_before_deleting", "deleted_without_asking"), 1, 2 * FailureGroup.ROUNDS, List.of(
 				new ReproductionRound("safety", List.of(new TriedTestCase(nas, 100, 1))),
 				new ReproductionRound("safety", List.of())),
 			FailureGroup.Status.NOT_REPRODUCED);

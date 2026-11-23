@@ -91,8 +91,9 @@ id and the `reasons` it needs no change. The array is empty when no test was fou
 
 {{sound_tests}}
 
-The development test cases that failed for the working candidate, as JSON. Each one gives its values and its
-`expected_outcome`, the assertions it failed in `failed_assertions`, each with its `assertion_id` and the `behavior`
+The development test cases that failed for the working candidate, as JSON. Each one gives its values, its
+`boundary_class` (the kind of input boundary that it exercises, empty if untagged) and its `expected_outcome`, the
+assertions it failed in `failed_assertions`, each with its `assertion_id` and the `behavior`
 through which it failed, the reason for its failure in `rationale`, and the targeted reruns of the same test case
 against the working candidate in `diagnostic_reruns`, each with its verdict and its `rationale`. A `rationale` is the
 judge's rationale, preceded when a built-in tool failed by the record of CAT's built-in tools that failed: for each one,
@@ -118,8 +119,9 @@ The development counts of the working candidate per cell, as JSON:
 {{development_counts}}
 
 The formal outcomes of the certification attempts that have ended, as JSON. Certification test cases are held out
-from you, so each formal failure gives only its `cell`, its `test` and, in `failed_assertions`, the `assertion_id` of
-each assertion it failed with the `behavior` through which it failed. `below_control` lists each assertion that the
+from you, so each formal failure gives only its `cell`, its `test`, its `boundary_class`, the kind of input boundary of
+the failed test case, which development test cases carry too, and, in `failed_assertions`, the `assertion_id` of each
+assertion it failed with the `behavior` through which it failed. `below_control` lists each assertion that the
 candidate passed less often than trials with the target prompt file empty, with its `cell`, `test`, the number of
 paired trials and each side's passes: the edits harmed an operation that the agent performs without them.
 `below_incumbent` lists, in the same form, each assertion that the candidate passed less often than the prompt files

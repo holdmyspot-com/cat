@@ -282,6 +282,7 @@ public final class PromptAuthorPrompt implements PromptAuthorProtocol
 				ObjectNode failureNode = attemptFailures.addObject();
 				failureNode.put("cell", failure.cellId());
 				failureNode.put("test", failure.testId());
+				failureNode.put("boundary_class", failure.boundaryClass());
 				ArrayNode failedAssertions = failureNode.putArray("failed_assertions");
 				for (FailedAssertion failed : failure.failedAssertions())
 				{

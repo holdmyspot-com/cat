@@ -1468,7 +1468,7 @@ public final class TrialAdoption
 			case RETURN_TO_DEVELOPMENT ->
 			{
 				// Development continues: the attempt's failed cells are development cells, and prompt authors see each
-				// formal failure's cell, test and failed assertions, never its held-out test case
+				// formal failure's cell, test, boundary class and failed assertions, never its held-out test case
 			}
 		}
 	}

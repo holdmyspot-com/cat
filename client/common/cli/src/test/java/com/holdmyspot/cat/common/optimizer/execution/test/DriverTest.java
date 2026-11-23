@@ -5427,7 +5427,7 @@ public final class DriverTest
 			for (JsonNode failure : failures)
 			{
 				requireThat(new HashSet<>(failure.propertyNames()), "fields").
-					isEqualTo(Set.of("cell", "test", "failed_assertions"));
+					isEqualTo(Set.of("cell", "test", "boundary_class", "failed_assertions"));
 				requireThat(failure.get("cell").asString(), "cell").isEqualTo(TierFixtures.BIG_MEDIUM);
 				// Requirement: R-C18
 				JudgedAssertion judged = JudgedAssertion.of(contract.findTest(failure.get("test").asString()).
@@ -5497,7 +5497,7 @@ public final class DriverTest
 		Failure failure = new Failure(testCase, "", List.of(failed), null, List.of(), List.of(), Builder.FILES);
 		return new Builder().confirmed(contract, 1).working(1).readyDevelopment().readyBaseline().
 			certificationAttempt(1).failure(failure).outcome(Outcome.BELOW_MINIMUM).groups(List.of(
-				new FailureGroup(cell, testCase.testId(), failed, 1, FailureGroup.ROUNDS, rounds,
+				new FailureGroup(cell, testCase.testId(), "", failed, 1, FailureGroup.ROUNDS, rounds,
 					FailureGroup.Status.REPRODUCING))).build();
 	}
 
@@ -6991,7 +6991,7 @@ public final class DriverTest
 				requireThat(brief.endedAttempts().size(), "endedAttempts").isEqualTo(1);
 				requireThat(brief.endedAttempts().getFirst().index(), "index").isEqualTo(1);
 				requireThat(brief.endedAttempts().getFirst().failures(), "failures").
-					isEqualTo(List.of(new FailureSummary("safety", endedFailure.testId(), List.of())));
+					isEqualTo(List.of(new FailureSummary("safety", endedFailure.testId(), "", List.of())));
 			}
 		}
 	}

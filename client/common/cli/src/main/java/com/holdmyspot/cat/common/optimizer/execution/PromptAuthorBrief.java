@@ -39,8 +39,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 /**
  * The contract and outcomes that a prompt author session may see: development failures and counts for the working
  * candidate, and certification outcomes from attempts that have ended. Certification test cases are held out, so an
- * ended attempt's failures appear only as their cell, test and failed requirements. It excludes outcomes from
- * certification attempts in progress.
+ * ended attempt's failures appear only as their cell, test, boundary class and failed requirements. It excludes
+ * outcomes from certification attempts in progress.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  *

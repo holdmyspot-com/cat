@@ -12,14 +12,14 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * The formal failures of an ended certification attempt that share a cell, a test, a failed assertion and the
- * behavior through which it failed, and their reproduction in development.
+ * The formal failures of an ended certification attempt that share a cell, a test, the boundary class of the failed
+ * test case, a failed assertion and the behavior through which it failed, and their reproduction in development.
  * <p>
- * Before any prompt author works on a group, CAT reproduces it: a contract author writes development test cases aimed
- * at the behavior, and reproduction trials of the working candidate run them in the round's cell. A round ends once
- * {@value #FAILURES} trials fail the assertion through the behavior, which reproduces the group, or after
- * {@value #TRIALS} trials. A round in the group's cell that does not reproduce the group is repeated with the same
- * test cases under each stress setting that the harness offers for the cell, one round per setting, until one
+ * Before any prompt author works on a group, CAT reproduces it: a contract author writes development test cases of the
+ * group's class aimed at the behavior, and reproduction trials of the working candidate run them in the round's cell.
+ * A round ends once {@value #FAILURES} trials fail the assertion through the behavior, which reproduces the group, or
+ * after {@value #TRIALS} trials. A round in the group's cell that does not reproduce the group is repeated with the
+ * same test cases under each stress setting that the harness offers for the cell, one round per setting, until one
  * reproduces it; after the last setting, or when the harness offers none, the next round in the group's cell replaces
  * the test cases. Stress rounds count toward the group's round limit. After the round limit, the group is not
  * reproduced until the user asks for more rounds. A contract author that cannot write four valid new cases without
@@ -29,14 +29,16 @@ import java.util.Set;
  *
  * @param cellId the cell in which the formal failures occurred
  * @param testId the identifier of the prompt test that the failed test cases belong to
+ * @param boundaryClass the boundary class of the failed test cases, or an empty string if they were untagged or the
+ *   campaign was recorded before test cases carried a class
  * @param failed the failed assertion and the behavior through which it failed
  * @param formalFailures the attempt's formal failures in the group
  * @param roundLimit the most rounds that the group runs before it is not reproduced
  * @param rounds the group's rounds, in the order they ran; the last one is the current round
  * @param status the group's reproduction status
  */
-public record FailureGroup(String cellId, String testId, FailedAssertion failed, int formalFailures,
-	int roundLimit, List<ReproductionRound> rounds, Status status)
+public record FailureGroup(String cellId, String testId, String boundaryClass, FailedAssertion failed,
+	int formalFailures, int roundLimit, List<ReproductionRound> rounds, Status status)
 {
 	/**
 	 * The rounds that a group runs before it is not reproduced, and that each request for more rounds adds.
@@ -56,6 +58,8 @@ public record FailureGroup(String cellId, String testId, FailedAssertion failed,
 	 *
 	 * @param cellId the cell in which the formal failures occurred
 	 * @param testId the identifier of the prompt test that the failed test cases belong to
+	 * @param boundaryClass the boundary class of the failed test cases, or an empty string if they were untagged or the
+	 *   campaign was recorded before test cases carried a class
 	 * @param failed the failed assertion and the behavior through which it failed
 	 * @param formalFailures the attempt's formal failures in the group
 	 * @param roundLimit the most rounds that the group runs before it is not reproduced
@@ -70,6 +74,7 @@ public record FailureGroup(String cellId, String testId, FailedAssertion failed,
 	{
 		requireThat(cellId, "cellId").isNotBlank();
 		requireThat(testId, "testId").isNotBlank();
+		requireThat(boundaryClass, "boundaryClass").isNotNull();
 		requireThat(failed, "failed").isNotNull();
 		requireThat(formalFailures, "formalFailures").isPositive();
 		requireThat(roundLimit, "roundLimit").isGreaterThanOrEqualTo(ROUNDS);
@@ -82,8 +87,8 @@ public record FailureGroup(String cellId, String testId, FailedAssertion failed,
 	}
 
 	/**
-	 * Groups an ended attempt's formal failures. A failure that failed several assertions belongs to one group per
-	 * failed assertion.
+	 * Groups an ended attempt's formal failures by cell, test, the boundary class of the failed test case, failed
+	 * assertion and behavior. A failure that failed several assertions belongs to one group per failed assertion.
 	 *
 	 * @param failures the formal failures, in adoption order
 	 * @return the groups, in the order of their first failure, each with one round in its cell that awaits values
@@ -97,16 +102,17 @@ public record FailureGroup(String cellId, String testId, FailedAssertion failed,
 		{
 			String cellId = failure.testCase().cellId();
 			String testId = failure.testCase().testId();
+			String boundaryClass = failure.testCase().testCase().boundaryClass();
 			for (FailedAssertion assertion : new LinkedHashSet<>(failure.failedAssertions()))
-				counts.merge(List.of(cellId, testId, assertion), 1, Integer::sum);
+				counts.merge(List.of(cellId, testId, boundaryClass, assertion), 1, Integer::sum);
 		}
 		List<FailureGroup> groups = new ArrayList<>();
 		for (Map.Entry<List<Object>, Integer> entry : counts.entrySet())
 		{
 			List<Object> key = entry.getKey();
 			String cellId = (String) key.get(0);
-			groups.add(new FailureGroup(cellId, (String) key.get(1), (FailedAssertion) key.get(2), entry.getValue(),
-				ROUNDS, List.of(new ReproductionRound(cellId, List.of())), Status.REPRODUCING));
+			groups.add(new FailureGroup(cellId, (String) key.get(1), (String) key.get(2), (FailedAssertion) key.get(3),
+				entry.getValue(), ROUNDS, List.of(new ReproductionRound(cellId, List.of())), Status.REPRODUCING));
 		}
 		return groups;
 	}
@@ -171,7 +177,9 @@ public record FailureGroup(String cellId, String testId, FailedAssertion failed,
 	}
 
 	/**
-	 * Returns this group with the contract author's test cases in its current round.
+	 * Returns this group with the contract author's test cases in its current round. Each test case takes the group's
+	 * boundary class, whatever class it had, so that the round reproduces the failure with test cases of the failed
+	 * kind and no other.
 	 *
 	 * @param testCases the test cases
 	 * @return the updated group
@@ -186,7 +194,9 @@ public record FailureGroup(String cellId, String testId, FailedAssertion failed,
 			throw new IllegalStateException("The failure group does not await values: " + this);
 		for (AddedTestCase testCase : testCases)
 			requireThat(testCase.testId(), "testCase.testId()").isEqualTo(testId, "testId");
-		List<TriedTestCase> tried = testCases.stream().map(testCase -> new TriedTestCase(testCase, 0, 0)).toList();
+		List<TriedTestCase> tried = testCases.stream().map(testCase -> new AddedTestCase(testCase.attempt(),
+			testCase.testId(), testCase.testCase().withBoundaryClass(boundaryClass))).
+			map(testCase -> new TriedTestCase(testCase, 0, 0)).toList();
 		return withRound(new ReproductionRound(round().cellId(), tried), status);
 	}
 
@@ -200,7 +210,8 @@ public record FailureGroup(String cellId, String testId, FailedAssertion failed,
 	{
 		if (!awaitsValues())
 			throw new IllegalStateException("The failure group does not await values: " + this);
-		return new FailureGroup(cellId, testId, failed, formalFailures, roundLimit, rounds, Status.NOT_REPRODUCED);
+		return new FailureGroup(cellId, testId, boundaryClass, failed, formalFailures, roundLimit, rounds,
+			Status.NOT_REPRODUCED);
 	}
 
 	/**
@@ -230,7 +241,7 @@ public record FailureGroup(String cellId, String testId, FailedAssertion failed,
 			return counted;
 		if (rounds.size() >= roundLimit)
 		{
-			return new FailureGroup(cellId, testId, failed, formalFailures, roundLimit, counted.rounds,
+			return new FailureGroup(cellId, testId, boundaryClass, failed, formalFailures, roundLimit, counted.rounds,
 				Status.NOT_REPRODUCED);
 		}
 		// A round in the group's own cell is followed by the first stress setting, and a stress round by the next
@@ -265,7 +276,7 @@ public record FailureGroup(String cellId, String testId, FailedAssertion failed,
 			throw new IllegalStateException("The failure group is " + status + ": " + this);
 		List<ReproductionRound> next = new ArrayList<>(rounds);
 		next.add(new ReproductionRound(cellId, List.of()));
-		return new FailureGroup(cellId, testId, failed, formalFailures, roundLimit + ROUNDS, next,
+		return new FailureGroup(cellId, testId, boundaryClass, failed, formalFailures, roundLimit + ROUNDS, next,
 			Status.REPRODUCING);
 	}
 
@@ -279,7 +290,8 @@ public record FailureGroup(String cellId, String testId, FailedAssertion failed,
 	{
 		if (status != Status.NOT_REPRODUCED)
 			throw new IllegalStateException("The failure group is " + status + ": " + this);
-		return new FailureGroup(cellId, testId, failed, formalFailures, roundLimit, rounds, Status.ABANDONED);
+		return new FailureGroup(cellId, testId, boundaryClass, failed, formalFailures, roundLimit, rounds,
+			Status.ABANDONED);
 	}
 
 	/**
@@ -293,7 +305,7 @@ public record FailureGroup(String cellId, String testId, FailedAssertion failed,
 	{
 		List<ReproductionRound> updated = new ArrayList<>(rounds);
 		updated.set(updated.size() - 1, round);
-		return new FailureGroup(cellId, testId, failed, formalFailures, roundLimit, updated, next);
+		return new FailureGroup(cellId, testId, boundaryClass, failed, formalFailures, roundLimit, updated, next);
 	}
 
 	/**
@@ -306,7 +318,7 @@ public record FailureGroup(String cellId, String testId, FailedAssertion failed,
 	{
 		List<ReproductionRound> updated = new ArrayList<>(rounds);
 		updated.add(round);
-		return new FailureGroup(cellId, testId, failed, formalFailures, roundLimit, updated, status);
+		return new FailureGroup(cellId, testId, boundaryClass, failed, formalFailures, roundLimit, updated, status);
 	}
 
 	/**

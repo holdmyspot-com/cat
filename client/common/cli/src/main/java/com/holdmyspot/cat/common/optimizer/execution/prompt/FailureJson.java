@@ -31,7 +31,8 @@ public final class FailureJson
 	 * @param id the scoped identifier of the supplied failure
 	 * @param evidenceSection the failing trial's evidence section, or {@code null} if the trial's harness events are
 	 *   no longer retained
-	 * @return the failing test case with the reason for its failure in {@code rationale}: the judge's rationale,
+	 * @return the failing test case with its {@code boundary_class}, an empty string if it is untagged, and the reason
+	 *   for its failure in {@code rationale}: the judge's rationale,
 	 *   preceded by the record of each failed built-in tool, if any; each assertion that it failed with its behavior
 	 *   in {@code failed_assertions}; the failure's {@code impact}, or {@code null} if no triage
 	 *   decided one; and the trial's {@code evidence_section}, or {@code null} if its events are no longer retained
@@ -45,6 +46,7 @@ public final class FailureJson
 		ObjectNode node = TestCaseJson.encode(json, failure.testCase());
 		node.put("id", id);
 		node.put("cell", failure.testCase().cellId());
+		node.put("boundary_class", failure.testCase().testCase().boundaryClass());
 		node.put("rationale", failure.rationale());
 		ArrayNode failedAssertions = node.putArray("failed_assertions");
 		for (FailedAssertion failed : failure.failedAssertions())

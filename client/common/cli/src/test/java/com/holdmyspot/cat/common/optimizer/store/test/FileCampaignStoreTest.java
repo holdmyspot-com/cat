@@ -76,6 +76,13 @@ import com.holdmyspot.cat.common.optimizer.campaign.Throttle;
 import com.holdmyspot.cat.common.optimizer.campaign.ConcurrencyPolicy;
 import com.holdmyspot.cat.common.optimizer.campaign.ConcurrencyWindows;
 import com.holdmyspot.cat.common.optimizer.campaign.test.Builder;
+import com.holdmyspot.cat.common.optimizer.contract.test.TierFixtures;
+import com.holdmyspot.cat.common.optimizer.contract.Generator;
+import com.holdmyspot.cat.common.optimizer.contract.DrawStream;
+import com.holdmyspot.cat.common.optimizer.contract.AddedTestCase;
+import com.holdmyspot.cat.common.optimizer.campaign.Outcome;
+import com.holdmyspot.cat.common.optimizer.campaign.FailureGroup;
+import com.holdmyspot.cat.common.optimizer.campaign.FailedAssertion;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -1001,6 +1008,81 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			requireThat(legacy.pluginsFor(Harness.CODEX), "legacyCodex").isEqualTo(Optional.of(List.of()));
 			requireThat(legacy.pluginsFor(Harness.CLAUDE), "legacyClaude").isEqualTo(Optional.of(List.of()));
 		}
+	}
+
+	/**
+	 * Verifies that a failure group's boundary class survives a reload with its formal failures' and its added test
+	 * cases' classes, and that a campaign recorded before boundary classes loads with empty classes and still
+	 * resumes its reproduction.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test
+	public void storesGroupBoundaryClass() throws IOException
+	{
+		// Requirement: R-L12
+		String boundaryClass = "arrives_exactly_at_midnight";
+		Contract contract = TierFixtures.tieredContract();
+		DrawnTestCase drawn = new Generator(contract).draw(TierFixtures.BIG_MEDIUM,
+			DrawStream.create(DrawStream.Kind.DEVELOPMENT, 1));
+		DrawnTestCase heldOut = new DrawnTestCase(drawn.cellId(), drawn.testId(),
+			drawn.testCase().withBoundaryClass(boundaryClass), drawn.turns(), drawn.expectedBehaviour(),
+			drawn.generator(), drawn.streamKind(), drawn.streamPosition(), drawn.targeted());
+		Failure failure = new Failure(heldOut, "", List.of(new FailedAssertion("uses_requested_tone", "wrong_tone")),
+			null, List.of(), List.of(), Builder.FILES);
+		Campaign failed = new Builder().header(header(ID)).confirmed(contract, 1).working(1).readyBaseline().
+			readyDevelopment().certificationAttempt(1).failure(failure).failure(failure).
+			outcome(Outcome.BELOW_MINIMUM).build();
+		Campaign campaign = Transitions.apply(failed, new CampaignEvent.ReproductionValues(1, 1,
+			ContractFixtures.addedTestCases(contract.findTest(heldOut.testId()).orElseThrow(), 1, "a")));
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-boundary-class-"));
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
+			store.replaceSnapshot(campaign);
+
+			Campaign loaded = store.load(ID).orElseThrow();
+
+			requireThat(loaded, "loaded").isEqualTo(campaign);
+			FailureGroup group = loaded.attempt(1).group(1);
+			requireThat(group.boundaryClass(), "group.boundaryClass").isEqualTo(boundaryClass);
+			requireThat(loaded.attempt(1).failures().getFirst().testCase().testCase().boundaryClass(),
+				"failure.boundaryClass").isEqualTo(boundaryClass);
+			for (AddedTestCase added : group.testCases())
+				requireThat(added.testCase().boundaryClass(), "added.boundaryClass").isEqualTo(boundaryClass);
+			for (AddedTestCase added : loaded.lineage().added().testCases())
+				requireThat(added.testCase().boundaryClass(), "lineage.boundaryClass").isEqualTo(boundaryClass);
+
+			// A campaign recorded before boundary classes has no class anywhere, and still resumes its reproduction
+			Campaign awaiting = failed;
+			store.replaceSnapshot(awaiting);
+			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
+			JsonNode root = JSON.readTree(Files.readString(snapshot, UTF_8));
+			removeBoundaryClasses(root);
+			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
+			Campaign legacy = store.readSnapshot(ID).orElseThrow();
+			requireThat(legacy.attempt(1).failures().getFirst().testCase().testCase().boundaryClass(),
+				"legacy.failure.boundaryClass").isEmpty();
+			Campaign resumed = Transitions.apply(legacy, new CampaignEvent.ReproductionValues(1, 1,
+				ContractFixtures.addedTestCases(contract.findTest(heldOut.testId()).orElseThrow(), 1, "a")));
+			requireThat(legacy.attempt(1).group(1).boundaryClass(), "legacy.group.boundaryClass").isEmpty();
+			requireThat(resumed.attempt(1).group(1).awaitsValues(), "awaitsValues").isFalse();
+			for (AddedTestCase added : resumed.attempt(1).group(1).testCases())
+				requireThat(added.testCase().boundaryClass(), "legacy.added.boundaryClass").isEmpty();
+		}
+	}
+
+	/**
+	 * Removes every {@code boundary_class} field from a document.
+	 *
+	 * @param node a node of the document
+	 */
+	private static void removeBoundaryClasses(JsonNode node)
+	{
+		if (node instanceof ObjectNode object)
+			object.remove("boundary_class");
+		for (JsonNode child : node)
+			removeBoundaryClasses(child);
 	}
 
 	/**

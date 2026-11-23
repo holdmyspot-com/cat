@@ -83,7 +83,7 @@ public final class DriverReproductionContract
 		FailedAssertion wrongTone = new FailedAssertion(test.assertions().getFirst().assertion().id(), "wrong_tone");
 		Failure failure = new Failure(failed, "", List.of(wrongTone), null, List.of(), List.of(), Builder.FILES);
 		String limited = TierFixtures.BIG_LOW + "/tool-output-5000";
-		FailureGroup group = new FailureGroup(TierFixtures.BIG_LOW, test.id(), wrongTone, 2, FailureGroup.ROUNDS,
+		FailureGroup group = new FailureGroup(TierFixtures.BIG_LOW, test.id(), "", wrongTone, 2, FailureGroup.ROUNDS,
 			List.of(new ReproductionRound(TierFixtures.BIG_LOW, tried)), FailureGroup.Status.REPRODUCING);
 		Path project = Path.of("/project").toAbsolutePath();
 		Campaign start = new Builder().header(new Header(DriverHarness.CAMPAIGN, project,

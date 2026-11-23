@@ -108,9 +108,10 @@ public final class ValuesPrompt implements ValuesProtocol
 	 * {@inheritDoc}
 	 * <p>
 	 * The prompt gives the definition of the group's test with its development test cases only, the other test cases
-	 * added to the test, the group's cell, failed assertion with the requirement that it checks and the behaviors
-	 * through which it can fail, the group's behavior and formal failure count, and each earlier round of the group
-	 * with its cell and each test case's reproduction counts. The session reads nothing else.
+	 * added to the test, the group's cell, the boundary class of the failed test cases, failed assertion with the
+	 * requirement that it checks and the behaviors through which it can fail, the group's behavior and formal failure
+	 * count, and each earlier round of the group with its cell and each test case's reproduction counts. The session
+	 * reads nothing else: it never learns a value, expected outcome, reply or rationale of a failed test case.
 	 */
 	@Override
 	public SessionRequest request(Contract contract, AddedTestCases known, int attempt, FailureGroup group)
@@ -140,6 +141,7 @@ public final class ValuesPrompt implements ValuesProtocol
 				TestCaseJson.write(testCase.testCase(), others.addObject());
 		}
 		entry.put("cell", group.cellId());
+		entry.put("boundary_class", group.boundaryClass());
 		writeAssertion(contract, test, assertion, entry.putObject("assertion"));
 		entry.put("behavior", group.failed().behavior());
 		entry.put("formal_failures", group.formalFailures());

@@ -188,6 +188,10 @@ import tools.jackson.databind.node.ObjectNode;
  * for a prompt test, and a trial outcome has a {@code judge} or a {@code shadow} object only when a model judged it;
  * a document without them reads as no candidate examined and no judge recorded.
  * <p>
+ * A test case, or a failure group, has a {@code boundary_class} only when it is tagged; a campaign snapshot written
+ * before test cases carried a boundary class has none, and reads as untagged test cases and groups with an empty
+ * class.
+ * <p>
  * Reading reports a document that does not describe a valid value with an {@link IllegalArgumentException} or a
  * {@link NullPointerException}. Reading ignores a measurement condition that CAT recorded in the current format but no
  * longer does, and a pending decision that reported only such conditions as changed.
@@ -201,6 +205,7 @@ final class CampaignJson
 	 */
 	private static final int FORMAT_VERSION = 50;
 	private static final String EVALUATOR_PLUGINS = "evaluator_plugins";
+	private static final String BOUNDARY_CLASS = "boundary_class";
 	private static final int TRIAL_RECOVERY_VERSION = 1;
 	private static final String EVALUATION_HARNESSES = "evaluation_harnesses";
 	/**
@@ -1626,7 +1631,8 @@ final class CampaignJson
 	}
 
 	/**
-	 * Converts a test case's values and expected outcome to a document.
+	 * Converts a test case's values, expected outcome and boundary class to a document. An untagged test case's
+	 * document has no {@code boundary_class}.
 	 *
 	 * @param testCase the test case
 	 * @return the document
@@ -1636,18 +1642,36 @@ final class CampaignJson
 		ObjectNode node = json.createObjectNode();
 		TestValueJson.write(testCase.values(), node.putArray("values"));
 		node.put(TestCase.EXPECTED_OUTCOME, testCase.expectedOutcome());
+		if (!testCase.boundaryClass().isEmpty())
+			node.put(BOUNDARY_CLASS, testCase.boundaryClass());
 		return node;
 	}
 
 	/**
-	 * Converts a document to a test case's values and expected outcome.
+	 * Converts a document to a test case's values, expected outcome and boundary class.
 	 *
 	 * @param node the document
-	 * @return the test case
+	 * @return the test case, which is untagged if the document has no {@code boundary_class}, as in a campaign
+	 *   recorded before test cases carried a class
 	 */
 	private static TestCase readValues(JsonNode node)
 	{
-		return new TestCase(TestValueJson.read(field(node, "values")), text(node, TestCase.EXPECTED_OUTCOME));
+		return new TestCase(TestValueJson.read(field(node, "values")), text(node, TestCase.EXPECTED_OUTCOME),
+			readBoundaryClass(node));
+	}
+
+	/**
+	 * Reads a test case's or failure group's boundary class.
+	 *
+	 * @param node the document
+	 * @return the class, or an empty string if the document has none, as in a campaign recorded before test cases
+	 *   carried a class
+	 */
+	private static String readBoundaryClass(JsonNode node)
+	{
+		if (!node.has(BOUNDARY_CLASS))
+			return "";
+		return text(node, BOUNDARY_CLASS);
 	}
 
 	/**
@@ -1664,6 +1688,8 @@ final class CampaignJson
 			ObjectNode node = array.addObject();
 			node.put("cell", group.cellId());
 			node.put("test_id", group.testId());
+			if (!group.boundaryClass().isEmpty())
+				node.put(BOUNDARY_CLASS, group.boundaryClass());
 			node.put("assertion_id", group.failed().assertionId());
 			node.put("behavior", group.failed().behavior());
 			node.put("formal_failures", group.formalFailures());
@@ -1709,7 +1735,7 @@ final class CampaignJson
 				}
 				rounds.add(new ReproductionRound(text(roundNode, "cell"), testCases));
 			}
-			groups.add(new FailureGroup(text(element, "cell"), text(element, "test_id"),
+			groups.add(new FailureGroup(text(element, "cell"), text(element, "test_id"), readBoundaryClass(element),
 				new FailedAssertion(text(element, "assertion_id"), text(element, "behavior")),
 				integer(element, "formal_failures"), integer(element, "round_limit"), rounds,
 				constant(element, "status", FailureGroup.Status.class)));

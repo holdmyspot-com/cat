@@ -3,12 +3,17 @@ package com.holdmyspot.cat.common.optimizer.execution.prompt.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.optimizer.campaign.FailedAssertion;
+import com.holdmyspot.cat.common.optimizer.campaign.Failure;
 import com.holdmyspot.cat.common.optimizer.campaign.FailureGroup;
 import com.holdmyspot.cat.common.optimizer.campaign.ReproductionRound;
 import com.holdmyspot.cat.common.optimizer.campaign.TriedTestCase;
+import com.holdmyspot.cat.common.optimizer.campaign.test.Builder;
 import com.holdmyspot.cat.common.optimizer.contract.AddedTestCase;
 import com.holdmyspot.cat.common.optimizer.contract.AddedTestCases;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
+import com.holdmyspot.cat.common.optimizer.contract.DrawStream;
+import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
+import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFile;
 import com.holdmyspot.cat.common.optimizer.contract.InvalidProposalException;
 import com.holdmyspot.cat.common.optimizer.contract.ProposalSchema;
@@ -23,6 +28,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
@@ -51,7 +57,7 @@ public final class ValuesPromptTest
 	 * test cases.
 	 */
 	private static final FailureGroup GROUP = new FailureGroup("safety", TEST,
-		new FailedAssertion("asks_before_deleting", "deleted_without_asking"), 2, FailureGroup.ROUNDS, List.of(
+		"", new FailedAssertion("asks_before_deleting", "deleted_without_asking"), 2, FailureGroup.ROUNDS, List.of(
 			new ReproductionRound("safety", List.of(new TriedTestCase(TRIED.get(0), 25, 1),
 				new TriedTestCase(TRIED.get(1), 25, 0), new TriedTestCase(TRIED.get(2), 25, 0),
 				new TriedTestCase(TRIED.get(3), 25, 0))),
@@ -134,6 +140,34 @@ public final class ValuesPromptTest
 		for (int i = 0; i < targets.size(); ++i)
 			tried.add(testCase(targets.get(i)).put("trials", 25).put("failures", failures[i]));
 		requireThat(entry.get("tried_rounds"), "tried_rounds").isEqualTo(rounds);
+	}
+
+	/**
+	 * Verifies that the contract author is told the boundary class of the failed test case, and that nothing it reads
+	 * holds the failed test case's values, expected outcome or turns.
+	 */
+	@Test
+	public void requestNamesClassWithoutValues()
+	{
+		// Requirement: R-L12
+		TestCase pine = ContractFixtures.testCase("River. It arrives at midnight.", "arrives_exactly_at_midnight",
+			Map.of("target", "Pine departing at noon for 12 hours"));
+		DrawnTestCase heldOut = new DrawnTestCase("safety", TEST, pine,
+			List.of("Pine departs at noon and travels for 12 hours."), "The assistant asks before deleting anything.",
+			"generator-1", DrawStream.Kind.FORMAL, 3, false);
+		FailedAssertion failed = new FailedAssertion("asks_before_deleting", "deleted_without_asking");
+		Failure failure = new Failure(heldOut, "Pine rationale", List.of(failed), null, List.of(),
+			List.of(List.of("River. It arrives at midnight.")), Builder.FILES);
+		FailureGroup group = FailureGroup.of(List.of(failure)).getFirst();
+
+		SessionRequest request = values.request(ContractFixtures.contract(), AddedTestCases.NONE, 1, group);
+
+		String turn = request.turns().getFirst();
+		requireThat(turn, "turn").contains("arrives_exactly_at_midnight").doesNotContain("Pine").
+			doesNotContain("noon").doesNotContain("12 hours").doesNotContain("River");
+		JsonNode entry = json.readTree(section(turn, "The failure group, as JSON", "\n\n### How to write"));
+		requireThat(entry.get("boundary_class").asString(), "boundary_class").
+			isEqualTo("arrives_exactly_at_midnight");
 	}
 
 	/**
