@@ -4224,6 +4224,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-158 | `optimize-xhigh` | Records a confirmed campaign's revision request and feedback as a pending decision, retries a failed derivation, pauses with retry and stop, and makes `status` and `run` report a waiting revision as `awaiting_user` with text that is true of its state; an error leaves a campaign that waits for a revision no session derives, reports `running` for it, loses the user's feedback, or retries a session that CAT interrupted. |
 | WI-159 | `optimize-xhigh` | Changes how every Claude session gets its credential, what its process environment and settings hold, what its commands may read, what the request server accepts as a reference and what the evidence records, and removes the shared login store; an error lets a session's command read the secret, puts the secret in a command line, a file or a record, starts a session under a credential other than the one named, accepts a reference that the requester may not read, or lets a requested session name a path that the runner opens. |
 | WI-160 | `optimize-xhigh` | Changes how every Codex session gets its credential, what its home, environment and configuration hold and what its commands may read, and replaces the copy of the user's Codex login with a copy of the named login file that its commands are denied; an error lets a session's command read the key or the login copy, keeps a copy of the user's login in a session, leaves a login copy behind after its app-server ends, starts a session under a credential or host other than the one named, or breaks Codex sessions that a Claude session requests. |
+| WI-161 | `optimize-xhigh` | Changes what every judge session reads, how a trial's judged assertions are grouped into sessions, which verdicts are recorded and reused, the scenario and proposal formats, the contract author's instructions and the outcome review; an error judges an assertion about actions without the trial's activity, reuses a verdict whose evidence differed, records or waits on an `actions` verdict, starts more than one session per scope, or loses a stored contract. |
 | WI-108 | `optimize-medium` | Changes how every CAT launcher starts its JVM; an error makes launchers fail outside a sandbox too, or lets two JVMs in separate PID namespaces write the same perf-data file. |
 | WI-107 | `optimize-medium` | Changes what every nested session may read and which host permissions a Claude session receives; an error lets trials and judges read the user's project again, denies a session its own run or evidence, or removes a grant that trials need. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
@@ -5407,7 +5408,7 @@ models that `codex debug models` reports and asked; given `gpt-6-luna`, `low`, i
 | WI-147 | In progress: the in-place launch, `--keep-run` and the run ID are removed, and the options, `session.json`, the results folder, the nested-session phrases, the Java type and identifier names, the runner's comments and messages and the rule `harness-runners.md` are renamed; so are `CAT_RUN` (now `CAT_NESTED_SESSION`), the response's results copy (`results_copy`, `results-copy`), `optimizer-runs/` (now `optimizer-nested-sessions/`), the test fixtures, `BackgroundRun` (now `BackgroundDriver`) and `PromotionRun` (now `PromotionReplay`), with session environment versions 27 (Claude) and 21 (Codex) (`bf930e402`, `e97cce0f3`; full build 6,150 tests, only the two tests that need `/sys` fail). `TrainingRun` is now `TrainingLaunch`, and the promotion terms say "replay" (`PromotionReplay`, triggering, regression, reference and paired replays, `replays()`), stored by campaign format 48, which upgrades campaigns of formats 43 to 47 on read (`b3f91edcc`, `17076f56c`); the 1.0 changelog capture scripts pass `--results` and read `session.json` (`45bf883ed`). One live launch per harness remains, after the v1.0 republish. |
 | WI-148 | Not started; ruled 2026-11-19 (pi support); runs at the end of the plan, after every §9 gate. |
 | WI-149 | In progress. The public start command passes the evaluator selection, refuses a change on resume before campaign mutation, and preserves the recorded owner on legacy data. The command, optimizer core and file-store test suites passed. The peer optimizer route is still unavailable. The installed loader premise and first connected campaign check are pending. Follow the staged checks in [WI-149](#wi-149--shared-prompt-optimization-across-harnesses). |
-| WI-150 | Implemented 2026-11-23 (`21df85ec2`; full build 6468 tests, 0 failures). Closes R-L10. Production `judge.md` names the transcript, so verdicts are not yet reused across trials; the evidence-scope extension (user ruling 2026-11-23) follows. |
+| WI-150 | Implemented 2026-11-23 (`21df85ec2`; full build 6468 tests, 0 failures). Designed 2026-11-23 (`design.md` "Consistent verdicts", D153). WI-161 narrows its records to `response` assertions (D164). Closes R-L10. |
 | WI-151 | Not started; designed 2026-11-23 (`design.md` "Boundary classes", the stratified split, D154). Closes R-L11. |
 | WI-152 | Implemented 2026-11-23 (`c3ef649dd`; clone full build 6414 tests, 0 failures); designed 2026-11-23 (`design.md` failure summary and reproduction step 1, D155). Needs WI-151. Closes R-L12. |
 | WI-153 | Implemented 2026-11-23 (`5166a8c97`; clone full build passed, 0 failures); designed 2026-11-23 (`design.md` guard pilot and "Assertion agreement", D156 as revised by D159). The comparison with the assertion that CAT adds was dropped the same day: WI-155 checks wording against reference replies instead. Needs WI-151. Closes R-L13. |
@@ -5418,6 +5419,7 @@ models that `codex debug models` reports and asked; given `gpt-6-luna`, `low`, i
 | WI-158 | Implemented 2026-11-23 (`9d20fd2df`, `b4ed36bc4`; clone full build 6407 tests, 0 failures; `design.md` §7 "Revision request", D161). Closes R-L18. |
 | WI-159 | Not started; designed 2026-11-23 (`design.md` §8 "Claude authentication", D162, H42, P20 to P22) with the user's rulings on Q8 to Q16, Q19 and Q20 the same day. P20 to P22 are not run; Q17 and Q21 await the user's rulings. Needs WI-142 and WI-147. Closes R-I14. |
 | WI-160 | Not started; designed 2026-11-23 (`design.md` §8 "Codex authentication", D163, P23 to P26) with the user's rulings on Q18 and Q19 the same day. P23 to P26 are not run; Q17 awaits the user's ruling. Needs WI-159. Closes R-I15. |
+| WI-161 | Not started; designed 2026-11-23 (`design.md` §6.3 test design rule 5 and the outcome review, §6.4 "Evidence scope", "Sessions by scope", "Why the scopes stay when assertions are split" and "Consistent verdicts", D164, D165) with the user's rulings of the same day. Step 1 needs WI-150; step 3 needs WI-156. Closes R-L19 and R-L20. |
 | WI-145 | Implemented 2026-11-16 (Claude implementer; `87db96986`..`a378c7aa5`; clean full build 6034 tests, 0 failures, 0 errors, 6 skipped): one in-place registrar (`GitWorktreeRegistrar`) for add, recreate, remove and repair behind `Fork`, `GitForks` and the session-start sweep; worktree requests (`worktree-<uuid>.tar`, document of operation and campaign only) served on a thread of their own by the request server (with the `.git/config`/`.git/hooks` write check against the session's policy) and by a run's runner (the one campaign of that identifier in the run's project; refused when the run allows no requests), counted against no limit; the client (`WorktreeRequestClient`) sends by the launch route, sends nothing for intact links, and `start`, `run`, `choose` and `cancel` refuse with status 2 before any change when no server serves the session; the Claude runner's `.git/worktrees` grant removed (session environment version 25); the build-command limit stated in the prompt-optimizer skill. Remaining: the live checks in Claude Code and Codex. Decided 2026-11-16: the code stays (`status` never reconnects; a campaign without its worktree is not a fork, `ForksContract.missingWorktreeIsNotAFork`), and the live check names the next command that reconnects (`run` or `choose`) instead. Probe evidence: `~/cat/worktrees/gitwt-probe4/` and `gitwt-probe3/`. |
 | Incremental build-workflow rule (user request, 2026-10-25) | Done 2026-10-27 (Codex; `ebe1687e7d`, released in v1.0). Record: [history](plan-history.md). |
 | G9 Git diff owner (`4da627d85c`) | Done 2026-10-27 (Claude `optimize-high`). Record: [history](plan-history.md). |
@@ -5909,7 +5911,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-L7 | Every requested harness uses the same prompt tests, cases, split, expected outcomes and assertions. The guard pilot measures the control source for each test in each harness's weakest cell. Resume and revisions reuse only outcomes with the same determining inputs. | §6.1, §7.1 | WI-149 | U: shared test inputs and outcomes, pilot identity and selective rerun; E: WI-149 |
 | R-L8 | Every development assignment and result identifies the shared candidate and its harness-qualified cell. No cell's evidence substitutes for another's, and the common commit gate requires the same snapshot across all development cells. | §2.7, §3.3, §7.1 | WI-149 | U: scheduler, adoption and commit gate; E: WI-149 |
 | R-L9 | One formal attempt and budget cover the fixed candidate and the union of required cells. CAT reports results by harness and certifies the shared diff only when all required cells pass on that candidate, with one certificate covering them. | §2, §4.7, §5, §7.1 | WI-149 | U: transitions, persistence, report and delivery; E: WI-149 |
-| R-L10 | Identical evidence for one judged assertion of one test case gets one verdict. CAT stores the first valid verdict under a key of the test case, the assertion, the judge's identity and the evidence read, returns it to any later trial of the campaign with the same key without a model session, and makes a concurrent trial wait for the running session. A hit adds no shadowed trial, spot check or agreement count, and a development trial never reads a held-out record. | §6.4 | WI-150 | U: `VerdictKeyTest`, `VerdictRecordsTest`, `DriverTest`, `GuardPilotTest`, `DevelopmentJudgeDriverTest`, `FileCampaignStoreTest` |
+| R-L10 | Identical evidence for one judged assertion of one test case gets one verdict; since WI-161, only a `response` assertion's verdict is recorded (R-L19). CAT stores the first valid verdict under a key of the test case, the assertion, the judge's identity and the evidence read, returns it to any later trial of the campaign with the same key without a model session, and makes a concurrent trial wait for the running session. A hit adds no shadowed trial, spot check or agreement count, and a development trial never reads a held-out record. | §6.4 | WI-150, WI-161 | U: `VerdictKeyTest`, `VerdictRecordsTest`, `DriverTest`, `GuardPilotTest`, `DevelopmentJudgeDriverTest`, `FileCampaignStoreTest` |
 | R-L11 | Every test case has a boundary class, the split is stratified by class, and CAT refuses a test case without a class and a class that would have no test case in one part, including a class with a single test case, without naming a part. | §6.1, §6.3 | WI-151 | U: `SplitTest`, `ValuesFileTest`, `ProposalTest`, `ContractCheckTest`, `TestRevisionTest` |
 | R-L12 | A failure group is keyed by cell, test, boundary class, assertion and behavior. The reproduction author is told the failed test case's class and never its values, and CAT stamps each added test case with the group's class. | §6.3 | WI-152 | U: `FailureSummaryTest`, `ReproductionTest`, `ValuesPromptTest`, `DevelopmentContractTest` |
 | R-L13 | The guard pilot draws at least 2 trials per boundary class and shows each assertion's failed pilot trials by class, as information that does not block confirmation. | §6.1 | WI-153 | U: `GuardPilotTest`, `ProposalTest` |
@@ -5918,6 +5920,8 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-L16 | A condition that no tool covers mechanically is checked once before confirmation by the judge that the proposal would freeze: a judged covering assertion that passes its omission reply is refused, one that fails a reference reply is a warning, and the outcome review refuses an outcome that states an undeclared condition and an effect condition that no assertion covers. Every problem reaches the contract author in its one correction turn without naming a part; the records stay in the held-out directory, appear under "Outcome coverage", rerun only for changed tests and reach no session that shapes a candidate. | §6.1, §6.3 | WI-156 | U: `OutcomeCoverageTest`, `ContractCheckTest`, `ProposalTest`, `OptimizerCoreTest`, `FileCampaignStoreTest`, `ValuesPromptTest` |
 | R-L17 | No prompt test has an assertion that its scenario does not declare. A trial whose tools decide every assertion starts no judge session and can end early; the judge's prompt names no added assertion and the judge version increments in both harnesses; the removed assertion's scenario and proposal forms are refused with a conversion instruction; a confirmed stored campaign whose contract lacks conditions revises each such test before other work, an unconfirmed one is refused at `confirm`, and stored `expected_outcome` verdicts reload as history. | §6.3, §6.4, §7 | WI-157 | U: `ContractTest`, `ScenarioTest`, `ProposalSchemaTest`, `DriverTest`, `EarlyTrialEndTest`, `AdoptionTest`, `JudgePromptTest`, `TransitionsTest`, `OptimizerCoreTest`, `FileCampaignStoreTest` |
 | R-L18 | A confirmed campaign keeps each revision request and its feedback from `revise`, a chosen requirement change and a conflict's last resolution until the revised contract is confirmed or the campaign stops. A failed derivation (a failed, interrupted, rate-limited or refused session, an invalid proposal, or a session that cannot be prepared) is retried up to 3 times with the saved feedback, except after an interruption by CAT or a failure that no new session changes; then the campaign pauses with `retry` and `stop`, and `retry` derives from the saved feedback. `status` and `run` report `awaiting_user` with the same text, which says whether the revision is being derived, failed or waits for confirmation, and carry no `proposal_file`; `confirm` and `start` are refused while a derivation is pending. | §7, §8 | WI-158 | U: `TransitionsTest`, `FileCampaignStoreTest`, `StatusReportTest`, `OptimizerCoreTest`, `DriverTest` |
+| R-L19 | Every judged assertion declares an evidence scope, `response` (the turns and the replies) or `actions` (tool activity, tool results and file changes as well as the replies), with `actions` when it needs both or is unclear. CAT refuses `evidence_scope` on a mechanical assertion, a value other than `response` or `actions`, `response` on an assertion whose tool examines more than the replies, and a judged assertion of a proposal or test revision without it; a recorded scenario without it parses, and a contract stored without it judges every assertion as `actions`. A trial's judged assertions are decided in at most one fresh session per scope: a `response` session's prompt holds the test case and the replies and no evidence section, tool result or path, and it is granted no evidence root; an `actions` session's prompt is unchanged. Only `response` verdicts are recorded and reused, keyed on the replies and not on tool activity or the transcript; an `actions` verdict is never recorded, looked up or waited for. The outcome review refuses a `response` assertion that depends on what the agent did and warns on an `actions` assertion that depends only on the replies. The judge version increments in both harnesses. | §6.3, §6.4, D164 | WI-161 | U: `ScenarioTest`, `ProposalSchemaTest`, `ProposalTest`, `ContractCheckTest`, `FileCampaignStoreTest`, `JudgePromptTest`, `VerdictKeyTest`, `DriverTest`, `GuardPilotTest`, `DevelopmentJudgeDriverTest`, `OutcomeCoverageTest` |
+| R-L20 | Where a requirement is about an action, the contract author splits its assertions: a built-in tool decides whether the action happened and a narrow judged assertion only the part that needs meaning, whose judge reason names that part; the contract author's and test revision's instructions state this duty. The outcome review warns, naming the tool, on an `actions` assertion whose happening a built-in tool could decide; the proposal lists the warning under "Judged assertions", the revision brief repeats it, `confirm` is not refused for it, and a test with any judged assertion gets an outcome review. | §6.3 test design rule 5, §6.4, D165 | WI-161 | U: `PromptTemplateTest`, `OutcomeCoverageTest`, `ProposalTest` |
 
 ### 3.7 Reporting, interface and testability
 
@@ -10820,6 +10824,91 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 - **Exit:** P24 and P25 passed, or P23 and P25 if P24 failed, P26 passed, tests (a) to (g) pass and failed before, the
 	clean full offline build passes, and both end-to-end checks passed. Closes R-I15.
 
+### WI-161 — Evidence scope of judged assertions (user rulings, 2026-11-23)
+
+- **Problem:** the judge prompt (`optimizer/judge/judge.md`) always names `{{transcript}}`, `{{effects}}`,
+	`{{evidence}}` and `{{tool_results}}`, so WI-150's verdict key holds every trial's own transcript and no verdict is ever
+	reused, even for an assertion about what the reply says. An assertion about what the agent did needs that evidence,
+	and its verdicts would never be identical, so recording them buys nothing.
+- **Scope:** `client/common/cli/src/main/java/com/holdmyspot/cat/common/optimizer/` `contract/` (`Assertion`, a new
+	`EvidenceScope`, `ScenarioParser`, `Scenario`, `ProposalSchema`, `JudgedAssertion`, `JudgeProfile`), `proposal/`
+	(`JudgeTemplate`, `ProposalCheck`, `TestRevisionCheck`, `Markdown`, and WI-156's `OutcomeCoverage`), `execution/`
+	(`Driver`, `InFlight`, `JudgeProtocol`, `GuardPilot`, `ShadowGroup`, `NearMissJob`, and WI-150's `VerdictKey` and
+	`VerdictRecords`), `execution/prompt/JudgePrompt` and WI-156's `OutcomeReviewPrompt`, `campaign/DevelopmentJudge`,
+	`ClaudeSessions` and `CodexSessions` (the judge version), the test double `FakeSessionPort`, the resources
+	`optimizer/judge/judge.md` and a new response prompt beside it, `optimizer/contract/proposal.schema.json` and
+	`proposal-file-test.schema.json`, `optimizer/proposal/contract-author.md`, `prompt-tests.md` and `test-revision.md`,
+	WI-156's `optimizer/coverage/outcome-review.md` and its schema, their tests, this design and plan.
+- **Change:** as `design.md` §6.3 (the scenario's `evidence_scope` key, test design rule 5, the outcome review) and §6.4
+	("Evidence scope", "Sessions by scope", "Why the scopes stay when assertions are split", "Consistent verdicts",
+	"Judge"), D164 and D165 define it.
+	1. **Declaration and judging (needs WI-150).** `Assertion` gains an `EvidenceScope` (`RESPONSE` or `ACTIONS`), which
+		only a judged assertion has. `ScenarioParser` reads `evidence_scope`, refuses it on an assertion whose tool decides
+		under `fail`, any value but `response` or `actions`, and `response` on an assertion whose tool is not a reply tool
+		(`exact-text`, `forbidden-text`, `pattern`, `count`), and reads its absence as `ACTIONS`; `Scenario` writes it.
+		`ProposalSchema` carries it, and `ProposalCheck` and `TestRevisionCheck` refuse a judged assertion of a proposal or
+		test revision without it. The assertion that CAT adds to every prompt test, while WI-157 has not removed it, is
+		`ACTIONS`, because its outcome can be a file's state. `JudgeProfile` gains the response prompt, which
+		`JudgeTemplate` loads from the new resource: `judge.md` without the evidence section, the built-in tool results and
+		the effects and transcript paths. A contract stored without it loads, and every judged assertion of such a contract
+		is `ACTIONS`. `Driver.queueJudging` and `GuardPilot` group a trial's judged assertions by scope and queue one judging
+		per scope; `JudgePrompt` renders a `RESPONSE` request from the response prompt with no evidence section, no tool
+		result and no read-only root. `VerdictKey` adds the scope and digests the response prompt and the replies only;
+		`VerdictRecords` is consulted and written for `RESPONSE` judgings only, and an `ACTIONS` judging is never looked up,
+		recorded or made to wait. `ShadowGroup` and `DevelopmentJudge` shadow each scope's session with that scope's prompt
+		and count a trial once, with a disagreement in either session as the trial's disagreement. A near miss is labelled
+		with its assertion's scope prompt. The judge version increments by one in both harnesses and the fake, above
+		whatever the tree holds when this step lands.
+	2. **Author duties (needs step 1).** `contract-author.md`, `prompt-tests.md` and `test-revision.md` state the scope
+		values, the `actions` fallback for an assertion that needs both or is unclear, and test design rule 5: a built-in
+		tool for whether an action happened, a narrow judged assertion for the part that needs meaning, and a judge reason
+		that names that part. `Markdown` shows each judged assertion's scope under "Judged assertions".
+	3. **Authoring-time review (needs WI-156).** The outcome review receives each judged assertion's scope and
+		requirement and reports the three findings of `design.md` "Outcome coverage" step 2: a `response` assertion that
+		depends on what the agent did is a problem for the correction turn; an `actions` assertion that depends only on the
+		replies, and one whose happening a named tool could decide, are warnings under "Judged assertions" that the
+		revision brief repeats. A test with a judged assertion is never exempt from the review.
+- **Verification:** write these tests first and see each fail on the current tree, with CAT's real classes and the
+	existing model-free session port. (a) `ScenarioTest`: `evidence_scope` parses as either value on an assertion
+	without a tool and on one whose tool is under `judge`; it is refused on a tool under `fail`, with another value, and
+	as `response` on a `tool-used` assertion under `judge`; a
+	scenario without it parses with every judged assertion `actions`, and a scenario with it round-trips. (b)
+	`ProposalSchemaTest`, `ProposalTest` and `ContractCheckTest`: a proposal and a test revision with a judged assertion
+	that lacks the scope are refused; the proposal shows each judged assertion's scope and a recorded scenario's added
+	key as an edit. `FileCampaignStoreTest`: a contract stored before the field loads, with every judged assertion
+	`actions` and no response prompt. (c) `JudgePromptTest`: a `response` request holds the test case's turns and the
+	replies and no evidence section, tool result, effects path or transcript path, and grants no read-only root; an
+	`actions` request equals the request before the change; the test that ties the version to the rendered prompts fails
+	until the version increments. (d) `VerdictKeyTest`: two trials with equal replies and different evidence sections,
+	tool results, transcripts and effects have one key; a changed reply, scope or response prompt changes it. (e)
+	`DriverTest`: a test with one `response` and one `actions` judged assertion starts two judge sessions per trial, each
+	deciding only its scope's assertions; two trials of one test case with equal replies and different tool activity start
+	one `response` session and two `actions` sessions, and the second trial takes the recorded `response` verdict; the
+	store holds no record of an `actions` verdict, and a trial never waits for another trial's `actions` session; a trial
+	whose `response` assertions all have records starts only its `actions` session, and one with only `response`
+	assertions that all have records starts none. (f) `GuardPilotTest`: a pilot trial groups its judged assertions by
+	scope and takes and writes `response` records only. (g) `DevelopmentJudgeDriverTest`: a candidate shadows each
+	scope's session with that scope's prompt; a trial whose two sessions were shadowed counts as one shadowed trial and
+	disagrees when either session disagrees; a `response` hit adds no count while the same trial's `actions` comparison
+	does; a near miss of a `response` assertion is labelled with the response prompt. (h) `PromptTemplateTest` or a
+	brief test beside it: the contract author's and test revision's briefs state both scope values, the `actions`
+	fallback and rule 5. (i) For step 3, `OutcomeCoverageTest` with a fake review: a reported `response` assertion that
+	depends on actions is refused in the one correction turn with no part named; a reported reply-only `actions`
+	assertion and a reported decidable happening, with its tool, are warnings that do not block `confirm`, appear under
+	"Judged assertions" and reach the revision brief; a test whose outcomes are bare and covered mechanically but that has
+	a judged assertion starts a review. Then the clean full offline build, reporting every test taking at least one
+	second.
+- **Classes affected:** `Assertion`, `EvidenceScope` (new), `ScenarioParser`, `Scenario`, `ProposalSchema`,
+	`JudgedAssertion`, `JudgeProfile`, `JudgeTemplate`, `ProposalCheck`, `TestRevisionCheck`, `Markdown`, `Driver`,
+	`InFlight`, `JudgeProtocol`, `JudgePrompt`, `GuardPilot`, `ShadowGroup`, `NearMissJob`, `DevelopmentJudge`,
+	`VerdictKey`, `VerdictRecords`, `ClaudeSessions`, `CodexSessions`, `FakeSessionPort`, and WI-156's `OutcomeCoverage`
+	and `OutcomeReviewPrompt`.
+- **Tier and dependencies:** `optimize-xhigh`. Step 1 needs WI-150 integrated, whose records and key it narrows; step 2
+	follows step 1; step 3 needs WI-156, whose outcome review it extends. WI-157 and this item each increment the judge
+	version, so whichever lands second rebases onto the other.
+- **Exit:** the tests above pass and failed before the change; no design or plan ID appears in code. Steps 1 and 2 close
+	R-L19 except its review clause; step 3 closes the rest of R-L19 and R-L20.
+
 ## 6. Dependency order
 
 A work item starts once every work item it needs is integrated. A premise gate listed in [§4](#4-premise-gates-wi-0)
@@ -10975,6 +11064,7 @@ blocks only the part of a work item that it names.
 | WI-158 | WI-3, WI-4 |
 | WI-159 | WI-142, WI-147 |
 | WI-160 | WI-159 |
+| WI-161 | WI-150; its step 3 also needs WI-156 |
 | WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57, WI-60 to WI-69, WI-90, WI-91, WI-92, WI-93, WI-95, WI-96, WI-97, WI-98, WI-99, WI-100, WI-101, WI-102, WI-103, WI-104, WI-105, WI-107, WI-108, WI-109, WI-110, WI-114, WI-115 and WI-116. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
