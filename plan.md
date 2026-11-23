@@ -4217,8 +4217,10 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-150 | `optimize-xhigh` | Returns a stored verdict in place of a judge session, keyed by a digest of the evidence, with concurrent trials waiting for one session; an error returns a verdict for evidence that differs, lets two verdicts exist for one key, lets a development trial read a held-out record, or counts a hit as a shadowed trial and qualifies a judge candidate early. |
 | WI-151 | `optimize-xhigh` | Changes how held-out test cases are chosen, with a stratified split, a values-file format version and refusals; an error moves a test case's part between runs, lets the author infer a held-out value from a refusal, or leaves a class entirely in one part. |
 | WI-152 | `optimize-high` | Carries the boundary class through the failure summary, the failure group and the reproduction brief; an error shows the reproduction author a failed value, merges failures of different classes into one group, or leaves an added test case without a class. |
-| WI-153 | `optimize-high` | Adds a pilot comparison of the expected-outcome assertion against each judged guard assertion, per class, with a proposal warning; an error counts a guard failure as a disagreement when the expected outcome failed too, lets a class go unsampled, or refuses a proposal that the user may confirm. |
-| WI-154 | `optimize-high` | Adds a syntactic refusal of a judged `expected_outcome`; an error refuses a judged outcome that needs judgement, or accepts a bare-value outcome without a tool. |
+| WI-153 | `optimize-high` | Draws every boundary class in the guard pilot and shows each assertion's failed pilot trials by class; an error lets a class go unsampled, lists a failure under another class, or refuses a proposal that the user may confirm. |
+| WI-155 | `optimize-xhigh` | Adds outcome conditions to the scenario format, coverage replies to the proposal, and the mechanical coverage, agreement and bare-value refusals; an error accepts a test with a condition that no assertion checks, refuses a covered one, or lets a refusal tell the author which part holds a test case. |
+| WI-156 | `optimize-xhigh` | Starts judge sessions before confirmation that label coverage replies and review each test's outcomes, within the one correction turn; an error accepts a judged assertion that passes an omission reply, starts a session for a test that tools cover, gives a held-out case to a session that shapes a candidate, or ends a derivation that the correction turn could have fixed. |
+| WI-157 | `optimize-xhigh` | Removes the assertion that CAT adds to every prompt test from contracts, trials, judging, adoption, reports and prompts, increments the judge version and treats stored campaigns; an error leaves a trial judged on the removed assertion, lets a requirement-less assertion break a profile set or a failure group, loses a stored campaign, or keeps a certification current under a changed judge. |
 | WI-108 | `optimize-medium` | Changes how every CAT launcher starts its JVM; an error makes launchers fail outside a sandbox too, or lets two JVMs in separate PID namespaces write the same perf-data file. |
 | WI-107 | `optimize-medium` | Changes what every nested session may read and which host permissions a Claude session receives; an error lets trials and judges read the user's project again, denies a session its own run or evidence, or removes a grant that trials need. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
@@ -5405,8 +5407,11 @@ models that `codex debug models` reports and asked; given `gpt-6-luna`, `low`, i
 | WI-150 | Not started; designed 2026-11-23 (`design.md` "Consistent verdicts", D153). Closes R-L10. |
 | WI-151 | Not started; designed 2026-11-23 (`design.md` "Boundary classes", the stratified split, D154). Closes R-L11. |
 | WI-152 | Not started; designed 2026-11-23 (`design.md` failure summary and reproduction step 1, D155). Needs WI-151. Closes R-L12. |
-| WI-153 | Not started; designed 2026-11-23 (`design.md` "Assertion agreement", test design rule 4, D156). Needs WI-151. Closes R-L13. |
-| WI-154 | Not started; designed 2026-11-23 (`design.md` "Mechanically decidable expected outcomes", D157). Closes R-L14. |
+| WI-153 | Not started; designed 2026-11-23 (`design.md` guard pilot and "Assertion agreement", D156 as revised by D159). The comparison with the assertion that CAT adds was dropped the same day: WI-155 checks wording against reference replies instead. Needs WI-151. Closes R-L13. |
+| WI-154 | Withdrawn 2026-11-23 (user ruling). It refused a judged `expected_outcome`, the assertion that CAT adds to every prompt test, and the outcome coverage ruling removes that assertion (D158). Its stopped WIP patch (`.cat/sessions/fab0ed75-654f-4a5c-b939-08335a367474/temp/wi154-5903a6/patch/`) is not applied; WI-155 carries over its bare-value predicate and test, its notations guidance and its bare-outcome helper (D160). R-L14 moves to WI-155. |
+| WI-155 | Not started; designed 2026-11-23 (`design.md` "Outcome coverage", "Assertion agreement", "Mechanically decidable conditions", D158 to D160). Not ready: waits for the user's choices of where conditions are declared, how assertion agreement is checked and whether the bare-value refusal stays (the list at the end of `design.md` "Outcome coverage"). Needs WI-10 and WI-151. Closes R-L14 and R-L15. |
+| WI-156 | Not started; designed 2026-11-23 (`design.md` "Outcome coverage" steps 2 and 3, "Coverage and the held-out part", D158, D159). Not ready: waits for the user's choice of how a condition that no tool covers is checked. Needs WI-155. Closes R-L16. |
+| WI-157 | Not started; designed 2026-11-23 (`design.md` §6.4, "Outcome coverage", "Contracts and campaigns from before this ruling", D158). Not ready: waits for the user's choices of how stored campaigns are treated, whether the judge still receives the expected outcome and whether a covering assertion may name no requirement. Needs WI-155 and WI-156. Closes R-L17. |
 | WI-145 | Implemented 2026-11-16 (Claude implementer; `87db96986`..`a378c7aa5`; clean full build 6034 tests, 0 failures, 0 errors, 6 skipped): one in-place registrar (`GitWorktreeRegistrar`) for add, recreate, remove and repair behind `Fork`, `GitForks` and the session-start sweep; worktree requests (`worktree-<uuid>.tar`, document of operation and campaign only) served on a thread of their own by the request server (with the `.git/config`/`.git/hooks` write check against the session's policy) and by a run's runner (the one campaign of that identifier in the run's project; refused when the run allows no requests), counted against no limit; the client (`WorktreeRequestClient`) sends by the launch route, sends nothing for intact links, and `start`, `run`, `choose` and `cancel` refuse with status 2 before any change when no server serves the session; the Claude runner's `.git/worktrees` grant removed (session environment version 25); the build-command limit stated in the prompt-optimizer skill. Remaining: the live checks in Claude Code and Codex. Decided 2026-11-16: the code stays (`status` never reconnects; a campaign without its worktree is not a fork, `ForksContract.missingWorktreeIsNotAFork`), and the live check names the next command that reconnects (`run` or `choose`) instead. Probe evidence: `~/cat/worktrees/gitwt-probe4/` and `gitwt-probe3/`. |
 | Incremental build-workflow rule (user request, 2026-10-25) | Done 2026-10-27 (Codex; `ebe1687e7d`, released in v1.0). Record: [history](plan-history.md). |
 | G9 Git diff owner (`4da627d85c`) | Done 2026-10-27 (Claude `optimize-high`). Record: [history](plan-history.md). |
@@ -5865,8 +5870,8 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-C2 | Feedback regenerates a complete proposal; nothing but the guard pilot runs before confirmation. | §6.1 | WI-9, WI-10, WI-66 | U: `DriverTest`, `ProposalTest` (regeneration) |
 | R-C3 | Each prompt test is its own claim; within a part its test cases are drawn uniformly, frozen at confirmation; allocation never changes the draw. | §6.2 | WI-2, WI-64 | U: `DistributionTest` |
 | R-C4 | Test case validation; separate durable seeded streams for development, formal and baseline draws, each confined to its part, and control trials that draw nothing; targeted work marked before execution; formal draws after the freeze; repeated draws of a test case within a part allowed, each another trial of that test case. | §6.3 | WI-2, WI-33, WI-62, WI-65 | U: `GeneratorTest` (`repeatedDrawsAreAllowed`), `DrawStreamTest` |
-| R-C5 | A frozen judge under the role profile for each selected harness; the judge decides every assertion without a `tool:` line, including `expected_outcome`, and every assertion whose built-in tool failed under `on_tool_failure: judge`, per assertion with a rationale and a behavior, and sees built-in tool results as evidence; it cannot override one that decided its assertion. | §6.4, §3.1 | WI-2, WI-10, WI-17, WI-63 | U: `JudgeTest`, `ContractTest`, `ProposalSchemaTest`, `ProposalTest`, `DriverTest`, `OptimizerCoreTest` (a proposal frozen with an old judge version is refused); E: E1 judge per harness |
-| R-C8 | Every prompt test has the expected_outcome assertion that CAT adds, a guard exactly when every other assertion is one. A scenario may supply its built-in tool and optional on_tool_failure metadata; CAT still supplies its description and kind. Under fail the tool must decide the complete expected outcome; under judge it must pass no reply the expected outcome rejects. A scenario may not replace CAT's description or kind. | §6.4, D62 | WI-63 | U: `ProposalTest`, `ContractTest`, `ProposalSchemaTest`, `JudgePromptTest`, `JudgeTest`, `DriverTest` |
+| R-C5 | A frozen judge under the role profile for each selected harness; the judge decides every assertion without a `tool:` line, and every assertion whose built-in tool failed under `on_tool_failure: judge`, per assertion with a rationale and a behavior, and sees built-in tool results as evidence; it cannot override one that decided its assertion. | §6.4, §3.1 | WI-2, WI-10, WI-17, WI-63, WI-157 | U: `JudgeTest`, `ContractTest`, `ProposalSchemaTest`, `ProposalTest`, `DriverTest`, `OptimizerCoreTest` (a proposal frozen with an old judge version is refused); E: E1 judge per harness |
+| R-C8 | Superseded by R-L17 (user ruling, 2026-11-23): every prompt test has the expected_outcome assertion that CAT adds, a guard exactly when every other assertion is one. A scenario may supply its built-in tool and optional on_tool_failure metadata; CAT still supplies its description and kind. Under fail the tool must decide the complete expected outcome; under judge it must pass no reply the expected outcome rejects. A scenario may not replace CAT's description or kind. | §6.4, D62 | WI-63 | U: `ProposalTest`, `ContractTest`, `ProposalSchemaTest`, `JudgePromptTest`, `JudgeTest`, `DriverTest` |
 | R-C9 | Built-in tools: the closed `tool:` set of §6.4, with its argument syntax and placeholders; a check's verdict is final unless its `on_tool_failure` is `judge`, when a failure leaves the assertion to the judge; a trial passes when every assertion passes; a failed check under `on_tool_failure: fail` fails only its own assertions, and the judge still decides every assertion no tool decided (user ruling, 2026-11-16); a failed check's record and behavior reach the prompt author; a check whose evidence the harness cannot supply is refused in the proposal. | §6.4, D63, D68 | WI-17, WI-63, WI-72 | U: `BuiltInToolTest` (each check on both sides), `DriverTest`; E: E7 |
 | R-C10 | Trial profiles: the inventory per harness with its source; bindings from Claude skill and subagent frontmatter and Codex agent TOML only, partial bindings fixing one dimension, `inherit` binding nothing; the profile set per prompt test from the requirements mapped to its assertions, and the resulting cells; a user restriction narrows the set; the proposal lists inventory, bindings, cells and their minimum session count; confirmation freezes the set. | §6.6, §2.1, D22 | WI-16, WI-64 | U: `ProfileSetTest`, `ProposalTest`, per-harness inventory and binding tests over recorded catalog output; E: E1 proposal per harness |
 | R-C11 | Cells are the statistical unit: one prompt test under one profile; every §2 and §3 rule applies per cell, and `K` counts the cells of the certification scope. | §2.1 | WI-16, WI-32, WI-64 | U: `SchedulerTest`, `CommitGateTest`, `CommitTest` (a prompt test with two profiles gives two cells with separate counts, gates and decisions) |
@@ -5901,8 +5906,11 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-L10 | Identical evidence for one judged assertion of one test case gets one verdict. CAT stores the first valid verdict under a key of the test case, the assertion, the judge's identity and the evidence read, returns it to any later trial of the campaign with the same key without a model session, and makes a concurrent trial wait for the running session. A hit adds no shadowed trial, spot check or agreement count, and a development trial never reads a held-out record. | §6.4 | WI-150 | U: `VerdictKeyTest`, `VerdictRecordsTest`, `DriverTest`, `GuardPilotTest`, `DevelopmentJudgeDriverTest`, `FileCampaignStoreTest` |
 | R-L11 | Every test case has a boundary class, the split is stratified by class, and CAT refuses a test case without a class and a class that would have no test case in one part, including a class with a single test case, without naming a part. | §6.1, §6.3 | WI-151 | U: `SplitTest`, `ValuesFileTest`, `ProposalTest`, `ContractCheckTest`, `TestRevisionTest` |
 | R-L12 | A failure group is keyed by cell, test, boundary class, assertion and behavior. The reproduction author is told the failed test case's class and never its values, and CAT stamps each added test case with the group's class. | §6.3 | WI-152 | U: `FailureSummaryTest`, `ReproductionTest`, `ValuesPromptTest`, `DevelopmentContractTest` |
-| R-L13 | The guard pilot draws at least 2 trials per boundary class and lists, by class, each trial where the expected outcome passed and a judged guard assertion failed, as a warning on the proposal. | §6.1, §6.3 | WI-153 | U: `GuardPilotTest`, `ProposalTest` |
-| R-L14 | CAT refuses a judged `expected_outcome` when every test case's expected outcome is a bare value, and shows every other judged outcome with its reason under "Judged assertions". | §6.1, §6.4 | WI-154 | U: `ProposalTest`, `ContractCheckTest` |
+| R-L13 | The guard pilot draws at least 2 trials per boundary class and shows each assertion's failed pilot trials by class, as information that does not block confirmation. | §6.1 | WI-153 | U: `GuardPilotTest`, `ProposalTest` |
+| R-L14 | CAT refuses a prompt test whose every expected outcome is a bare value when none of the assertions that cover its reply conditions has a built-in tool, and shows every other judged covering assertion with its reason under "Judged assertions". | §6.1, §6.4 | WI-155 | U: `BareValueTest`, `ProposalTest`, `ContractCheckTest` |
+| R-L15 | Every prompt test declares its outcome conditions and covers each with one of its own assertions. CAT refuses a test without conditions, an uncovered condition, a `covers` or `classes` entry that names nothing declared, a reply condition that no reply-examining assertion covers, a missing coverage reply, a reply tool that passes an omission reply, and a reply tool under `fail` that fails a reference reply; a tool under `fail` that passes the reference reply and fails the omission reply covers its condition without a session. A covering assertion may name no requirement, joins no profile set and fails with `unexpected_outcome`. Coverage replies are filled from each class's first test case in the values file, whatever the salt, and no refusal names a part. | §6.1, §6.3 | WI-155 | U: `ScenarioTest`, `ProposalTest`, `ContractCheckTest`, `CoverageRepliesTest`, `TestRevisionTest`, `ProfileSetTest`, `ValuesPromptTest` |
+| R-L16 | A condition that no tool covers mechanically is checked once before confirmation by the judge that the proposal would freeze: a judged covering assertion that passes its omission reply is refused, one that fails a reference reply is a warning, and the outcome review refuses an outcome that states an undeclared condition and an effect condition that no assertion covers. Every problem reaches the contract author in its one correction turn without naming a part; the records stay in the held-out directory, appear under "Outcome coverage", rerun only for changed tests and reach no session that shapes a candidate. | §6.1, §6.3 | WI-156 | U: `OutcomeCoverageTest`, `ContractCheckTest`, `ProposalTest`, `OptimizerCoreTest`, `FileCampaignStoreTest`, `ValuesPromptTest` |
+| R-L17 | No prompt test has an assertion that its scenario does not declare. A trial whose tools decide every assertion starts no judge session and can end early; the judge's prompt names no added assertion and the judge version increments in both harnesses; the removed assertion's scenario and proposal forms are refused with a conversion instruction; a confirmed stored campaign whose contract lacks conditions revises each such test before other work, an unconfirmed one is refused at `confirm`, and stored `expected_outcome` verdicts reload as history. | §6.3, §6.4, §7 | WI-157 | U: `ContractTest`, `ScenarioTest`, `ProposalSchemaTest`, `DriverTest`, `EarlyTrialEndTest`, `AdoptionTest`, `JudgePromptTest`, `TransitionsTest`, `OptimizerCoreTest`, `FileCampaignStoreTest` |
 
 ### 3.7 Reporting, interface and testability
 
@@ -10345,7 +10353,7 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 - **Verification:** write these first. (a) `FailureSummaryTest`: the summary of a formal failure carries the class and
 	no value of the failed case, and the summary text contains no held-out value. (b) `ReproductionTest`: two failures
 	with equal cell, test, assertion and behavior but different classes make two groups; a round for a group adds cases
-	that all carry the group's class; a failure on the `expected_outcome` assertion with a desk-label behavior and the class
+	that all carry the group's class; a failure on one covering assertion with a desk-label behavior and the class
 	`arrives_exactly_at_midnight` is a different group from the same behavior in another class, so a round of the
 	first is not satisfied by reproducing the second. (c) `ValuesPromptTest` and `DevelopmentContractTest`: the
 	reproduction brief names the class and does not contain the failed values; the Pine noon-plus-12-hours values
@@ -10355,51 +10363,179 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 	`ValuesPrompt`, `DevelopmentContract`, `FailureJson`, `FileCampaignStore`.
 - **Exit:** the tests pass and failed before. Closes R-L12.
 
-### WI-153 — Assertion wording against the expected outcome (user ruling, 2026-11-23)
+### WI-153 — Every boundary class in the guard pilot (user ruling, 2026-11-23)
 
 - **Problem:** the wording "an unambiguous day when the trip crosses midnight" let a judged guard fail a reply that the
 	expected outcome ("any equivalent time format") accepts. The pilot passed it 20 of 20 because it sampled no
 	exactly-midnight case.
-- **Scope:** `client/common/cli/src/main/java/com/holdmyspot/cat/common/optimizer/` `execution/` (`GuardPilot`, `PilotResult`), `proposal/` (`Markdown`, `ContractAuthorProtocol`),
-	the `contract-author.md` and `test-revision.md` resources (rule 4), their tests, this design and plan.
-- **Change:** as `design.md` "Assertion agreement", §6.3 test design rule 4 and D156 define it. `GuardPilot` draws at
-	least 2 development trials per boundary class of the test, and `PilotResult` records, for each pilot trial where
-	`expected_outcome` passed and a judged guard assertion failed, the class, the reply and both rationales. `Markdown`
-	lists them by class as a warning. Effect assertions are not compared. The contract author's instructions state rule 4
-	and the revision brief carries the listed disagreements.
-- **Verification:** write these first. (a) `GuardPilotTest`: a test with 3 classes gets at least 2 trials per class;
-	with 11 classes the pilot grows past 20 trials; a fake judge that passes `expected_outcome` and fails the guard on every
-	reply of one class yields a disagreement for that class and none for the others. A trial where both fail is not a
-	disagreement, and one where the guard passes and `expected_outcome` fails is not one either. A deterministic
-	built-in `expected_outcome` is compared the same way. (b) The G2 replay: with the `arrival_result` wording and replies
-	`River. It arrives at midnight.` for the class `arrives_exactly_at_midnight`, a judge that fails them reproduces a listed
-	disagreement before confirmation; the proposal shows the class, the reply and both rationales. (c) `ProposalTest`:
-	the warning does not block `confirm`, and a proposal with no disagreement shows none. (d) A contract author's brief
-	check: the instructions name rule 4. Then the clean full offline build, reporting every test taking at least one
-	second.
-- **Classes affected:** `GuardPilot`, `PilotResult`, `Markdown`, `ContractAuthorProtocol`, `Proposal`.
+- **Scope:** `client/common/cli/src/main/java/com/holdmyspot/cat/common/optimizer/` `execution/` (`GuardPilot`,
+	`PilotResult`), `proposal/` (`Markdown`), their tests, this design and plan.
+- **Change:** as `design.md` guard pilot, the last paragraph of "Assertion agreement" and D159 define it. `GuardPilot`
+	draws at least 2 development trials per boundary class of the test, `PilotResult` records each failed pilot trial's
+	class, and `Markdown` shows each assertion's failed pilot trials by class. The comparison with the assertion that CAT
+	adds, which D156 described, is not built: WI-155 checks wording against reference replies, and WI-155 also puts rule 4
+	into the contract author's instructions.
+- **Verification:** write these first and see each fail. (a) `GuardPilotTest`: a test with 3 classes gets at least 2
+	trials per class; with 11 classes the pilot grows past 20 trials; a fake judge that fails a guard on every reply of one
+	class lists those failures under that class only. (b) `ProposalTest`: the proposal shows the failures by class and
+	`confirm` is not refused for them. Then the clean full offline build, reporting every test taking at least one second.
+- **Classes affected:** `GuardPilot`, `PilotResult`, `Markdown`.
 - **Exit:** the tests pass and failed before. Closes R-L13.
 
-### WI-154 — A mechanical expected outcome has a built-in tool (user ruling, 2026-11-23)
+### WI-155 — Outcome conditions and mechanical coverage (user ruling, 2026-11-23)
 
-- **Problem:** the contract author left the expected outcome of a mechanically decidable result to the judge, so a
-	model decided a comparison that a pattern decides.
-- **Scope:** `client/common/cli/src/main/java/com/holdmyspot/cat/common/optimizer/` `proposal/` (`Proposal`, `ProposalCheck`, `ContractTools`, `Markdown`), `contract/`
-	(`ExpectedOutcomeTool`, `PromptTest`), the contract author's instructions, their tests, this design and plan.
-- **Change:** as `design.md` "Mechanically decidable expected outcomes" and D157 define it. `ProposalCheck` refuses a
-	judged `expected_outcome` when every test case's normalized outcome is a bare value (at most 3 tokens, none of `,`
-	`;` `!` `?`, and no `.` followed by whitespace or ending the outcome). `Markdown` shows every other judged outcome under
-	"Judged assertions" with its reason sentence. The contract author's instructions say that an outcome in a form a list
-	of notations names gets `pattern` with the judge as fallback.
-- **Verification:** write these first. (a) A unit test of the bare-value predicate: `00:00`, `12:00 AM`,
-	`midnight`, `42`, `Paris`, `3.5` are bare; `It arrives at midnight.`, `Yes, because...`, `00:00 the next day.`, a
-	multi-sentence outcome and one with `?` are not; one non-bare outcome in the test makes the whole test accepted.
-	(b) `ProposalTest` and `ContractCheckTest`: a judged `expected_outcome` with all bare outcomes is refused and the
-	same test with a `pattern` tool is accepted; a judged outcome with a reason sentence is listed under "Judged
-	assertions" and not refused. (c) The refusal text names the test and asks for a tool, and names no case value of
-	the held-out part. Then the clean full offline build, reporting every test taking at least one second.
-- **Classes affected:** `Proposal`, `ProposalCheck`, `ExpectedOutcomeTool`, `PromptTest`, `ContractTools`, `Markdown`.
-- **Exit:** the tests pass and failed before. Closes R-L14.
+- **Problem:** CAT adds to every prompt test an assertion that the judge decides in every trial, and the user ruled to
+	replace it with a check made when the test is written: every condition of a test case's expected outcome is covered by
+	one of the test's own assertions, preferably a mechanical one. No test can be checked that way until it declares its
+	conditions and which assertion covers each.
+- **Scope:** `client/common/cli/src/main/java/com/holdmyspot/cat/common/optimizer/` `contract/` (`Scenario`,
+	`ScenarioParser`, `PromptTest`, `Assertion`, `ProposalSchema`, `BuiltInTool`, `JudgedAssertion`, `TrialProfiles`, new
+	`OutcomeCondition`, `CoverageReplies` and `BareValue`), `execution/prompt/ValuesPrompt`, `proposal/` (`Proposal`,
+	`ProposalCheck`, `ContractTools`, `Markdown`, `TestRevisionCheck`), the `optimizer/contract/proposal.schema.json` and
+	`proposal-file-test.schema.json` resources, the `optimizer/proposal/prompt-tests.md`, `contract-author.md` and
+	`test-revision.md` prompt resources, their tests and `DraftFixtures`, this design and plan.
+- **Change:** as `design.md` "Outcome coverage" (the declarations and step 1), "Assertion agreement" (the tool refusal),
+	"Mechanically decidable conditions" and D158 to D160 define it. `ScenarioParser` reads `## Expected Outcome` (`kind`,
+	`description`, `classes`, `turn`) into `OutcomeCondition`s and each assertion's `covers`, and `Scenario` renders them.
+	The proposal schema gains each test's `coverage_replies`: a reference reply per class and turn, and an omission reply
+	per reply condition. `ProposalCheck` makes step 1's checks, fills each coverage reply from the first test case of its
+	class in the draft values file, and runs each covering reply tool through `BuiltInTool` on synthetic records that hold
+	one reply; every reply tool under `fail` also runs on each reference reply. The refusal of D160 uses `BareValue`. A
+	covering assertion may name no requirement: the schema makes `requirement_id` optional for an assertion with `covers`,
+	`JudgedAssertion` and `TrialProfiles` accept it, and `ValuesPrompt` gives its judged failure the behavior
+	`unexpected_outcome`. `Markdown` adds the "Outcome coverage" section with the mechanical results. The contract author's
+	and test revision's instructions state rule 4, the conditions, `covers`, the coverage replies and the notations
+	guidance. The assertion that CAT adds stays until WI-157, so this item only adds. From the stopped WI-154 patch
+	(`.cat/sessions/fab0ed75-654f-4a5c-b939-08335a367474/temp/wi154-5903a6/patch/`), carry over by hand, without applying
+	the patch: `isBareValue` and `areAllBareValues` with `MAXIMUM_BARE_TOKENS` and `SENTENCE_PUNCTUATION`, moved from
+	`ExpectedOutcomeTool`, which WI-157 deletes, into `BareValue`, with the Javadoc line that failed checkstyle rewrapped;
+	the test's `bareValues` and `otherOutcomes` data providers and `oneNonBareOutcomeAcceptsTest`; the notations paragraph
+	of `prompt-tests.md`, retargeted from `expected_outcome` to covering assertions; and the `ProposalCheck` helper
+	`hasOnlyBareOutcomes`, under the new condition that no assertion covering a reply condition has a tool. Leave out its
+	refusal branch and message, its `DraftFixtures` change, which always wrote `### expected_outcome`, and its
+	`ProposalTest` and `ContractCheckTest` cases, which are built on `expected_outcome_tool`.
+- **Verification:** write these tests first and see each fail on the current tree, with CAT's real classes and no model.
+	(a) `ScenarioTest`: `## Expected Outcome` round-trips its conditions and an assertion's `covers`; an unknown key, a
+	`kind` other than `reply` or `effect`, a `turn` beyond the test's turns, an id that is not snake_case and the id
+	`expected_outcome` are refused; a scenario without the section still parses. (b) `ProposalTest` and
+	`ContractCheckTest`, on the G2 shape (classes `same_day`, `crosses_midnight` and `arrives_exactly_at_midnight`): a test
+	without conditions, a condition that nothing covers, a `covers` entry that names an undeclared condition, a `classes`
+	entry that names no class, a reply condition covered only by `read-in-full`, a `turn=1` tool covering a turn-2
+	condition, and a missing reference or omission reply are each refused with a message that names the test and the
+	condition and names no part; `pattern "{{arrival}}"` under `fail`, with the omission reply "It arrives on Tuesday." and
+	the reference reply "River arrives at {{arrival}} on {{day}}.", is accepted and shown as mechanical; the same tool with
+	an omission reply that contains the arrival time is refused under `fail` and under `judge`; a `forbidden-text` guard
+	whose text a reference reply contains is refused. (c) `CoverageRepliesTest`: for several salts, the case that fills
+	each reply is the first of its class in the values file; reordering the file changes it, and changing the salt does
+	not. (d) `BareValueTest`: the carried-over cases; `ProposalTest`: a test whose every outcome is bare and whose reply
+	condition only a judged assertion covers is refused, naming the test; with a `pattern` covering assertion it is
+	accepted, and one outcome that is not bare makes it accepted. (e) `TestRevisionTest` (proposal): a revised test is
+	checked the same way. (f) The proposal's "Outcome coverage" section lists each condition with its covering assertions
+	and how each covers it. (g) `ProfileSetTest`: a covering assertion without a requirement adds no profile;
+	`ValuesPromptTest`, `FailureSummaryTest` and `ReproductionTest`: its judged failure carries `unexpected_outcome` and
+	forms its own group. Then the clean full offline build, reporting every test taking at least one second.
+- **Classes affected:** `Scenario`, `ScenarioParser`, `PromptTest`, `Assertion`, `ProposalSchema`, `BuiltInTool`,
+	`JudgedAssertion`, `TrialProfiles`, `ValuesPrompt`, `Proposal`, `ProposalCheck`, `ContractTools`, `Markdown`,
+	`TestRevisionCheck`, new `OutcomeCondition`, `CoverageReplies` and `BareValue`.
+- **Exit:** the tests pass and failed before; every scenario that the repository's test fixtures build declares its
+	conditions; no design or plan ID appears in code. Closes R-L14 and R-L15.
+
+### WI-156 — Judged outcome coverage before confirmation (user ruling, 2026-11-23)
+
+- **Problem:** a condition that no tool covers mechanically, because a judged assertion or a tool under `judge` covers
+	it, because it is an effect condition, or because an outcome states it and the scenario never declares it, cannot be
+	checked without reading meaning. The ruling asks for that judgement once, when the test is written, and for its result
+	to be recorded.
+- **Scope:** `client/common/cli/src/main/java/com/holdmyspot/cat/common/optimizer/` `proposal/`
+	(`ContractAuthorProtocol`, `TestRevisionProtocol`, `Markdown`, new `OutcomeCoverage`), `execution/` (`NearMissBatch`,
+	`NearMissJob`, new `OutcomeReview`), `execution/prompt/` (new `OutcomeReviewPrompt`), `cli/OptimizerCore`, `store/`
+	(`CampaignStore`, `FileCampaignStore` and the test double `InMemoryCampaignStore`), new resources
+	`optimizer/coverage/outcome-review.md` and `outcome-review.schema.json`, the Claude and Codex session adapters that
+	start the review under the judge's role profile, their tests, this design and plan.
+- **Change:** as `design.md` "Outcome coverage" steps 2 and 3, "Coverage and the held-out part", the judged warning of
+	"Assertion agreement", D158 and D159 define it. Once a test passes step 1, `OutcomeCoverage` has the judge that the
+	proposal would freeze label its omission replies on their judged covering assertions and its reference replies on the
+	judged assertions that cover a reply condition, through the near-miss jobs, and starts one `OutcomeReview` session for
+	the test unless the mechanical exemption applies. `ContractAuthorProtocol` and `TestRevisionProtocol` put these
+	problems with step 1's into the one correction turn, check the corrected tests again, and end the derivation on a
+	second refusal. The labels and findings are stored beside the proposal in the held-out directory, rerun only for
+	changed tests, and shown by `Markdown` under "Outcome coverage" with every warning. Infrastructure attempts, pauses and
+	slices follow the guard pilot's rules. No brief of a prompt author, triage, test revision or development-case author
+	carries the records.
+- **Verification:** write these first and see each fail, with the existing model-free session port. (a)
+	`OutcomeCoverageTest`: a judge that passes the omission reply on a judged covering assertion makes a refusal that names
+	the test, the condition, the assertion, the reply as written and the rationale; one that fails it accepts and records
+	the label; a judge that fails a reference reply makes a warning that does not block `confirm`; a review that reports an
+	undeclared condition for the third test case refuses it, naming position 3 and its outcome and no part; a test whose
+	every outcome is bare, that has no effect condition and whose `{{expected_outcome}}` condition a fail-mode tool covers
+	starts no session. (b) `ContractCheckTest` and the correction-turn tests of the contract author and test revision
+	protocols: problems of steps 1 and 2 arrive in one correction turn, and a correction that CAT still refuses ends the
+	derivation with them. (c) `OptimizerCoreTest`: a review session that fails 3 times pauses `start` with retry and stop,
+	retry continues with the same replies, and a `revise` that changes one test reruns only its checks. (d)
+	`FileCampaignStoreTest` and the shared `CampaignStoreContract`: the records survive a reload. (e) `ValuesPromptTest`,
+	`PromptAuthorTest` and `TestRevisionTest`: no brief holds a coverage reply or label. Then the clean full offline build,
+	reporting every test taking at least one second.
+- **Classes affected:** `ContractAuthorProtocol`, `TestRevisionProtocol`, `Markdown`, `NearMissBatch`, `NearMissJob`,
+	`OptimizerCore`, `CampaignStore`, `FileCampaignStore`, `InMemoryCampaignStore`, the Claude and Codex session adapters,
+	new `OutcomeCoverage`, `OutcomeReview` and `OutcomeReviewPrompt`.
+- **Exit:** the tests pass and failed before; no design or plan ID appears in code. Closes R-L16.
+
+### WI-157 — Remove the assertion that CAT adds to every prompt test (user ruling, 2026-11-23)
+
+- **Problem:** once WI-155 and WI-156 make every test cover its outcome conditions with its own assertions, the
+	`expected_outcome` assertion that CAT adds repeats them: it costs a judge session in every trial that its tests' tools
+	would otherwise decide alone, and its inconsistent verdicts count against the minimum pass rate. The ruling removes it.
+- **Scope:** `client/common/cli/src/main/java/com/holdmyspot/cat/common/optimizer/` `contract/` (`PromptTest`,
+	`Assertion`, `ExpectedOutcomeTool`, which is deleted, `Scenario`, `ScenarioParser`, `ProposalSchema`,
+	`JudgedAssertion`), `execution/` (`Driver`, `GuardPilot`, `EarlyTrialEnd`), `execution/prompt/` (`JudgePrompt`,
+	`ValuesPrompt`), `campaign/` (`TrialAdoption`, `Transitions`), `proposal/` (`Markdown`, `PilotReport`, `ProposalCheck`,
+	`ContractContext`, `ContractTools`, `TestRevisionCheck`), `report/` (`CellReports`, `ReportJson`, `ReportSummary`),
+	`cli/` (`PilotFile`, `PeerTrialProtocol`, `OptimizerCore`), `store/` (`CampaignJson`, `FileCampaignStore`),
+	`ClaudeSessions` and `CodexSessions` (the judge version), the test double `FakeSessionPort`, the resources
+	`optimizer/judge/judge.md`, `optimizer/contract/proposal.schema.json` and `proposal-file-test.schema.json`,
+	`optimizer/proposal/prompt-tests.md`, `contract-author.md` and `test-revision.md`,
+	`optimizer/prompt-author/prompt-author.md` and `optimizer/values/values.md`, the tests that build or expect the added
+	assertion, this design and plan.
+- **Change:** as `design.md` §6.4 (the opening and "Judge"), "Outcome coverage" (requirement-less covering assertions;
+	contracts and campaigns from before this ruling) and D158 define it. Remove the added assertion at each site that adds,
+	judges, counts or shows it: `PromptTest` (`expectedOutcome()`, its entry in `allAssertions()`, `judgedAssertions()` and
+	the near-miss set, the `requirementId` and `decide` cases, the `expectedOutcomeTool` field),
+	`Assertion.EXPECTED_OUTCOME_STATEMENT` and `Assertion.expectedOutcome`, `ExpectedOutcomeTool`, the
+	`### expected_outcome` parsing and rendering of `ScenarioParser` and `Scenario`, `ProposalSchema`'s
+	`expected_outcome_tool` and `expected_outcome_judge_reason`, `Driver`'s and `GuardPilot`'s judging, `EarlyTrialEnd`'s
+	settling, `TrialAdoption`'s all-tools race size and its pairing and pass counts, `ValuesPrompt`'s failure-group lookup,
+	`CellReports`, `ReportJson`, `ReportSummary`, `PilotReport`, `PilotFile`, `PeerTrialProtocol`, `Markdown`'s "Judged
+	assertions" entry and `ProposalCheck`'s judge-reason rule. Keep the test case's `expected_outcome` field, the split,
+	the `{{expected_outcome}}` placeholder and the reserved id. Remove `JudgedAssertion`'s case for the added assertion,
+	which it now handles as any covering assertion without a requirement. Remove the instruction for the added assertion
+	from `judge.md` and stop passing the outcome beside the values, increment the judge version (Claude 14 to 15, Codex 16
+	to 17, the fake 5 to 6), and remove the assertion from every prompt resource. Refuse the removed scenario and proposal
+	forms with the conversion instruction. For stored campaigns, a confirmed contract whose test lacks conditions makes the
+	next `run` start a test revision of that test before other work, an unconfirmed proposal is refused at `confirm`, and
+	stored `expected_outcome` verdicts reload as history. WI-150 hashes the judge's prompt and version into its verdict key
+	and WI-153 changes `GuardPilot`, so whichever of them lands after this item rebases onto it; neither needs the added
+	assertion.
+- **Verification:** write these first and see each fail on the current tree, with CAT's real classes and no model. (a)
+	`ContractTest`: a prompt test's assertions are exactly its declared ones. (b) `DriverTest`: a trial whose every
+	declared assertion has a passing tool starts no judge session; a judged trial's prompt names no added assertion and
+	holds no expected outcome that a statement did not insert. (c) `JudgePromptTest`: the test that ties the version to the
+	rendered prompt fails until the version increments; `OptimizerCoreTest`: a proposal frozen under the earlier version is
+	refused. (d) `EarlyTrialEndTest` and `EarlyEndDriverTest`: a test whose every assertion has a tool ends after its
+	settling turn. (e) `AdoptionTest`: a race has 6 attempts when every declared assertion has a tool. (f) `ScenarioTest`
+	and `ProposalSchemaTest`: `### expected_outcome` among the assertions, `expected_outcome_tool` and
+	`expected_outcome_judge_reason` are refused with the conversion instruction. (g) `TransitionsTest`, `OptimizerCoreTest`
+	and `FileCampaignStoreTest`, with a campaign stored before the change: a confirmed contract without conditions loads
+	and `run` starts a test revision for each such test before other work, ending a running attempt
+	`not certified: stopped for test revision`; an unconfirmed proposal is refused at `confirm` and `revise` regenerates
+	it; stored trial records with `expected_outcome` verdicts reload and report as history. Then the clean full offline
+	build, reporting every test taking at least one second, and a search that finds no `ExpectedOutcomeTool`,
+	`EXPECTED_OUTCOME_STATEMENT` or `expectedOutcomeTool` in main code.
+- **Classes affected:** `PromptTest`, `Assertion`, `ExpectedOutcomeTool` (deleted), `Scenario`, `ScenarioParser`,
+	`ProposalSchema`, `JudgedAssertion`, `Driver`, `GuardPilot`, `EarlyTrialEnd`, `JudgePrompt`, `ValuesPrompt`,
+	`TrialAdoption`, `Transitions`, `Markdown`, `PilotReport`, `ProposalCheck`, `ContractContext`, `ContractTools`,
+	`TestRevisionCheck`, `CellReports`, `ReportJson`, `ReportSummary`, `PilotFile`, `PeerTrialProtocol`, `OptimizerCore`,
+	`CampaignJson`, `FileCampaignStore`, `ClaudeSessions`, `CodexSessions`, `FakeSessionPort`.
+- **Exit:** the tests pass and failed before; no design or plan ID appears in code. Closes R-L17 and supersedes R-C8.
 
 ## 6. Dependency order
 
@@ -10550,7 +10686,9 @@ blocks only the part of a work item that it names.
 | WI-151 | WI-10, WI-30 |
 | WI-152 | WI-151, WI-46 |
 | WI-153 | WI-151, WI-144 |
-| WI-154 | WI-10 |
+| WI-155 | WI-10, WI-151 |
+| WI-156 | WI-155 |
+| WI-157 | WI-155, WI-156 |
 | WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57, WI-60 to WI-69, WI-90, WI-91, WI-92, WI-93, WI-95, WI-96, WI-97, WI-98, WI-99, WI-100, WI-101, WI-102, WI-103, WI-104, WI-105, WI-107, WI-108, WI-109, WI-110, WI-114, WI-115 and WI-116. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
