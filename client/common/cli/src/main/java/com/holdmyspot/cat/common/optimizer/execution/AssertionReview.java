@@ -5,15 +5,23 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.optimizer.contract.Assertion;
 import com.holdmyspot.cat.common.optimizer.contract.BuiltInTool;
 import com.holdmyspot.cat.common.optimizer.contract.EvidenceScope;
+import com.holdmyspot.cat.common.optimizer.contract.JudgeProfile;
 import com.holdmyspot.cat.common.optimizer.contract.MappedAssertion;
 import com.holdmyspot.cat.common.optimizer.contract.OnToolFailure;
+import com.holdmyspot.cat.common.optimizer.contract.Part;
+import com.holdmyspot.cat.common.optimizer.contract.Requirement;
 import com.holdmyspot.cat.common.optimizer.contract.SchemaValidator;
+import com.holdmyspot.cat.common.optimizer.execution.prompt.AssertionReviewPrompt;
+import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
+import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.proposal.JsonResponse;
 import com.holdmyspot.cat.common.optimizer.proposal.PromptTemplate;
 import com.holdmyspot.cat.common.optimizer.report.EnumNames;
 
 import java.io.UncheckedIOException;
+import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -25,28 +33,56 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * Reads the reviewer session's decisions about the evidence scopes and splits of a prompt test's declared assertions.
+ * Creates assertion review requests and reads their findings about a prompt test's declared assertions.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class AssertionReview
 {
 	private static final String SCHEMA_RESOURCE = "/optimizer/assertions/assertion-review.schema.json";
+	private static final Duration TIME_LIMIT = Duration.ofMinutes(10);
+	private final AssertionReviewPrompt prompt;
 	private final JsonResponse responses;
 	private final SchemaValidator schema;
 
 	/**
-	 * Creates a review result reader.
+	 * Creates the assertion review protocol.
 	 *
 	 * @param json the operation-owned JSON mapper
 	 * @throws NullPointerException if {@code json} is null
-	 * @throws UncheckedIOException if the packaged result schema cannot be read
+	 * @throws UncheckedIOException if the packaged review prompt or result schema cannot be read
 	 */
 	public AssertionReview(JsonMapper json)
 	{
 		requireThat(json, "json").isNotNull();
+		this.prompt = new AssertionReviewPrompt(json);
 		this.responses = new JsonResponse(json);
 		this.schema = new SchemaValidator(json.readTree(resultSchema()));
+	}
+
+	/**
+	 * Creates one held-out review request for a prompt test's declared assertions and their mechanical context.
+	 *
+	 * @param judgeDirectory the existing directory that the judge session works in
+	 * @param profile the frozen judge profile
+	 * @param assertions the test's declared assertions
+	 * @param requirements the contract requirements, by ID
+	 * @return the request, or empty if the test has no judged assertion
+	 * @throws NullPointerException if any argument or assertion is null
+	 * @throws IllegalArgumentException if the requirements omit one that a judged assertion checks
+	 */
+	public Optional<SessionRequest> request(Path judgeDirectory, JudgeProfile profile, List<MappedAssertion> assertions,
+		Map<String, Requirement> requirements)
+	{
+		requireThat(judgeDirectory, "judgeDirectory").isNotNull();
+		requireThat(profile, "profile").isNotNull();
+		requireThat(assertions, "assertions").isNotNull();
+		requireThat(requirements, "requirements").isNotNull();
+		if (assertions.stream().noneMatch(mapped -> scopeOf(mapped.assertion()).isPresent()))
+			return Optional.empty();
+		String turn = prompt.render(assertions, requirements);
+		return Optional.of(new SessionRequest(SessionRole.JUDGE, Part.HELD_OUT, judgeDirectory, List.of(turn), List.of(),
+			TIME_LIMIT, profile.profile()));
 	}
 
 	/**

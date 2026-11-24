@@ -5,25 +5,36 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.optimizer.contract.Assertion;
 import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
 import com.holdmyspot.cat.common.optimizer.contract.EvidenceScope;
+import com.holdmyspot.cat.common.optimizer.contract.JudgeProfile;
 import com.holdmyspot.cat.common.optimizer.contract.MappedAssertion;
 import com.holdmyspot.cat.common.optimizer.contract.OnToolFailure;
+import com.holdmyspot.cat.common.optimizer.contract.Part;
+import com.holdmyspot.cat.common.optimizer.contract.Requirement;
+import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.execution.AssertionReview;
 import com.holdmyspot.cat.common.optimizer.execution.AssertionReview.Finding;
 import com.holdmyspot.cat.common.optimizer.execution.AssertionReview.Kind;
+import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
+import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Tests validation of a reviewer's answer about a prompt test's assertions.
+ * Tests request construction and validation for a prompt test's assertion review.
  */
 public final class AssertionReviewTest
 {
+	private static final Path JUDGE_DIRECTORY = Path.of("review", "judge");
+	private static final JudgeProfile FROZEN = new JudgeProfile(new TrialProfile("frozen-judge", "high"),
+		"Evaluate a trial.", "Judge the trial.", "Use the trial verdict.", "{}");
 	private static final MappedAssertion FILE = new MappedAssertion(new Assertion("saved_file", AssertionKind.EFFECT,
 		null, OnToolFailure.FAIL, "The agent saved the file.", "Requires meaning.", EvidenceScope.RESPONSE), "save");
 	private static final MappedAssertion REPLY = new MappedAssertion(new Assertion("explained", AssertionKind.EFFECT,
@@ -41,6 +52,46 @@ public final class AssertionReviewTest
 	 */
 	public AssertionReviewTest()
 	{
+	}
+
+	/**
+	 * Checks that mechanical assertions alone need no review, even though CAT currently adds a trial assertion.
+	 */
+	@Test
+	public void skipsMechanicalOnlyTest()
+	{
+		// Requirement: R-L16
+		requireThat(review.request(JUDGE_DIRECTORY, FROZEN, List.of(MECHANICAL), Map.of()).isEmpty(), "skipped").
+			isTrue();
+	}
+
+	/**
+	 * Checks that a judge fallback and its mechanical context receive one held-out review under the frozen profile.
+	 */
+	@Test
+	public void requestsOneHeldOutReview()
+	{
+		// Requirement: R-L16
+		// Requirement: R-L20
+		Requirement requirement = new Requirement("explain", "Explain the need for a backup.", "rules/backup.md",
+			null, List.of("unexplained"));
+		SessionRequest request = review.request(JUDGE_DIRECTORY, FROZEN, List.of(MECHANICAL, REPLY),
+			Map.of(requirement.id(), requirement)).orElseThrow();
+		requireThat(request.role(), "role").isEqualTo(SessionRole.JUDGE);
+		requireThat(request.part(), "part").isEqualTo(Part.HELD_OUT);
+		requireThat(request.profile(), "profile").isEqualTo(FROZEN.profile());
+		requireThat(request.source(), "source").isEqualTo(JUDGE_DIRECTORY);
+		requireThat(request.timeLimit(), "timeLimit").isEqualTo(Duration.ofMinutes(10));
+		requireThat(request.readOnly(), "readOnly").isEmpty();
+		requireThat(request.files().isEmpty(), "noFiles").isTrue();
+		requireThat(request.evidencePrompt().isEmpty(), "noEvidence").isTrue();
+		requireThat(request.pluginInputs(), "pluginInputs").isEmpty();
+		requireThat(request.followUp().isEmpty(), "noFollowUp").isTrue();
+		requireThat(request.turns().size(), "turnCount").isEqualTo(1);
+		String turn = request.turns().getFirst();
+		requireThat(turn, "reviewTurn").contains(MECHANICAL.assertion().tool()).contains(REPLY.assertion().tool()).
+			contains(REPLY.assertion().statement()).contains(requirement.description());
+		requireThat(turn.contains(FROZEN.prompt()), "usesTrialPrompt").isFalse();
 	}
 
 	/**
