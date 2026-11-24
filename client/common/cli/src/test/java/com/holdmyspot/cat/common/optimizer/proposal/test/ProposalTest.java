@@ -775,6 +775,46 @@ public final class ProposalTest
 	}
 
 	/**
+	 * Verifies that the author receives mechanical and judged refusals in one turn and that a second refusal
+	 * ends the derivation.
+	 *
+	 * @throws IOException if the authored proposal cannot be staged
+	 */
+	@Test
+	public void combinesAuthorCorrectionProblems() throws IOException
+	{
+		// Requirement: R-L16
+		SessionResult.Completed first = replyExample("judge", "pass_item_kind", "A list with no items.");
+		SessionResult.Completed corrected = session(fixture("derivation.json"));
+		List<List<String>> judgedTests = new ArrayList<>();
+		String refusal = "The judge passed safety's failing example because the text asks for permission.";
+		Function<ProposalCheck.Assessment, List<String>> judged = assessment ->
+		{
+			List<String> ids = assessment.examples().stream().map(example -> example.check().testId()).
+				distinct().toList();
+			judgedTests.add(ids);
+			return List.of(refusal);
+		};
+		SessionRequest request = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), List.of(), SALT, judged);
+
+		String correction = request.followUp().orElseThrow().next(first).orElseThrow();
+
+		requireThat(correction, "correction").contains("keeps_requested_tone").contains("failed a passing example").
+			contains(refusal);
+		try
+		{
+			contractAuthor.proposal(corrected, PROMPT_SYSTEM, PROFILES, SALT, judged);
+			requireThat(false, "refused").isTrue();
+		}
+		catch (InvalidProposalException e)
+		{
+			requireThat(e.problems(), "problems").isEqualTo(List.of(refusal));
+		}
+		requireThat(judgedTests, "judgedTests").isEqualTo(List.of(List.of("formatting", "safety"),
+			List.of("formatting", "plain_list", "safety")));
+	}
+
+	/**
 	 * Verifies that a stored derivation is validated again from its text, as {@code approve} and
 	 * {@code request-changes} read it after the session's files are gone.
 	 *

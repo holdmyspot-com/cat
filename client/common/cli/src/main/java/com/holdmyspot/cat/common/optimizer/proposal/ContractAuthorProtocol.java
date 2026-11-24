@@ -28,6 +28,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
+import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -77,6 +78,7 @@ public final class ContractAuthorProtocol
 	 * The value of the revision placeholders when there is nothing to revise.
 	 */
 	private static final String NONE = "none";
+	private static final Function<ProposalCheck.Assessment, List<String>> NO_JUDGED_CHECKS = ignored -> List.of();
 	private final JsonMapper json;
 	private final JudgeTemplate judge;
 	private final OutputFile outputFile;
@@ -273,12 +275,31 @@ public final class ContractAuthorProtocol
 	public SessionRequest request(Path promptSystem, ProfileEvidence profiles, List<HookRegistration> hooks,
 		List<DerivedSource> loadedFiles, long salt)
 	{
+		return request(promptSystem, profiles, hooks, loadedFiles, salt, NO_JUDGED_CHECKS);
+	}
+
+	/**
+	 * Returns a request that includes judged refusals in the author's correction turn.
+	 *
+	 * @param promptSystem the staged project
+	 * @param profiles the offered trial profiles
+	 * @param hooks the prompt system's hook registrations
+	 * @param loadedFiles the files that load in trials
+	 * @param salt the proposal's salt
+	 * @param judged returns refusals from judged checks of the mechanically valid tests
+	 * @return the author request with its correction turn
+	 * @throws NullPointerException if an argument is null
+	 */
+	public SessionRequest request(Path promptSystem, ProfileEvidence profiles, List<HookRegistration> hooks,
+		List<DerivedSource> loadedFiles, long salt, Function<ProposalCheck.Assessment, List<String>> judged)
+	{
 		requireThat(promptSystem, "promptSystem").isNotNull();
 		requireThat(profiles, "profiles").isNotNull();
 		requireThat(hooks, "hooks").isNotNull();
 		requireThat(loadedFiles, "loadedFiles").isNotNull();
+		requireThat(judged, "judged").isNotNull();
 		return request(promptSystem, profiles, hookRegistrations(hooks), loadedFiles, NONE, NONE,
-			draft -> DraftDirectory.seed(scenarios, draft), salt);
+			draft -> DraftDirectory.seed(scenarios, draft), salt, judged);
 	}
 
 	/**
@@ -296,7 +317,7 @@ public final class ContractAuthorProtocol
 		List<DerivedSource> loadedFiles, long salt)
 	{
 		return request(promptSystem, profiles, hookRegistrations(hooks), loadedFiles, NONE, NONE,
-			draft -> DraftDirectory.seed(scenarios, draft), salt);
+			draft -> DraftDirectory.seed(scenarios, draft), salt, NO_JUDGED_CHECKS);
 	}
 
 	/**
@@ -370,7 +391,7 @@ public final class ContractAuthorProtocol
 		String pilotResults = PilotReport.render(previous.contract(), pilots, false);
 		return request(promptSystem, profiles, hooks, loadedFiles, previous.derivation() + "\n\nGuard pilot " +
 				"results of the previous proposal:\n\n" + pilotResults, feedback,
-			draft -> DraftDirectory.copy(previousDraft, draft), previous.contract().salt());
+			draft -> DraftDirectory.copy(previousDraft, draft), previous.contract().salt(), NO_JUDGED_CHECKS);
 	}
 
 	/**
@@ -384,10 +405,12 @@ public final class ContractAuthorProtocol
 	 * @param feedback     the user's feedback, or {@code none}
 	 * @param source       fills the session's draft directory
 	 * @param salt         the salt that CAT drew for the proposal
+	 * @param judged       returns refusals from judged checks of the mechanically valid tests
 	 * @return the request, which returns the problems of a refused proposal to the session once
 	 */
 	private SessionRequest request(Path promptSystem, ProfileEvidence profiles, String hooks,
-		List<DerivedSource> loadedFiles, String previous, String feedback, DraftSource source, long salt)
+		List<DerivedSource> loadedFiles, String previous, String feedback, DraftSource source, long salt,
+		Function<ProposalCheck.Assessment, List<String>> judged)
 	{
 		StringJoiner lines = new StringJoiner("\n");
 		StringJoiner rankings = new StringJoiner("\n");
@@ -418,7 +441,7 @@ public final class ContractAuthorProtocol
 			Map.entry("proposal_file", files.context().proposalFile()),
 			Map.entry("draft_directory", files.draft()), Map.entry("launcher", launcher()),
 			Map.entry("context_file", files.contextFile())));
-		FollowUp correct = result -> correction(result, promptSystem, profiles, salt);
+		FollowUp correct = result -> correction(result, promptSystem, profiles, salt, judged);
 		return new SessionRequest(SessionRole.CONTRACT_AUTHOR, Part.DEVELOPMENT, promptSystem, List.of(turn),
 			readOnlyDirectories(loadedFiles), TIME_LIMIT, role(), files, List.of(), Optional.of(correct));
 	}
@@ -703,14 +726,15 @@ public final class ContractAuthorProtocol
 	 * @param promptSystem the directory that holds the prompt system
 	 * @param profiles     the profile inventory and its capability ranking
 	 * @param salt         the salt that CAT drew for the proposal
+	 * @param judged       returns refusals from judged checks of the mechanically valid tests
 	 * @return the turn that lists the proposal's problems, or empty if the proposal is valid
 	 */
 	private Optional<String> correction(SessionResult.Completed result, Path promptSystem, ProfileEvidence profiles,
-		long salt)
+		long salt, Function<ProposalCheck.Assessment, List<String>> judged)
 	{
 		try
 		{
-			validate(result, promptSystem, profiles, salt);
+			validate(result, promptSystem, profiles, salt, judged);
 			return Optional.empty();
 		}
 		catch (InvalidProposalException e)
@@ -752,7 +776,27 @@ public final class ContractAuthorProtocol
 	public DerivedProposal proposal(SessionResult.Completed result, Path promptSystem, ProfileEvidence profiles,
 		long salt) throws InvalidProposalException
 	{
-		DerivedProposal derived = validate(result, promptSystem, profiles, salt);
+		return proposal(result, promptSystem, profiles, salt, NO_JUDGED_CHECKS);
+	}
+
+	/**
+	 * Validates and prepares the final authored proposal, applying the same judged checks as the correction turn.
+	 *
+	 * @param result the last author session result
+	 * @param promptSystem the staged project that the request named
+	 * @param profiles the offered trial profiles
+	 * @param salt the proposal's salt
+	 * @param judged returns refusals from judged checks of the mechanically valid tests
+	 * @return the validated proposal with its generated case seeds and draft changes
+	 * @throws NullPointerException if an argument is null
+	 * @throws InvalidProposalException if any check refuses the proposal
+	 * @throws UncheckedIOException if a file cannot be read or written
+	 */
+	public DerivedProposal proposal(SessionResult.Completed result, Path promptSystem, ProfileEvidence profiles,
+		long salt, Function<ProposalCheck.Assessment, List<String>> judged) throws InvalidProposalException
+	{
+		requireThat(judged, "judged").isNotNull();
+		DerivedProposal derived = validate(result, promptSystem, profiles, salt, judged);
 		try
 		{
 			check.writeSeeds(derived.contract(), derived.draft());
@@ -772,12 +816,13 @@ public final class ContractAuthorProtocol
 	 * @param promptSystem the directory that holds the prompt system, which the request named
 	 * @param profiles     the profile inventory, its shipped capability ranking and the bindings
 	 * @param salt         the salt that CAT drew for the proposal
+	 * @param judged       returns refusals from judged checks of the mechanically valid tests
 	 * @return the proposal, without derived sources and without its prompt tests' changes
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws InvalidProposalException if the proposal is invalid
 	 */
 	private DerivedProposal validate(SessionResult.Completed result, Path promptSystem, ProfileEvidence profiles,
-		long salt) throws InvalidProposalException
+		long salt, Function<ProposalCheck.Assessment, List<String>> judged) throws InvalidProposalException
 	{
 		requireThat(result, "result").isNotNull();
 		requireThat(promptSystem, "promptSystem").isNotNull();
@@ -789,7 +834,13 @@ public final class ContractAuthorProtocol
 		String draftName = DraftDirectory.name(promptSystem);
 		DraftDirectory.restoreReturnedLinks(effects, draftName);
 		Path draft = effects.resolve(draftName);
-		DerivedProposal derived = check.check(proposalFile, effects, draft, result.promptSources(), profiles, salt);
+		ProposalCheck.Assessment assessed = check.inspect(proposalFile, effects, draft, result.promptSources(),
+			profiles, salt, Map.of());
+		List<String> problems = new ArrayList<>(assessed.problems());
+		problems.addAll(judged.apply(assessed));
+		if (!problems.isEmpty())
+			throw new InvalidProposalException(problems);
+		DerivedProposal derived = assessed.requireValid();
 		// Every later command reads the stored proposal against the user's project, whose links the session's copy
 		// replaces by their targets, so a draft that would not read back is refused while its author can still fix it
 		check.restore(storedFile, scenarios.project(), draft, result.promptSources(), profiles, salt);
