@@ -872,6 +872,7 @@ public final class OptimizerCoreTest
 		private final List<String> followUps = new ArrayList<>();
 		private final ManualClock clock;
 		private final Function<SessionRequest, SessionResult> script;
+		private Function<SessionRequest, SessionResult> judgeEnd = _ -> null;
 		/**
 		 * How far each session advances the clock.
 		 */
@@ -948,6 +949,12 @@ public final class OptimizerCoreTest
 		private SessionResult answer(SessionRequest request)
 		{
 			clock.advance(sessionDuration);
+			if (request.role() == SessionRole.JUDGE)
+			{
+				SessionResult ended = judgeEnd.apply(request);
+				if (ended != null)
+					return ended;
+			}
 			SessionResult response = script.apply(request);
 			if (request.followUp().isPresent() && response instanceof SessionResult.Completed first)
 			{
@@ -2149,6 +2156,59 @@ public final class OptimizerCoreTest
 			Path records = repository.directory(result.status().campaignId()).resolve("held_out/assertion_checks");
 			requireThat(records, "assertionChecks").isDirectory();
 		}
+	}
+
+	/**
+	 * Checks that three infrastructure failures pause before any trial and retry uses the authored draft.
+	 *
+	 * @throws Exception if the model-free command or campaign fixture fails
+	 */
+	@Test
+	public void retriesAssertionChecksOfSameDraft() throws Exception
+	{
+		// Requirement: R-L16
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Path target = Path.of("CLAUDE.md");
+			AtomicInteger authors = new AtomicInteger();
+			Repository repository = repository(scope, _ ->
+			{
+				authors.incrementAndGet();
+				return derivation(_ ->
+				{
+				});
+			});
+			repository.sessions().judgeEnd = _ -> new SessionResult.Failed("The judge fixture stopped.", List.of());
+
+			CommandResult paused = repository.core().start(target);
+
+			requireThat(repository.sessions().requests(SessionRole.JUDGE).size(), "attempts").isEqualTo(3);
+			requireThat(repository.sessions().requests(SessionRole.TRIAL), "trials").isEmpty();
+			requireThat(paused.proposalFile(), "proposalFile").isNull();
+			String id = paused.status().campaignId();
+			requireThat(repository.load(id).choices(), "choices").contains(Choice.RETRY).contains(Choice.STOP);
+			SessionRequest first = repository.sessions().requests(SessionRole.JUDGE).getFirst();
+			repository.sessions().judgeEnd = _ -> null;
+
+			CommandResult retried = repository.core().decide(id, Choice.RETRY, 0, 0);
+
+			requireThat(authors.get(), "authors").isEqualTo(1);
+			SessionRequest resumed = repository.sessions().requests(SessionRole.JUDGE).get(3);
+			requireThat(examplePrompt(resumed), "resumedExample").isEqualTo(examplePrompt(first));
+			requireThat(proposalText(retried), "proposal").contains("Judge failed.").contains("## Guard pilot");
+		}
+	}
+
+	/**
+	 * Renders an example query with stable references to its per-attempt evidence paths.
+	 *
+	 * @param request the judge request for the example
+	 * @return the prompt with its data and assertion
+	 */
+	private static String examplePrompt(SessionRequest request)
+	{
+		return request.evidencePrompt().map(prompt -> prompt.render(path -> Path.of("evidence").resolve(
+			path.getFileName()))).orElse(request.turns().getFirst());
 	}
 
 	/**

@@ -774,6 +774,15 @@ public sealed interface CampaignEvent
 	}
 
 	/**
+	 * A judged assertion check exhausted its infrastructure attempts.
+	 *
+	 * @param decision the choice to retry the retained draft or stop
+	 */
+	record AssertionCheckFailed(PendingDecision.AssertionCheckFailure decision) implements CampaignEvent
+	{
+	}
+
+	/**
 	 * Cap calibration for the next certification attempt failed.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is thread-safe.

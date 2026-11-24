@@ -122,6 +122,29 @@ public sealed interface PendingDecision
 	}
 
 	/**
+	 * Authored assertion checks exhausted their attempts while a draft was retained for retry.
+	 *
+	 * @param detail identifies the failed check
+	 * @param feedback the revision feedback, or empty for an initial proposal or a test revision
+	 */
+	record AssertionCheckFailure(String detail, String feedback) implements PendingDecision
+	{
+		/**
+		 * Creates the decision.
+		 *
+		 * @param detail identifies the failed check
+		 * @param feedback the revision feedback, or empty when the author did not receive feedback
+		 * @throws NullPointerException if an argument is null
+		 * @throws IllegalArgumentException if the detail is blank
+		 */
+		public AssertionCheckFailure
+		{
+			requireThat(detail, "detail").isNotBlank();
+			requireThat(feedback, "feedback").isNotNull();
+		}
+	}
+
+	/**
 	 * The user's feedback asked for a revised contract, which the contract author has not yet derived. The campaign
 	 * keeps the feedback so that the revision survives a crash and a failed derivation; the revised contract that the
 	 * user then confirms replaces the confirmed one. The user may retry the derivation from the saved feedback.
