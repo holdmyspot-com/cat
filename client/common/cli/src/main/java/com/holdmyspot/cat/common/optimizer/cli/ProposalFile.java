@@ -27,8 +27,8 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Persists the contract author's latest proposal in the campaign's {@code held_out} directory so that {@code confirm}
- * and {@code revise} can continue after the launcher exited.
+ * Persists the contract author's latest proposal in the campaign's {@code held_out} directory so that
+ * {@code approve} and {@code request-changes} can continue after the launcher exited.
  * <p>
  * The file holds the contract author's proposal file, which {@code ContractAuthorProtocol} validates again with its
  * draft directory when it is read, the draft directory that the held-out directory stores, the sources that the

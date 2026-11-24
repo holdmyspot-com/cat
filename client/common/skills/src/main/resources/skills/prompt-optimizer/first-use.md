@@ -59,7 +59,7 @@ Run the launcher that this skill's `SKILL.md` names. Each command prints one JSO
 is the campaign's state. Exit code 1 or 2 means a refusal, an error or invalid input; show its `message` to the user
 and stop, unless this skill explicitly says how to continue after that result.
 
-For requests about an existing campaign, use the status, cancellation or acceptance procedure below as the request
+For requests about an existing campaign, use the status, stop or acceptance procedure below as the request
 requires. Do not start another campaign to answer such a request.
 
 To show the user a launcher field, or the file that a field names, means to put its text in your reply verbatim,
@@ -69,22 +69,23 @@ paragraph of one or two sentences, does not shorten or replace a launcher field 
 show. Add no statistic, estimate or verdict of your own about the campaign; every such claim the user sees must come
 from a launcher field.
 
-Choose the execution mode for every `start`, `revise`, `choose` and `run` command. If the shell tool can keep a
-command running after your turn ends, append `--background` and use that tool's own background mode. Never use shell
-`&` or `nohup`. Tell the user that the campaign is running in the background, offer `status` and `cancel`, and continue
-other work. A background driver has no slice or time cap; `start` and `revise` run the whole guard pilot and must not be
-repeated while their driver holds the campaign. On the command's exit notice, call `status <campaign>` (or
-`status <target>` if `start` has not yet returned its campaign identifier) and follow the result below just as for a
+Choose the execution mode for every `start`, `request-changes`, `decide` and `continue` command. If the shell tool can
+keep a command running after your turn ends, append `--background` and use that tool's own background mode. Never use
+shell `&` or `nohup`. Tell the user that the campaign is running in the background, offer `status` and `stop`, and
+continue other work. A background driver has no slice or time cap; `start` and `request-changes` run the whole guard
+pilot and must not be repeated while their driver holds the campaign. On the command's exit notice, call
+`status <campaign>` (or `status <target>` if `start` has not yet returned its campaign identifier) and follow the
+result below just as for a
 foreground return. Test nothing at turn starts. When the user asks for progress or a session resumes, call `status`;
-a driver that died abnormally may have sent no notice. Stop a background driver with `cancel`, which allows in-flight
+a driver that died abnormally may have sent no notice. Stop a background driver with `stop`, which allows in-flight
 sessions their grace period and waits up to that grace plus 30 seconds. An unrelated host interrupt does not stop it.
 
 If the tool cannot keep a command running, or the launcher refuses `--background`, show its reason and use foreground
 slices without the flag. Give a foreground command a tool timeout of at least 10 minutes and repeat it only as the
 workflow below requires. A foreground result that says a test needs the background driver cannot advance that test; show
 that reason to the user. While a background driver holds the lock, `status` reads its snapshot and names the driver
-and start time, a second `run` is `busy`, and a refusal of `revise`, `choose` or `confirm` names `status` and `cancel`.
-A failed exit notice does not change the outcome; the next `status` reports the failure.
+and start time, a second `continue` is `busy`, and a refusal of `request-changes`, `decide` or `approve` names
+`status` and `stop`. A failed exit notice does not change the outcome; the next `status` reports the failure.
 
 1. **Start.** For a new campaign, add the user's explicit selection to `start <target>` as
 	`--harness codex`, `--harness claude`, or both flags. When reopening an existing campaign with
@@ -101,8 +102,8 @@ A failed exit notice does not change the outcome; the next `status` reports the 
 	`campaign` value in every later command.
 	- A resumed campaign keeps the goal and the extra permissions it started with. When `start` is refused because the
 		`--goal` or the file differs from the campaign's, show its `message` to the user and ask whether to continue the
-		campaign without that option, or to cancel it and start a new campaign with it. Never cancel on the user's
-		behalf.
+		campaign without that option, or to stop it with `stop` and start a new campaign with it. Never stop a
+		campaign on the user's behalf.
 	- A result may say that CAT added `/.cat/sessions/` to the project's `.gitignore`. Show that text to the user with
 		the rest of the result. The user commits that change: do not stage or commit it yourself. `start` accepts a
 		project whose only uncommitted change is those lines.
@@ -166,21 +167,22 @@ A failed exit notice does not change the outcome; the next `status` reports the 
 	that certification is unavailable. When the result also holds a `message`, show the `message` after the proposal. If
 	the result holds a `message` but no `proposal_file`, show the `message`.
 	- The proposal's `Judged assertions` section explains why each assertion is left to the judge. If a built-in tool
-		could decide one, include that in the user's feedback for `revise`.
-	- When the result of `start`, `revise` or `choose <campaign> retry` has `status` `running` and no `proposal_file`,
-		the guard pilot is not finished: it runs in slices, and this result ends one. Show its `summary`, which says
-		how many of the pilot's trials are decided, then run `start <target>` again with the same arguments and the
-		same tool timeout as `run`, and repeat this step with its result. The launcher keeps the trials that the
-		pilot decided and runs only the others. Do not run `run` for it. Ask the user nothing while `status` is
+		could decide one, include that in the user's feedback for `request-changes`.
+	- When the result of `start`, `request-changes` or `decide <campaign> retry` has `status` `running` and no
+		`proposal_file`, the guard pilot is not finished: it runs in slices, and this result ends one. Show its
+		`summary`, which says how many of the pilot's trials are decided, then run `start <target>` again with the same
+		arguments and the same tool timeout as `continue`, and repeat this step with its result. The launcher keeps the trials that the
+		pilot decided and runs only the others. Do not run `continue` for it. Ask the user nothing while `status` is
 		`running`: the proposal is shown once the pilot ends.
 	- If the proposal lists conflicts, confirmation is refused until each is resolved. After the proposal, for each
 		conflict, present the resolutions, name the recommended one and its reason, and invite another resolution.
 		Do not offer confirmation, the certification scopes or the confirmation question. End the reply with the
-		feedback question when confirmation is unavailable, given below. Run `revise <campaign> <feedback>` with the
-		user's resolutions and repeat this step with its result.
+		feedback question when confirmation is unavailable, given below. Run `request-changes <campaign> <feedback>`
+		with the user's resolutions and repeat this step with its result.
 	- If the proposal names unranked models, confirmation is refused until the user ranks their families. Ask the user
 		where each family ranks and end the reply with the feedback question when confirmation is unavailable, given
-		below. Run `revise <campaign> <feedback>` with the user's words and repeat this step with its result.
+		below. Run `request-changes <campaign> <feedback>` with the user's words and repeat this step with its
+		result.
 	- If the proposal reports an unavailable certification condition, explain what feedback can address it.
 		Do not offer confirmation while the condition remains. End the reply with the feedback question when
 		confirmation is unavailable, given below.
@@ -200,58 +202,60 @@ A failed exit notice does not change the outcome; the next `status` reports the 
 		or which certification scope would you like to confirm?"
 	- The feedback question when confirmation is unavailable is "What feedback, if any, would you like CAT to
 		incorporate?" Put it on its own final line, after any explanation of what happens next.
-	- On feedback, run `revise <campaign> <feedback>` with the user's words and repeat this step with its result.
+	- On feedback, run `request-changes <campaign> <feedback>` with the user's words and repeat this step with its
+		result.
 	- When the user chooses other, map the user's description to profiles of the proposal's trial profile inventory,
-		run `revise <campaign> <feedback>` with feedback that describes the certification scope as those profiles, and
-		repeat this step with its result. Show the user the `described` choice's cells, weakest cells and minimum session
-		count, and ask the user to confirm them.
-	- On confirmation, run `confirm <campaign> <choice>` with the choice that the user made: `weakest_cell`,
+		run `request-changes <campaign> <feedback>` with feedback that describes the certification scope as those
+		profiles, and repeat this step with its result. Show the user the `described` choice's cells, weakest cells and
+		minimum session count, and ask the user to confirm them.
+	- On confirmation, run `approve <campaign> <choice>` with the choice that the user made: `weakest_cell`,
 		`latest_versions` or, for cells that the user described and confirmed, `described`. When the user confirms
-		without choosing, run `confirm <campaign>`, which certifies `weakest_cell`.
+		without choosing, run `approve <campaign>`, which certifies `weakest_cell`.
 	- Never confirm on the user's behalf, and never choose cells other than `weakest_cell` on the user's behalf.
-3. **Run.** Use the execution mode above. `confirm` always runs in the foreground, without `--background`. While the `status` of the result of `confirm` or `run` is `running` in foreground mode, run `run <campaign>` again. After each
-	run, show the user its `summary`, and its `message` when it has one: while a test revision's guard pilot is
-	unfinished, the `message` says how many of its trials are decided. (A `running` result of `start`, `revise` or
-	`choose <campaign> retry` is step 2's guard pilot, which `start` continues.)
+3. **Run.** Use the execution mode above. `approve` always runs in the foreground, without `--background`. While the
+	`status` of the result of `approve` or `continue` is `running` in foreground mode, run `continue <campaign>` again.
+	After each run, show the user its `summary`, and its `message` when it has one: while a test revision's guard pilot
+	is unfinished, the `message` says how many of its trials are decided. (A `running` result of `start`,
+	`request-changes` or `decide <campaign> retry` is step 2's guard pilot, which `start` continues.)
 4. **Decide.** When `status` is `awaiting_user` and `proposal_file` is null, show the `summary` and each choice's
 	`label`, then ask the user to choose. Never choose on the user's behalf.
 	- When the pause offers no `choices`, such as an infrastructure failure, show the user its pending text verbatim, including the way forward that the text names, and act on that way forward only after the user answers.
-	- Pass the chosen entry of `choices` as `choose <campaign> <id>`. Add `--attempt <attempt>` when the entry has an
+	- Pass the chosen entry of `choices` as `decide <campaign> <id>`. Add `--attempt <attempt>` when the entry has an
 		`attempt`. For `more_evidence`, ask the user for a review point above the entry's `review_point_above` and add
 		`--review-point <N>`. A review point is the trial count at which the campaign next pauses the entry's category
 		for review.
 	- For an entry of `authority_warnings`, show its `requirement`, `path`, `target` and `limit`. Pass
-		`use_authorized_source` and `stop` as `choose <campaign> <choice>`, and `revise` as `revise <campaign> <feedback>`
-		with the user's words.
+		`use_authorized_source` and `stop` as `decide <campaign> <choice>`, and `request-changes` as
+		`request-changes <campaign> <feedback>` with the user's words.
 	- For a conflict pause, the choices are the conflict's resolutions and `stop`. Mark the entry whose `recommended` is
-		true as recommended and show its `reason`. The user may also describe another resolution; pass it as `revise
-		<campaign> <feedback>`.
+		true as recommended and show its `reason`. The user may also describe another resolution; pass it as
+		`request-changes <campaign> <feedback>`.
 	- For a stalled-development pause (the summary says development stalled), show the `summary` in full: it gives each
 		stalled test's cell estimates after each of the 5 rounds that made no progress. The choices are
 		`continue_development`, which runs 5 more rounds for the stalled tests, `keep_improvement` only when `choices`
 		lists it (pass its `attempt` as `--attempt`), and `stop`. The user may also describe a change to the contract;
-		pass it as `revise <campaign> <feedback>`.
+		pass it as `request-changes <campaign> <feedback>`.
 	- When the chosen entry is `retry` on a guard pilot pause (the summary says a guard pilot trial ran without an
-		outcome), the result of `choose` names a proposal file or has `status` `running` while the guard pilot is
+		outcome), the result of `decide` names a proposal file or has `status` `running` while the guard pilot is
 		unfinished: continue with step 2.
 	- For a contract revision pause (the summary says the contract author could not derive the contract revision, or
 		that a contract revision is being derived from the feedback that the campaign kept), show the `summary` in full.
 		CAT already retried the derivation 3 times. The campaign kept the user's feedback, and the choices are `retry`,
 		which derives the revision again from that feedback, and `stop`. The user may also give other feedback; pass it
-		as `revise <campaign> <feedback>`. After `retry` or `revise`, continue with step 2. While the summary says that a
-		revised contract waits for confirmation, run `start <target>` to show its proposal, then ask for confirmation
-		or feedback as in step 2.
+		as `request-changes <campaign> <feedback>`. After `retry` or `request-changes`, continue with step 2. While the
+		summary says that a revised contract waits for confirmation, run `start <target>` to show its proposal, then ask
+		for confirmation or feedback as in step 2.
 	- Continue with the step that the new result's `status` selects.
 5. **Busy.** When `status` is `busy`, another process is running the campaign. Show the `summary` and stop.
 6. **Report.** For any other `status`, the campaign has reached an outcome. Show the `summary` in full, including its
 	outcome, claim and limitations, and any `delivery_result`. The user reviews delivered changes with Git; never commit
 	them. If `choices` lists `resume`, show that choice too; when the user selects it or has already asked to resume,
-	run `choose <campaign> resume` in the execution mode above and follow the new result's `status`.
+	run `decide <campaign> resume` in the execution mode above and follow the new result's `status`.
 
-To stop a campaign that the user asks to stop, run `cancel <campaign>`. When the user asks to accept or apply the
+To stop a campaign that the user asks to stop, run `stop <campaign>`. When the user asks to accept or apply the
 campaign's improved prompt without waiting for certification, that request is the user's choice of
-`accept_without_certification`: unless the latest result's `choices` already lists it, run `cancel <campaign>`, which
-lists it, then run `choose <campaign> accept_without_certification`, and show the delivered result as step 6 says. Only
+`accept_without_certification`: unless the latest result's `choices` already lists it, run `stop <campaign>`, which
+lists it, then run `decide <campaign> accept_without_certification`, and show the delivered result as step 6 says. Only
 the launcher's delivery writes a candidate into the target: never write one into it yourself, from the campaign's
 files or in any other way, and when `choices` lists no `accept_without_certification`, show the `summary` and tell the
 user that CAT offers no acceptance now. To show a campaign's state without advancing it, run `status <campaign>` or

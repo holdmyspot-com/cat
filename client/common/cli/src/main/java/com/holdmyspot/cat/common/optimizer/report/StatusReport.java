@@ -137,7 +137,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	 * proposal is stored and no pending decision remains.
 	 */
 	public static final String REVISION_PENDING = "A revised contract waits for confirmation. `start` shows its " +
-		"proposal, `confirm` accepts it and `revise` changes it";
+		"proposal, `approve` accepts it and `request-changes` changes it";
 	/**
 	 * The limitations that every result carries.
 	 */
@@ -156,7 +156,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 		"target instead of the link, and hold only the files that the prompt system loads and the files that the " +
 		"contract declares the target refers to. A file that a prompt names in its text without a loader loading " +
 		"it is absent from trials, and an agent that tries to read it fails. To give trials such a file, run " +
-		"revise with feedback that names it, so that the contract declares it as a referenced file.";
+		"`request-changes` with feedback that names it, so that the contract declares it as a referenced file.";
 
 	/**
 	 * The concurrency state that limits how many trials run at once.
@@ -548,11 +548,11 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 		if (!revision.hasFailed())
 		{
 			return "a contract revision is being derived from the feedback that the campaign kept. If no command is " +
-				"deriving it, choose retry to derive it again";
+				"deriving it, run `decide` with `retry` to derive it again";
 		}
 		return "the contract author could not derive the contract revision: " + revision.failure() + "\nThe " +
-			"campaign kept the feedback. Choose retry to derive the revision from it again, or revise with other " +
-			"feedback";
+			"campaign kept the feedback. Run `decide` with `retry` to derive the revision from it again, or " +
+			"`request-changes` with other feedback";
 	}
 
 	/**

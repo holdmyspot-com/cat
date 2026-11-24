@@ -581,10 +581,18 @@ public final class StatusReportTest
 				isEqualTo("awaiting_user");
 		}
 		requireThat(derivingReport.summary(ZoneOffset.UTC), "deriving").contains("being derived").
-			contains("choose retry");
+			contains("`decide` with `retry`");
 		requireThat(failedReport.summary(ZoneOffset.UTC), "failed").contains("could not derive").
-			contains("The author was rate-limited").contains("retry");
-		requireThat(proposedReport.summary(ZoneOffset.UTC), "proposed").contains(StatusReport.REVISION_PENDING);
+			contains("The author was rate-limited").contains("`decide` with `retry`").contains("`request-changes`");
+		requireThat(proposedReport.summary(ZoneOffset.UTC), "proposed").contains(StatusReport.REVISION_PENDING).
+			contains("`approve` accepts it and `request-changes` changes it");
+		for (StatusReport report : List.of(derivingReport, failedReport, proposedReport))
+		{
+			String summary = report.summary(ZoneOffset.UTC);
+			for (String former : List.of("run", "confirm", "revise", "choose", "cancel"))
+				requireThat(summary, "summary").doesNotContain("`" + former + "`");
+			requireThat(summary, "summary").doesNotContain("hoose retry").doesNotContain("revise with");
+		}
 		JsonNode choices = failedReport.toJson(JsonMapper.builder().build()).get("choices");
 		requireThat(choices.size(), "choiceCount").isEqualTo(2);
 		requireThat(choices.get(0).get("id").asString(), "firstId").isEqualTo("retry");
@@ -2132,11 +2140,11 @@ public final class StatusReportTest
 		for (JsonNode choice : shown.path("choices"))
 			choices.add(choice.asString());
 		requireThat(choices, "warningChoices").
-			isEqualTo(List.of("use_authorized_source", "stop", "revise"));
+			isEqualTo(List.of("use_authorized_source", "stop", "request-changes"));
 		requireThat(report.summary(ZoneOffset.UTC), "summary").
 			contains("Authority warning: requirement R1 needs an edit at " + link + ", which resolves to " + target +
 				" (limit: external target read only); " +
-				"choices: use authorized source, stop, revise");
+				"choices: use authorized source, stop, request-changes");
 	}
 
 	/**

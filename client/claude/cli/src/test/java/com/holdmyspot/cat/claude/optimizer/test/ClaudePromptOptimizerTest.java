@@ -453,8 +453,8 @@ public final class ClaudePromptOptimizerTest
 	@DataProvider
 	public static Object[][] sessionCommands()
 	{
-		return new Object[][]{{List.of("start", "prompts/a.md")}, {List.of("run", CAMPAIGN)},
-			{List.of("confirm", CAMPAIGN)}, {List.of("revise", CAMPAIGN, "feedback")}};
+		return new Object[][]{{List.of("start", "prompts/a.md")}, {List.of("continue", CAMPAIGN)},
+			{List.of("approve", CAMPAIGN)}, {List.of("request-changes", CAMPAIGN, "feedback")}};
 	}
 
 	/**
@@ -514,9 +514,9 @@ public final class ClaudePromptOptimizerTest
 	@DataProvider
 	public static Object[][] commandsOfNoHarness()
 	{
-		List<List<String>> commands = List.of(List.of("start", "prompts/a.md"), List.of("run", CAMPAIGN),
-			List.of("status", CAMPAIGN), List.of("status"), List.of("confirm", CAMPAIGN),
-			List.of("revise", CAMPAIGN, "feedback"), List.of("cancel", CAMPAIGN));
+		List<List<String>> commands = List.of(List.of("start", "prompts/a.md"), List.of("continue", CAMPAIGN),
+			List.of("status", CAMPAIGN), List.of("status"), List.of("approve", CAMPAIGN),
+			List.of("request-changes", CAMPAIGN, "feedback"), List.of("stop", CAMPAIGN));
 		List<Object[]> rows = new ArrayList<>();
 		for (Object[] environment : environmentsOfNoHarness())
 		{

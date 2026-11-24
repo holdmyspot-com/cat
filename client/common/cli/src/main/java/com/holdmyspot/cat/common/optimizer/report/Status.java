@@ -7,7 +7,7 @@ package com.holdmyspot.cat.common.optimizer.report;
 public enum Status
 {
 	/**
-	 * The campaign can schedule work, so the host calls {@code run} again.
+	 * The campaign can schedule work, so the host calls {@code continue} again.
 	 */
 	RUNNING("running"),
 	/**

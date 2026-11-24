@@ -461,7 +461,7 @@ public final class Proposal
 		{
 			limitations.add("Trials skip these hooks of the trial plugins because CAT could not verify their approval " +
 				"for the installed trial copies: " + String.join("; ", unverified) + ". Review those hooks and their " +
-				"approvals in the harness, then run revise to check them again.");
+				"approvals in the harness, then run `request-changes` to check them again.");
 		}
 		if (!built.isEmpty())
 		{
@@ -576,13 +576,13 @@ public final class Proposal
 		if (!unranked.isEmpty())
 		{
 			reasons.add("The capability ranking (" + profiles.ranking().source() + ") does not rank the family of " +
-				"the inventory models " + String.join(", ", unranked) + ". Run revise with feedback that ranks " +
+				"the inventory models " + String.join(", ", unranked) + ". Run `request-changes` with feedback that ranks " +
 				"them.");
 		}
 		if (scope == CertificationScope.DESCRIBED && profiles.described().isEmpty())
 		{
 			reasons.add("The described certification scope needs the cells that you described in revision " +
-				"feedback, and none are described. Run revise with feedback that describes them, or choose " +
+				"feedback, and none are described. Run `request-changes` with feedback that describes them, or choose " +
 				CertificationScope.WEAKEST_CELL.id() + " or " + CertificationScope.LATEST_VERSIONS.id() + ".");
 		}
 		StringJoiner refusal = new StringJoiner(" ");
@@ -615,7 +615,7 @@ public final class Proposal
 			{
 				reasons.add("The test `" + test.id() + "` has " + development + " distinct expected outcomes in the " +
 					"development part and " + heldOut + " in the held-out part, but each part needs at least " +
-					MINIMUM_OUTCOMES + ". Run revise with feedback that gives it test cases with more expected " +
+					MINIMUM_OUTCOMES + ". Run `request-changes` with feedback that gives it test cases with more expected " +
 					"outcomes.");
 			}
 		}
@@ -646,7 +646,7 @@ public final class Proposal
 			groups.add(String.join(", ", ids.subList(0, ids.size() - 1)) + " and " + ids.getLast());
 		}
 		String conflictsMessage = "Confirmation is refused because the proposal lists conflicting requirements: " +
-			groups + ". Run revise with feedback that resolves each conflict.";
+			groups + ". Run `request-changes` with feedback that resolves each conflict.";
 		if (linksMessage.isEmpty())
 			return conflictsMessage;
 		return linksMessage + ". " + conflictsMessage;

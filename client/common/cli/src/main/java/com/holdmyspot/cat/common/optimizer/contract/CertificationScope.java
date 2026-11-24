@@ -39,7 +39,7 @@ public enum CertificationScope
 	}
 
 	/**
-	 * Returns the identifier that the {@code confirm} command accepts.
+	 * Returns the identifier that the {@code approve} command accepts.
 	 *
 	 * @return the identifier, such as {@code weakest_cell}
 	 */
@@ -61,7 +61,7 @@ public enum CertificationScope
 	/**
 	 * Returns the choice that an identifier names.
 	 *
-	 * @param id an identifier that the {@code confirm} command received
+	 * @param id an identifier that the {@code approve} command received
 	 * @return the choice, or empty if no choice has this identifier
 	 * @throws NullPointerException if {@code id} is null
 	 */

@@ -183,8 +183,8 @@ public final class Driver implements AutoCloseable
 	/**
 	 * Tells the user how to give trials a loaded file that they do not receive.
 	 */
-	private static final String UNRECEIVED_FILE_ROUTE = "To give trials such a file, run `revise` with feedback that " +
-		"names it, so that the contract declares it as a referenced file.";
+	private static final String UNRECEIVED_FILE_ROUTE = "To give trials such a file, run `request-changes` with " +
+		"feedback that names it, so that the contract declares it as a referenced file.";
 	private static final Duration RETAINED_STATUS_RECHECK = Duration.ofSeconds(1);
 	private final DriverContext context;
 	private final CampaignLock lock;
@@ -3801,12 +3801,12 @@ public final class Driver implements AutoCloseable
 		{
 			// A running status sends the host agent to run the campaign again at once, which meets the same failure
 			report = SliceReports.awaiting(report, new ReportStatus.Active(Status.AWAITING_USER),
-				infrastructureFailure + " Run the campaign again with `run` to retry, or stop it with `cancel`.");
+				infrastructureFailure + " Run the campaign again with `continue` to retry, or end it with `stop`.");
 		}
 		else if (context.settings().background() && report.status().label().equals("running"))
 		{
 			report = SliceReports.awaiting(report, new ReportStatus.Active(Status.AWAITING_USER),
-				"The background driver paused because no work could be admitted. Use `status` or `cancel`.");
+				"The background driver paused because no work could be admitted. Use `status` or `stop`.");
 		}
 		if (!context.settings().background() && report.status().label().equals("running"))
 		{

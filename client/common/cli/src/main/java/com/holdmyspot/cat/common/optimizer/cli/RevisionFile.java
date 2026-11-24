@@ -22,7 +22,8 @@ import java.util.Optional;
 
 /**
  * Persists the revised contract of a test revision, and what the revision decided, while the guard pilot of the
- * contract has not ended, so that the next {@code run} continues the pilot instead of asking the contract author again.
+ * contract has not ended, so that the next {@code continue} continues the pilot instead of asking the contract author
+ * again.
  * <p>
  * The revised contract is stored beside the confirmed proposal, which stays the confirmed contract until the revised
  * one is confirmed: {@link ProposalFile#revised} holds the contract, and this file holds the corrections and the

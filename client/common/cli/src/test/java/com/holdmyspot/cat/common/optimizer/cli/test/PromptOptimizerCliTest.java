@@ -466,6 +466,62 @@ public final class PromptOptimizerCliTest
 	}
 
 	/**
+	 * Verifies that {@code run}, the former name of {@code continue}, is refused through the launcher's entry point on a
+	 * stored campaign with the invalid-input status and a message that names {@code continue}, leaving every file of
+	 * the campaign byte for byte unchanged, while {@code continue} reaches the core.
+	 * <p>
+	 * The scope's trial sandbox refuses every command that reaches the core, so that {@code continue} stops there with
+	 * that refusal instead of starting a session; a former name that reached the core would print the same refusal.
+	 *
+	 * @throws IOException             if the test filesystem cannot be used
+	 * @throws CommandRefusedException if the test store cannot be opened
+	 */
+	@Test
+	public void refusesFormerNameWithoutChangingCampaign() throws IOException, CommandRefusedException
+	{
+		// Requirement: R-I17
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("prompt-optimizer-cli-"));
+			Files.createDirectory(project.resolve(".git"));
+			String campaign = "campaign-1";
+			ByteArrayOutputStream former = new ByteArrayOutputStream();
+			ByteArrayOutputStream current = new ByteArrayOutputStream();
+			// The launcher closes the scope of each command, so each command gets its own scope over the same project
+			try (TestOptimizerCommandScope<?> scope = TestOptimizerCommandScope.of(Harness.CLAUDE, project);
+				PrintStream out = new PrintStream(former, true, StandardCharsets.UTF_8))
+			{
+				storeRunningTrial(scope, project, campaign, UUID.fromString("d031fc97-6965-4106-ab81-1ea2a0588ba1"),
+					true);
+				scope.sandboxRefusal = "The command reached the core.";
+				Map<String, String> before = contents(project);
+
+				int exit = PromptOptimizerCli.run(new String[]{"run", campaign}, _ -> scope, ZoneOffset.UTC, out);
+
+				requireThat(exit, "formerExit").isEqualTo(2);
+				requireThat(contents(project), "contents").isEqualTo(before);
+			}
+			try (TestOptimizerCommandScope<?> scope = TestOptimizerCommandScope.of(Harness.CLAUDE, project);
+				PrintStream out = new PrintStream(current, true, StandardCharsets.UTF_8))
+			{
+				scope.sandboxRefusal = "The command reached the core.";
+
+				int exit = PromptOptimizerCli.run(new String[]{"continue", campaign}, _ -> scope, ZoneOffset.UTC, out);
+
+				requireThat(exit, "currentExit").isEqualTo(1);
+			}
+			JsonMapper json = JsonMapper.builder().build();
+			JsonNode refusal = json.readTree(former.toString(StandardCharsets.UTF_8));
+			requireThat(refusal.get("status").asString(), "formerStatus").isEqualTo("invalid_input");
+			requireThat(refusal.get("message").asString(), "formerMessage").
+				startsWith("run is now continue: prompt-optimizer continue <campaign>").
+				doesNotContain("The command reached the core.");
+			requireThat(json.readTree(current.toString(StandardCharsets.UTF_8)).get("message").asString(),
+				"currentMessage").isEqualTo("The command reached the core.");
+		}
+	}
+
+	/**
 	 * Verifies that a command that starts sessions passes its source home and gateway login class to the scope that
 	 * starts the sessions, so that every session that the command starts takes its credential from that source home,
 	 * while a command that starts no session refuses them with the invalid-input status, naming the option, before it
@@ -514,7 +570,7 @@ public final class PromptOptimizerCliTest
 	private enum Preflight
 	{
 		READY, BACKGROUND_READY, WRONG_HARNESS, WRONG_REQUEST, BAD_PREFIX, BUSY,
-		LEGACY, MISSING, NO_LOOKUP, TIMEOUT, CONFIRM
+		LEGACY, MISSING, NO_LOOKUP, TIMEOUT, APPROVE
 	}
 
 	/**
@@ -565,9 +621,9 @@ public final class PromptOptimizerCliTest
 				}
 				String[] args = switch (preflight)
 				{
-					case BACKGROUND_READY -> new String[]{"run", campaign, "--background"};
-					case CONFIRM -> new String[]{"confirm", campaign};
-					default -> new String[]{"run", campaign};
+					case BACKGROUND_READY -> new String[]{"continue", campaign, "--background"};
+					case APPROVE -> new String[]{"approve", campaign};
+					default -> new String[]{"continue", campaign};
 				};
 				Map<String, String> before = contents(project);
 				int exit = PromptOptimizerCli.run(args, _ -> scope, ZoneOffset.UTC, out);
@@ -575,7 +631,7 @@ public final class PromptOptimizerCliTest
 				int expectedProbes = switch (preflight)
 				{
 					case READY, BACKGROUND_READY, WRONG_HARNESS, WRONG_REQUEST, BAD_PREFIX, BUSY, TIMEOUT -> 1;
-					case LEGACY, MISSING, NO_LOOKUP, CONFIRM -> 0;
+					case LEGACY, MISSING, NO_LOOKUP, APPROVE -> 0;
 				};
 				int expectedExit = 2;
 				String expectedMessage = scope.nestedQuotaRefusal;

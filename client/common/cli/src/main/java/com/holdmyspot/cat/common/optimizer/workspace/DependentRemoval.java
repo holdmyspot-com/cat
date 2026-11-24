@@ -113,7 +113,7 @@ public final class DependentRemoval
 		if (!problems.isEmpty())
 		{
 			throw new WorkspaceException(directory + " does not hold the dependents that the contract lists: " +
-				String.join("; ", problems) + ". Run revise so that the contract lists each dependent as it is.");
+				String.join("; ", problems) + ". Run `request-changes` so that the contract lists each dependent as it is.");
 		}
 		for (Dependent dependent : dependents)
 		{

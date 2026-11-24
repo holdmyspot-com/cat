@@ -268,7 +268,7 @@ final class ReportJson
 	 * Returns the command that gives a choice of an authority warning.
 	 *
 	 * @param choice the choice
-	 * @return the {@code choose} identifier, or {@code revise} for a contract revision
+	 * @return the {@code decide} identifier, or {@code request-changes} for a contract revision
 	 */
 	static String command(AuthorityWarning.Choice choice)
 	{
@@ -276,7 +276,7 @@ final class ReportJson
 		{
 			case USE_AUTHORIZED_SOURCE -> "use_authorized_source";
 			case STOP_CAMPAIGN -> "stop";
-			case REVISE_CAMPAIGN -> "revise";
+			case REVISE_CAMPAIGN -> "request-changes";
 		};
 	}
 

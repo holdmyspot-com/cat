@@ -180,7 +180,7 @@ public interface Core
 	 * @throws IOException if the store, the workspace or a session fails
 	 * @throws InterruptedException if the thread is interrupted while it waits
 	 */
-	CommandResult run(String campaign) throws CommandRefusedException, IOException, InterruptedException;
+	CommandResult continueCampaign(String campaign) throws CommandRefusedException, IOException, InterruptedException;
 
 	/**
 	 * Reports a campaign without changing it. Either harness may report any campaign.
@@ -208,7 +208,7 @@ public interface Core
 	 *   runs it, it has no proposal to confirm, or the proposal cannot be confirmed with {@code scope}
 	 * @throws IOException if the store or the workspace fails
 	 */
-	CommandResult confirm(String campaign, CertificationScope scope) throws CommandRefusedException, IOException;
+	CommandResult approve(String campaign, CertificationScope scope) throws CommandRefusedException, IOException;
 
 	/**
 	 * Regenerates the proposal from the user's feedback. When the contract author does not derive a revised contract
@@ -225,7 +225,7 @@ public interface Core
 	 * @throws IOException if the store, the workspace or a session fails
 	 * @throws InterruptedException if the thread is interrupted while it waits for a session
 	 */
-	CommandResult revise(String campaign, String feedback)
+	CommandResult requestChanges(String campaign, String feedback)
 		throws CommandRefusedException, IOException, InterruptedException;
 
 	/**
@@ -242,13 +242,13 @@ public interface Core
 	 * @throws IOException if the store, the workspace or the delivery fails
 	 * @throws InterruptedException if the thread is interrupted while the delivery waits for the campaign's sessions
 	 */
-	CommandResult choose(String campaign, Choice choice, int attempt, int reviewPoint)
+	CommandResult decide(String campaign, Choice choice, int attempt, int reviewPoint)
 		throws CommandRefusedException, IOException, InterruptedException;
 
 	/**
 	 * Records a resolution of the current conflict. After the final conflict's choice, regenerates the proposal
 	 * from every chosen resolution, awaiting confirmation. If the contract author does not derive it, the failure
-	 * handling of {@link #revise} applies.
+	 * handling of {@link #requestChanges} applies.
 	 *
 	 * @param campaign the campaign's identifier
 	 * @param resolution the 1-based position among the current conflict's resolutions
@@ -263,7 +263,7 @@ public interface Core
 		throws CommandRefusedException, IOException, InterruptedException;
 
 	/**
-	 * Cancels a campaign, keeping its history and spent allowance.
+	 * Ends a campaign, keeping its history and spent allowance.
 	 *
 	 * @param campaign the campaign's identifier
 	 * @return the result
@@ -271,5 +271,5 @@ public interface Core
 	 *   runs it, or it is not active
 	 * @throws IOException if the store or the workspace fails
 	 */
-	CommandResult cancel(String campaign) throws CommandRefusedException, IOException;
+	CommandResult stop(String campaign) throws CommandRefusedException, IOException;
 }

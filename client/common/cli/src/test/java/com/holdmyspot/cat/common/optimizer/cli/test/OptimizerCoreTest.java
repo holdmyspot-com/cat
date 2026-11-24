@@ -326,11 +326,11 @@ public final class OptimizerCoreTest
 				OptimizerCore core = new OptimizerCore(command);
 				String id = project.campaign();
 				List<ThrowingCall> calls = List.of(
-					() -> core.run(id),
-					() -> core.confirm(id, CertificationScope.LATEST_VERSIONS),
-					() -> core.revise(id, "more"),
-					() -> core.choose(id, Choice.STOP, 0, 0),
-					() -> core.cancel(id),
+					() -> core.continueCampaign(id),
+					() -> core.approve(id, CertificationScope.LATEST_VERSIONS),
+					() -> core.requestChanges(id, "more"),
+					() -> core.decide(id, Choice.STOP, 0, 0),
+					() -> core.stop(id),
 					() -> core.start(project.target()));
 				for (ThrowingCall call : calls)
 				{
@@ -449,7 +449,7 @@ public final class OptimizerCoreTest
 			{
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			Path copy = scope.add(Files.createTempDirectory("optimizer-copy")).toRealPath();
 			copyProject(repository.root(), copy);
 			Map<String, String> original = contents(repository.root());
@@ -494,7 +494,7 @@ public final class OptimizerCoreTest
 					c.delivery(), c.optimization(), c.answeredWarnings(), c.testRevisions(), c.plugins());
 				store.replaceSnapshot(waiting);
 
-				CommandResult result = core.choose(id, Choice.RETAIN_INCUMBENT, 0, 0);
+				CommandResult result = core.decide(id, Choice.RETAIN_INCUMBENT, 0, 0);
 
 				requireThat(result.delivery(), "delivery").isNotNull();
 				requireThat(result.delivery().result(), "result").isInstanceOf(Delivered.class);
@@ -539,11 +539,11 @@ public final class OptimizerCoreTest
 					OptimizerCore core = new OptimizerCore(command);
 					String id = project.campaign();
 					List<ThrowingCall> calls = List.of(
-						() -> core.run(id),
-						() -> core.confirm(id, CertificationScope.LATEST_VERSIONS),
-						() -> core.revise(id, "more"),
-						() -> core.choose(id, Choice.STOP, 0, 0),
-						() -> core.cancel(id),
+						() -> core.continueCampaign(id),
+						() -> core.approve(id, CertificationScope.LATEST_VERSIONS),
+						() -> core.requestChanges(id, "more"),
+						() -> core.decide(id, Choice.STOP, 0, 0),
+						() -> core.stop(id),
 						() -> core.start(project.target()));
 					String resume = switch (harness)
 					{
@@ -598,7 +598,7 @@ public final class OptimizerCoreTest
 				List<ThrowingCall> calls = List.of(
 					() -> core.status("campaign-1"),
 					() -> core.status("CLAUDE.md"),
-					() -> core.cancel("campaign-1"));
+					() -> core.stop("campaign-1"));
 				for (ThrowingCall call : calls)
 				{
 					CommandRefusedException refusal = null;
@@ -633,7 +633,7 @@ public final class OptimizerCoreTest
 			CommandRefusedException refusal = null;
 			try
 			{
-				core.confirm(project.campaign(), CertificationScope.LATEST_VERSIONS);
+				core.approve(project.campaign(), CertificationScope.LATEST_VERSIONS);
 			}
 			catch (CommandRefusedException e)
 			{
@@ -1519,7 +1519,7 @@ public final class OptimizerCoreTest
 
 	/**
 	 * Returns each way that a contract author session can end without completing, with the message that {@code start}
-	 * and {@code revise} report.
+	 * and {@code request-changes} report.
 	 *
 	 * @return the session result and the text that the message contains
 	 */
@@ -1605,7 +1605,7 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that {@code run} refuses with the refusal's message, before it starts any session, when no request
+	 * Verifies that {@code continue} refuses with the refusal's message, before it starts any session, when no request
 	 * server serves the host session.
 	 *
 	 * @throws Exception if the repository cannot be written or the command fails for another reason
@@ -1619,11 +1619,11 @@ public final class OptimizerCoreTest
 			{
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			repository.scope().refuseLaunches(LAUNCH_REFUSAL);
 			int requests = repository.sessions().requests().size();
 
-			String refusal = refusal(() -> repository.core().run(id));
+			String refusal = refusal(() -> repository.core().continueCampaign(id));
 
 			requireThat(refusal, "refusal").isEqualTo(LAUNCH_REFUSAL);
 			requireThat(repository.sessions().requests().size(), "requests").isEqualTo(requests);
@@ -1631,7 +1631,7 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that {@code revise} refuses with the refusal's message, before it starts a session or requests a
+	 * Verifies that {@code request-changes} refuses with the refusal's message, before it starts a session or requests a
 	 * contract revision, when no request server serves the host session, and that it revises once the server runs.
 	 * <p>
 	 * A revision request that the contract author never answers leaves the campaign waiting for a revised contract
@@ -1648,18 +1648,18 @@ public final class OptimizerCoreTest
 			{
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			repository.scope().refuseLaunches(LAUNCH_REFUSAL);
 			int requests = repository.sessions().requests().size();
 
-			String refusal = refusal(() -> repository.core().revise(id, "Exempt detailed safety explanations."));
+			String refusal = refusal(() -> repository.core().requestChanges(id, "Exempt detailed safety explanations."));
 
 			requireThat(refusal, "refusal").isEqualTo(LAUNCH_REFUSAL);
 			requireThat(repository.sessions().requests().size(), "requests").isEqualTo(requests);
 			requireThat(repository.load(id).revisionRequested(), "revisionRequested").isFalse();
 
 			repository.scope().allowLaunches();
-			CommandResult revised = repository.core().revise(id, "Exempt detailed safety explanations.");
+			CommandResult revised = repository.core().requestChanges(id, "Exempt detailed safety explanations.");
 			requireThat(proposalText(revised), "proposal").contains("## Requirements");
 			requireThat(repository.load(id).revisionRequested(), "revisionRequested").isTrue();
 		}
@@ -1672,7 +1672,7 @@ public final class OptimizerCoreTest
 	 * <p>
 	 * The pause is the user's only way to resolve the conflict. A resolution that consumed it and then failed to start
 	 * the contract author left the campaign with a revision request, no pending decision and no proposal, so
-	 * {@code run} reported that a revision waited for confirmation while {@code status} reported {@code running}.
+	 * {@code continue} reported that a revision waited for confirmation while {@code status} reported {@code running}.
 	 *
 	 * @throws Exception if the repository cannot be written or the command fails for another reason
 	 */
@@ -1686,9 +1686,9 @@ public final class OptimizerCoreTest
 			{
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			pauseConflicts(repository, id);
-			output(repository, List.of("choose", id, "resolution_2"));
+			output(repository, List.of("decide", id, "resolution_2"));
 			repository.scope().refuseLaunches(LAUNCH_REFUSAL);
 			int requests = repository.sessions().requests().size();
 
@@ -1702,7 +1702,7 @@ public final class OptimizerCoreTest
 				"offered").isEqualTo("Exempt greetings.");
 
 			repository.scope().allowLaunches();
-			ObjectNode last = output(repository, List.of("choose", id, "resolution_1"));
+			ObjectNode last = output(repository, List.of("decide", id, "resolution_1"));
 			requireThat(proposalText(last), "proposal").contains("## Requirements");
 			requireThat(repository.load(id).revisionRequested(), "revisionRequested").isTrue();
 			requireThat(repository.load(id).pending(), "pending").isNull();
@@ -1726,11 +1726,11 @@ public final class OptimizerCoreTest
 
 	/**
 	 * Verifies that a contract author that cannot derive a revision leaves the campaign waiting for the user's choice
-	 * to retry or stop, with the feedback kept, and that {@code status} and {@code run} both say so.
+	 * to retry or stop, with the feedback kept, and that {@code status} and {@code continue} both say so.
 	 * <p>
 	 * The campaign repeats a failed derivation 3 times, except after an interruption, which starts no further session.
-	 * The first design left a confirmed campaign that waited for a revision that nothing derived: {@code run} said that
-	 * a revision waited for confirmation, {@code status} said {@code running}, and the feedback was gone.
+	 * The first design left a confirmed campaign that waited for a revision that nothing derived: {@code continue} said
+	 * that a revision waited for confirmation, {@code status} said {@code running}, and the feedback was gone.
 	 *
 	 * @param end how every contract author session ends after the campaign is confirmed
 	 * @throws Exception if the repository cannot be written or a command fails
@@ -1745,14 +1745,14 @@ public final class OptimizerCoreTest
 			{
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			repository.authorEnd().set(_ -> end);
 			int sessions = repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).size();
 			int expected = 4;
 			if (end instanceof SessionResult.Interrupted)
 				expected = 1;
 
-			ObjectNode revised = output(repository, List.of("revise", id, "Exempt detailed safety explanations."));
+			ObjectNode revised = output(repository, List.of("request-changes", id, "Exempt detailed safety explanations."));
 
 			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).size() - sessions, "sessions").
 				isEqualTo(expected);
@@ -1760,7 +1760,7 @@ public final class OptimizerCoreTest
 			requireThat(revised.get("proposal_file").isNull(), "proposalFile").isTrue();
 			requireThat(choiceIds(revised), "choices").isEqualTo(List.of("retry", "stop"));
 			requireThat(repository.load(id).revisionRequested(), "revisionRequested").isTrue();
-			for (String command : List.of("status", "run"))
+			for (String command : List.of("status", "continue"))
 			{
 				ObjectNode shown = output(repository, List.of(command, id));
 				requireThat(shown.get("status").asString(), command + "Status").isEqualTo("awaiting_user");
@@ -1769,18 +1769,18 @@ public final class OptimizerCoreTest
 					isEqualTo(revised.get("pending").asString());
 				requireThat(choiceIds(shown), command + "Choices").isEqualTo(List.of("retry", "stop"));
 			}
-			requireThat(refusal(() -> repository.core().confirm(id, CertificationScope.LATEST_VERSIONS)),
+			requireThat(refusal(() -> repository.core().approve(id, CertificationScope.LATEST_VERSIONS)),
 				"confirmRefusal").contains("retry");
 			requireThat(output(repository, List.of("start", "CLAUDE.md")).get("message").asString(), "startMessage").
 				contains("retry");
 
 			repository.authorEnd().set(_ -> null);
-			ObjectNode retried = output(repository, List.of("choose", id, "retry"));
+			ObjectNode retried = output(repository, List.of("decide", id, "retry"));
 			requireThat(proposalText(retried), "proposal").contains("## Requirements");
 			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).getLast().turns().getFirst(),
 				"feedback").contains("Exempt detailed safety explanations.");
 			requireThat(repository.load(id).pending(), "pending").isNull();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			requireThat(repository.load(id).lineages().size(), "lineages").isEqualTo(2);
 		}
 	}
@@ -1801,7 +1801,7 @@ public final class OptimizerCoreTest
 			{
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			int sessions = repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).size();
 			repository.authorEnd().set(number ->
 			{
@@ -1810,7 +1810,7 @@ public final class OptimizerCoreTest
 				return null;
 			});
 
-			CommandResult revised = repository.core().revise(id, "Exempt detailed safety explanations.");
+			CommandResult revised = repository.core().requestChanges(id, "Exempt detailed safety explanations.");
 
 			requireThat(proposalText(revised), "proposal").contains("## Requirements");
 			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).size() - sessions, "sessions").
@@ -1836,18 +1836,18 @@ public final class OptimizerCoreTest
 			{
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			pauseConflicts(repository, id);
-			output(repository, List.of("choose", id, "resolution_2"));
+			output(repository, List.of("decide", id, "resolution_2"));
 			repository.authorEnd().set(_ -> new SessionResult.Failed("The contract author crashed", List.of()));
 
-			ObjectNode last = output(repository, List.of("choose", id, "resolution_1"));
+			ObjectNode last = output(repository, List.of("decide", id, "resolution_1"));
 
 			requireThat(last.get("status").asString(), "status").isEqualTo("awaiting_user");
 			requireThat(choiceIds(last), "choices").isEqualTo(List.of("retry", "stop"));
 			requireThat(last.get("pending").asString(), "pending").contains("The contract author crashed");
 			repository.authorEnd().set(_ -> null);
-			ObjectNode retried = output(repository, List.of("choose", id, "retry"));
+			ObjectNode retried = output(repository, List.of("decide", id, "retry"));
 			requireThat(proposalText(retried), "proposal").contains("## Requirements");
 			SessionRequest request = repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).getLast();
 			requireThat(request.turns().getFirst(), "feedback").contains("r1, r2").contains("r3, r4").
@@ -1857,7 +1857,7 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that {@code revise} with other feedback replaces the feedback that a failed derivation kept.
+	 * Verifies that {@code request-changes} with other feedback replaces the feedback that a failed derivation kept.
 	 *
 	 * @throws Exception if the repository cannot be written or a command fails
 	 */
@@ -1871,13 +1871,13 @@ public final class OptimizerCoreTest
 			{
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			repository.authorEnd().set(_ -> new SessionResult.Failed("The contract author crashed", List.of()));
-			output(repository, List.of("revise", id, "First feedback."));
-			output(repository, List.of("revise", id, "Second feedback."));
+			output(repository, List.of("request-changes", id, "First feedback."));
+			output(repository, List.of("request-changes", id, "Second feedback."));
 
 			repository.authorEnd().set(_ -> null);
-			ObjectNode retried = output(repository, List.of("choose", id, "retry"));
+			ObjectNode retried = output(repository, List.of("decide", id, "retry"));
 
 			requireThat(proposalText(retried), "proposal").contains("## Requirements");
 			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).getLast().turns().getFirst(),
@@ -1887,7 +1887,7 @@ public final class OptimizerCoreTest
 
 	/**
 	 * Verifies that a revision whose derivation a crash ended is reported as waiting for a derivation, with the
-	 * choice to retry or stop, by {@code status} and {@code run} alike.
+	 * choice to retry or stop, by {@code status} and {@code continue} alike.
 	 *
 	 * @throws Exception if the repository cannot be written or a command fails
 	 */
@@ -1901,14 +1901,14 @@ public final class OptimizerCoreTest
 			{
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			repository.authorEnd().set(_ ->
 			{
 				throw new IllegalStateException("The process ended");
 			});
 			try
 			{
-				repository.core().revise(id, "Exempt detailed safety explanations.");
+				repository.core().requestChanges(id, "Exempt detailed safety explanations.");
 			}
 			catch (RuntimeException | IOException _)
 			{
@@ -1921,7 +1921,7 @@ public final class OptimizerCoreTest
 			requireThat(status.get("status").asString(), "status").isEqualTo("awaiting_user");
 			requireThat(status.get("pending").asString(), "pending").contains("being derived");
 			requireThat(choiceIds(status), "choices").isEqualTo(List.of("retry", "stop"));
-			ObjectNode retried = output(repository, List.of("choose", id, "retry"));
+			ObjectNode retried = output(repository, List.of("decide", id, "retry"));
 			requireThat(proposalText(retried), "proposal").contains("## Requirements");
 			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).getLast().turns().getFirst(),
 				"feedback").contains("Exempt detailed safety explanations.");
@@ -1929,7 +1929,7 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that {@code status} and {@code run} report a revised proposal that waits for confirmation as
+	 * Verifies that {@code status} and {@code continue} report a revised proposal that waits for confirmation as
 	 * {@code awaiting_user} with the same text, and that neither carries a proposal file.
 	 *
 	 * @throws Exception if the repository cannot be written or a command fails
@@ -1944,12 +1944,12 @@ public final class OptimizerCoreTest
 			{
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
-			CommandResult revised = repository.core().revise(id, "Exempt detailed safety explanations.");
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
+			CommandResult revised = repository.core().requestChanges(id, "Exempt detailed safety explanations.");
 			requireThat(proposalText(revised), "proposal").contains("## Requirements");
 
 			ObjectNode status = output(repository, List.of("status", id));
-			ObjectNode run = output(repository, List.of("run", id));
+			ObjectNode run = output(repository, List.of("continue", id));
 
 			requireThat(status.get("status").asString(), "status").isEqualTo("awaiting_user");
 			requireThat(status.get("proposal_file").isNull(), "statusProposalFile").isTrue();
@@ -1979,7 +1979,7 @@ public final class OptimizerCoreTest
 			{
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			Map<String, String> before = contents(repository.root());
 			int requests = repository.sessions().requests().size();
 			repository.scope().refuseWorktrees(WORKTREE_REFUSAL);
@@ -1987,9 +1987,9 @@ public final class OptimizerCoreTest
 			List<String> refusals = new ArrayList<>();
 			for (ThrowingRunnable command : List.<ThrowingRunnable>of(
 				() -> repository.core().start(Path.of("CLAUDE.md")),
-				() -> repository.core().run(id),
-				() -> repository.core().choose(id, Choice.STOP, 0, 0),
-				() -> repository.core().cancel(id)))
+				() -> repository.core().continueCampaign(id),
+				() -> repository.core().decide(id, Choice.STOP, 0, 0),
+				() -> repository.core().stop(id)))
 			{
 				refusals.add(expectThrows(WorktreeRefusedException.class, command).getMessage());
 			}
@@ -2085,7 +2085,7 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that public {@code start} and {@code confirm} admit a proposal whose contract author describes either a
+	 * Verifies that public {@code start} and {@code approve} admit a proposal whose contract author describes either a
 	 * read-only service credential or an acceptance-owned disposable fixture.
 	 * <p>
 	 * The description is supplied as an already-admitted contract-author classification. This test checks the public
@@ -2129,7 +2129,7 @@ public final class OptimizerCoreTest
 			requireThat(proposal.attempts(), "certificationAttempts").isEmpty();
 			requireThat(proposal.trials(), "countedTrials").isEmpty();
 
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 
 			Campaign confirmed = repository.load(id);
 			requireThat(confirmed.isConfirmed(), "confirmed").isTrue();
@@ -2184,7 +2184,8 @@ public final class OptimizerCoreTest
 			CommandResult retry = repository.core().start(Path.of("CLAUDE.md"));
 			requireThat(proposalText(retry), "retryProposal").contains(Outcome.INELIGIBLE_TRIAL_EFFECT.label()).
 				contains(evidence);
-			CommandResult revised = repository.core().revise(id, "Keep the production credential out of trial effects.");
+			CommandResult revised = repository.core().requestChanges(id,
+				"Keep the production credential out of trial effects.");
 			requireThat(proposalText(revised), "revisedProposal").contains(Outcome.INELIGIBLE_TRIAL_EFFECT.label()).
 				contains(evidence);
 			requireThat(revised.status().tokens().roles().keySet(), "revisedTokens").doesNotContain(SessionRole.TRIAL).
@@ -2196,8 +2197,8 @@ public final class OptimizerCoreTest
 			requireThat(campaign.development().counts(), "developmentCounts").isEmpty();
 			requireThat(Files.exists(repository.directory(id).resolve("held_out/pilot.json")), "pilotStored").isFalse();
 
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
-			repository.core().run(id);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().continueCampaign(id);
 
 			Campaign confirmed = repository.load(id);
 			requireThat(confirmed.isConfirmed(), "confirmed").isTrue();
@@ -2470,8 +2471,8 @@ public final class OptimizerCoreTest
 				{"create", false},
 				{"resume", true},
 				{"resume", false},
-				{"revise", true},
-				{"revise", false}
+				{"request-changes", true},
+				{"request-changes", false}
 			};
 	}
 
@@ -2526,8 +2527,8 @@ public final class OptimizerCoreTest
 					throw new IOException("The supplied filesystem denies symbolic-link creation");
 			});
 			List<String> arguments;
-			if (command.equals("revise"))
-				arguments = List.of("revise", id, "Cover the notes.");
+			if (command.equals("request-changes"))
+				arguments = List.of("request-changes", id, "Cover the notes.");
 			else
 				arguments = List.of("start", "CLAUDE.md");
 
@@ -2682,7 +2683,7 @@ public final class OptimizerCoreTest
 			String id = repository.core().start(Path.of("CLAUDE.md"), Campaign.DEFAULT_CEILING, null, file).status().
 				campaignId();
 			Files.delete(file);
-			repository.core().revise(id, "cover the formal tone");
+			repository.core().requestChanges(id, "cover the formal tone");
 
 			requireThat(repository.load(id).header().extraPermissions(), "recorded").isEqualTo(expected);
 			List<SessionRequest> requests = repository.sessions().requests();
@@ -3036,9 +3037,9 @@ public final class OptimizerCoreTest
 
 			String changedLoaderSettings = "instructionFiles=agents-md";
 			repository.scope().userLoaderSettings(changedLoaderSettings);
-			sharedEvaluatorDriftRefusal(repository, peer, id, "confirm", Harness.CLAUDE);
+			sharedEvaluatorDriftRefusal(repository, peer, id, "approve", Harness.CLAUDE);
 			repository.scope().userLoaderSettings(loaderSettings);
-			output(repository, List.of("confirm", id));
+			output(repository, List.of("approve", id));
 			Campaign confirmed = repository.load(id);
 			requireThat(confirmed.header().evaluationHarnesses(), "evaluators").
 				isEqualTo(Set.of(Harness.CODEX, Harness.CLAUDE));
@@ -3062,11 +3063,11 @@ public final class OptimizerCoreTest
 
 			Files.writeString(installedManifest, "{\"name\":\"peer-tools\",\"version\":\"3.4\"}");
 			repository.scope().userLoaderSettings(changedLoaderSettings);
-			sharedEvaluatorDriftRefusal(repository, peer, id, "run", Harness.CLAUDE);
+			sharedEvaluatorDriftRefusal(repository, peer, id, "continue", Harness.CLAUDE);
 			repository.scope().userLoaderSettings(loaderSettings);
 			repository.sessions().sessionDuration(Duration.ofSeconds(8));
 			peer.sessionDuration(Duration.ofSeconds(8));
-			output(repository, List.of("run", id));
+			output(repository, List.of("continue", id));
 			Campaign measured = repository.load(id);
 			requireThat(measured.development().working().snapshot(), "snapshot").
 				isEqualTo(confirmed.development().working().snapshot());
@@ -3079,7 +3080,7 @@ public final class OptimizerCoreTest
 			resumeSharedCampaign(reopened, target, peer, measured);
 			sharedTrialPlugins(reopened, peer, id);
 			peer.port().sessionEnvironmentVersion(peer.port().sessionEnvironmentVersion() + 1);
-			sharedEvaluatorDriftRefusal(reopened, peer, id, "run", Harness.CODEX);
+			sharedEvaluatorDriftRefusal(reopened, peer, id, "continue", Harness.CODEX);
 			cancelSharedCampaignWithoutPeer(reopened, peer, id);
 		}
 	}
@@ -3135,7 +3136,7 @@ public final class OptimizerCoreTest
 				new OptimizerCore(repository.scope()), repository.trialEnd(), repository.authorEnd());
 			resumeSharedCampaign(reopened, target, peer, campaign);
 			requireThat(JSON.readTree(Files.readString(pilotFile)), "resumedPilot").isEqualTo(pilots);
-			output(reopened, List.of("confirm", id));
+			output(reopened, List.of("approve", id));
 			Cell cell = reopened.load(id).contract().findCell(pilot.path("cell").asString()).orElseThrow();
 			requireThat(cell.evaluator(), "confirmedCellEvaluator").isEqualTo(Optional.of(Harness.CODEX));
 		}
@@ -3172,7 +3173,7 @@ public final class OptimizerCoreTest
 			int newVersion = owner.port().judgeVersion() + 1;
 			owner.port().judgeVersion(newVersion);
 
-			ObjectNode refusal = output(repository, List.of("confirm", id), 1);
+			ObjectNode refusal = output(repository, List.of("approve", id), 1);
 
 			requireThat(refusal.path("message").asString(), "refusal").contains("guard pilot").contains("`start`");
 			requireThat(Files.readAllBytes(snapshot), "snapshot").isEqualTo(originalSnapshot);
@@ -3186,7 +3187,7 @@ public final class OptimizerCoreTest
 			requireThat(owner.requests(SessionRole.TRIAL), "ownerTrials").isEmpty();
 			requireThat(peer.requests(SessionRole.TRIAL).size(), "peerTrials").isEqualTo(2 * GuardPilot.TRIALS);
 
-			output(repository, List.of("confirm", id));
+			output(repository, List.of("approve", id));
 			Campaign confirmed = repository.load(id);
 			String cell = confirmed.contract().cells().getFirst().id();
 			requireThat(confirmed.identity().valueOf(cell, MeasurementCondition.JUDGE), "judgeVersion").
@@ -3356,7 +3357,7 @@ public final class OptimizerCoreTest
 		int peerRequests = peer.requests().size();
 		repository.scope().usePeerTrials(null);
 
-		output(repository, List.of("cancel", id));
+		output(repository, List.of("stop", id));
 
 		requireThat(repository.load(id).lifecycle(), "lifecycle").isEqualTo(Lifecycle.CANCELLED);
 		requireThat(repository.sessions().requests().size(), "ownerRequests").isEqualTo(ownerRequests);
@@ -3544,7 +3545,7 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that {@code start} after {@code cancel}, while the cancelled campaign still waits for its contract to be
+	 * Verifies that {@code start} after {@code stop}, while the cancelled campaign still waits for its contract to be
 	 * confirmed, names the cancelled campaign and offers its resume, and neither crashes nor presents the campaign's
 	 * held proposal nor starts a session nor changes the campaign.
 	 *
@@ -3559,7 +3560,7 @@ public final class OptimizerCoreTest
 			{
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			repository.core().cancel(id);
+			repository.core().stop(id);
 			int requests = repository.sessions().requests().size();
 			Campaign before = repository.load(id);
 
@@ -3670,7 +3671,7 @@ public final class OptimizerCoreTest
 
 	/**
 	 * Verifies that when the corrected first proposal is also refused, CAT asks for {@code start} only, because no
-	 * stored proposal exists for {@code revise} to regenerate.
+	 * stored proposal exists for {@code request-changes} to regenerate.
 	 *
 	 * @throws IOException if the project cannot be written
 	 * @throws CommandRefusedException if the project cannot start a campaign
@@ -3687,13 +3688,13 @@ public final class OptimizerCoreTest
 
 			requireThat(repository.sessions().followUps, "followUps").size().isEqualTo(1);
 			requireThat(result.message(), "message").contains("The contract author's proposal is invalid").
-				endsWith("Run `start` again to retry.").doesNotContain("revise");
+				endsWith("Run `start` again to retry.").doesNotContain("request-changes");
 		}
 	}
 
 	/**
-	 * Verifies that a revised proposal refused after its correction turn still offers {@code revise} and {@code start}
-	 * as retry commands.
+	 * Verifies that a revised proposal refused after its correction turn still offers {@code request-changes} and {@code
+	 * start} as retry commands.
 	 * <p>
 	 * One valid creation supplies the stored proposal and fork that public revision restores. Invalid scripted revision
 	 * replies then exercise the refusal notice and its retry guidance. A campaign record alone lacks the proposal and
@@ -3718,10 +3719,10 @@ public final class OptimizerCoreTest
 			});
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
 
-			CommandResult revised = repository.core().revise(id, "cover the formal tone");
+			CommandResult revised = repository.core().requestChanges(id, "cover the formal tone");
 
 			requireThat(revised.message(), "message").contains("The contract author's proposal is invalid").
-				endsWith("Run `revise` with feedback, or `start`, to retry.");
+				endsWith("Run `request-changes` with feedback, or `start`, to retry.");
 		}
 	}
 
@@ -3744,7 +3745,7 @@ public final class OptimizerCoreTest
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
 			Path scenarios = Files.createDirectories(repository.root().resolve(".cat/tests/CLAUDE"));
 			Files.writeString(scenarios.resolve("reported.md"), "Turn: Summarize.\nExpected: Be brief.\n");
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 		}
 	}
 
@@ -3773,7 +3774,7 @@ public final class OptimizerCoreTest
 			ObjectNode stored = (ObjectNode) JSON.readTree(Files.readString(file, StandardCharsets.UTF_8));
 			stored.put("format_version", 3);
 			Files.writeString(file, JSON.writeValueAsString(stored), StandardCharsets.UTF_8);
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 		}
 	}
 
@@ -3805,7 +3806,7 @@ public final class OptimizerCoreTest
 			stored.remove("ranking");
 			stored.remove("ranking_source");
 			Files.writeString(file, JSON.writeValueAsString(stored), StandardCharsets.UTF_8);
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 		}
 	}
 
@@ -3835,7 +3836,7 @@ public final class OptimizerCoreTest
 			ObjectNode stored = (ObjectNode) JSON.readTree(Files.readString(file, StandardCharsets.UTF_8));
 			stored.put("format_version", 7);
 			Files.writeString(file, JSON.writeValueAsString(stored), StandardCharsets.UTF_8);
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 		}
 	}
 
@@ -3866,7 +3867,7 @@ public final class OptimizerCoreTest
 			ObjectNode stored = (ObjectNode) JSON.readTree(Files.readString(file, StandardCharsets.UTF_8));
 			stored.put("format_version", 8);
 			Files.writeString(file, JSON.writeValueAsString(stored), StandardCharsets.UTF_8);
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 		}
 	}
 
@@ -3896,7 +3897,7 @@ public final class OptimizerCoreTest
 			ObjectNode stored = (ObjectNode) JSON.readTree(Files.readString(file, StandardCharsets.UTF_8));
 			stored.put("format_version", 13);
 			Files.writeString(file, JSON.writeValueAsString(stored), StandardCharsets.UTF_8);
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 		}
 	}
 
@@ -3963,7 +3964,7 @@ public final class OptimizerCoreTest
 	/**
 	 * Verifies that {@code start} writes the proposal that the user reviews to a file of the campaign and that its
 	 * output names the file's path without carrying the proposal's text, so that the output stays short however long
-	 * the proposal is, and that {@code revise} replaces the file's text under the same path.
+	 * the proposal is, and that {@code request-changes} replaces the file's text under the same path.
 	 * <p>
 	 * The two public commands retain one persisted campaign and its physical proposal file to observe the output
 	 * path and replacement bytes after revision; author and pilot sessions are scripted.
@@ -3991,7 +3992,7 @@ public final class OptimizerCoreTest
 			requireThat(proposalText(started), "proposalText").contains("## Requirements").
 				contains("\n## Guard pilot\n").contains("Revision number 0 limit.");
 
-			ObjectNode revised = output(repository, List.of("revise", id, "cover the formal tone"));
+			ObjectNode revised = output(repository, List.of("request-changes", id, "cover the formal tone"));
 
 			requireThat(revised.get("proposal_file").asString(), "revisedProposalFile").isEqualTo(file.toString());
 			requireThat(proposalText(revised), "revisedText").contains("Revision number 1 limit.");
@@ -4017,7 +4018,7 @@ public final class OptimizerCoreTest
 				doesNotContain("info/exclude");
 			requireThat(started.get("proposal_file").isNull(), "missingProposal").isFalse();
 			String id = started.get("campaign").asString();
-			requireThat(output(repository, List.of("confirm", id, "latest_versions")).get("message").isNull(),
+			requireThat(output(repository, List.of("approve", id, "latest_versions")).get("message").isNull(),
 				"confirmNotice").isTrue();
 			requireThat(output(repository, List.of("start", "CLAUDE.md")).get("message").isNull(), "resumeNotice").
 				isTrue();
@@ -4088,7 +4089,7 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that {@code confirm} refuses a proposal file of format version 2, which predates deterministic checks
+	 * Verifies that {@code approve} refuses a proposal file of format version 2, which predates deterministic checks
 	 * and the core-task requirement, and asks for a new derivation instead of misreading it.
 	 * <p>
 	 * Uses one persisted campaign with a usable fork and a proposal produced by scripted sessions. Confirmation
@@ -4113,7 +4114,7 @@ public final class OptimizerCoreTest
 			IOException refusal = null;
 			try
 			{
-				repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+				repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			}
 			catch (IOException e)
 			{
@@ -4163,7 +4164,7 @@ public final class OptimizerCoreTest
 				doesNotContain("unused-model").doesNotContain("not-a-binding-file").doesNotContain("empty.agent");
 
 			String id = result.status().campaignId();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			Campaign campaign = repository.load(id);
 			requireThat(campaign.contract().findCell("safety").orElseThrow().profile(), "safety").isEqualTo(bound);
 			requireThat(campaign.contract().judge().profile(), "judge").isEqualTo(FakeProfileInventory.ROLE);
@@ -4376,15 +4377,15 @@ public final class OptimizerCoreTest
 			{
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			pauseConflicts(repository, id);
-			ObjectNode first = output(repository, List.of("choose", id, "resolution_2"));
+			ObjectNode first = output(repository, List.of("decide", id, "resolution_2"));
 			requireThat(first.get("proposal_file").isNull(), "proposal").isTrue();
 			requireThat(first.get("choices").get(0).get("label").asString(), "nextResolution").
 				isEqualTo("Exempt greetings.");
 			requireThat(repository.load(id).revisionRequested(), "revisionRequested").isFalse();
 			requireThat(repository.load(id).pending(), "remainingConflict").isNotNull();
-			ObjectNode last = output(repository, List.of("choose", id, "resolution_1"));
+			ObjectNode last = output(repository, List.of("decide", id, "resolution_1"));
 			requireThat(proposalText(last), "proposal").contains("## Requirements");
 			requireThat(repository.load(id).revisionRequested(), "revisionRequested").isTrue();
 			requireThat(repository.load(id).pending(), "pending").isNull();
@@ -4392,7 +4393,7 @@ public final class OptimizerCoreTest
 			requireThat(request.turns().getFirst(), "feedback").contains("r1, r2").contains("r3, r4").
 				contains("CLAUDE.md: Be brief.").contains("rules.md: Always explain.").contains("Drop brevity.").
 				contains("Exempt greetings.");
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			requireThat(repository.load(id).lineages().size(), "lineages").isEqualTo(2);
 		}
 	}
@@ -4418,9 +4419,9 @@ public final class OptimizerCoreTest
 			{
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			pauseConflicts(repository, id);
-			CommandResult revised = repository.core().revise(id, "Exempt detailed safety explanations.");
+			CommandResult revised = repository.core().requestChanges(id, "Exempt detailed safety explanations.");
 			requireThat(proposalText(revised), "proposal").contains("## Requirements");
 			requireThat(repository.load(id).pending(), "pending").isNull();
 			requireThat(repository.load(id).revisionRequested(), "revisionRequested").isTrue();
@@ -4479,7 +4480,7 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that {@code revise} regenerates the complete proposal from the feedback and stores it.
+	 * Verifies that {@code request-changes} regenerates the complete proposal from the feedback and stores it.
 	 * <p>
 	 * This test can take one second or longer during a parallel build: it starts a campaign through the public command,
 	 * which derives, validates and presents the proposal and runs its guard pilot of 20 judged trial sessions, and then
@@ -4500,7 +4501,7 @@ public final class OptimizerCoreTest
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
 			int pilotTrials = repository.sessions().requests(SessionRole.TRIAL).size();
-			CommandResult revised = repository.core().revise(id, "cover the formal tone");
+			CommandResult revised = repository.core().requestChanges(id, "cover the formal tone");
 			List<SessionRequest> contractAuthors = repository.sessions().requests(SessionRole.CONTRACT_AUTHOR);
 			requireThat(contractAuthors.size(), "contractAuthors").isEqualTo(2);
 			requireThat(contractAuthors.get(1).turns().getFirst(), "turn").contains("cover the formal tone").
@@ -4515,9 +4516,9 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that {@code revise} keeps every test case that the user reviewed in the part that the proposal showed,
-	 * under the same salt, when the revision adds test cases of a new boundary class, and that the confirmed contract
-	 * assigns each of them to that part.
+	 * Verifies that {@code request-changes} keeps every test case that the user reviewed in the part that the proposal
+	 * showed, under the same salt, when the revision adds test cases of a new boundary class, and that the confirmed
+	 * contract assigns each of them to that part.
 	 * <p>
 	 * Starting the proposal runs its guard pilot, and the proposal, the revision and the confirmation each persist the
 	 * campaign, so the test can exceed one second during a parallel build.
@@ -4551,7 +4552,7 @@ public final class OptimizerCoreTest
 			Map<String, Part> before = partsShown(proposalText(started));
 			requireThat(before.values(), "partsBefore").contains(Part.DEVELOPMENT).contains(Part.HELD_OUT);
 
-			CommandResult revised = repository.core().revise(id, "cover more tones");
+			CommandResult revised = repository.core().requestChanges(id, "cover more tones");
 
 			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).size(), "contractAuthors").
 				isEqualTo(2);
@@ -4566,7 +4567,7 @@ public final class OptimizerCoreTest
 			requireThat(JSON.readTree(Files.readString(stored)).get("salt").asLong(), "storedSalt").
 				isEqualTo(saltBefore);
 
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 
 			Contract contract = repository.load(id).contract();
 			requireThat(contract.salt(), "confirmedSalt").isEqualTo(saltBefore);
@@ -4610,7 +4611,7 @@ public final class OptimizerCoreTest
 
 	/**
 	 * Verifies that a described scope without described cells is refused and confirms nothing, and that
-	 * {@code confirm} without a certification scope freezes the weakest cell only with the contract.
+	 * {@code approve} without a certification scope freezes the weakest cell only with the contract.
 	 * <p>
 	 * One stored proposal is used for the refused described scope and the successful command with no scope argument.
 	 * Creating that proposal and persisting the resulting confirmation can exceed one second during a parallel
@@ -4626,11 +4627,11 @@ public final class OptimizerCoreTest
 			{
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			String described = refusal(() -> repository.core().confirm(id, CertificationScope.DESCRIBED));
+			String described = refusal(() -> repository.core().approve(id, CertificationScope.DESCRIBED));
 			requireThat(described, "described").contains("revision feedback");
 			requireThat(repository.load(id).isConfirmed(), "confirmedWithoutDescribedCells").isFalse();
 
-			output(repository, List.of("confirm", id));
+			output(repository, List.of("approve", id));
 			requireThat(repository.load(id).contract().profiles().scope(), "scope").
 				isEqualTo(CertificationScope.WEAKEST_CELL);
 		}
@@ -4658,7 +4659,7 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that {@code confirm} freezes the contract and that the incumbent's prompt is staged afterwards.
+	 * Verifies that {@code approve} freezes the contract and that the incumbent's prompt is staged afterwards.
 	 * <p>
 	 * Public start and confirmation create the stored proposal, captured fork and incumbent overlay before the test
 	 * stages and inspects the prompt. This filesystem and validation work can exceed one second during a parallel
@@ -4674,7 +4675,7 @@ public final class OptimizerCoreTest
 			{
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			Campaign campaign = repository.load(id);
 			requireThat(campaign.isConfirmed(), "confirmed").isTrue();
 			ForkView fork = repository.forks().open(repository.root(), repository.directory(id));
@@ -5078,7 +5079,7 @@ public final class OptimizerCoreTest
 			Files.createDirectories(output.resolve(manifest).getParent());
 			Files.writeString(output.resolve(manifest), "Changed build output.\n");
 
-			repository.core().revise(id, "cover the formal tone");
+			repository.core().requestChanges(id, "cover the formal tone");
 
 			requireThat(contents(pluginBase), "retainedPluginBase").isEqualTo(built);
 			requireThat(repository.load(id).plugins().orElseThrow().getFirst().baseDigest(), "retainedBaseDigest").
@@ -5609,7 +5610,7 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that {@code cancel} and {@code status} work on a campaign whose stored proposal no longer validates, so
+	 * Verifies that {@code stop} and {@code status} work on a campaign whose stored proposal no longer validates, so
 	 * the user is never left with a campaign that no command can end.
 	 * <p>
 	 * One public start creates the stored proposal and its draft before the fixture removes the derivation's judge.
@@ -5632,7 +5633,7 @@ public final class OptimizerCoreTest
 			invalidateProposal(repository, id);
 
 			requireThat(repository.core().status(id).status().lifecycle(), "reported").isEqualTo(Lifecycle.ACTIVE);
-			CommandResult cancelled = repository.core().cancel(id);
+			CommandResult cancelled = repository.core().stop(id);
 			requireThat(cancelled.status().lifecycle(), "lifecycle").isEqualTo(Lifecycle.CANCELLED);
 		}
 	}
@@ -5667,7 +5668,7 @@ public final class OptimizerCoreTest
 				isEqualTo(2);
 			requireThat(resumed.message(), "message").contains("no longer validates").contains("$.judge");
 			requireThat(proposalText(resumed), "proposal").isNotNull();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 		}
 	}
 
@@ -5712,7 +5713,7 @@ public final class OptimizerCoreTest
 				sources.add(new DerivedSource(path, "The harness loads the file by convention."));
 			repository.sessions().addDerivedSources(sources);
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			ForkView fork = repository.forks().open(repository.root(), repository.directory(id));
 			requireThat(fork.inventory().entries().keySet(), "held").contains(Path.of("extra.local.md")).
 				contains(outside).doesNotContain(Path.of(".env.example"));
@@ -5725,8 +5726,8 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that {@code revise} reruns the guard pilot of the prompt tests that the revision changed, and only
-	 * those.
+	 * Verifies that {@code request-changes} reruns the guard pilot of the prompt tests that the revision changed, and
+	 * only those.
 	 * <p>
 	 * This test can take one second or longer when it runs first in its JVM: it starts a campaign with its guard pilot
 	 * trials and revises it through the public commands, which reruns the changed prompt test's pilot trials; loading and
@@ -5749,7 +5750,7 @@ public final class OptimizerCoreTest
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
 			int pilotTrials = repository.sessions().requests(SessionRole.TRIAL).size();
 
-			CommandResult revised = repository.core().revise(id, "say confirms");
+			CommandResult revised = repository.core().requestChanges(id, "say confirms");
 
 			List<SessionRequest> trials = repository.sessions().requests(SessionRole.TRIAL);
 			List<SessionRequest> rerun = trials.subList(pilotTrials, trials.size());
@@ -5818,7 +5819,7 @@ public final class OptimizerCoreTest
 			requireThat(started.get("proposal_file").isNull(), "proposal").isTrue();
 			requireThat(choiceIds(started), "choices").isEqualTo(List.of("retry", "stop"));
 			requireThat(started.get("message").asString(), "message").contains("its guard pilot paused").
-				contains("`choose " + id + " retry`").contains("`choose " + id + " stop`");
+				contains("`decide " + id + " retry`").contains("`decide " + id + " stop`");
 			requireThat(started.get("pending").asString(), "pending").
 				contains("Pilot trial 6 of `formatting` ended without an outcome 3 times").
 				contains("The harness could not start the session");
@@ -5831,7 +5832,7 @@ public final class OptimizerCoreTest
 			requireThat(paused.trials(), "countedTrials").isEmpty();
 			requireThat(paused.attempts(), "attempts").isEmpty();
 			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "trialSessions").isEqualTo(8);
-			requireThat(refusal(() -> repository.core().confirm(id, CertificationScope.LATEST_VERSIONS)),
+			requireThat(refusal(() -> repository.core().approve(id, CertificationScope.LATEST_VERSIONS)),
 				"confirmRefusal").contains("its guard pilot paused");
 
 			ObjectNode again = output(repository, List.of("start", "CLAUDE.md"));
@@ -5890,7 +5891,7 @@ public final class OptimizerCoreTest
 				contains("`start`");
 			requireThat(choiceIds(started), "choices").isEmpty();
 			requireThat(repository.load(id).pending(), "pendingDecision").isNull();
-			requireThat(refusal(() -> repository.core().confirm(id, CertificationScope.LATEST_VERSIONS)),
+			requireThat(refusal(() -> repository.core().approve(id, CertificationScope.LATEST_VERSIONS)),
 				"confirmRefusal").contains("did not finish").contains("The trial session was interrupted");
 			requireThat(repository.load(id).isConfirmed(), "confirmed").isFalse();
 
@@ -5909,13 +5910,13 @@ public final class OptimizerCoreTest
 			requireThat(proposalText(resumed), "resumedProposal").
 				doesNotContain("before the trials were decided").doesNotContain("stopped before it finished");
 			requireThat(resumed.get("message").isNull(), "resumedMessage").isTrue();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			requireThat(repository.load(id).isConfirmed(), "confirmed").isTrue();
 		}
 	}
 
 	/**
-	 * Verifies that {@code choose retry} on a paused guard pilot runs only the trials that the pilot has not decided
+	 * Verifies that {@code decide retry} on a paused guard pilot runs only the trials that the pilot has not decided
 	 * and presents the proposal, which the user can then confirm.
 	 */
 	@Test
@@ -5932,7 +5933,7 @@ public final class OptimizerCoreTest
 				asString();
 			repository.trialEnd().set(_ -> null);
 
-			ObjectNode retried = output(repository, List.of("choose", id, "retry"));
+			ObjectNode retried = output(repository, List.of("decide", id, "retry"));
 
 			requireThat(retried.get("proposal_file").isNull(), "proposal").isFalse();
 			requireThat(proposalText(retried), "proposalText").contains("\n## Guard pilot\n");
@@ -5945,7 +5946,7 @@ public final class OptimizerCoreTest
 			requireThat(repository.load(id).pending(), "pendingDecision").isNull();
 			String stored = Files.readString(repository.directory(id).resolve("held_out/pilot.json"));
 			requireThat(stored, "storedPilot").doesNotContain("\"paused\":true");
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			requireThat(repository.load(id).isConfirmed(), "confirmed").isTrue();
 		}
 	}
@@ -5971,7 +5972,7 @@ public final class OptimizerCoreTest
 			Files.writeString(file, earlierPilot(file, 3).toString());
 			repository.trialEnd().set(_ -> null);
 
-			ObjectNode retried = output(repository, List.of("choose", id, "retry"));
+			ObjectNode retried = output(repository, List.of("decide", id, "retry"));
 
 			requireThat(retried.get("proposal_file").isNull(), "proposal").isFalse();
 			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "trialSessions").
@@ -6057,7 +6058,7 @@ public final class OptimizerCoreTest
 			// The 5 trials decided before the end are kept: 3 pilots of 20 trials less those 5 remain
 			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "trialSessions").
 				isEqualTo(decidedBeforeEnd + 1 + 3 * GuardPilot.TRIALS - decidedBeforeEnd);
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			requireThat(repository.load(id).isConfirmed(), "confirmed").isTrue();
 		}
 	}
@@ -6098,7 +6099,7 @@ public final class OptimizerCoreTest
 				"unfinishedPilotByTarget").isEqualTo("running");
 			try
 			{
-				repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+				repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 				throw new AssertionError("The proposal of an unfinished pilot should not be confirmable");
 			}
 			catch (CommandRefusedException e)
@@ -6131,14 +6132,14 @@ public final class OptimizerCoreTest
 			// No trial that a slice decided ran again, and no trial that a slice cancelled stayed undecided
 			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "trialSessions").
 				isEqualTo(3 * GuardPilot.TRIALS);
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			requireThat(repository.load(id).isConfirmed(), "confirmed").isTrue();
 		}
 	}
 
 	/**
-	 * Verifies that {@code revise} runs the guard pilot that the revision reruns in slices, as {@code start} does:
-	 * it reports {@code running} with the pilot's progress while the pilot is unfinished, repeating {@code start}
+	 * Verifies that {@code request-changes} runs the guard pilot that the revision reruns in slices, as {@code start}
+	 * does: it reports {@code running} with the pilot's progress while the pilot is unfinished, repeating {@code start}
 	 * continues the pilot without rerunning its decided trials, and the slice that ends it presents the revised
 	 * proposal.
 	 */
@@ -6159,7 +6160,7 @@ public final class OptimizerCoreTest
 			int pilotTrials = repository.sessions().requests(SessionRole.TRIAL).size();
 			repository.sessions().sessionDuration(Duration.ofSeconds(30));
 
-			ObjectNode slice = output(repository, List.of("revise", id, "say confirms"));
+			ObjectNode slice = output(repository, List.of("request-changes", id, "say confirms"));
 
 			requireThat(slice.get("status").asString(), "status").isEqualTo("running");
 			requireThat(slice.get("proposal_file").isNull(), "proposalFile").isTrue();
@@ -6180,13 +6181,13 @@ public final class OptimizerCoreTest
 				contains("confirms before deleting");
 			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "trialSessions").
 				isEqualTo(pilotTrials + GuardPilot.TRIALS);
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			requireThat(repository.load(id).isConfirmed(), "confirmed").isTrue();
 		}
 	}
 
 	/**
-	 * Verifies that {@code choose retry} on a paused guard pilot runs the pilot in slices, as {@code start} does:
+	 * Verifies that {@code decide retry} on a paused guard pilot runs the pilot in slices, as {@code start} does:
 	 * when the pilot does not end in the slice, the command reports {@code running} with the pilot's progress and no
 	 * pending decision, and repeating {@code start} continues the pilot, running only the trials that are undecided.
 	 */
@@ -6205,7 +6206,7 @@ public final class OptimizerCoreTest
 			repository.trialEnd().set(_ -> null);
 			repository.sessions().sessionDuration(Duration.ofSeconds(30));
 
-			ObjectNode slice = output(repository, List.of("choose", id, "retry"));
+			ObjectNode slice = output(repository, List.of("decide", id, "retry"));
 
 			requireThat(slice.get("status").asString(), "status").isEqualTo("running");
 			requireThat(slice.get("proposal_file").isNull(), "proposalFile").isTrue();
@@ -6226,7 +6227,7 @@ public final class OptimizerCoreTest
 			// The 5 trials decided before the pause are kept, and the 3 that failed ran again
 			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "trialSessions").
 				isEqualTo(8 + 3 * GuardPilot.TRIALS - 5);
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			requireThat(repository.load(id).isConfirmed(), "confirmed").isTrue();
 		}
 	}
@@ -6256,7 +6257,7 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that {@code choose stop} on a paused guard pilot ends the campaign without running a trial.
+	 * Verifies that {@code decide stop} on a paused guard pilot ends the campaign without running a trial.
 	 */
 	@Test
 	public void stopEndsPausedPilotCampaign() throws Exception
@@ -6272,7 +6273,7 @@ public final class OptimizerCoreTest
 				asString();
 			repository.trialEnd().set(_ -> null);
 
-			ObjectNode stopped = output(repository, List.of("choose", id, "stop"));
+			ObjectNode stopped = output(repository, List.of("decide", id, "stop"));
 
 			requireThat(stopped.get("proposal_file").isNull(), "proposal").isTrue();
 			requireThat(repository.load(id).lifecycle(), "lifecycle").isEqualTo(Lifecycle.CANCELLED);
@@ -6281,8 +6282,8 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that a {@code revise} that reruns a changed test's guard pilot pauses, with the retry and stop choice
-	 * and no proposal, when one of that pilot's trials ends without an outcome three times.
+	 * Verifies that a {@code request-changes} that reruns a changed test's guard pilot pauses, with the retry and stop
+	 * choice and no proposal, when one of that pilot's trials ends without an outcome three times.
 	 */
 	@Test
 	public void revisePausesWhenItsPilotTrialNeverEnds() throws Exception
@@ -6302,7 +6303,7 @@ public final class OptimizerCoreTest
 			int pilotTrials = repository.sessions().requests(SessionRole.TRIAL).size();
 			repository.trialEnd().set(failingTrials(pilotTrials + 1, pilotTrials + 3));
 
-			ObjectNode revised = output(repository, List.of("revise", id, "say confirms"));
+			ObjectNode revised = output(repository, List.of("request-changes", id, "say confirms"));
 
 			requireThat(revised.get("status").asString(), "status").isEqualTo("awaiting_user");
 			requireThat(revised.get("proposal_file").isNull(), "proposal").isTrue();
@@ -6313,7 +6314,7 @@ public final class OptimizerCoreTest
 				isEqualTo(pilotTrials + 3);
 
 			repository.trialEnd().set(_ -> null);
-			ObjectNode retried = output(repository, List.of("choose", id, "retry"));
+			ObjectNode retried = output(repository, List.of("decide", id, "retry"));
 
 			requireThat(retried.get("proposal_file").isNull(), "proposal").isFalse();
 			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "resumedTrialSessions").
@@ -6348,8 +6349,8 @@ public final class OptimizerCoreTest
 				requireThat(Files.exists(trial.source().resolve(".env.example")), "ignoredFile").isFalse();
 			}
 
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
-			repository.core().revise(id, "cover the formal tone");
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().requestChanges(id, "cover the formal tone");
 
 			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "trials").isEqualTo(trials.size());
 		}
@@ -6376,7 +6377,7 @@ public final class OptimizerCoreTest
 			requireThat(fork.inventory().entries().keySet(), "held").contains(Path.of("extra.local.md"));
 			FileInventory recorded = fork.inventory();
 
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 
 			ForkView confirmed = repository.forks().open(repository.root(), repository.directory(id));
 			requireThat(confirmed.inventory(), "recordedFilesAfterConfirmation").isEqualTo(recorded);
@@ -6406,9 +6407,9 @@ public final class OptimizerCoreTest
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
 			repository.sessions().derivedSources(initial);
 
-			repository.core().revise(id, "drop the local rules");
+			repository.core().requestChanges(id, "drop the local rules");
 
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			ForkView fork = repository.forks().open(repository.root(), repository.directory(id));
 			Overlay incumbent = new FileCandidateOverlays(repository.directory(id), fork.inventory(),
 				repository.scope().json(), Yielding.fileReplacer()).require(repository.load(id).incumbent().snapshot());
@@ -6437,14 +6438,14 @@ public final class OptimizerCoreTest
 			{
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			Sha256 confirmed = repository.load(id).incumbent().snapshot();
 			Files.writeString(repository.root().resolve("late.local.md"), "Late rules.\n");
 			repository.sessions().addDerivedSources(List.of(new DerivedSource("late.local.md",
 				"The harness loads the file by convention.")));
 			int pilotTrials = repository.sessions().requests(SessionRole.TRIAL).size();
 
-			CommandResult revised = repository.core().revise(id, "cover the late local rules");
+			CommandResult revised = repository.core().requestChanges(id, "cover the late local rules");
 
 			requireThat(proposalText(revised), "proposal").contains("\n## Guard pilot\n");
 			List<SessionRequest> trials = repository.sessions().requests(SessionRole.TRIAL);
@@ -6452,7 +6453,7 @@ public final class OptimizerCoreTest
 			requireThat(rerun, "rerun").isNotEmpty();
 			requireThat(repository.load(id).incumbent().snapshot(), "unconfirmedIncumbent").isEqualTo(confirmed);
 
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 
 			Campaign campaign = repository.load(id);
 			requireThat(campaign.lineages().size(), "lineages").isEqualTo(2);
@@ -6501,11 +6502,11 @@ public final class OptimizerCoreTest
 				int requests = repository.sessions().requests().size();
 				List<ThrowingCall> calls = List.of(
 					() -> repository.core().start(Path.of("CLAUDE.md")),
-					() -> repository.core().revise(id, "more"),
-					() -> repository.core().confirm(id, CertificationScope.LATEST_VERSIONS),
-					() -> repository.core().choose(id, Choice.STOP, 0, 0),
+					() -> repository.core().requestChanges(id, "more"),
+					() -> repository.core().approve(id, CertificationScope.LATEST_VERSIONS),
+					() -> repository.core().decide(id, Choice.STOP, 0, 0),
 					() -> repository.core().resolveConflict(id, 1),
-					() -> repository.core().cancel(id));
+					() -> repository.core().stop(id));
 				for (ThrowingCall call : calls)
 					requireThat(refusal(call), "refusal").contains(id).contains("is running in another process");
 				requireThat(repository.sessions().requests().size(), "requests").isEqualTo(requests);
@@ -6527,16 +6528,16 @@ public final class OptimizerCoreTest
 			{
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			Files.writeString(repository.root().resolve("late.local.md"), "Late rules.\n");
 			repository.sessions().addDerivedSources(List.of(new DerivedSource("late.local.md",
 				"The harness loads the file by convention.")));
-			repository.core().revise(id, "cover the late local rules");
+			repository.core().requestChanges(id, "cover the late local rules");
 			try (CampaignLock _ = holdLock(repository, id))
 			{
 				Map<String, String> before = contentsWhileHeld(repository, id);
 
-				String refusal = refusal(() -> repository.core().confirm(id, CertificationScope.LATEST_VERSIONS));
+				String refusal = refusal(() -> repository.core().approve(id, CertificationScope.LATEST_VERSIONS));
 
 				requireThat(refusal, "refusal").contains("is running in another process");
 				requireThat(contentsWhileHeld(repository, id), "contents").isEqualTo(before);
@@ -6545,8 +6546,8 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that {@code run} reports a campaign that awaits a test revision as busy while another process holds it,
-	 * without starting the test revision session or changing the campaign's files.
+	 * Verifies that {@code continue} reports a campaign that awaits a test revision as busy while another process holds
+	 * it, without starting the test revision session or changing the campaign's files.
 	 */
 	@Test
 	public void runReportsBusyBeforeTestRevision() throws Exception
@@ -6566,7 +6567,7 @@ public final class OptimizerCoreTest
 				});
 			});
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			requestTestRevision(repository, id);
 			repository.sessions().usage.put(SessionRole.CONTRACT_AUTHOR, List.of(new TokenUsage(100, 20, 30, 10)));
 			try (CampaignLock _ = holdLock(repository, id))
@@ -6574,7 +6575,7 @@ public final class OptimizerCoreTest
 				Map<String, String> before = contentsWhileHeld(repository, id);
 				int requests = repository.sessions().requests().size();
 
-				CommandResult result = repository.core().run(id);
+				CommandResult result = repository.core().continueCampaign(id);
 
 				requireThat(result.status().status(), "status").isEqualTo(new ReportStatus.Active(Status.BUSY));
 				requireThat(repository.sessions().requests().size(), "requests").isEqualTo(requests);
@@ -6675,10 +6676,10 @@ public final class OptimizerCoreTest
 				pilotSessions.put(role, repository.sessions().roles().stream().filter(value -> value == role).
 					count());
 			}
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			// Each session takes a minute, so that a slice's budget runs out after a few trials
 			repository.sessions().sessionDuration(Duration.ofMinutes(1));
-			CommandResult first = repository.core().run(id);
+			CommandResult first = repository.core().continueCampaign(id);
 			try (TestOptimizerCommandScope<FakeSessionPort> fresh = TestOptimizerCommandScope.of(Harness.CLAUDE,
 				repository.root(), repository.forks()))
 			{
@@ -6687,7 +6688,7 @@ public final class OptimizerCoreTest
 				requireThat(reported.roles().get(SessionRole.TRIAL).input().median(), "trialMedian").isEqualTo(100L);
 				requireThat(reported.roles().get(SessionRole.JUDGE).cachedInput().p90(),
 					"judgeCachedP90").isEqualTo(40L);
-				CommandResult second = repository.core().run(id);
+				CommandResult second = repository.core().continueCampaign(id);
 				TokenStatistics combined = new OptimizerCore(fresh).status(id).status().tokens();
 				requireThat(combined, "combinedUsage").isEqualTo(second.status().tokens());
 				for (SessionRole role : List.of(SessionRole.TRIAL, SessionRole.JUDGE))
@@ -6733,7 +6734,7 @@ public final class OptimizerCoreTest
 			repository.sessions().usage.put(SessionRole.CONTRACT_AUTHOR, usage);
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
 			repository.core().start(Path.of("CLAUDE.md"));
-			repository.core().revise(id, "Cover safety.");
+			repository.core().requestChanges(id, "Cover safety.");
 			try (TestOptimizerCommandScope<FakeSessionPort> fresh = TestOptimizerCommandScope.of(Harness.CLAUDE,
 				repository.root(), repository.forks()))
 			{
@@ -6847,8 +6848,8 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that {@code run} answers a request for a test revision with a contract author session that receives the
-	 * test and the prompt author's fault, and that a revised test starts a new lineage under the revised contract
+	 * Verifies that {@code continue} answers a request for a test revision with a contract author session that receives
+	 * the test and the prompt author's fault, and that a revised test starts a new lineage under the revised contract
 	 * without the user's confirmation.
 	 * <p>
 	 * This test can take one second or longer when it runs first in its JVM: it starts, confirms and runs through the
@@ -6874,10 +6875,10 @@ public final class OptimizerCoreTest
 				});
 			});
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			requestTestRevision(repository, id);
 
-			repository.core().run(id);
+			repository.core().continueCampaign(id);
 
 			List<SessionRequest> contractAuthors = repository.sessions().requests(SessionRole.CONTRACT_AUTHOR);
 			requireThat(contractAuthors.size(), "contractAuthors").isEqualTo(2);
@@ -6902,10 +6903,10 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that {@code run} runs the guard pilot of a test revision's corrected contract within its slice: when
-	 * the slice ends before the pilot does, {@code run} reports {@code running} with how many of the pilot's trials
-	 * are decided and starts no round, the stored pilot keeps the decided trials, and each next {@code run} continues
-	 * the pilot until the revised contract starts its lineage.
+	 * Verifies that {@code continue} runs the guard pilot of a test revision's corrected contract within its slice: when
+	 * the slice ends before the pilot does, {@code continue} reports {@code running} with how many of the pilot's trials
+	 * are decided and starts no round, the stored pilot keeps the decided trials, and each next {@code continue}
+	 * continues the pilot until the revised contract starts its lineage.
 	 */
 	@Test
 	public void runContinuesRevisedPilotAcrossSlices() throws Exception
@@ -6925,17 +6926,17 @@ public final class OptimizerCoreTest
 				});
 			});
 			String id = repository.core().start(Path.of("CLAUDE.md"), 1).status().campaignId();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			requestTestRevision(repository, id, false);
 			repository.sessions().sessionDuration(Duration.ofSeconds(20));
 			int trialsBefore = repository.sessions().requests(SessionRole.TRIAL).size();
 
-			ObjectNode slice = output(repository, List.of("run", id));
+			ObjectNode slice = output(repository, List.of("continue", id));
 
 			requireThat(slice.get("status").asString(), "status").withContext(slice.toString(), "output").
 				isEqualTo("running");
 			requireThat(slice.get("message").asString(), "message").contains("The guard pilot has decided").
-				contains(" of " + 3 * GuardPilot.TRIALS + " trials").contains("`run` again");
+				contains(" of " + 3 * GuardPilot.TRIALS + " trials").contains("`continue` again");
 			Campaign unfinished = repository.load(id);
 			requireThat(unfinished.awaitsTestRevision(), "awaitsTestRevision").isTrue();
 			requireThat(unfinished.lineages().size(), "lineages").isEqualTo(1);
@@ -6952,7 +6953,7 @@ public final class OptimizerCoreTest
 			while (repository.load(id).awaitsTestRevision())
 			{
 				requireThat(slices, "slices").isLessThan(30);
-				slice = output(repository, List.of("run", id));
+				slice = output(repository, List.of("continue", id));
 				++slices;
 				if (repository.load(id).awaitsTestRevision())
 				{
@@ -7011,19 +7012,19 @@ public final class OptimizerCoreTest
 	private static String unfinishedRevision(Repository repository) throws Exception
 	{
 		String id = repository.core().start(Path.of("CLAUDE.md"), 1).status().campaignId();
-		repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+		repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 		requestTestRevision(repository, id, false);
 		repository.sessions().sessionDuration(Duration.ofSeconds(20));
-		ObjectNode slice = output(repository, List.of("run", id));
+		ObjectNode slice = output(repository, List.of("continue", id));
 		requireThat(slice.get("status").asString(), "status").withContext(slice.toString(), "output").
 			isEqualTo("running");
 		return id;
 	}
 
 	/**
-	 * Verifies that a {@code run} that continues the guard pilot of a test revision starts no contract author session,
-	 * keeps the pilot's decided trials, and leaves the confirmed proposal as it was, even though the contract author
-	 * would now revise the test differently.
+	 * Verifies that a {@code continue} that continues the guard pilot of a test revision starts no contract author
+	 * session, keeps the pilot's decided trials, and leaves the confirmed proposal as it was, even though the contract
+	 * author would now revise the test differently.
 	 */
 	@Test
 	public void runContinuesStoredRevision() throws Exception
@@ -7032,14 +7033,14 @@ public final class OptimizerCoreTest
 		{
 			Repository repository = changingAuthorRepository(scope);
 			String id = repository.core().start(Path.of("CLAUDE.md"), 1).status().campaignId();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			Path heldOut = repository.directory(id).resolve("held_out");
 			String confirmed = Files.readString(heldOut.resolve("proposal.json"));
 			requestTestRevision(repository, id, false);
 			repository.sessions().sessionDuration(Duration.ofSeconds(20));
 			int authors = repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).size();
 
-			ObjectNode first = output(repository, List.of("run", id));
+			ObjectNode first = output(repository, List.of("continue", id));
 
 			requireThat(first.get("status").asString(), "status").withContext(first.toString(), "output").
 				isEqualTo("running");
@@ -7051,7 +7052,7 @@ public final class OptimizerCoreTest
 			int decided = decidedTrials(first.get("message").asString());
 			repository.sessions().sessionDuration(Duration.ofSeconds(60));
 
-			ObjectNode second = output(repository, List.of("run", id));
+			ObjectNode second = output(repository, List.of("continue", id));
 
 			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).size(), "continuingAuthors").
 				isEqualTo(authors + 1);
@@ -7080,7 +7081,7 @@ public final class OptimizerCoreTest
 			for (int slices = 0; repository.load(id).awaitsTestRevision(); ++slices)
 			{
 				requireThat(slices, "slices").isLessThan(30);
-				output(repository, List.of("run", id));
+				output(repository, List.of("continue", id));
 			}
 
 			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).size(), "authors").isEqualTo(authors);
@@ -7106,29 +7107,29 @@ public final class OptimizerCoreTest
 		{
 			Repository repository = changingAuthorRepository(scope);
 			String id = repository.core().start(Path.of("CLAUDE.md"), 1).status().campaignId();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			requestTestRevision(repository, id, false);
 			Path revision = repository.directory(id).resolve("held_out/revision.json");
 			int trials = repository.sessions().requests(SessionRole.TRIAL).size();
 			repository.trialEnd().set(failingTrials(trials + 1, trials + 3));
 
-			ObjectNode paused = output(repository, List.of("run", id));
+			ObjectNode paused = output(repository, List.of("continue", id));
 
 			requireThat(choiceIds(paused), "choiceIds").isEqualTo(List.of("retry", "stop"));
 			requireThat(Files.isRegularFile(revision), "savedRevision").isTrue();
 			int authors = repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).size();
 			repository.trialEnd().set(_ -> null);
 
-			output(repository, List.of("run", id));
+			output(repository, List.of("continue", id));
 
 			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "pausedTrials").isEqualTo(trials + 3);
 			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).size(), "pausedAuthors").
 				isEqualTo(authors);
-			output(repository, List.of("choose", id, "retry"));
+			output(repository, List.of("decide", id, "retry"));
 			for (int slices = 0; repository.load(id).awaitsTestRevision(); ++slices)
 			{
 				requireThat(slices, "slices").isLessThan(30);
-				output(repository, List.of("run", id));
+				output(repository, List.of("continue", id));
 			}
 			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).size(), "resumedAuthors").
 				isEqualTo(authors);
@@ -7148,7 +7149,7 @@ public final class OptimizerCoreTest
 			String id = unfinishedRevision(repository);
 			Path heldOut = repository.directory(id).resolve("held_out");
 
-			repository.core().cancel(id);
+			repository.core().stop(id);
 
 			requireThat(repository.load(id).lifecycle(), "lifecycle").isEqualTo(Lifecycle.CANCELLED);
 			requireThat(Files.exists(heldOut.resolve("revision.json")), "revisionStored").isFalse();
@@ -7176,7 +7177,7 @@ public final class OptimizerCoreTest
 			OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().store(repository.scope()).
 				replaceSnapshot(Transitions.apply(repository.load(id), new CampaignEvent.PilotFailed("A trial failed.")));
 
-			output(repository, List.of("choose", id, "stop"));
+			output(repository, List.of("decide", id, "stop"));
 
 			requireThat(repository.load(id).lifecycle(), "lifecycle").isEqualTo(Lifecycle.CANCELLED);
 			requireThat(Files.exists(heldOut.resolve("revision.json")), "revisionStored").isFalse();
@@ -7186,7 +7187,7 @@ public final class OptimizerCoreTest
 
 	/**
 	 * Verifies that a new contract proposal for a campaign whose test revision's guard pilot has not ended replaces the
-	 * stored revision, so that the next {@code run} does not continue it.
+	 * stored revision, so that the next {@code continue} does not continue it.
 	 */
 	@Test
 	public void reviseDeletesStoredRevision() throws Exception
@@ -7197,7 +7198,7 @@ public final class OptimizerCoreTest
 			String id = unfinishedRevision(repository);
 			Path heldOut = repository.directory(id).resolve("held_out");
 
-			repository.core().revise(id, "Name the audience in every test.");
+			repository.core().requestChanges(id, "Name the audience in every test.");
 
 			requireThat(Files.exists(heldOut.resolve("revision.json")), "revisionStored").isFalse();
 			requireThat(Files.exists(heldOut.resolve("revised_proposal.json")), "contractStored").isFalse();
@@ -7229,10 +7230,10 @@ public final class OptimizerCoreTest
 				return unrevised("sound", "The turns are organic and prove r1.", null);
 			});
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			requestTestRevision(repository, id);
 
-			repository.core().run(id);
+			repository.core().continueCampaign(id);
 
 			Campaign campaign = repository.load(id);
 			requireThat(campaign.testRevisions().isSound(1, "formatting"), "sound").isTrue();
@@ -7270,16 +7271,16 @@ public final class OptimizerCoreTest
 				return derivation(output -> output.putArray("scope_conditions"));
 			});
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			requestTestRevision(repository, id);
 
-			repository.core().run(id);
+			repository.core().continueCampaign(id);
 
 			Campaign paused = repository.load(id);
 			requireThat(paused.pending(), "pending").isInstanceOf(PendingDecision.TestRevisionBlocked.class);
 			requireThat(paused.choices(), "choices").contains(Choice.PROPOSED_CHANGE).contains(Choice.STOP);
 
-			CommandResult revised = repository.core().choose(id, Choice.PROPOSED_CHANGE, 0, 0);
+			CommandResult revised = repository.core().decide(id, Choice.PROPOSED_CHANGE, 0, 0);
 
 			requireThat(proposalText(revised), "proposal").contains("## Requirements");
 			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).getLast().turns().getFirst(),
@@ -7329,10 +7330,10 @@ public final class OptimizerCoreTest
 				});
 			});
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			requestTestRevision(repository, id);
 
-			CommandResult result = repository.core().run(id);
+			CommandResult result = repository.core().continueCampaign(id);
 
 			requireThat(result.message(), "message").contains("formatting").contains("r1").
 				contains("a formal summary shortened for an expert reader");
@@ -7348,7 +7349,7 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that {@code run} executes one slice with scripted trial and judge sessions and reports the status.
+	 * Verifies that {@code continue} executes one slice with scripted trial and judge sessions and reports the status.
 	 * <p>
 	 * This test can take one second or longer when it runs first in its JVM: it starts, confirms and runs one slice of
 	 * trial and judge sessions through the public commands; loading and compiling the classes of those commands, which
@@ -7362,11 +7363,11 @@ public final class OptimizerCoreTest
 		{
 			Repository repository = repository(scope, _ -> derivation(output -> output.putArray("scope_conditions")));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			// A slice ends at its deadline, so each session takes time on the test clock. Without it the slice would run
 			// every trial that the development judge's shadowing wants.
 			repository.sessions().sessionDuration(Duration.ofSeconds(20));
-			CommandResult result = repository.core().run(id);
+			CommandResult result = repository.core().continueCampaign(id);
 			requireThat(result.status().status().toString(), "status").contains("RUNNING");
 			requireThat(result.status().campaignId(), "campaignId").isEqualTo(id);
 			requireThat(repository.sessions().roles(), "roles").contains(SessionRole.TRIAL).
@@ -8043,7 +8044,7 @@ public final class OptimizerCoreTest
 			requireThat(warning, "warning").contains(gitFailure);
 			// The host shows the proposal instead of the summary, so the warning is in the message too
 			requireThat(started.get("message").asString(), "message").endsWith(warning);
-			String message = refusal(() -> repository.core().cancel("no-such-campaign"));
+			String message = refusal(() -> repository.core().stop("no-such-campaign"));
 			requireThat(message, "message").isEqualTo("No campaign has the identifier no-such-campaign.\n" +
 				warning);
 			requireThat(FileCampaignStore.removals(repository.campaigns()), "removals").isEqualTo(List.of(id));
@@ -8085,10 +8086,10 @@ public final class OptimizerCoreTest
 				built.answeredWarnings(), built.testRevisions(), built.plugins());
 			OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().store(repository.scope()).replaceSnapshot(tradeOff);
 
-			List<String> arguments = List.of("choose", id, "retain_incumbent");
+			List<String> arguments = List.of("decide", id, "retain_incumbent");
 			if (background)
 			{
-				arguments = List.of("choose", id, "retain_incumbent", "--background");
+				arguments = List.of("decide", id, "retain_incumbent", "--background");
 				Path directory = repository.directory(id);
 				repository.scope().backgroundNotice = _ ->
 					requireThat(Files.notExists(directory), "deliveryAndCleanupBeforeNotice").isTrue();
@@ -8110,7 +8111,7 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that {@code cancel} and {@code choose} reach the campaign's driver: a cancel is applied, and a choice
+	 * Verifies that {@code stop} and {@code decide} reach the campaign's driver: a cancel is applied, and a choice
 	 * the campaign does not wait for is refused by the driver.
 	 * <p>
 	 * A stored confirmed campaign and a captured-inventory fork provide the context that these commands read. Seeding
@@ -8139,13 +8140,13 @@ public final class OptimizerCoreTest
 				new Builder().confirmed().build().contract(), Builder.contractHash(), 17));
 			OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().store(repository.scope()).
 				replaceSnapshot(confirmed);
-			CommandResult cancelled = repository.core().cancel(id);
+			CommandResult cancelled = repository.core().stop(id);
 			requireThat(cancelled.status().lifecycle(), "lifecycle").isEqualTo(Lifecycle.CANCELLED);
 			requireThat(repository.load(id).lifecycle(), "stored").isEqualTo(Lifecycle.CANCELLED);
 			CommandRefusedException refusal = null;
 			try
 			{
-				repository.core().choose(id, Choice.STOP, 0, 0);
+				repository.core().decide(id, Choice.STOP, 0, 0);
 			}
 			catch (CommandRefusedException e)
 			{
@@ -8157,7 +8158,7 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that {@code choose use_authorized_source} answers a pending warning about an edit to an external file,
+	 * Verifies that {@code decide use_authorized_source} answers a pending warning about an edit to an external file,
 	 * which is read-only, and records the warning as answered so that a later report of it asks the user nothing.
 	 * <p>
 	 * This test can take one second or longer when it runs first in its JVM: it starts and confirms a campaign, then
@@ -8176,7 +8177,7 @@ public final class OptimizerCoreTest
 			{
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			Path target = Path.of("/external/shared.md").toAbsolutePath();
 			AuthorityWarning warning = new AuthorityWarning("R1", Path.of("shared.md"), target,
 				Limit.EXTERNAL_TARGET_READ_ONLY, List.of(AuthorityWarning.Choice.USE_AUTHORIZED_SOURCE,
@@ -8193,7 +8194,7 @@ public final class OptimizerCoreTest
 			OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().store(repository.scope()).replaceSnapshot(warned);
 			requireThat(warned.choices(), "choices").isEqualTo(List.of(Choice.USE_AUTHORIZED_SOURCE, Choice.STOP));
 
-			CommandResult result = repository.core().choose(id, Choice.USE_AUTHORIZED_SOURCE, 0, 0);
+			CommandResult result = repository.core().decide(id, Choice.USE_AUTHORIZED_SOURCE, 0, 0);
 			requireThat(result.status().authorityWarnings(), "warnings").isEmpty();
 			Campaign stored = repository.load(id);
 			requireThat(stored.pending(), "pending").isNull();
@@ -8243,7 +8244,7 @@ public final class OptimizerCoreTest
 			{
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			String target = Files.readString(repository.root().resolve("CLAUDE.md"), StandardCharsets.UTF_8);
 			// A certified attempt that proved a regression waits for the user to accept it or keep the incumbent
 			Campaign c = repository.load(id);
@@ -8288,7 +8289,7 @@ public final class OptimizerCoreTest
 				Files.writeString(loader, newSettings);
 			}
 			String selection = new ChoiceItem(choice, 0, false, 0).id();
-			ObjectNode result = output(repository, List.of("choose", id, selection));
+			ObjectNode result = output(repository, List.of("decide", id, selection));
 
 			JsonNode delivery = result.path("delivery_result");
 			requireThat(delivery.path("result").asString(), "delivery").isEqualTo("delivered");
@@ -8359,17 +8360,18 @@ public final class OptimizerCoreTest
 			String before = Files.readString(snapshot);
 			try
 			{
-				repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+				repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 				requireThat(false, "refused").isTrue();
 			}
 			catch (CommandRefusedException e)
 			{
 				requireThat(e.getMessage(), "message").isEqualTo("Confirmation is refused because the proposal " +
-					"lists conflicting requirements: `r1` and `r2`. Run revise with feedback that resolves each conflict.");
+					"lists conflicting requirements: `r1` and `r2`. Run `request-changes` with feedback that resolves each " +
+					"conflict.");
 			}
 			requireThat(Files.readString(snapshot), "campaignJson").isEqualTo(before);
-			repository.core().revise(id, "Exempt full explanations from the brevity requirement.");
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().requestChanges(id, "Exempt full explanations from the brevity requirement.");
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			requireThat(repository.load(id).isConfirmed(), "confirmed").isTrue();
 		}
 	}
@@ -8399,7 +8401,7 @@ public final class OptimizerCoreTest
 	 */
 	@Test(dataProvider = "confirmationBlockers", expectedExceptions = CommandRefusedException.class,
 		expectedExceptionsMessageRegExp = ".*Confirmation is refused because the proposal lists conflicting " +
-			"requirements: `r1`, `r2` and `r3`; `r2` and `r1`\\. Run revise with feedback that resolves each " +
+			"requirements: `r1`, `r2` and `r3`; `r2` and `r1`\\. Run `request-changes` with feedback that resolves each " +
 			"conflict\\.")
 	public void confirmListsEveryBlocker(boolean brokenLink)
 		throws IOException, CommandRefusedException, InterruptedException
@@ -8443,12 +8445,12 @@ public final class OptimizerCoreTest
 			String before = Files.readString(snapshot);
 			try
 			{
-				repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+				repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			}
 			catch (CommandRefusedException e)
 			{
 				String expected = "Confirmation is refused because the proposal lists conflicting requirements: " +
-					"`r1`, `r2` and `r3`; `r2` and `r1`. Run revise with feedback that resolves each conflict.";
+					"`r1`, `r2` and `r3`; `r2` and `r1`. Run `request-changes` with feedback that resolves each conflict.";
 				if (brokenLink)
 				{
 					expected = "These symbolic links block confirmation until they are resolved: broken.md. " + expected;
@@ -8508,7 +8510,7 @@ public final class OptimizerCoreTest
 			Files.createSymbolicLink(workspace.resolve("guide.md"), Path.of("../../../../../../CLAUDE.md"));
 
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 		}
 	}
 
@@ -8554,7 +8556,7 @@ public final class OptimizerCoreTest
 			Files.createSymbolicLink(workspace.resolve("guide.md"), Path.of("../../../../../../docs/guide.md"));
 
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			requireThat(repository.load(id).isConfirmed(), "confirmed").isTrue();
 		}
 	}
@@ -8635,12 +8637,12 @@ public final class OptimizerCoreTest
 				Map<String, String> before = contentsWhileHeld(repository, id);
 				String summary = repository.core().status(id).summary(ZoneOffset.UTC);
 				requireThat(summary, "snapshotdriver").contains("Background driver").contains("started");
-				requireThat(repository.core().run(id).status().status().label(), "secondrun").isEqualTo("busy");
+				requireThat(repository.core().continueCampaign(id).status().status().label(), "secondrun").isEqualTo("busy");
 				for (ThrowingCall call : List.<ThrowingCall>of(
-					() -> repository.core().revise(id, "feedback"),
-					() -> repository.core().confirm(id, CertificationScope.WEAKEST_CELL),
-					() -> repository.core().choose(id, Choice.STOP, 0, 0)))
-					requireThat(refusal(call), "refusal").contains("status").contains("cancel").doesNotContain("slice");
+					() -> repository.core().requestChanges(id, "feedback"),
+					() -> repository.core().approve(id, CertificationScope.WEAKEST_CELL),
+					() -> repository.core().decide(id, Choice.STOP, 0, 0)))
+					requireThat(refusal(call), "refusal").contains("`status`").contains("`stop`").doesNotContain("slice");
 				requireThat(contentsWhileHeld(repository, id), "read-onlystatusandrefusals").isEqualTo(before);
 				repository.scope().controlledWaiting = interval -> () ->
 				{
@@ -8648,7 +8650,7 @@ public final class OptimizerCoreTest
 						"requestbeforewaiting").isTrue();
 					held.close();
 				};
-				CommandResult cancelled = repository.core().cancel(id);
+				CommandResult cancelled = repository.core().stop(id);
 				requireThat(cancelled.status().lifecycle(), "cancelled").isEqualTo(Lifecycle.CANCELLED);
 				requireThat(cancelled.status().lifecycle().isResumable(), "resumable").isTrue();
 			}
@@ -8688,7 +8690,7 @@ public final class OptimizerCoreTest
 					requireThat(BackgroundDriver.stopRequested(lockFile, JSON), "requestbeforewaiting").isTrue();
 					held.close();
 				};
-				requireThat(repository.core().cancel(id).status().lifecycle(), "cancelled").
+				requireThat(repository.core().stop(id).status().lifecycle(), "cancelled").
 					isEqualTo(Lifecycle.CANCELLED);
 			}
 		}
@@ -8720,7 +8722,7 @@ public final class OptimizerCoreTest
 				"\",\"started\":\"2026-11-16T17:24:04.105463575Z\",\"token\":\"51e785b3\"}");
 			requireThat(repository.core().status(id).summary(ZoneOffset.UTC), "deadstatus").
 				contains("no longer alive").doesNotContain("Background driver");
-			repository.core().cancel(id);
+			repository.core().stop(id);
 			requireThat(Files.exists(identity), "identitydiscarded").isFalse();
 			requireThat(repository.core().status(id).summary(ZoneOffset.UTC), "afterforeground").
 				doesNotContain("no longer alive");
@@ -8749,7 +8751,7 @@ public final class OptimizerCoreTest
 			{
 				repository.scope().controlledWaiting = interval -> () -> repository.scope().clock().advance(interval);
 				Instant began = repository.scope().clock().instant();
-				CommandResult pending = repository.core().cancel(id);
+				CommandResult pending = repository.core().stop(id);
 				requireThat(pending.message(), "pending").contains("request stands").contains("not yet ended");
 				requireThat(Duration.between(began, repository.scope().clock().instant()), "boundedwait").
 					isEqualTo(Duration.ofSeconds(90));
@@ -8777,12 +8779,12 @@ public final class OptimizerCoreTest
 			String id = repository.core().start(Path.of("CLAUDE.md"), 1).status().campaignId();
 			int before = repository.sessions().requests(SessionRole.TRIAL).size();
 			repository.sessions().sessionDuration(Duration.ofMinutes(12));
-			ObjectNode result = output(repository, List.of("revise", id, "say confirms", "--background"));
+			ObjectNode result = output(repository, List.of("request-changes", id, "say confirms", "--background"));
 			requireThat(result.path("status").asString(), "status").isEqualTo("awaiting_user");
 			requireThat(proposalText(result), "proposal").contains("confirms before deleting");
 			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "trials").
 				isEqualTo(before + GuardPilot.TRIALS);
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			requireThat(repository.load(id).isConfirmed(), "confirmed").isTrue();
 		}
 	}
@@ -8811,7 +8813,7 @@ public final class OptimizerCoreTest
 		{
 			Repository repository = repository(cleanup, _ -> derivation(output -> output.putArray("scope_conditions")));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
 			Campaign c = repository.load(id);
 			Campaign evidence = new Builder().confirmed(c.contract(), c.lineage().number()).
 				working(c.development().working()).readyDevelopment().
@@ -8823,11 +8825,11 @@ public final class OptimizerCoreTest
 				c.throttle(), c.pendingDecisions(), c.revisionRequested(), c.outcome(), c.delivery(),
 				c.optimization(), c.answeredWarnings(), evidence.testRevisions(), c.plugins()));
 			repository.sessions().sessionDuration(Duration.ofMinutes(12));
-			List<String> arguments = List.of("run", id, "--background");
+			List<String> arguments = List.of("continue", id, "--background");
 			if (resume)
 			{
-				repository.core().cancel(id);
-				arguments = List.of("choose", id, "resume", "--background");
+				repository.core().stop(id);
+				arguments = List.of("decide", id, "resume", "--background");
 			}
 			Instant began = repository.scope().clock().instant();
 			int judgesBefore = repository.sessions().requests(SessionRole.JUDGE).size();

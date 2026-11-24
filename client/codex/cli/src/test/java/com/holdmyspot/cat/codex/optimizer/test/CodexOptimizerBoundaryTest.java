@@ -52,7 +52,7 @@ public final class CodexOptimizerBoundaryTest
 				}, () -> "the permission profile denies reads, so the launcher stayed sandboxed");
 			requireThat(boundary.backgroundRefusal().orElseThrow(), "reason").contains("denies reads").
 				contains("foreground slices");
-			boundary.validate(new Command.Run("campaign-1"));
+			boundary.validate(new Command.Continue("campaign-1"));
 		}
 	}
 
@@ -71,7 +71,7 @@ public final class CodexOptimizerBoundaryTest
 			{
 				throw new PolicyRefusal("thread identity is untrusted", "Start a new session");
 			}, () -> "sandboxed");
-			boundary.validate(new Command.Run("campaign-1"));
+			boundary.validate(new Command.Continue("campaign-1"));
 		}
 	}
 

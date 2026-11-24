@@ -7062,7 +7062,7 @@ public final class DriverTest
 	/**
 	 * Verifies that a foreground slice that stops on an infrastructure failure ends awaiting the user, not
 	 * {@code running}, and says what the failure was and how to go on. A {@code running} status tells the host agent
-	 * to call {@code run} again at once, which repeats a failure that nothing in the campaign changes.
+	 * to call {@code continue} again at once, which repeats a failure that nothing in the campaign changes.
 	 * <p>
 	 * A seeded authoring round and a session that cannot start reach the real slice-result reporting boundary
 	 * directly. The separate forbidden-edit test retains effect validation and cleanup; this case checks the
@@ -7086,7 +7086,7 @@ public final class DriverTest
 				requireThat(result.status().outcome(), "outcome").isEqualTo("infrastructure failure");
 				requireThat(result.status().status().label(), "status").isEqualTo("awaiting_user");
 				requireThat(result.status().pending(), "pending").contains(result.status().outcomeDetail()).
-					contains("`run`").contains("`cancel`");
+					contains("`continue`").contains("`stop`").doesNotContain("`run`").doesNotContain("`cancel`");
 				requireThat(result.status().choices(), "choices").isEmpty();
 			}
 		}
@@ -7333,7 +7333,7 @@ public final class DriverTest
 				requireThat(result.status().outcome(), "outcome").isEqualTo("infrastructure failure");
 				requireThat(result.status().outcomeDetail(), "outcomeDetail").
 					contains("docs/handbook.md is not among the files that trials receive").
-					contains("revise").contains("referenced file");
+					contains("`request-changes`").contains("referenced file");
 			}
 		}
 	}

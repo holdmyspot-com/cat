@@ -1100,7 +1100,7 @@ public final class Markdown
 	{
 		heading("Certification scope");
 		text.append("Certification covers each test's weakest cell in each evaluator unless you choose another scope. " +
-			"`confirm <campaign>` confirms those cells, and `confirm <campaign> <choice>` confirms a choice. " +
+			"`approve <campaign>` approves those cells, and `approve <campaign> <choice>` approves a choice. " +
 			"Development runs in each evaluator's weakest cells, at the lowest effort of the least capable models " +
 			"that the choice covers, and in every cell where a certification attempt fails. The choice sets the " +
 			"cells that the incumbent baseline and every certification attempt run in, and the cells that the " +

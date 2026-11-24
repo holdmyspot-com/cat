@@ -50,4 +50,4 @@ Use the prompt-optimizer skill to optimize and certify the compliance of {{targe
 ### confirmation_left_to_user
 
 - **kind**: guard
-- **description**: The agent asks the user to confirm or to give feedback and does not run `confirm`.
+- **description**: The agent asks the user to confirm or to give feedback and does not run `approve`.

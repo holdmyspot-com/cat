@@ -772,8 +772,8 @@ public final class ProposalTest
 	}
 
 	/**
-	 * Verifies that a stored derivation is validated again from its text, as {@code confirm} and {@code revise} read
-	 * it after the session's files are gone.
+	 * Verifies that a stored derivation is validated again from its text, as {@code approve} and
+	 * {@code request-changes} read it after the session's files are gone.
 	 *
 	 * @throws IOException              if the session's files cannot be moved or removed
 	 * @throws InvalidProposalException if the stored text is rejected
@@ -1114,12 +1114,14 @@ public final class ProposalTest
 			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
 
 		requireThat(proposal.render(), "render").contains("Unranked models: small").
-			contains("No choice is available yet").doesNotContain("### `weakest_cell`");
+			contains("No choice is available yet").doesNotContain("### `weakest_cell`").
+			contains("`approve <campaign>` approves those cells, and `approve <campaign> <choice>` approves a choice.").
+			doesNotContain("`confirm <campaign>");
 		for (CertificationScope scope : List.of(CertificationScope.WEAKEST_CELL, CertificationScope.LATEST_VERSIONS))
 		{
 			requireThat(proposal.isConfirmable(scope), scope.id()).isFalse();
 			requireThat(proposal.confirmationRefusal(scope), scope.id() + ".refusal").contains("small").
-				contains("revise");
+				contains("Run `request-changes` with feedback").doesNotContain("revise");
 		}
 
 		Proposal ranked = proposal(noLinks(), HostLogin.API_KEY);
@@ -1374,7 +1376,7 @@ public final class ProposalTest
 			contains("The referenced file `prompts/main.md` is a prompt source that the campaign optimizes").
 			contains("The project no longer holds the referenced file `docs/gone.md`.").
 			contains("The symbolic links of the referenced file `loop-a.md` form a cycle.").
-			contains("Run revise with feedback that corrects the referenced files.");
+			contains("Run `request-changes` with feedback that corrects the referenced files.");
 	}
 
 	/**
@@ -1886,14 +1888,14 @@ public final class ProposalTest
 		requireThat(built.contract().limitations(), "built").contains(
 			"Trials skip these hooks of the trial plugins because CAT could not verify their approval for the " +
 			"installed trial copies: tools@market SessionStart `./tools.sh`. Review those hooks and their approvals " +
-			"in the harness, then run revise to check them again.").contains(
+			"in the harness, then run `request-changes` to check them again.").contains(
 			"Trials skip these hooks of trial plugins that the project builds: cat SessionStart `./log.sh`; cat " +
 			"PostToolUse `./check.sh`. CAT reuses the user's hook approvals only for a copy of an installed plugin " +
 			"and for CAT, so approving these hooks in the harness does not change this.");
 		requireThat(builtCat.contract().limitations(), "builtCat").contains(
 			"Trials skip these hooks of the trial plugins because CAT could not verify their approval for the " +
 			"installed trial copies: cat SessionStart `./log.sh`. Review those hooks and their approvals in the " +
-			"harness, then run revise to check them again.");
+			"harness, then run `request-changes` to check them again.");
 		requireThat(builtCat.contract().limitations().stream().
 			filter(limitation -> limitation.contains("that the project builds")).toList(), "builtCat").isEmpty();
 		requireThat(approved.contract().limitations().stream().

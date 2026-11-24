@@ -225,10 +225,11 @@ public final class CommandsTest
 			}
 
 			@Override
-			public CommandResult run(String campaign) throws CommandRefusedException, IOException, InterruptedException
+			public CommandResult continueCampaign(String campaign)
+				throws CommandRefusedException, IOException, InterruptedException
 			{
-				calls.add("run " + campaign);
-				return core.run(campaign);
+				calls.add("continue " + campaign);
+				return core.continueCampaign(campaign);
 			}
 
 			@Override
@@ -239,27 +240,27 @@ public final class CommandsTest
 			}
 
 			@Override
-			public CommandResult confirm(String campaign, CertificationScope scope) throws CommandRefusedException,
+			public CommandResult approve(String campaign, CertificationScope scope) throws CommandRefusedException,
 				IOException
 			{
-				calls.add("confirm " + campaign + " " + scope.id());
-				return core.confirm(campaign, scope);
+				calls.add("approve " + campaign + " " + scope.id());
+				return core.approve(campaign, scope);
 			}
 
 			@Override
-			public CommandResult revise(String campaign, String feedback)
+			public CommandResult requestChanges(String campaign, String feedback)
 				throws CommandRefusedException, IOException, InterruptedException
 			{
-				calls.add("revise " + campaign + " " + feedback);
-				return core.revise(campaign, feedback);
+				calls.add("request-changes " + campaign + " " + feedback);
+				return core.requestChanges(campaign, feedback);
 			}
 
 			@Override
-			public CommandResult choose(String campaign, Choice choice, int attempt, int reviewPoint)
+			public CommandResult decide(String campaign, Choice choice, int attempt, int reviewPoint)
 				throws CommandRefusedException, IOException, InterruptedException
 			{
-				calls.add("choose " + campaign + " " + choice + " " + attempt + " " + reviewPoint);
-				return core.choose(campaign, choice, attempt, reviewPoint);
+				calls.add("decide " + campaign + " " + choice + " " + attempt + " " + reviewPoint);
+				return core.decide(campaign, choice, attempt, reviewPoint);
 			}
 
 			@Override
@@ -271,10 +272,10 @@ public final class CommandsTest
 			}
 
 			@Override
-			public CommandResult cancel(String campaign) throws CommandRefusedException, IOException
+			public CommandResult stop(String campaign) throws CommandRefusedException, IOException
 			{
-				calls.add("cancel " + campaign);
-				return core.cancel(campaign);
+				calls.add("stop " + campaign);
+				return core.stop(campaign);
 			}
 		}
 	}
@@ -286,41 +287,144 @@ public final class CommandsTest
 	public void dispatchesEveryCommand() throws IOException
 	{
 		// Requirement: R-I2
+		// Requirement: R-I17
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Project project = Project.create(cleanup);
 			StringBuilder output = new StringBuilder();
 			List<List<String>> commands = List.of(
 				List.of("start", "prompts/a.md"),
-				List.of("run", "c1"),
+				List.of("continue", "c1"),
 				List.of("status", "c1"),
 				List.of("status", "prompts/a.md"),
-				List.of("confirm", "c1"),
-				List.of("confirm", "c1", "weakest_cell"),
-				List.of("confirm", "c1", "latest_versions"),
-				List.of("confirm", "c1", "described"),
-				List.of("revise", "c1", "tighten the contract"),
-				List.of("choose", "c1", "keep_improvement", "--attempt", "2"),
-				List.of("choose", "c1", "more_evidence", "--review-point", "3"),
-				List.of("choose", "c1", "stop"),
-				List.of("cancel", "c1"));
+				List.of("approve", "c1"),
+				List.of("approve", "c1", "weakest_cell"),
+				List.of("approve", "c1", "latest_versions"),
+				List.of("approve", "c1", "described"),
+				List.of("request-changes", "c1", "tighten the contract"),
+				List.of("decide", "c1", "keep_improvement", "--attempt", "2"),
+				List.of("decide", "c1", "more_evidence", "--review-point", "3"),
+				List.of("decide", "c1", "stop"),
+				List.of("stop", "c1"));
 			for (List<String> command : commands)
-				requireThat(project.run(command, output), "exit").isEqualTo(1);
+				requireThat(project.run(command, output), "exit").withContext(command, "command").isEqualTo(1);
 			requireThat(project.calls, "calls").isEqualTo(List.of(
 				"start " + Path.of("prompts/a.md"),
-				"run c1",
+				"continue c1",
 				"status c1",
 				"status prompts/a.md",
-				"confirm c1 weakest_cell",
-				"confirm c1 weakest_cell",
-				"confirm c1 latest_versions",
-				"confirm c1 described",
-				"revise c1 tighten the contract",
-				"choose c1 KEEP_IMPROVEMENT 2 0",
-				"choose c1 MORE_EVIDENCE 0 3",
-				"choose c1 STOP 0 0",
-				"cancel c1"));
+				"approve c1 weakest_cell",
+				"approve c1 weakest_cell",
+				"approve c1 latest_versions",
+				"approve c1 described",
+				"request-changes c1 tighten the contract",
+				"decide c1 KEEP_IMPROVEMENT 2 0",
+				"decide c1 MORE_EVIDENCE 0 3",
+				"decide c1 STOP 0 0",
+				"stop c1"));
 		}
+	}
+
+	/**
+	 * Returns each former command name with the name that replaced it, alone, with the arguments that it took and with
+	 * {@code --background}.
+	 *
+	 * @return the arguments of each command line and the name that its refusal must give
+	 */
+	@DataProvider
+	public Object[][] formerCommandNames()
+	{
+		return new Object[][]
+			{
+				{List.of("run"), "continue"},
+				{List.of("run", "c1"), "continue"},
+				{List.of("run", "c1", "--background"), "continue"},
+				{List.of("confirm"), "approve"},
+				{List.of("confirm", "c1"), "approve"},
+				{List.of("confirm", "c1", "latest_versions"), "approve"},
+				{List.of("confirm", "c1", "--background"), "approve"},
+				{List.of("revise"), "request-changes"},
+				{List.of("revise", "c1", "tighten the contract"), "request-changes"},
+				{List.of("revise", "c1", "tighten the contract", "--background"), "request-changes"},
+				{List.of("choose"), "decide"},
+				{List.of("choose", "c1", "stop"), "decide"},
+				{List.of("choose", "c1", "keep_improvement", "--attempt", "2"), "decide"},
+				{List.of("choose", "c1", "resolution_1"), "decide"},
+				{List.of("choose", "c1", "retry", "--background"), "decide"},
+				{List.of("cancel"), "stop"},
+				{List.of("cancel", "c1"), "stop"},
+				{List.of("cancel", "c1", "--background"), "stop"}
+			};
+	}
+
+	/**
+	 * Verifies that a former command name is refused as invalid input, with a message that names the command that
+	 * replaced it and how to run it, before the core is called, so that it is never an alias.
+	 *
+	 * @param args        the arguments
+	 * @param replacement the name that replaced the former name
+	 */
+	@Test(dataProvider = "formerCommandNames")
+	public void refusesFormerCommandName(List<String> args, String replacement) throws IOException
+	{
+		// Requirement: R-I17
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Project project = Project.create(cleanup);
+			StringBuilder output = new StringBuilder();
+			int exit = project.run(args, output);
+
+			requireThat(exit, "exit").isEqualTo(2);
+			requireThat(project.calls, "calls").isEmpty();
+			JsonNode json = JSON.readTree(output.toString());
+			requireThat(json.get("status").asString(), "status").isEqualTo("invalid_input");
+			String former = args.getFirst();
+			requireThat(json.get("message").asString().lines().findFirst().orElseThrow(), "message").
+				startsWith(former + " is now " + replacement + ": prompt-optimizer " + replacement + " <campaign>");
+		}
+	}
+
+	/**
+	 * Verifies that {@code --background} on a command that always runs in the foreground is refused, naming the four
+	 * commands that accept it, before the core is called.
+	 */
+	@Test
+	public void refusesBackgroundOnForegroundCommand() throws IOException
+	{
+		// Requirement: R-I17
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			for (List<String> args : List.of(List.of("status", "c1", "--background"),
+				List.of("approve", "c1", "--background"), List.of("stop", "c1", "--background")))
+			{
+				Project project = Project.create(cleanup);
+				StringBuilder output = new StringBuilder();
+				requireThat(project.run(args, output), "exit").withContext(args, "args").isEqualTo(2);
+				requireThat(project.calls, "calls").withContext(args, "args").isEmpty();
+				requireThat(JSON.readTree(output.toString()).get("message").asString().lines().findFirst().orElseThrow(),
+					"message").withContext(args, "args").
+					isEqualTo("--background is accepted once by start, continue, request-changes and decide.");
+			}
+		}
+	}
+
+	/**
+	 * Verifies that the usage text lists every command by its current name and no former name.
+	 */
+	@Test
+	public void usageListsCurrentCommandNames()
+	{
+		// Requirement: R-I17
+		List<String> listed = new ArrayList<>();
+		for (String line : Commands.USAGE.lines().toList())
+		{
+			if (line.startsWith("  "))
+				listed.add(line.strip().split(" ")[0]);
+		}
+		requireThat(listed, "listed").isEqualTo(List.of("start", "continue", "status", "approve", "request-changes",
+			"decide", "stop", "contract", "contract"));
+		for (String former : List.of("run", "confirm", "revise", "choose", "cancel"))
+			requireThat(Commands.USAGE, "usage").doesNotContain(" " + former + " ");
 	}
 
 	/**
@@ -334,11 +438,11 @@ public final class CommandsTest
 		return new Object[][]
 			{
 				{List.of("start", "prompts/a.md")},
-				{List.of("run", "c1")},
-				{List.of("confirm", "c1")},
-				{List.of("revise", "c1", "tighten the contract")},
-				{List.of("choose", "c1", "stop")},
-				{List.of("choose", "c1", "resolution_1")}
+				{List.of("continue", "c1")},
+				{List.of("approve", "c1")},
+				{List.of("request-changes", "c1", "tighten the contract")},
+				{List.of("decide", "c1", "stop")},
+				{List.of("decide", "c1", "resolution_1")}
 			};
 	}
 
@@ -386,11 +490,11 @@ public final class CommandsTest
 	}
 
 	/**
-	 * Verifies that {@code status} and {@code cancel}, which start no trial, reach the core even where the harness
+	 * Verifies that {@code status} and {@code stop}, which start no trial, reach the core even where the harness
 	 * that runs the campaign's trials cannot sandbox them.
 	 */
 	@Test
-	public void runsStatusAndCancelWithoutTrialSandbox() throws IOException
+	public void runsStatusAndStopWithoutTrialSandbox() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -398,24 +502,24 @@ public final class CommandsTest
 			StringBuilder output = new StringBuilder();
 			requireThat(project.run(WINDOWS_REFUSAL, Platform.WINDOWS_ARM64, List.of("status", "c1"), output),
 				"statusExit").isEqualTo(1);
-			requireThat(project.run(WINDOWS_REFUSAL, Platform.WINDOWS_ARM64, List.of("cancel", "c1"), output),
-				"cancelExit").isEqualTo(1);
-			requireThat(project.calls, "calls").isEqualTo(List.of("status c1", "cancel c1"));
+			requireThat(project.run(WINDOWS_REFUSAL, Platform.WINDOWS_ARM64, List.of("stop", "c1"), output),
+				"stopExit").isEqualTo(1);
+			requireThat(project.calls, "calls").isEqualTo(List.of("status c1", "stop c1"));
 		}
 	}
 
 	/**
-	 * Verifies that {@code confirm} with an unknown certification scope is refused with every choice named.
+	 * Verifies that {@code approve} with an unknown certification scope is refused with every choice named.
 	 */
 	@Test
-	public void confirmNamesEveryScopeChoice() throws IOException
+	public void approveNamesEveryScopeChoice() throws IOException
 	{
 		// Requirement: R-C15
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Project project = Project.create(cleanup);
 			StringBuilder output = new StringBuilder();
-			requireThat(project.run(List.of("confirm", "c1", "all_models"), output), "exit").isEqualTo(2);
+			requireThat(project.run(List.of("approve", "c1", "all_models"), output), "exit").isEqualTo(2);
 			requireThat(project.calls, "calls").isEmpty();
 			String message = JSON.readTree(output.toString()).get("message").asString();
 			requireThat(message, "message").contains("weakest_cell").contains("latest_versions").contains("described");
@@ -644,7 +748,7 @@ public final class CommandsTest
 	}
 
 	/**
-	 * Verifies that the usage text lists exactly the certification scopes that {@code confirm} accepts, so that each
+	 * Verifies that the usage text lists exactly the certification scopes that {@code approve} accepts, so that each
 	 * spelling it shows reaches the core.
 	 */
 	@Test
@@ -653,7 +757,7 @@ public final class CommandsTest
 		// Requirement: R-C15
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			String line = Commands.USAGE.lines().map(String::strip).filter(text -> text.startsWith("confirm ")).
+			String line = Commands.USAGE.lines().map(String::strip).filter(text -> text.startsWith("approve ")).
 				findFirst().orElseThrow();
 			String alternatives = line.substring(line.lastIndexOf('<') + 1, line.lastIndexOf('>'));
 			List<String> shown = new ArrayList<>();
@@ -667,14 +771,14 @@ public final class CommandsTest
 			{
 				Project project = Project.create(cleanup);
 				StringBuilder output = new StringBuilder();
-				requireThat(project.run(List.of("confirm", "c1", scope), output), "exit").isEqualTo(1);
-				requireThat(project.calls, "calls").isEqualTo(List.of("confirm c1 " + scope));
+				requireThat(project.run(List.of("approve", "c1", scope), output), "exit").isEqualTo(1);
+				requireThat(project.calls, "calls").isEqualTo(List.of("approve c1 " + scope));
 			}
 		}
 	}
 
 	/**
-	 * Returns each {@code choose} whose option and choice disagree, with the choice that the refusal must name as it
+	 * Returns each {@code decide} whose option and choice disagree, with the choice that the refusal must name as it
 	 * is typed.
 	 *
 	 * @return the arguments and the choice that the refusal names
@@ -684,15 +788,15 @@ public final class CommandsTest
 	{
 		return new Object[][]
 			{
-				{List.of("choose", "c1", "keep_improvement"), "keep_improvement"},
-				{List.of("choose", "c1", "stop", "--attempt", "1"), "keep_improvement"},
-				{List.of("choose", "c1", "more_evidence"), "more_evidence"},
-				{List.of("choose", "c1", "stop", "--review-point", "1"), "more_evidence"}
+				{List.of("decide", "c1", "keep_improvement"), "keep_improvement"},
+				{List.of("decide", "c1", "stop", "--attempt", "1"), "keep_improvement"},
+				{List.of("decide", "c1", "more_evidence"), "more_evidence"},
+				{List.of("decide", "c1", "stop", "--review-point", "1"), "more_evidence"}
 			};
 	}
 
 	/**
-	 * Verifies that a refused {@code choose} names the choice that its option belongs to as the user types it.
+	 * Verifies that a refused {@code decide} names the choice that its option belongs to as the user types it.
 	 *
 	 * @param args   the arguments
 	 * @param choice the choice that the refusal names
@@ -722,8 +826,8 @@ public final class CommandsTest
 		{
 			Project project = Project.create(cleanup);
 			StringBuilder output = new StringBuilder();
-			requireThat(project.run(List.of("choose", "c1", "use_authorized_source"), output), "exit").isEqualTo(1);
-			requireThat(project.calls, "calls").isEqualTo(List.of("choose c1 USE_AUTHORIZED_SOURCE 0 0"));
+			requireThat(project.run(List.of("decide", "c1", "use_authorized_source"), output), "exit").isEqualTo(1);
+			requireThat(project.calls, "calls").isEqualTo(List.of("decide c1 USE_AUTHORIZED_SOURCE 0 0"));
 		}
 	}
 
@@ -739,10 +843,10 @@ public final class CommandsTest
 		{
 			Project project = Project.create(cleanup);
 			StringBuilder choiceOutput = new StringBuilder();
-			int choiceExit = project.run(List.of("choose", "c1", "authorize_target", "--target", "/external/shared.md"),
+			int choiceExit = project.run(List.of("decide", "c1", "authorize_target", "--target", "/external/shared.md"),
 				choiceOutput);
 			StringBuilder optionOutput = new StringBuilder();
-			int optionExit = project.run(List.of("choose", "c1", "use_authorized_source", "--target",
+			int optionExit = project.run(List.of("decide", "c1", "use_authorized_source", "--target",
 				"/external/shared.md"), optionOutput);
 
 			requireThat(choiceExit, "choiceExit").isEqualTo(2);
@@ -767,7 +871,7 @@ public final class CommandsTest
 		{
 			Project project = Project.create(cleanup);
 			StringBuilder output = new StringBuilder();
-			requireThat(project.run(List.of("choose", "c1", "resolution_2"), output), "exit").isEqualTo(1);
+			requireThat(project.run(List.of("decide", "c1", "resolution_2"), output), "exit").isEqualTo(1);
 			requireThat(project.calls, "calls").isEqualTo(List.of("resolve c1 2"));
 		}
 	}
@@ -1069,34 +1173,35 @@ public final class CommandsTest
 				{List.of("start", "prompts/a.md", "--goal")},
 				{List.of("start", "prompts/a.md", "--goal", " ")},
 				{List.of("start", "prompts/a.md", "--goal", "one", "--goal", "two")},
-				{List.of("run")},
-				{List.of("run", "c1", "extra")},
-				{List.of("run", "../escape")},
+				{List.of("continue")},
+				{List.of("continue", "c1", "extra")},
+				{List.of("continue", "../escape")},
 				{List.of("status")},
 				{List.of("status", " ")},
 				{List.of("status", "c1", "extra")},
-				{List.of("confirm", "")},
-				{List.of("confirm", "c1", "all_models")},
-				{List.of("confirm", "c1", "latest_versions", "extra")},
-				{List.of("cancel", "-rf")},
+				{List.of("approve", "")},
+				{List.of("approve", "c1", "all_models")},
+				{List.of("approve", "c1", "latest_versions", "extra")},
+				{List.of("stop", "-rf")},
+				{List.of("stop", "c1", "extra")},
 				{List.of("status", "c1", "--background")},
-				{List.of("confirm", "c1", "--background")},
-				{List.of("run", "c1", "--background", "--background")},
-				{List.of("revise", "c1")},
-				{List.of("revise", "c1", "  ")},
-				{List.of("choose", "c1")},
-				{List.of("choose", "c1", "no-such-choice")},
-				{List.of("choose", "c1", "KEEP_IMPROVEMENT", "--attempt", "1")},
-				{List.of("choose", "c1", "keep_improvement")},
-				{List.of("choose", "c1", "keep_improvement", "--attempt", "0")},
-				{List.of("choose", "c1", "keep_improvement", "--attempt", "x")},
-				{List.of("choose", "c1", "stop", "--attempt", "1")},
-				{List.of("choose", "c1", "more_evidence")},
-				{List.of("choose", "c1", "stop", "--review-point", "1")},
-				{List.of("choose", "c1", "stop", "--bogus", "1")},
-				{List.of("choose", "c1", "stop", "--attempt")},
-				{List.of("choose", "c1", "authorize_target")},
-				{List.of("choose", "c1", "stop", "--target", "/external/shared.md")}
+				{List.of("approve", "c1", "--background")},
+				{List.of("continue", "c1", "--background", "--background")},
+				{List.of("request-changes", "c1")},
+				{List.of("request-changes", "c1", "  ")},
+				{List.of("decide", "c1")},
+				{List.of("decide", "c1", "no-such-choice")},
+				{List.of("decide", "c1", "KEEP_IMPROVEMENT", "--attempt", "1")},
+				{List.of("decide", "c1", "keep_improvement")},
+				{List.of("decide", "c1", "keep_improvement", "--attempt", "0")},
+				{List.of("decide", "c1", "keep_improvement", "--attempt", "x")},
+				{List.of("decide", "c1", "stop", "--attempt", "1")},
+				{List.of("decide", "c1", "more_evidence")},
+				{List.of("decide", "c1", "stop", "--review-point", "1")},
+				{List.of("decide", "c1", "stop", "--bogus", "1")},
+				{List.of("decide", "c1", "stop", "--attempt")},
+				{List.of("decide", "c1", "authorize_target")},
+				{List.of("decide", "c1", "stop", "--target", "/external/shared.md")}
 			};
 	}
 
@@ -1136,7 +1241,7 @@ public final class CommandsTest
 				{List.of("-h")},
 				{List.of("help")},
 				{List.of("start", "--help")},
-				{List.of("choose", "c1", "-h")}
+				{List.of("decide", "c1", "-h")}
 			};
 	}
 
@@ -1172,7 +1277,7 @@ public final class CommandsTest
 		{
 			Project project = Project.create(cleanup);
 			StringBuilder output = new StringBuilder();
-			int exit = project.run(List.of("run", "c1"), output);
+			int exit = project.run(List.of("continue", "c1"), output);
 			requireThat(exit, "exit").isEqualTo(1);
 			JsonNode json = JSON.readTree(output.toString());
 			requireThat(json.get("status").asString(), "status").isEqualTo("refused");
@@ -1313,8 +1418,8 @@ public final class CommandsTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Project project = Project.create(cleanup);
-			for (List<String> arguments : List.of(List.of("start", "CLAUDE.md"), List.of("run", "c1"),
-				List.of("revise", "c1", "feedback"), List.of("choose", "c1", "retry")))
+			for (List<String> arguments : List.of(List.of("start", "CLAUDE.md"), List.of("continue", "c1"),
+				List.of("request-changes", "c1", "feedback"), List.of("decide", "c1", "retry")))
 			{
 				List<String> background = new ArrayList<>(arguments);
 				background.add("--background");

@@ -86,7 +86,7 @@ public final class ReferencedFiles
 		if (refusals.isEmpty())
 			return new ReferencedFiles(entries, refusals);
 		List<String> reasons = new ArrayList<>(refusals);
-		reasons.add("Run revise with feedback that corrects the referenced files.");
+		reasons.add("Run `request-changes` with feedback that corrects the referenced files.");
 		return new ReferencedFiles(entries, List.of(String.join(" ", reasons)));
 	}
 

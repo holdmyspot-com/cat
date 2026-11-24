@@ -21,7 +21,7 @@ import java.util.StringJoiner;
 
 /**
  * Verifies that the existing optimization worktree, where CAT writes the working candidate's project files, holds
- * only what CAT wrote there: at every {@code run} and before a promoted candidate replaces the working
+ * only what CAT wrote there: at every {@code continue} and before a promoted candidate replaces the working
  * one.
  */
 public final class WorktreeCheck

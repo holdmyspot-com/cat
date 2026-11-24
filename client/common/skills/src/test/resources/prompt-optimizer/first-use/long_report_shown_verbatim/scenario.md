@@ -3,8 +3,8 @@
 ## Design Goals
 
 - Prove that, in a project with an active campaign `20261002T090000Z-a1b2c3` for the target, when the launcher
-	answers `run` with a result whose `status` is `certified`, whose `summary` is a multi-section report of about 8 KB
-	(the outcome, the certification claim, each prompt test's trial counts, the delivered change and eleven
+	answers `continue` with a result whose `status` is `certified`, whose `summary` is a multi-section report of about
+	8 KB (the outcome, the certification claim, each prompt test's trial counts, the delivered change and eleven
 	limitations) and whose `delivery_result` names the changed prompt files, the skill shows the whole summary and the
 	delivery result.
 

@@ -185,7 +185,7 @@ public final class PromptOptimizerCli
 		Command command = parsed.get();
 		if (command instanceof Command.Background background)
 			command = background.command();
-		if (command instanceof Command.Run run && scope.hasRecoverableTrial(run.campaign()))
+		if (command instanceof Command.Continue continued && scope.hasRecoverableTrial(continued.campaign()))
 			return Optional.empty();
 		return refusal;
 	}

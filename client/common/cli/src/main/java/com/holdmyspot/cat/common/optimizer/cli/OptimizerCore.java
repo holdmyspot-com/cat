@@ -178,14 +178,14 @@ import java.util.stream.Stream;
  * {@code status} is the exception: any session in either harness may report any campaign, and is told which session
  * owns a campaign that it did not start.
  * <p>
- * Every command first completes the removal of any campaign's files that an earlier command started. {@code run}
- * removes the files of a campaign whose certified delivery it completed, and {@code choose} those of a campaign whose
- * user retained the incumbent. A removal that fails adds a warning to the command's summary, or to its refusal, and
- * the command continues; the next command retries the removal.
+ * Every command first completes the removal of any campaign's files that an earlier command started.
+ * {@code continue} removes the files of a campaign whose certified delivery it completed, and {@code decide} those of
+ * a campaign whose user retained the incumbent. A removal that fails adds a warning to the command's summary, or to its
+ * refusal, and the command continues; the next command retries the removal.
  * <p>
  * A command that changes a campaign holds the campaign's {@link CampaignLock} from before its first change until its
  * last, so it never writes the campaign while another process runs it. While another process holds the lock, such a
- * command is refused before it changes anything, and {@code run} reports the campaign as busy instead.
+ * command is refused before it changes anything, and {@code continue} reports the campaign as busy instead.
  */
 public final class OptimizerCore implements Core
 {
@@ -246,7 +246,7 @@ public final class OptimizerCore implements Core
 				result = new CommandResult(SliceReports.awaiting(
 					result.status(), new ReportStatus.Active(
 						Status.AWAITING_USER),
-					"The background driver paused. Use `status` for its reason or `cancel` to stop it."),
+					"The background driver paused. Use `status` for its reason or `stop` to end it."),
 					result.certification(), result.harness(), result.proposalFile(), result.delivery(), result.message(),
 					result.notices());
 			for (String id : backgroundDrivers.keySet())
@@ -1062,7 +1062,7 @@ public final class OptimizerCore implements Core
 		if (differences.isEmpty())
 			return;
 		throw new CommandRefusedException(String.join("\n", differences) + "\nA campaign keeps the goal and the " +
-			"extra permissions it started with. To use these instead, run `cancel " + header.id() + "`, then run " +
+			"extra permissions it started with. To use these instead, run `stop " + header.id() + "`, then run " +
 			"`start` again to start a new campaign with them. To continue this campaign, run `start` without them.");
 	}
 
@@ -1290,7 +1290,7 @@ public final class OptimizerCore implements Core
 		{
 			String id = header.id();
 			return report(root, campaign, null, "The campaign " + id + " was cancelled, so start did not continue " +
-				"it. To continue it, run `choose " + id + " " + new ChoiceItem(Choice.RESUME, 0, false, 0).id() + "`.");
+				"it. To continue it, run `decide " + id + " " + new ChoiceItem(Choice.RESUME, 0, false, 0).id() + "`.");
 		}
 		if (campaign.pending() instanceof PendingDecision.PilotFailure)
 			return report(root, campaign, null, pilotPausedNotice(campaign));
@@ -1654,9 +1654,9 @@ public final class OptimizerCore implements Core
 		{
 			if (BackgroundDriver.owner(lockFile(id), scope.fileLocks(), scope.json()).isPresent())
 				throw new CommandRefusedException("A background driver holds campaign " + id +
-					". Use `status` to see progress or `cancel` to stop it.");
+					". Use `status` to see progress or `stop` to end it.");
 			throw new CommandRefusedException("Campaign " + id + " is running in another process. Wait for its " +
-				"slice to end, then try again, or use `status` and `cancel`.");
+				"slice to end, then try again, or use `status` and `stop`.");
 		}
 		try
 		{
@@ -2383,7 +2383,8 @@ public final class OptimizerCore implements Core
 	}
 
 	@Override
-	public CommandResult run(String campaign) throws CommandRefusedException, IOException, InterruptedException
+	public CommandResult continueCampaign(String campaign)
+		throws CommandRefusedException, IOException, InterruptedException
 	{
 		Instant sliceStart = scope.clock().instant();
 		refuseWithoutWorktrees();
@@ -2467,8 +2468,8 @@ public final class OptimizerCore implements Core
 	 * @param lock the campaign's write lock, which the caller holds
 	 * @param sliceStart when the command started, which bounds the guard pilot of the revised contract
 	 * @return a notice for the user if a session failed or its result is invalid, so that the remaining requests stay
-	 *   pending until {@code run} retries them, or if the slice ended before the revised contract's guard pilot did,
-	 *   so that the next {@code run} continues it; otherwise empty
+	 *   pending until {@code continue} retries them, or if the slice ended before the revised contract's guard pilot did,
+	 *   so that the next {@code continue} continues it; otherwise empty
 	 * @throws CommandRefusedException if the campaign does not accept a test revision, or the fork does not hold the
 	 *   revised contract's files
 	 * @throws IOException if the store, the workspace, the stored proposal or a session fails
@@ -2565,7 +2566,7 @@ public final class OptimizerCore implements Core
 			SessionResult result = await(sessions(campaign).start(protocol.request(staged, examined)));
 			String session = "The test revision of `" + request.test() + "`";
 			if (!(result instanceof SessionResult.Completed completed))
-				return Examined.notice(session + " " + describe(result) + " Run `run` again to retry.");
+				return Examined.notice(session + " " + describe(result) + " Run `continue` again to retry.");
 			campaign = require(scope.store(), id, true);
 			if (completed.usage() != null)
 			{
@@ -2582,7 +2583,7 @@ public final class OptimizerCore implements Core
 			catch (InvalidProposalException e)
 			{
 				return Examined.notice(session + " is invalid: " + String.join("; ", e.problems()) +
-					". Run `run` again to retry.");
+					". Run `continue` again to retry.");
 			}
 			switch (outcome)
 			{
@@ -2712,10 +2713,10 @@ public final class OptimizerCore implements Core
 		// If the pilot paused, the user chooses whether to retry the saved revision's pilot.
 		if (pause.isPresent())
 			return new RevisedContract(List.of(new CampaignEvent.PilotFailed(pause.get())), null);
-		// The slice ended with trials to run, so the host agent repeats `run`, which continues the pilot before any
+		// The slice ended with trials to run, so the host agent repeats `continue`, which continues the pilot before any
 		// round
 		if (GuardPilot.endedBySlice(pilots))
-			return new RevisedContract(List.of(), pilotProgress(pilots, "Run `run` again"));
+			return new RevisedContract(List.of(), pilotProgress(pilots, "Run `continue` again"));
 		// The proposal previews its confirmation, which needs the campaign that awaits the revised contract
 		CampaignEvent.ReviseTests revise = new CampaignEvent.ReviseTests(revisions);
 		Proposal proposal = proposal(root, Transitions.apply(campaign, revise), fork, revised, pilots, plugin);
@@ -3011,7 +3012,7 @@ public final class OptimizerCore implements Core
 	}
 
 	@Override
-	public CommandResult confirm(String campaign, CertificationScope certificationScope)
+	public CommandResult approve(String campaign, CertificationScope certificationScope)
 		throws CommandRefusedException, IOException
 	{
 		requireThat(certificationScope, "certificationScope").isNotNull();
@@ -3065,7 +3066,7 @@ public final class OptimizerCore implements Core
 			throw interrupted;
 		}
 		DerivedProposal derived = stored(root, loaded).orElseThrow(() -> new CommandRefusedException(
-			"Campaign " + campaign + " has no proposal to confirm. Run `revise` or `start` to derive one."));
+			"Campaign " + campaign + " has no proposal to confirm. Run `request-changes` or `start` to derive one."));
 		// A revision after confirmation runs on the files that its presentation recorded beside the fork's
 		if (loaded.isConfirmed())
 			fork = fork.including(participants(root, derived));
@@ -3130,7 +3131,7 @@ public final class OptimizerCore implements Core
 		{
 			throw new CommandRefusedException("These workspace files of the proposal's prompt tests are copies of files " +
 				"that every trial already receives from its candidate, so each copy would stand in for the " +
-				"candidate's version: " + String.join("; ", promptCopies) + ". Run `revise` with feedback that " +
+				"candidate's version: " + String.join("; ", promptCopies) + ". Run `request-changes` with feedback that " +
 				"removes these links from the tests' " + PromptTestFiles.WORKSPACE + "/ directories.");
 		}
 		Set<String> collisions = collisionsOf(fork.inventory(), derived.contract(), selection);
@@ -3138,7 +3139,7 @@ public final class OptimizerCore implements Core
 		{
 			throw new CommandRefusedException("These workspace files of the proposal's prompt tests collide with " +
 				"project files, so the trials could not receive them: " + String.join(", ", collisions) + ". Run " +
-				"`revise` with feedback that asks for other paths.");
+				"`request-changes` with feedback that asks for other paths.");
 		}
 		String unheld = unheld(fork, participants(root, derived));
 		if (unheld.isEmpty())
@@ -3326,7 +3327,7 @@ public final class OptimizerCore implements Core
 	}
 
 	@Override
-	public CommandResult revise(String campaign, String feedback)
+	public CommandResult requestChanges(String campaign, String feedback)
 		throws CommandRefusedException, IOException, InterruptedException
 	{
 		requireThat(feedback, "feedback").isNotBlank();
@@ -3382,7 +3383,7 @@ public final class OptimizerCore implements Core
 	}
 
 	@Override
-	public CommandResult choose(String campaign, Choice choice, int attempt, int reviewPoint)
+	public CommandResult decide(String campaign, Choice choice, int attempt, int reviewPoint)
 		throws CommandRefusedException, IOException, InterruptedException
 	{
 		Instant sliceStart = scope.clock().instant();
@@ -3500,7 +3501,7 @@ public final class OptimizerCore implements Core
 	}
 
 	@Override
-	public CommandResult cancel(String campaign) throws CommandRefusedException, IOException
+	public CommandResult stop(String campaign) throws CommandRefusedException, IOException
 	{
 		refuseWithoutWorktrees();
 		return withCleanup(_ ->
@@ -3745,8 +3746,8 @@ public final class OptimizerCore implements Core
 				request = protocol.request(staged, profiles, hooks, loaded, previous, feedback, pilots);
 			else
 				request = protocol.request(staged, profiles, scopedHooks, loaded, previous, feedback, pilots);
-			// The proposal that the user gave feedback on is still stored, so revise can regenerate it again
-			invalidRetry = "Run `revise` with feedback, or `start`, to retry.";
+			// The proposal that the user gave feedback on is still stored, so request-changes can regenerate it again
+			invalidRetry = "Run `request-changes` with feedback, or `start`, to retry.";
 		}
 		SessionResult result = await(sessions(campaign).start(request));
 		SessionResult.Completed completed;
@@ -4162,8 +4163,8 @@ public final class OptimizerCore implements Core
 	{
 		String id = campaign.header().id();
 		return "The proposal is not shown, and cannot be confirmed, because its guard pilot paused. To run the " +
-			"pilot's remaining trials, which keeps the trials it decided, run `choose " + id + " " +
-			new ChoiceItem(Choice.RETRY, 0, false, 0).id() + "`. To stop the campaign, run `choose " + id + " " +
+			"pilot's remaining trials, which keeps the trials it decided, run `decide " + id + " " +
+			new ChoiceItem(Choice.RETRY, 0, false, 0).id() + "`. To stop the campaign, run `decide " + id + " " +
 			new ChoiceItem(Choice.STOP, 0, false, 0).id() + "`.";
 	}
 
@@ -4179,8 +4180,8 @@ public final class OptimizerCore implements Core
 		String id = campaign.header().id();
 		return "The stored proposal is not shown, and cannot be confirmed, because the contract revision that the " +
 			"feedback asked for is not derived. To derive it again from the feedback that the campaign kept, run " +
-			"`choose " + id + " " + new ChoiceItem(Choice.RETRY, 0, false, 0).id() + "`. To derive it from other " +
-			"feedback, run `revise " + id + " <feedback>`. To stop the campaign, run `choose " + id + " " +
+			"`decide " + id + " " + new ChoiceItem(Choice.RETRY, 0, false, 0).id() + "`. To derive it from other " +
+			"feedback, run `request-changes " + id + " <feedback>`. To stop the campaign, run `decide " + id + " " +
 			new ChoiceItem(Choice.STOP, 0, false, 0).id() + "`.";
 	}
 
@@ -4407,7 +4408,7 @@ public final class OptimizerCore implements Core
 		if (problems.isEmpty())
 			return List.of();
 		return List.of("Control trials cannot remove the dependents of the target that the proposal lists: " +
-			String.join("; ", problems) + ". Run revise with feedback that corrects the dependents.");
+			String.join("; ", problems) + ". Run `request-changes` with feedback that corrects the dependents.");
 	}
 
 	/**
@@ -4809,7 +4810,7 @@ public final class OptimizerCore implements Core
 			BackgroundDriver.owner(lockFile(campaign.header().id()), scope.fileLocks(), scope.json());
 		if (!background)
 			owner.ifPresent(driver -> notices.add("Background driver holds the campaign; started " +
-			driver.started() + ". Use `status` for progress or `cancel` to stop it."));
+			driver.started() + ". Use `status` for progress or `stop` to end it."));
 		if (owner.isEmpty())
 		{
 			Path ended = lockFile(campaign.header().id()).resolveSibling("background-result.json");
@@ -4824,7 +4825,7 @@ public final class OptimizerCore implements Core
 		if (owner.isEmpty() &&
 			Files.isRegularFile(lockFile(campaign.header().id()).resolveSibling("background-driver.json")))
 			notices.add("The recorded background driver is no longer alive. Its lock has no live holder; " +
-				"use `run` to resume.");
+				"use `continue` to resume.");
 		Path failure = noticeFailureFile(campaign.header().id());
 		if (Files.isRegularFile(failure))
 			notices.add(Files.readString(failure));
@@ -5095,7 +5096,7 @@ public final class OptimizerCore implements Core
 	 */
 	private Set<Path> promptSources(Path root, Campaign campaign) throws IOException
 	{
-		// Validating the proposal would not change its derived sources, and skipping it lets cancel and status work on
+		// Validating the proposal would not change its derived sources, and skipping it lets stop and status work on
 		// a proposal that no longer validates
 		Optional<ProposalFile.Stored> stored = storedProposal(campaign);
 		if (stored.isPresent())

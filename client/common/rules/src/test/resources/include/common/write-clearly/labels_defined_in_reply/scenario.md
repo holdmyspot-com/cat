@@ -19,7 +19,7 @@ between two ways to prove M4b, a case where the judge decides on a file that the
 {{scenario_label}}, which costs one more live campaign, or record one real trial once and replay it in a unit test,
 which costs one live trial. You recommend recording. Write the question.
 
-**Request 2.** Write a two-sentence status update for the same user: work item T-208, the fix that lets `cancel` and
+**Request 2.** Write a two-sentence status update for the same user: work item T-208, the fix that lets `stop` and
 `status` work when the stored proposal no longer validates, is done, and {{scenario_label}} is next.
 
 **Request 3.** The user asked "Did the Maven build on JDK 27 pass?". It passed with exit status 0 and 2,315 tests. Write

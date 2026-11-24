@@ -48,7 +48,10 @@ import java.util.StringJoiner;
  * <p>
  * On a platform where the harness that runs the campaign's trials cannot sandbox them, every command that starts or
  * continues a campaign is refused before it reaches the core, so it changes nothing; {@code status} and
- * {@code cancel} still run.
+ * {@code stop} still run.
+ * <p>
+ * A former command name, such as {@code run} for {@code continue}, is refused as invalid input with a message that
+ * names the command that replaced it, before the core is called; it is never an alias.
  */
 public final class Commands
 {
@@ -75,6 +78,16 @@ public final class Commands
 	 * The arguments of {@code contract workspace}.
 	 */
 	private static final String WORKSPACE_FORM = "<context file> <test directory> <test case number> <output directory>";
+	/**
+	 * The command that replaced each former command name. An agent or skill that learned a former name is refused and
+	 * told what to run instead.
+	 */
+	private static final Map<String, Replacement> FORMER_NAMES = Map.of(
+		"run", new Replacement("continue", "<campaign>"),
+		"confirm", new Replacement("approve", "<campaign> [<scope>]"),
+		"revise", new Replacement("request-changes", "<campaign> <feedback>"),
+		"choose", new Replacement("decide", "<campaign> <choice>"),
+		"cancel", new Replacement("stop", "<campaign>"));
 
 	/**
 	 * The usage text.
@@ -82,12 +95,12 @@ public final class Commands
 	public static final String USAGE = """
 		usage: prompt-optimizer <command> ...
 		  start %s [--background]
-		  run <campaign> [--background]
+		  continue <campaign> [--background]
 		  status <campaign | target>
-		  confirm <campaign> [<%s>]
-		  revise <campaign> <feedback> [--background]
-		  choose <campaign> <choice> [--attempt N | --review-point N] [--background]
-		  cancel <campaign>
+		  approve <campaign> [<%s>]
+		  request-changes <campaign> <feedback> [--background]
+		  decide <campaign> <choice> [--attempt N | --review-point N] [--background]
+		  stop <campaign>
 		  contract check <context file>
 		  contract workspace %s
 
@@ -131,7 +144,7 @@ public final class Commands
 	 * @param args the arguments, starting with the command's name
 	 * @return the command
 	 * @throws NullPointerException if {@code args} is null
-	 * @throws InvalidCommandException if the arguments are not a well-formed command
+	 * @throws InvalidCommandException if the arguments are not a well-formed command, or name a former command
 	 */
 	public Command parse(List<String> args)
 	{
@@ -139,12 +152,12 @@ public final class Commands
 	}
 
 	/**
-	 * Validates the arguments of a command.
+	 * Validates the arguments of a command. A former command name is refused before its arguments are read.
 	 *
 	 * @param args the arguments, starting with the command's name
 	 * @return the command
 	 * @throws NullPointerException    if {@code args} is null
-	 * @throws InvalidCommandException if the arguments are not a well-formed command
+	 * @throws InvalidCommandException if the arguments are not a well-formed command, or name a former command
 	 */
 	private static Command parseArguments(List<String> args)
 	{
@@ -152,11 +165,20 @@ public final class Commands
 		if (args.isEmpty())
 			throw new InvalidCommandException("Missing command.");
 		String name = args.getFirst();
+		Replacement replacement = FORMER_NAMES.get(name);
+		if (replacement != null)
+		{
+			throw new InvalidCommandException(name + " is now " + replacement.command() + ": prompt-optimizer " +
+				replacement.command() + " " + replacement.arguments());
+		}
 		if (args.size() > 1 && args.getLast().equals("--background"))
 		{
-			if (!List.of("start", "run", "revise", "choose").contains(name) ||
+			if (!List.of("start", "continue", "request-changes", "decide").contains(name) ||
 				args.stream().filter("--background"::equals).count() != 1)
-				throw new InvalidCommandException("--background is accepted once by start, run, revise and choose.");
+			{
+				throw new InvalidCommandException(
+					"--background is accepted once by start, continue, request-changes and decide.");
+			}
 			List<String> foreground = new ArrayList<>(args);
 			foreground.remove("--background");
 			return new Command.Background(parseArguments(foreground));
@@ -165,31 +187,31 @@ public final class Commands
 		return switch (name)
 		{
 			case "start" -> start(rest);
-			case "run" ->
+			case "continue" ->
 			{
 				expect(name, rest, 1, "<campaign>");
-				yield new Command.Run(campaign(rest.getFirst()));
+				yield new Command.Continue(campaign(rest.getFirst()));
 			}
 			case "status" ->
 			{
 				expect(name, rest, 1, "<campaign | target>");
 				yield new Command.Status(subject(rest.getFirst()));
 			}
-			case "confirm" -> confirm(rest);
-			case "cancel" ->
+			case "approve" -> approve(rest);
+			case "stop" ->
 			{
 				expect(name, rest, 1, "<campaign>");
-				yield new Command.Cancel(campaign(rest.getFirst()));
+				yield new Command.Stop(campaign(rest.getFirst()));
 			}
-			case "revise" ->
+			case "request-changes" ->
 			{
 				expect(name, rest, 2, "<campaign> <feedback>");
 				String feedback = rest.get(1);
 				if (feedback.isBlank())
-					throw new InvalidCommandException("revise: the feedback is blank.");
-				yield new Command.Revise(campaign(rest.getFirst()), feedback);
+					throw new InvalidCommandException("request-changes: the feedback is blank.");
+				yield new Command.RequestChanges(campaign(rest.getFirst()), feedback);
 			}
-			case "choose" -> choose(rest);
+			case "decide" -> decide(rest);
 			case "contract" -> contract(rest);
 			default -> throw new InvalidCommandException("Unknown command: " + name);
 		};
@@ -275,43 +297,43 @@ public final class Commands
 	}
 
 	/**
-	 * Parses {@code confirm}, whose certification scope is the weakest cell only unless the user chose another.
+	 * Parses {@code approve}, whose certification scope is the weakest cell only unless the user chose another.
 	 *
 	 * @param rest the arguments after the command's name
 	 * @return the command
 	 * @throws InvalidCommandException if the arguments are not well-formed or name an unknown certification scope
 	 */
-	private static Command confirm(List<String> rest)
+	private static Command approve(List<String> rest)
 	{
 		if (rest.size() == 1)
-			return new Command.Confirm(campaign(rest.getFirst()), CertificationScope.WEAKEST_CELL);
-		expect("confirm", rest, 2, "<campaign> [<scope>]");
+			return new Command.Approve(campaign(rest.getFirst()), CertificationScope.WEAKEST_CELL);
+		expect("approve", rest, 2, "<campaign> [<scope>]");
 		String campaign = campaign(rest.getFirst());
 		CertificationScope scope = CertificationScope.fromId(rest.get(1)).orElseThrow(() ->
-			new InvalidCommandException("confirm: unknown certification scope '" + rest.get(1) + "'; choose " +
+			new InvalidCommandException("approve: unknown certification scope '" + rest.get(1) + "'; choose " +
 				CertificationScope.choices() + "."));
-		return new Command.Confirm(campaign, scope);
+		return new Command.Approve(campaign, scope);
 	}
 
 	/**
-	 * Parses {@code choose}.
+	 * Parses {@code decide}.
 	 *
 	 * @param rest the arguments after the command's name
 	 * @return the command
 	 * @throws InvalidCommandException if the arguments are not well-formed
 	 */
-	private static Command choose(List<String> rest)
+	private static Command decide(List<String> rest)
 	{
 		if (rest.size() < 2)
 		{
-			throw new InvalidCommandException("choose: expected <campaign> <choice> " +
+			throw new InvalidCommandException("decide: expected <campaign> <choice> " +
 				"[--attempt N | --review-point N]");
 		}
 		String campaign = campaign(rest.getFirst());
 		String answer = rest.get(1);
 		if (answer.startsWith("resolution_"))
 		{
-			expect("choose", rest, 2, "<campaign> resolution_<n>");
+			expect("decide", rest, 2, "<campaign> resolution_<n>");
 			return new Command.ResolveConflict(campaign, positive("resolution", answer.substring(11)));
 		}
 		Choice choice = choice(rest.get(1));
@@ -321,23 +343,23 @@ public final class Commands
 		if (!options.isEmpty())
 		{
 			if (options.size() != 2)
-				throw new InvalidCommandException("choose: expected one option with one value, got " + options);
+				throw new InvalidCommandException("decide: expected one option with one value, got " + options);
 			switch (options.get(0))
 			{
 				case "--attempt" -> attempt = positive(options.get(0), options.get(1));
 				case "--review-point" -> reviewPoint = positive(options.get(0), options.get(1));
-				default -> throw new InvalidCommandException("choose: unknown option " + options.get(0));
+				default -> throw new InvalidCommandException("decide: unknown option " + options.get(0));
 			}
 		}
 		if (choice == Choice.KEEP_IMPROVEMENT && attempt == 0)
-			throw new InvalidCommandException("choose " + id(Choice.KEEP_IMPROVEMENT) + " requires --attempt N.");
+			throw new InvalidCommandException("decide " + id(Choice.KEEP_IMPROVEMENT) + " requires --attempt N.");
 		if (choice != Choice.KEEP_IMPROVEMENT && attempt != 0)
 			throw new InvalidCommandException("--attempt is valid only for " + id(Choice.KEEP_IMPROVEMENT) + ".");
 		if (choice == Choice.MORE_EVIDENCE && reviewPoint == 0)
-			throw new InvalidCommandException("choose " + id(Choice.MORE_EVIDENCE) + " requires --review-point N.");
+			throw new InvalidCommandException("decide " + id(Choice.MORE_EVIDENCE) + " requires --review-point N.");
 		if (choice != Choice.MORE_EVIDENCE && reviewPoint != 0)
 			throw new InvalidCommandException("--review-point is valid only for " + id(Choice.MORE_EVIDENCE) + ".");
-		return new Command.Choose(campaign, choice, attempt, reviewPoint);
+		return new Command.Decide(campaign, choice, attempt, reviewPoint);
 	}
 
 	/**
@@ -481,7 +503,7 @@ public final class Commands
 	}
 
 	/**
-	 * Returns the identifier that {@code choose} accepts for a choice.
+	 * Returns the identifier that {@code decide} accepts for a choice.
 	 *
 	 * @param choice the choice
 	 * @return the identifier, such as {@code keep_improvement}
@@ -492,7 +514,7 @@ public final class Commands
 	}
 
 	/**
-	 * Lists the certification scopes that {@code confirm} accepts, for the usage text.
+	 * Lists the certification scopes that {@code approve} accepts, for the usage text.
 	 *
 	 * @return the scope identifiers separated by {@code " | "}, such as {@code weakest_cell | latest_versions}
 	 */
@@ -717,14 +739,14 @@ public final class Commands
 			case Command.Background background -> core.background(() -> dispatch(background.command()));
 			case Command.Start start -> core.start(start.target(), start.ceiling(), start.goal(), start.extraPermissions(),
 				start.evaluationHarnesses());
-			case Command.Run run -> core.run(run.campaign());
+			case Command.Continue continued -> core.continueCampaign(continued.campaign());
 			case Command.Status status -> core.status(status.subject());
-			case Command.Confirm confirm -> core.confirm(confirm.campaign(), confirm.scope());
-			case Command.Revise revise -> core.revise(revise.campaign(), revise.feedback());
-			case Command.Choose choose ->
-				core.choose(choose.campaign(), choose.choice(), choose.attempt(), choose.reviewPoint());
+			case Command.Approve approve -> core.approve(approve.campaign(), approve.scope());
+			case Command.RequestChanges request -> core.requestChanges(request.campaign(), request.feedback());
+			case Command.Decide decide ->
+				core.decide(decide.campaign(), decide.choice(), decide.attempt(), decide.reviewPoint());
 			case Command.ResolveConflict resolve -> core.resolveConflict(resolve.campaign(), resolve.resolution());
-			case Command.Cancel cancel -> core.cancel(cancel.campaign());
+			case Command.Stop stop -> core.stop(stop.campaign());
 			case Command.ContractTool _ -> throw new AssertionError("A contract tool does not reach the core");
 		};
 	}
@@ -733,15 +755,15 @@ public final class Commands
 	 * Indicates whether a command starts or continues a campaign, which can start a trial.
 	 *
 	 * @param command the command
-	 * @return {@code false} for {@code status} and {@code cancel}, which start no trial; otherwise {@code true}
+	 * @return {@code false} for {@code status} and {@code stop}, which start no trial; otherwise {@code true}
 	 */
 	private static boolean canStartTrial(Command command)
 	{
 		return switch (command)
 		{
 			case Command.Background background -> canStartTrial(background.command());
-			case Command.Status _, Command.Cancel _ -> false;
-			case Command.Start _, Command.Run _, Command.Confirm _, Command.Revise _, Command.Choose _,
+			case Command.Status _, Command.Stop _ -> false;
+			case Command.Start _, Command.Continue _, Command.Approve _, Command.RequestChanges _, Command.Decide _,
 				Command.ResolveConflict _ -> true;
 			case Command.ContractTool _ -> throw new AssertionError("A contract tool does not reach the core");
 		};
@@ -921,5 +943,15 @@ public final class Commands
 		root.put("status", status);
 		root.put("message", message);
 		return root;
+	}
+
+	/**
+	 * The command that replaced a former command name, which the refusal of the former name shows.
+	 *
+	 * @param command   the current command's name, such as {@code continue}
+	 * @param arguments the current command's arguments, such as {@code <campaign>}
+	 */
+	private record Replacement(String command, String arguments)
+	{
 	}
 }

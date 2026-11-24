@@ -32,8 +32,8 @@ public sealed interface Command
 		public Background
 		{
 			requireThat(command, "command").isNotNull();
-			if (!(command instanceof Start || command instanceof Run || command instanceof Revise ||
-				command instanceof Choose || command instanceof ResolveConflict))
+			if (!(command instanceof Start || command instanceof Continue || command instanceof RequestChanges ||
+				command instanceof Decide || command instanceof ResolveConflict))
 				throw new IllegalArgumentException("This command cannot run in the background");
 		}
 	}
@@ -102,7 +102,7 @@ public sealed interface Command
 	 *
 	 * @param campaign the campaign's identifier
 	 */
-	record Run(String campaign) implements Command
+	record Continue(String campaign) implements Command
 	{
 		/**
 		 * Creates the command.
@@ -110,7 +110,7 @@ public sealed interface Command
 		 * @param campaign the campaign's identifier
 		 * @throws NullPointerException if {@code campaign} is null
 		 */
-		public Run
+		public Continue
 		{
 			requireThat(campaign, "campaign").isNotNull();
 		}
@@ -145,7 +145,7 @@ public sealed interface Command
 	 * @param campaign the campaign's identifier
 	 * @param scope the certification scope
 	 */
-	record Confirm(String campaign, CertificationScope scope) implements Command
+	record Approve(String campaign, CertificationScope scope) implements Command
 	{
 		/**
 		 * Creates the command.
@@ -154,7 +154,7 @@ public sealed interface Command
 		 * @param scope the certification scope
 		 * @throws NullPointerException if any of the arguments are null
 		 */
-		public Confirm
+		public Approve
 		{
 			requireThat(campaign, "campaign").isNotNull();
 			requireThat(scope, "scope").isNotNull();
@@ -169,7 +169,7 @@ public sealed interface Command
 	 * @param campaign the campaign's identifier
 	 * @param feedback the user's feedback
 	 */
-	record Revise(String campaign, String feedback) implements Command
+	record RequestChanges(String campaign, String feedback) implements Command
 	{
 		/**
 		 * Creates the command.
@@ -179,7 +179,7 @@ public sealed interface Command
 		 * @throws NullPointerException if any argument is null
 		 * @throws IllegalArgumentException if {@code feedback} is blank
 		 */
-		public Revise
+		public RequestChanges
 		{
 			requireThat(campaign, "campaign").isNotNull();
 			requireThat(feedback, "feedback").isNotBlank();
@@ -196,7 +196,7 @@ public sealed interface Command
 	 * @param attempt the certification index that {@link Choice#KEEP_IMPROVEMENT} names, otherwise 0
 	 * @param reviewPoint the review point that {@link Choice#MORE_EVIDENCE} names, otherwise 0
 	 */
-	record Choose(String campaign, Choice choice, int attempt, int reviewPoint) implements Command
+	record Decide(String campaign, Choice choice, int attempt, int reviewPoint) implements Command
 	{
 		/**
 		 * Creates the command.
@@ -207,7 +207,7 @@ public sealed interface Command
 		 * @param reviewPoint the review point that {@link Choice#MORE_EVIDENCE} names, otherwise 0
 		 * @throws NullPointerException if {@code campaign} or {@code choice} are null
 		 */
-		public Choose
+		public Decide
 		{
 			requireThat(campaign, "campaign").isNotNull();
 			requireThat(choice, "choice").isNotNull();
@@ -238,13 +238,13 @@ public sealed interface Command
 	}
 
 	/**
-	 * Cancels a campaign, keeping its history and spent allowance.
+	 * Ends a campaign, keeping its history and spent allowance.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param campaign the campaign's identifier
 	 */
-	record Cancel(String campaign) implements Command
+	record Stop(String campaign) implements Command
 	{
 		/**
 		 * Creates the command.
@@ -252,7 +252,7 @@ public sealed interface Command
 		 * @param campaign the campaign's identifier
 		 * @throws NullPointerException if {@code campaign} is null
 		 */
-		public Cancel
+		public Stop
 		{
 			requireThat(campaign, "campaign").isNotNull();
 		}
