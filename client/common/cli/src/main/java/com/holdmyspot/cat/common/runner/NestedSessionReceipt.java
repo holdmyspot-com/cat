@@ -37,7 +37,7 @@ public final class NestedSessionReceipt
 	private static final String REQUESTED_SESSIONS = "requested_sessions";
 	private static final String BASE_NAME = "retained_project_parent";
 	private static final String PROJECT_NAME = "project";
-	private static final String BRIDGE_TRANSCRIPT = "artifacts/bridge-transcript.jsonl";
+	static final String BRIDGE_TRANSCRIPT = "artifacts/bridge-transcript.jsonl";
 	/**
 	 * The size of the largest nested-session manifest whose authentication record a receipt copies.
 	 */

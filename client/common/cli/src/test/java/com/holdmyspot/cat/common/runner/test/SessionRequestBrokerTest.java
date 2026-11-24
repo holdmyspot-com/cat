@@ -27,6 +27,7 @@ import com.holdmyspot.cat.common.runner.NestedSessionReceipt;
 import com.holdmyspot.cat.common.runner.ProcessHandleLiveness;
 import com.holdmyspot.cat.common.runner.RequestLimits;
 import com.holdmyspot.cat.common.runner.RequestedSessionStarter;
+import com.holdmyspot.cat.common.runner.ResultsCopy;
 import com.holdmyspot.cat.common.runner.RetainedNestedSessionClient;
 import com.holdmyspot.cat.common.runner.RetainedTrialClaim;
 import com.holdmyspot.cat.common.runner.RetainedTrialPrefix;
@@ -1723,14 +1724,26 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Verifies that a guarded resume replays the retained turn and continues the original harness session with only
-	 * the remaining prompt.
+	 * Covers a fresh requester results directory and the directory that already holds the suspended phase.
 	 *
+	 * @return whether the continuation reuses the suspended phase's requester results directory
+	 */
+	@DataProvider
+	public Object[][] resumedResultsDirectories()
+	{
+		return new Object[][]{{false}, {true}};
+	}
+
+	/**
+	 * Verifies that a guarded resume replays the retained turn and continues the original harness session with only
+	 * the remaining prompt. A shared results directory keeps the earlier replies and receives the latest metadata.
+	 *
+	 * @param sharedResults whether the original phase has already been copied into the requester's results
 	 * @throws IOException if the fixture or guarded launch fails
 	 * @throws InterruptedException if the fixture cannot reserve its retained slot
 	 */
-	@Test(timeOut = 30_000)
-	public void guardedResumeReplaysAndContinues() throws IOException, InterruptedException
+	@Test(dataProvider = "resumedResultsDirectories", timeOut = 30_000)
+	public void guardedResumeReplaysAndContinues(boolean sharedResults) throws IOException, InterruptedException
 	{
 		try (Fixture fixture = new Fixture())
 		{
@@ -1757,6 +1770,19 @@ public final class SessionRequestBrokerTest
 				requireThat(claim.completedTurns(), "completedTurns").isEqualTo(1);
 
 				Path results = fixture.root.resolve("resumed-results");
+				Path session = results.resolve("claude").resolve(RESUMED_SESSION);
+				Path firstReply = session.resolve("artifacts/turn-1.reply.json");
+				String originalReply = "";
+				if (sharedResults)
+				{
+					Path retainedSession = slot.root().resolve("claude").resolve(slot.slotId());
+					Files.writeString(retainedSession.resolve("artifacts/bridge-transcript.jsonl"),
+						"{\"type\":\"suspended\",\"completed_turns\":1}\n");
+					ResultsCopy.Result copied = ResultsCopy.copy(retainedSession, session, RESUMED_SESSION, fixture.project);
+					requireThat(copied.incomplete().isEmpty(), "firstCopy").isTrue();
+					originalReply = Files.readString(firstReply);
+					Files.writeString(session.resolve("artifacts/requester-observation"), "requester-owned evidence");
+				}
 				StringWriter output = new StringWriter();
 				SessionRequestForwarder.serveRetainedTrial(SessionRequestForwarder.Route.RUN, claim, "test command",
 					"claude", fixture.root, fixture.project,
@@ -1776,11 +1802,20 @@ public final class SessionRequestBrokerTest
 				List<String> replies = records.stream().filter(record -> record.path("type").asString().
 					equals("turn_completed")).map(record -> record.path("assistant_response").asString()).toList();
 				requireThat(replies, "turnReplies").isEqualTo(List.of("retained reply", "resumed reply"));
-				Path session = results.resolve("claude").resolve(RESUMED_SESSION);
 				requireThat(Files.readString(session.resolve("project/marker")), "resumedProject").
 					isEqualTo("retained project");
 				requireThat(Files.readString(session.resolve("project-link-declarations/draft/kept")), "resumedLink").
 					isEqualTo(Path.of("../marker").toString());
+				if (sharedResults)
+				{
+					requireThat(Files.readString(firstReply), "firstReply").isEqualTo(originalReply);
+					requireThat(RetainedTrialPrefix.readReadyTurns(session).orElseThrow(), "checkpointTurns").isEqualTo(2);
+					List<String> terminal = Files.readAllLines(session.resolve("artifacts/bridge-transcript.jsonl"));
+					requireThat(fixture.json.readTree(terminal.getLast()).path("type").asString(), "terminal").
+						isEqualTo("completed");
+					requireThat(Files.readString(session.resolve("artifacts/requester-observation")), "observation").
+						isEqualTo("requester-owned evidence");
+				}
 			}
 		}
 	}

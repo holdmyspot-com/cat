@@ -268,7 +268,8 @@ public final class SessionRequestForwarder
 				return Optional.empty();
 			resultsFolder = defaultResultsFolder;
 		}
-		Optional<String> incomplete = copyResults(response, resultsFolder.resolve(harness), launch.project());
+		Optional<String> incomplete = copyResults(response, resultsFolder.resolve(harness), launch.project(),
+			Optional.empty());
 		if (route == Route.SERVER)
 			TemporaryDirectories.deleteRecursively(responses(requests, id));
 		return incomplete;
@@ -282,17 +283,27 @@ public final class SessionRequestForwarder
 	 * @param response       the response
 	 * @param harnessResults the directory that holds the harness's results copies in the launch's results folder
 	 * @param project        the project that the launch named, which the copy's manifest names
+	 * @param retained the guarded checkpoint that the request resumed, or empty
 	 * @return the reason why the copy is incomplete, or empty if the response names no results or the copy is
 	 *   complete
 	 * @throws IOException if the nested session cannot be copied
 	 */
-	private static Optional<String> copyResults(JsonNode response, Path harnessResults, Path project)
+	private static Optional<String> copyResults(JsonNode response, Path harnessResults, Path project,
+		Optional<RetainedTrialClaim> retained)
 		throws IOException
 	{
 		String resultsCopy = response.path(SessionRequestBroker.RESULTS_COPY_FIELD).asString("");
 		String sessionId = response.path(SessionRequestBroker.SESSION_ID).asString("");
 		if (resultsCopy.isEmpty() || !RecordCopy.isSessionId(sessionId))
 			return Optional.empty();
+		if (retained.isPresent())
+		{
+			RetainedTrialClaim claim = retained.get();
+			if (!claim.identity().session().orElseThrow().sessionId().equals(sessionId))
+				throw new IOException("The resumed results name a different session");
+			return ResultsCopy.copyResumed(Path.of(resultsCopy), harnessResults.resolve(sessionId), sessionId, project,
+				claim.completedTurns()).incomplete();
+		}
 		return ResultsCopy.copy(Path.of(resultsCopy), harnessResults.resolve(sessionId), sessionId, project).incomplete();
 	}
 
@@ -451,7 +462,8 @@ public final class SessionRequestForwarder
 		boolean kept = !response.path(SessionRequestBroker.RESULTS_COPY_FIELD).asString("").isEmpty() &&
 			RecordCopy.isSessionId(response.path(SessionRequestBroker.SESSION_ID).asString(""));
 		Path project = retained.map(RetainedLaunch::project).orElse(launch.project());
-		Optional<String> incomplete = copyResults(response, launch.resultsFolder().resolve(harness), project);
+		Optional<String> incomplete = copyResults(response, launch.resultsFolder().resolve(harness), project,
+			retained.map(RetainedLaunch::claim));
 		if (route == Route.SERVER)
 			TemporaryDirectories.deleteRecursively(responses(requests, id));
 		boolean succeeded = status.equals("completed") || status.equals(SessionRequestBroker.SUSPENDED);

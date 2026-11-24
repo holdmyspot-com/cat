@@ -2,11 +2,14 @@ package com.holdmyspot.cat.common.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
+import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
+import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import java.io.IOException;
 import java.nio.file.AccessDeniedException;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.FileSystemException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -18,6 +21,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Predicate;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -45,6 +50,11 @@ public final class ResultsCopy
 	private static final Path MANIFEST = Path.of("session.json");
 	private static final String SESSION_ARTIFACTS = "artifacts";
 	private static final String SESSION_TRANSCRIPTS = "session-transcripts";
+	private static final Path CHECKPOINT = Path.of(NestedSessionManager.TURN_CHECKPOINT_FILE);
+	private static final Path BRIDGE_TRANSCRIPT = Path.of(NestedSessionReceipt.BRIDGE_TRANSCRIPT);
+	private static final Set<Path> IMMUTABLE_METADATA = Set.of(Path.of(".lock"), Path.of(NestedSessionLaunch.FILE_NAME));
+	private static final Pattern TURN_EVIDENCE =
+		Pattern.compile("turn-([1-9][0-9]{0,9})[.](?:events|stderr|reply[.]json)");
 	/**
 	 * The runner-owned slots relative to the session folder.
 	 */
@@ -97,7 +107,7 @@ public final class ResultsCopy
 	{
 		requireThat(source, "source").isNotNull();
 		requireThat(target, "target").isNotNull();
-		return copy(source, target, _ -> true);
+		return copy(source, target, _ -> true, -1);
 	}
 
 	/**
@@ -120,11 +130,28 @@ public final class ResultsCopy
 	 */
 	public static Result copy(Path source, Path target, String id, Path project) throws IOException
 	{
+		return copyResumed(source, target, id, project, -1);
+	}
+
+	/**
+	 * Publishes a guarded resume's results at the original session identifiers. The completed prefix's immutable
+	 * evidence can already be present, and the turn checkpoint and bridge transcript advance to the resumed phase.
+	 *
+	 * @param source the broker's settled results copy
+	 * @param target the copy in the requester's results directory
+	 * @param id the original harness session identifier
+	 * @param project the project named by the request
+	 * @param previousTurns the number of turns in the validated claim, or -1 for an ordinary copy
+	 * @return how the copy ended
+	 * @throws IOException if the manifest is malformed or cannot be written
+	 */
+	static Result copyResumed(Path source, Path target, String id, Path project, int previousTurns) throws IOException
+	{
 		requireThat(source, "source").isNotNull();
 		requireThat(target, "target").isNotNull();
 		requireThat(id, "id").isNotNull();
 		requireThat(project, "project").isNotNull();
-		Result result = copy(source, target, relative -> !relative.equals(MANIFEST));
+		Result result = copy(source, target, relative -> !relative.equals(MANIFEST), previousTurns);
 		NestedSessionManager.copyManifest(source, target, id, project);
 		return result;
 	}
@@ -146,7 +173,7 @@ public final class ResultsCopy
 		requireThat(target, "target").isNotNull();
 		deleteTurnCopies(target);
 		ResultsCopier copier = new ResultsCopier(source, target, ResultsCopy::includesTurnPath,
-			ResultsCopy::isRequiredTurnPath, false);
+			ResultsCopy::isRequiredTurnPath, false, -1);
 		Files.walkFileTree(source, copier);
 		return List.copyOf(copier.skipped);
 	}
@@ -223,12 +250,13 @@ public final class ResultsCopy
 	 * @param source   the session folder
 	 * @param target   the copy, which need not exist
 	 * @param included accepts the name of each directory directly below the nested session that the copy includes
+	 * @param previousTurns the turn count of a guarded resume, or -1 for an ordinary copy
 	 * @return how the copy ended
 	 */
-	private static Result copy(Path source, Path target, Predicate<Path> included)
+	private static Result copy(Path source, Path target, Predicate<Path> included, int previousTurns)
 	{
 		ResultsCopier copier = new ResultsCopier(source, target, included,
-			relative -> relative.startsWith(ResultProjectLinks.DIRECTORY), true);
+			relative -> relative.startsWith(ResultProjectLinks.DIRECTORY), true, previousTurns);
 		try
 		{
 			Files.walkFileTree(source, copier);
@@ -316,6 +344,7 @@ public final class ResultsCopy
 		 * {@link #required} accepts it.
 		 */
 		private final boolean goesOnPastFailures;
+		private final int previousTurns;
 		/**
 		 * The paths, relative to the nested session, that the copier's sandbox refused to let the copy write.
 		 */
@@ -338,15 +367,17 @@ public final class ResultsCopy
 		 * @param required accepts the paths whose copy failures must be thrown
 		 * @param goesOnPastFailures indicates whether a file or folder that cannot be copied is left out, rather than
 		 *                           ending the copy, unless {@code required} accepts it
+		 * @param previousTurns the turn count of a guarded resume, or -1 for an ordinary copy
 		 */
 		ResultsCopier(Path source, Path target, Predicate<Path> included, Predicate<Path> required,
-			boolean goesOnPastFailures)
+			boolean goesOnPastFailures, int previousTurns)
 		{
 			this.source = source;
 			this.target = target;
 			this.included = included;
 			this.required = required;
 			this.goesOnPastFailures = goesOnPastFailures;
+			this.previousTurns = previousTurns;
 			this.attempted = target;
 		}
 
@@ -414,6 +445,8 @@ public final class ResultsCopy
 			try
 			{
 				Files.createDirectories(attempted);
+				if (previousTurns >= 0 && !Files.isDirectory(attempted, NOFOLLOW_LINKS))
+					throw new IOException("Results directory is a link: " + attempted);
 			}
 			catch (IOException e)
 			{
@@ -435,7 +468,7 @@ public final class ResultsCopy
 				attempted = copyOf(file);
 				try
 				{
-					Files.copy(file, attempted, NOFOLLOW_LINKS);
+					copyFile(file, source.relativize(file));
 				}
 				catch (IOException e)
 				{
@@ -444,6 +477,67 @@ public final class ResultsCopy
 				}
 			}
 			return FileVisitResult.CONTINUE;
+		}
+
+		/**
+		 * Copies one regular broker artifact, settling collisions for evidence of the exact resumed session.
+		 *
+		 * @param file the source file
+		 * @param relative its path inside the session
+		 * @throws IOException if the file cannot be copied or if an existing file conflicts with the copy
+		 */
+		private void copyFile(Path file, Path relative) throws IOException
+		{
+			try
+			{
+				Files.copy(file, attempted, NOFOLLOW_LINKS);
+			}
+			catch (FileAlreadyExistsException collision)
+			{
+				if (previousTurns < 0 || !Files.isRegularFile(attempted, NOFOLLOW_LINKS))
+					throw collision;
+				if (relative.equals(CHECKPOINT) || relative.equals(BRIDGE_TRANSCRIPT))
+					replacePhaseFile(file, attempted);
+				else if (!isEarlierEvidence(relative) || Files.mismatch(file, attempted) != -1)
+					throw collision;
+			}
+		}
+
+		/**
+		 * Identifies immutable session metadata and evidence from turns in the guarded claim.
+		 *
+		 * @param relative the path inside the session
+		 * @return whether the existing file can be reused if its bytes agree
+		 */
+		private boolean isEarlierEvidence(Path relative)
+		{
+			if (IMMUTABLE_METADATA.contains(relative))
+				return true;
+			if (relative.getNameCount() != 2 || !relative.startsWith(SESSION_ARTIFACTS))
+				return false;
+			Matcher turn = TURN_EVIDENCE.matcher(relative.getFileName().toString());
+			return turn.matches() && Long.parseLong(turn.group(1)) <= previousTurns;
+		}
+
+		/**
+		 * Replaces one phase file with a complete copy from the settled broker directory.
+		 *
+		 * @param file the broker's file
+		 * @param target the regular phase file in the requester's copy
+		 * @throws IOException if the replacement cannot be published
+		 */
+		private static void replacePhaseFile(Path file, Path target) throws IOException
+		{
+			Path staged = Files.createTempFile(target.getParent(), ".resumed-result-", ".tmp");
+			try
+			{
+				Files.copy(file, staged, NOFOLLOW_LINKS, REPLACE_EXISTING);
+				Files.move(staged, target, ATOMIC_MOVE, REPLACE_EXISTING);
+			}
+			finally
+			{
+				Files.deleteIfExists(staged);
+			}
 		}
 
 		@Override
