@@ -5,13 +5,16 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.PortablePaths;
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -23,26 +26,31 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
+import java.util.stream.Stream;
 
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * A prompt test directory: its {@code scenario.md}, the files and links of its {@value #WORKSPACE} directory and the
- * test cases of its values file.
+ * Holds a prompt test's scenario, workspace files, assertion examples and test cases.
  *
- * @param root           the test root, which holds the prompt test directory or is that directory
- * @param directory      the prompt test directory
- * @param scenario       the parsed scenario
- * @param workspaceFiles the workspace files, sorted by path
- * @param sources        the file that each workspace file is copied from, by the workspace file's path
- * @param copiedLinks    the target of each link of {@value #WORKSPACE} whose target lies outside it, so that trials
- *                       receive a copy of the target, by the link's path relative to {@value #WORKSPACE}; each target
- *                       is relative to the link's directory, and paths and targets have {@code /} separators
- * @param testCases      the test cases of the values file, or an empty list if the directory has none
+ * @param root               the test root, which holds the prompt test directory or is that directory
+ * @param directory          the prompt test directory
+ * @param scenario           the parsed scenario
+ * @param workspaceFiles     the workspace files, sorted by path
+ * @param sources            the file that each workspace file is copied from, by the workspace file's path
+ * @param copiedLinks        the target of each link of {@value #WORKSPACE} whose target lies outside it, so that trials
+ *                           receive a copy of the target, by the link's path relative to {@value #WORKSPACE}. Each
+ *                           target is relative to the link's directory. Paths and targets have {@code /} separators.
+ * @param testCases          the test cases of the values file, or an empty list if the directory has none
+ * @param exampleSources     each example source file, keyed by its path below {@value #EXAMPLES} with {@code /}
+ *                           separators, sorted by path
+ * @param exampleDirectories the paths of all directories below {@value #EXAMPLES}, including empty ones, with
+ *                           {@code /} separators, sorted by path
  */
 public record PromptTestFiles(Path root, Path directory, Scenario scenario,
 	List<PromptTestFiles.WorkspaceEntry> workspaceFiles, Map<String, Path> sources, Map<String, String> copiedLinks,
-	List<TestCase> testCases)
+	List<TestCase> testCases, Map<String, Path> exampleSources, Set<String> exampleDirectories)
 {
 	/**
 	 * The scenario's file name.
@@ -52,6 +60,10 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario,
 	 * The name of the directory whose contents each trial's workspace root receives.
 	 */
 	public static final String WORKSPACE = "workspace";
+	/**
+	 * The name of the directory that holds the prompt test's assertion examples.
+	 */
+	public static final String EXAMPLES = "examples";
 	/**
 	 * The characters that a file name segment may not contain on some operating system.
 	 */
@@ -117,14 +129,18 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario,
 	/**
 	 * Creates the files of a prompt test.
 	 *
-	 * @param root           the test root, which holds the prompt test directory or is that directory
-	 * @param directory      the prompt test directory
-	 * @param scenario       the parsed scenario
-	 * @param workspaceFiles the workspace files, sorted by path
-	 * @param sources        the file that each workspace file is copied from, by the workspace file's path
-	 * @param copiedLinks    the target of each link of {@value #WORKSPACE} whose target lies outside it, by the link's
-	 *                       path relative to {@value #WORKSPACE}
-	 * @param testCases      the test cases of the values file, or an empty list if the directory has none
+	 * @param root               the test root, which holds the prompt test directory or is that directory
+	 * @param directory          the prompt test directory
+	 * @param scenario           the parsed scenario
+	 * @param workspaceFiles     the workspace files, sorted by path
+	 * @param sources            the file that each workspace file is copied from, by the workspace file's path
+	 * @param copiedLinks        each link's target when it lies outside {@value #WORKSPACE}, by the link's path
+	 *                           relative to {@value #WORKSPACE}
+	 * @param testCases          the test cases of the values file, or an empty list if the directory has none
+	 * @param exampleSources     each example source file, keyed by its path below {@value #EXAMPLES} with {@code /}
+	 *                           separators
+	 * @param exampleDirectories the paths of all directories below {@value #EXAMPLES}, including empty ones, with
+	 *                           {@code /} separators
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code directory} does not lie at or below {@code root}, or {@code sources}
 	 *                                  does not name exactly the workspace files' paths
@@ -145,6 +161,29 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario,
 		requireThat(sources.keySet(), "sources.keySet()").isEqualTo(paths, "paths");
 		copiedLinks = Collections.unmodifiableMap(new TreeMap<>(copiedLinks));
 		testCases = List.copyOf(testCases);
+		exampleSources = Collections.unmodifiableMap(new TreeMap<>(Map.copyOf(exampleSources)));
+		exampleDirectories = Collections.unmodifiableSet(new TreeSet<>(exampleDirectories));
+	}
+
+	/**
+	 * Creates the files of a prompt test that has no assertion examples.
+	 *
+	 * @param root           the test root, which holds the prompt test directory or is that directory
+	 * @param directory      the prompt test directory
+	 * @param scenario       the parsed scenario
+	 * @param workspaceFiles the workspace files, sorted by path
+	 * @param sources        the file that each workspace file is copied from, by the workspace file's path
+	 * @param copiedLinks    the target of each link of {@value #WORKSPACE} whose target lies outside it, by the link's
+	 *                       path relative to {@value #WORKSPACE}
+	 * @param testCases      the test cases of the values file, or an empty list if the directory has none
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code directory} does not lie at or below {@code root}, or {@code sources}
+	 *                                  does not name exactly the workspace files' paths
+	 */
+	public PromptTestFiles(Path root, Path directory, Scenario scenario, List<WorkspaceEntry> workspaceFiles,
+		Map<String, Path> sources, Map<String, String> copiedLinks, List<TestCase> testCases)
+	{
+		this(root, directory, scenario, workspaceFiles, sources, copiedLinks, testCases, Map.of(), Set.of());
 	}
 
 	/**
@@ -164,8 +203,9 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario,
 	 * @throws ScenarioFormatException  if the scenario or the values file does not follow the format,
 	 *                                  {@value #WORKSPACE} holds a special file or a link that is absolute, whose
 	 *                                  target is missing or lies outside the project, whose target directory holds
-	 *                                  the link, that forms a cycle or that reaches a prompt test directory, or a
-	 *                                  committed test case is not valid for the prompt test
+	 *                                  the link, that forms a cycle or that reaches a prompt test directory,
+	 *                                  {@value #EXAMPLES} is a link or a non-directory entry, it holds a link or a
+	 *                                  special file, or a committed test case is not valid for the prompt test
 	 */
 	public static PromptTestFiles read(JsonMapper json, Path project, Path root, Path directory)
 		throws IOException, ScenarioFormatException
@@ -190,12 +230,12 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario,
 			}
 		}
 		return new PromptTestFiles(root, directory, files.scenario(), files.workspaceFiles(), files.sources(),
-			files.copiedLinks(), testCases);
+			files.copiedLinks(), testCases, files.exampleSources(), files.exampleDirectories());
 	}
 
 	/**
-	 * Reads the scenario and the {@value #WORKSPACE} directory of a prompt test directory of the project, leaving out
-	 * its values file, whose test cases the caller reads.
+	 * Reads the scenario, {@value #WORKSPACE} directory and {@value #EXAMPLES} directory of a prompt test directory
+	 * of the project, leaving out its values file, whose test cases the caller reads.
 	 *
 	 * @param project   the project, which problems name files relative to, with {@code /} between names
 	 * @param root      the test root, which holds the prompt test directory or is that directory
@@ -206,7 +246,8 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario,
 	 *                                  does not lie at or below {@code project}
 	 * @throws IOException              if a file cannot be read
 	 * @throws ScenarioFormatException  if the scenario does not follow the format, or {@value #WORKSPACE} holds a
-	 *                                  special file or a link that is refused
+	 *                                  special file or a link that is refused, or {@value #EXAMPLES} has an invalid
+	 *                                  file or directory
 	 * @see #read(JsonMapper, Path, Path, Path)
 	 */
 	public static PromptTestFiles readScenario(Path project, Path root, Path directory)
@@ -216,10 +257,11 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario,
 	}
 
 	/**
-	 * Reads the scenario and the {@value #WORKSPACE} directory of a prompt test directory, leaving out its values file,
-	 * whose test cases the caller reads. The prompt test lies in a tree that holds files at their paths relative to the
-	 * project, such as a draft directory. A link resolves at the path where it lies relative to the tree: a target that
-	 * the tree holds is read from it, and any other target from the project.
+	 * Reads the scenario, {@value #WORKSPACE} directory and {@value #EXAMPLES} directory of a prompt test directory,
+	 * leaving out its values file, whose test cases the caller reads. The prompt test lies in a tree that holds files
+	 * at their paths relative to the project, such as a draft directory. A workspace link resolves at the path where
+	 * it lies relative to the tree. The reader gets a target that the tree holds from that tree and any other target
+	 * from the project.
 	 *
 	 * @param project   the project, which problems name files relative to, with {@code /} between names
 	 * @param tree      the directory that holds the prompt test at its path relative to the project: the project or a
@@ -232,7 +274,8 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario,
 	 *                                  does not lie at or below {@code tree}
 	 * @throws IOException              if a file cannot be read
 	 * @throws ScenarioFormatException  if the scenario does not follow the format, or {@value #WORKSPACE} holds a
-	 *                                  special file or a link that is refused
+	 *                                  special file or a link that is refused, or {@value #EXAMPLES} has an invalid
+	 *                                  file or directory
 	 * @see #read(JsonMapper, Path, Path, Path)
 	 */
 	public static PromptTestFiles readScenario(Path project, Path tree, Path root, Path directory)
@@ -256,8 +299,11 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario,
 
 		WorkspaceReader reader = new WorkspaceReader(project, tree, root, declared);
 		reader.read(directory);
+		Map<String, Path> exampleSources = new HashMap<>();
+		Set<String> exampleDirectories = new HashSet<>();
+		readExamples(project, directory.resolve(EXAMPLES), exampleSources, exampleDirectories);
 		return new PromptTestFiles(root, directory, scenario, reader.workspaceFiles(), reader.sources(),
-			reader.copiedLinks(), List.of());
+			reader.copiedLinks(), List.of(), exampleSources, exampleDirectories);
 	}
 
 	/**
@@ -560,5 +606,79 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario,
 				String.join("; ", problems));
 		}
 		return Collections.unmodifiableMap(substitute(workspaceFiles, testCase));
+	}
+
+	/**
+	 * Collects example files and directories if the examples directory exists.
+	 *
+	 * @param project            the directory that problems name paths relative to
+	 * @param examples           where the prompt test's examples directory belongs
+	 * @param exampleSources     receives each example file by its path relative to {@code examples}
+	 * @param exampleDirectories receives the paths of directories below {@code examples}
+	 * @throws IOException             if an entry cannot be read
+	 * @throws ScenarioFormatException if the root or an entry inside it is a link or of the wrong kind
+	 */
+	private static void readExamples(Path project, Path examples, Map<String, Path> exampleSources,
+		Set<String> exampleDirectories) throws IOException, ScenarioFormatException
+	{
+		BasicFileAttributes attributes;
+		try
+		{
+			attributes = Files.readAttributes(examples, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+		}
+		catch (NoSuchFileException _)
+		{
+			return;
+		}
+		if (!attributes.isDirectory())
+		{
+			throw new ScenarioFormatException(display(project, examples) +
+				": Replace this entry with a directory for the assertion examples.");
+		}
+
+		readExampleEntries(project, examples, examples, exampleSources, exampleDirectories);
+	}
+
+	/**
+	 * Collects the entries of one directory under the examples root, including empty directories.
+	 *
+	 * @param project            the directory that problems name paths relative to
+	 * @param examples           the prompt test's examples directory
+	 * @param directory          the directory to read at or below {@code examples}
+	 * @param exampleSources     receives each example file by its path relative to {@code examples}
+	 * @param exampleDirectories receives the paths of directories below {@code examples}
+	 * @throws IOException             if an entry cannot be read
+	 * @throws ScenarioFormatException if an entry is a link or a special file
+	 */
+	private static void readExampleEntries(Path project, Path examples, Path directory, Map<String, Path> exampleSources,
+		Set<String> exampleDirectories) throws IOException, ScenarioFormatException
+	{
+		List<Path> ordered;
+		try (Stream<Path> entries = Files.list(directory))
+		{
+			ordered = entries.sorted().toList();
+		}
+		catch (UncheckedIOException e)
+		{
+			throw e.getCause();
+		}
+		for (Path entry : ordered)
+		{
+			String path = PortablePaths.text(examples.relativize(entry));
+			BasicFileAttributes attributes = Files.readAttributes(entry, BasicFileAttributes.class,
+				LinkOption.NOFOLLOW_LINKS);
+			if (attributes.isDirectory())
+			{
+				exampleDirectories.add(path);
+				readExampleEntries(project, examples, entry, exampleSources, exampleDirectories);
+			}
+			else if (attributes.isRegularFile())
+				exampleSources.put(path, entry);
+			else
+			{
+				throw new ScenarioFormatException(display(project, entry) +
+					": Assertion examples may contain only directories and regular files. Replace or remove this entry.");
+			}
+		}
 	}
 }
