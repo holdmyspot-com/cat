@@ -7,6 +7,7 @@ import com.holdmyspot.cat.common.Identifier;
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.contract.Assertion;
+import com.holdmyspot.cat.common.optimizer.contract.BareValue;
 import com.holdmyspot.cat.common.optimizer.contract.BuiltInTool;
 import com.holdmyspot.cat.common.optimizer.contract.CapabilityRanking;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
@@ -80,6 +81,10 @@ import tools.jackson.databind.node.ObjectNode;
  */
 public final class ProposalCheck
 {
+	/**
+	 * The placeholder by which an assertion's statement refers to the test case's expected outcome.
+	 */
+	private static final String EXPECTED_OUTCOME_PLACEHOLDER = "{{" + TestCase.EXPECTED_OUTCOME + "}}";
 	/**
 	 * Matches a problem that concerns one prompt test of the completed proposal: its index, the rest of its JSON path
 	 * and its message.
@@ -211,8 +216,9 @@ public final class ProposalCheck
 	 *                                  recorded prompt test or a new one in the target's test directory, leaves out a
 	 *                                  recorded prompt test, names a prompt test whose files are missing or malformed,
 	 *                                  whose scenario has no expected behavior or whose assertions it does not map
-	 *                                  one to one, declares an assertion whose built-in tool needs exit statuses that
-	 *                                  the harness does not report, or breaks a rule of the contract model. The
+	 *                                  one to one, leaves a bare expected outcome to a judge without a tool that
+	 *                                  checks the value, declares an assertion whose built-in tool needs exit statuses
+	 *                                  that the harness does not report, or breaks a rule of the contract model. The
 	 *                                  exception lists every problem found.
 	 * @throws UncheckedIOException     if a file cannot be read
 	 */
@@ -220,7 +226,7 @@ public final class ProposalCheck
 		ProfileEvidence profiles, long salt) throws InvalidProposalException
 	{
 		requireThat(project, "project").isNotNull();
-		return check(proposalFile, project, draft, observedSources, profiles, salt, true, true, Map.of());
+		return check(proposalFile, project, draft, observedSources, profiles, salt, true, Map.of());
 	}
 
 	/**
@@ -249,7 +255,7 @@ public final class ProposalCheck
 	{
 		requireThat(project, "project").isNotNull();
 		requireThat(fixed, "fixed").isNotNull();
-		return check(proposalFile, project, draft, observedSources, profiles, salt, true, true, fixed);
+		return check(proposalFile, project, draft, observedSources, profiles, salt, true, fixed);
 	}
 
 	/**
@@ -267,7 +273,7 @@ public final class ProposalCheck
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws InvalidProposalException if the proposal breaks a rule that
 	 *                                  {@link #check(ObjectNode, Path, Path, String, ProfileEvidence, long)} lists,
-	 *                                  apart from a new prompt test whose directory the project holds by now
+	 *                                  apart from checks for authoring a proposal
 	 * @throws UncheckedIOException     if a file cannot be read
 	 */
 	public DerivedProposal restore(ObjectNode proposalFile, Path project, Path draft, String observedSources,
@@ -275,7 +281,7 @@ public final class ProposalCheck
 	{
 		requireThat(project, "project").isNotNull();
 		requireThat(draft, "draft").isNotNull();
-		return check(proposalFile, project, draft, observedSources, profiles, salt, false, false, Map.of());
+		return check(proposalFile, project, draft, observedSources, profiles, salt, false, Map.of());
 	}
 
 	/**
@@ -287,17 +293,15 @@ public final class ProposalCheck
 	 * @param observedSources  the prompt sources that the harness reported loading in the contract author session
 	 * @param profiles         the profile inventory, its shipped capability ranking and the bindings
 	 * @param salt             the salt that CAT drew for the proposal
-	 * @param newMustBeAbsent  {@code true} if a new prompt test's directory must not exist in {@code project}
-	 * @param requireClasses   {@code true} if the boundary classes of the draft directory's test cases are checked;
-	 *                         {@code false} for a stored proposal, which may predate boundary classes
+	 * @param authoring        whether to apply the checks for authoring a proposal
 	 * @param fixed            the completed form of each prompt test whose files the draft directory need not hold,
 	 *                         by its directory
 	 * @return the proposal
 	 * @throws InvalidProposalException if the proposal is invalid
 	 */
 	private DerivedProposal check(ObjectNode proposalFile, Path project, Path draft, String observedSources,
-		ProfileEvidence profiles, long salt, boolean newMustBeAbsent, boolean requireClasses,
-		Map<Path, ObjectNode> fixed) throws InvalidProposalException
+		ProfileEvidence profiles, long salt, boolean authoring, Map<Path, ObjectNode> fixed)
+		throws InvalidProposalException
 	{
 		requireThat(proposalFile, "proposalFile").isNotNull();
 		requireThat(draft, "draft").isNotNull();
@@ -344,7 +348,7 @@ public final class ProposalCheck
 		problems.addAll(violations);
 		// The files of a prompt test whose item satisfies the schema are read even when another part of the proposal
 		// file breaks it, so that every problem is reported at once
-		DraftAssembly assembled = new DraftAssembly(project, draft, newMustBeAbsent, requireClasses, fixed, problems).
+		DraftAssembly assembled = new DraftAssembly(project, draft, authoring, fixed, problems).
 			assemble(proposalFile, invalidTests(violations));
 		// Read from the raw file so that a missing recorded prompt test is reported even when the schema rejects it
 		problems.addAll(missingRecorded(proposalFile));
@@ -855,11 +859,10 @@ public final class ProposalCheck
 	{
 		private final Path project;
 		private final Path draft;
-		private final boolean newMustBeAbsent;
 		/**
-		 * {@code true} if the boundary classes of the draft directory's test cases are checked.
+		 * Whether to check the draft against the requirements for authoring a proposal.
 		 */
-		private final boolean requireClasses;
+		private final boolean authoring;
 		/**
 		 * The completed form of each prompt test whose files the draft directory need not hold, by its directory.
 		 */
@@ -876,21 +879,18 @@ public final class ProposalCheck
 		/**
 		 * Creates a reader.
 		 *
-		 * @param project         the directory that problems name files relative to
-		 * @param draft           the draft directory
-		 * @param newMustBeAbsent {@code true} if a new prompt test's directory must not exist in {@code project}
-		 * @param requireClasses  {@code true} if the boundary classes of the draft directory's test cases are checked
-		 * @param fixed           the completed form of each prompt test whose files the draft directory need not
-		 *                        hold, by its directory
-		 * @param problems        receives each problem
+		 * @param project   the directory that problems name files relative to
+		 * @param draft     the draft directory
+		 * @param authoring whether to apply the checks for authoring a proposal
+		 * @param fixed     the completed form of each prompt test whose files the draft directory need not hold, by
+		 *                  its directory
+		 * @param problems  receives each problem
 		 */
-		DraftAssembly(Path project, Path draft, boolean newMustBeAbsent, boolean requireClasses,
-			Map<Path, ObjectNode> fixed, List<String> problems)
+		DraftAssembly(Path project, Path draft, boolean authoring, Map<Path, ObjectNode> fixed, List<String> problems)
 		{
 			this.project = project;
 			this.draft = draft;
-			this.newMustBeAbsent = newMustBeAbsent;
-			this.requireClasses = requireClasses;
+			this.authoring = authoring;
 			this.fixed = fixed;
 			this.problems = problems;
 		}
@@ -1054,7 +1054,9 @@ public final class ProposalCheck
 			TestFiles filesOfTest = new TestFiles(display(testDirectory), display(scenarioFile),
 				display(testDirectory.resolve(ValuesFile.NAME)), new ArrayList<>(), new ArrayList<>());
 			ArrayNode testCases = testCases(testDirectory, committedTestCases, filesOfTest);
-			ArrayNode assertions = assertions(item, location, scenario, filesOfTest, requireJudgeReasons);
+			boolean bareOutcomes = authoring && testCases != null && hasOnlyBareOutcomes(testCases, committedTestCases);
+			ArrayNode assertions = assertions(item, location, id, scenario, filesOfTest, requireJudgeReasons,
+				bareOutcomes);
 			if (testCases == null || assertions == null)
 				return null;
 			Optional<List<WorkspaceFile>> readWorkspaceFiles = textWorkspaceFiles(files);
@@ -1118,6 +1120,23 @@ public final class ProposalCheck
 				workspaceFiles.put(id, textWorkspaceFiles);
 			testFiles.put(index, filesOfTest);
 			return test;
+		}
+
+		/**
+		 * Indicates whether a prompt test has at least one test case and every expected outcome is a bare value.
+		 *
+		 * @param testCases          the test cases that the values file holds, apart from committed ones
+		 * @param committedTestCases the test cases that an earlier campaign committed
+		 * @return {@code true} if the test has a test case and every expected outcome is a bare value
+		 */
+		private static boolean hasOnlyBareOutcomes(ArrayNode testCases, List<TestCase> committedTestCases)
+		{
+			List<String> outcomes = new ArrayList<>();
+			for (JsonNode testCase : testCases)
+				outcomes.add(testCase.get(TestCase.EXPECTED_OUTCOME).asString());
+			for (TestCase committed : committedTestCases)
+				outcomes.add(committed.expectedOutcome());
+			return BareValue.areAllBareValues(outcomes);
 		}
 
 		/**
@@ -1206,7 +1225,7 @@ public final class ProposalCheck
 					"words joined by underscores, but `" + id + "` is not");
 				return false;
 			}
-			if (newMustBeAbsent && Files.exists(project.resolve(directory), LinkOption.NOFOLLOW_LINKS))
+			if (authoring && Files.exists(project.resolve(directory), LinkOption.NOFOLLOW_LINKS))
 			{
 				problems.add(at + ": the project already holds `" + text + "`, which is not a recorded prompt test " +
 					"of the target. Choose another directory for the new prompt test.");
@@ -1285,7 +1304,7 @@ public final class ProposalCheck
 					"expected outcome \"" + testCase.expectedOutcome() + "\", which the file leaves out,",
 					testCase.expectedOutcome(), testCase.boundaryClass(), true));
 			}
-			if (requireClasses)
+			if (authoring)
 				problems.addAll(BoundaryClassCheck.problems(files.values(), entries));
 			if (problems.size() > problemsBefore)
 				return null;
@@ -1319,15 +1338,17 @@ public final class ProposalCheck
 		/**
 		 * Completes the assertions of a prompt test from its scenario.
 		 *
-		 * @param item         the proposal file's item
-		 * @param location     the item's JSON path
-		 * @param scenario     the prompt test's scenario
-		 * @param files        the prompt test's files, which receive the identifier of each assertion
+		 * @param item                the proposal file's item
+		 * @param location            the item's JSON path
+		 * @param testId              the prompt test's identifier
+		 * @param scenario            the prompt test's scenario
+		 * @param files               the prompt test's files, which receive the identifier of each assertion
 		 * @param requireJudgeReasons whether missing judge reasons are a proposal problem
+		 * @param bareOutcomes        whether every test case has a bare expected outcome in a proposal being authored
 		 * @return the assertions, in the item's order, or {@code null} if a problem was added
 		 */
-		private ArrayNode assertions(ObjectNode item, String location, Scenario scenario, TestFiles files,
-			boolean requireJudgeReasons)
+		private ArrayNode assertions(ObjectNode item, String location, String testId, Scenario scenario, TestFiles files,
+			boolean requireJudgeReasons, boolean bareOutcomes)
 		{
 			String scenarioFile = files.scenario();
 			int problemsBefore = problems.size();
@@ -1355,6 +1376,20 @@ public final class ProposalCheck
 					continue;
 				}
 				boolean judged = assertion.tool() == null || assertion.onToolFailure() == OnToolFailure.JUDGE;
+				if (bareOutcomes && judged && assertion.statement().contains(EXPECTED_OUTCOME_PLACEHOLDER))
+				{
+					boolean toolChecksOutcome = assertion.builtInTool().
+						map(tool -> tool.placeholders().contains(TestCase.EXPECTED_OUTCOME)).orElse(false);
+					if (!toolChecksOutcome)
+					{
+						problems.add(scenarioFile + ": the prompt test `" + testId + "` leaves assertion `" + id +
+							"` to the judge for an expected outcome that is a bare value in every test case. Give the " +
+							"assertion a text tool such as `pattern \"{{expected_outcome}}\"`. Use " +
+							"`on_tool_failure: judge` when other wordings of the value are valid. Move any separate " +
+							"check that depends on meaning into its own judged assertion.");
+						continue;
+					}
+				}
 				if (requireJudgeReasons && judged && assertion.judgeReason() == null)
 				{
 					problems.add(scenarioFile + ": assertion `" + id + "` is judged but has no judge_reason; add one " +

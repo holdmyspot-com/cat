@@ -3101,6 +3101,130 @@ public final class ProposalTest
 	}
 
 	/**
+	 * Verifies that a proposal refuses to leave a bare expected outcome to a declared assertion's judge.
+	 *
+	 * @throws InvalidProposalException if the proposal is refused
+	 */
+	@Test(expectedExceptions = InvalidProposalException.class,
+		expectedExceptionsMessageRegExp = "(?s).*prompt test `plain_list`.*assertion `keeps_requested_tone`.*bare value.*")
+	public void refusesJudgedBareOutcome() throws InvalidProposalException
+	{
+		// Requirement: R-L14
+		String output = changedDerivation(proposal -> ((ObjectNode) proposal.at("/tests/1/assertions/0")).
+			put("statement", "The list contains {{expected_outcome}}."));
+
+		contractAuthor.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT);
+	}
+
+	/**
+	 * Verifies that a tool that checks other text leaves a bare expected outcome to the judge.
+	 *
+	 * @throws InvalidProposalException if the proposal is refused
+	 */
+	@Test(expectedExceptions = InvalidProposalException.class,
+		expectedExceptionsMessageRegExp = "(?s).*prompt test `plain_list`.*assertion `keeps_requested_tone`.*bare value.*")
+	public void refusesJudgedBareOutcomeWithOtherTool() throws InvalidProposalException
+	{
+		// Requirement: R-L14
+		String output = changedDerivation(proposal -> ((ObjectNode) proposal.at("/tests/1/assertions/0")).
+			put("statement", "The list contains {{expected_outcome}}.").put("tool", "pattern \"See below\"").
+			put("on_tool_failure", "judge"));
+
+		contractAuthor.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT);
+	}
+
+	/**
+	 * Verifies that a text tool checks bare outcomes and leaves alternate wordings to the judge.
+	 *
+	 * @throws InvalidProposalException if the proposal is refused
+	 */
+	@Test
+	public void acceptsBareOutcomeWithTextTool() throws InvalidProposalException
+	{
+		// Requirement: R-L14
+		String tool = "pattern \"{{expected_outcome}}\"";
+		String output = changedDerivation(proposal -> ((ObjectNode) proposal.at("/tests/1/assertions/0")).
+			put("statement", "The list contains {{expected_outcome}}.").put("tool", tool).
+			put("on_tool_failure", "judge"));
+
+		Contract contract = contractAuthor.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT).contract();
+
+		PromptTest test = contract.findTest("plain_list").orElseThrow();
+		Assertion assertion = test.assertions().getFirst().assertion();
+		requireThat(assertion.tool(), "tool").isEqualTo(tool);
+		requireThat(assertion.onToolFailure(), "onToolFailure").isEqualTo(OnToolFailure.JUDGE);
+	}
+
+	/**
+	 * Verifies that a judged assertion about tone appears with its reason when every expected outcome is bare.
+	 *
+	 * @throws InvalidProposalException if the proposal is refused
+	 */
+	@Test
+	public void showsOtherJudgedAssertionForBareValues() throws InvalidProposalException
+	{
+		// Requirement: R-L14
+		String reason = "Whether the requested tone is kept depends on meaning.";
+		String output = changedDerivation(proposal -> ((ObjectNode) proposal.at("/tests/1/assertions/0")).
+			put("evidence_scope", "response").put("judge_reason", reason));
+
+		requireThat(rendered(output), "proposal").contains("- Judged assertions:\n" +
+			"  - `keeps_requested_tone` (evidence scope `response`): " + reason + "\n");
+	}
+
+	/**
+	 * Verifies that one outcome needing judgment allows an assertion about the expected outcome without a text tool.
+	 *
+	 * @throws InvalidProposalException if the proposal is refused
+	 */
+	@Test
+	public void acceptsJudgedOutcomeWhenOneIsNotBare() throws InvalidProposalException
+	{
+		// Requirement: R-L14
+		String statement = "The list contains {{expected_outcome}}.";
+		String output = changedDerivation(proposal ->
+		{
+			((ObjectNode) proposal.at("/tests/1/assertions/0")).put("statement", statement);
+			((ObjectNode) proposal.at("/tests/1/test_cases/0")).
+				put(TestCase.EXPECTED_OUTCOME, "three named colors, ordered from lightest to darkest");
+		});
+
+		Contract contract = contractAuthor.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT).contract();
+
+		PromptTest test = contract.findTest("plain_list").orElseThrow();
+		Assertion assertion = test.assertions().getFirst().assertion();
+		requireThat(assertion.statement(), "statement").isEqualTo(statement);
+		requireThat(assertion.builtInTool().isEmpty(), "judgeDecides").isTrue();
+	}
+
+	/**
+	 * Verifies that CAT reopens a stored proposal that leaves a bare expected outcome to a declared assertion's judge.
+	 *
+	 * @throws IOException              if the fixture cannot be written
+	 * @throws InvalidProposalException if the stored proposal is refused
+	 */
+	@Test
+	public void reopensStoredJudgedBareOutcome() throws IOException, InvalidProposalException
+	{
+		// Requirement: R-L14
+		String statement = "The list contains {{expected_outcome}}.";
+		String output = changedDerivation(proposal -> ((ObjectNode) proposal.at("/tests/1/assertions/0")).
+			put("statement", statement));
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path draft = cleanup.add(Files.createTempDirectory("stored-bare-outcome-"));
+			String derivation = DraftFixtures.write(json, output, draft, TARGET.getFileName(), Map.of());
+
+			Contract contract = contractAuthor.proposal(derivation, draft, OBSERVED, PROFILES, SALT).contract();
+
+			PromptTest test = contract.findTest("plain_list").orElseThrow();
+			Assertion assertion = test.assertions().getFirst().assertion();
+			requireThat(assertion.statement(), "statement").isEqualTo(statement);
+			requireThat(assertion.builtInTool().isEmpty(), "judgeDecides").isTrue();
+		}
+	}
+
+	/**
 	 * Verifies that the near misses that the contract author writes in a prompt test's item of the proposal file
 	 * reach the contract, for the assertions that the judge decides, and that a test without them has none.
 	 *
