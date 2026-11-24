@@ -54,13 +54,33 @@ public class RecordedTrial implements TrialRecord
 	}
 
 	/**
-	 * Returns the full activity to a record that presents evidence to the judge.
+	 * Returns the normalized activity available to the judge.
 	 *
 	 * @return the normalized activity
 	 */
-	protected final SessionEvidence activity()
+	public final SessionEvidence activity()
 	{
 		return activity;
+	}
+
+	/**
+	 * Returns the path of the project's initial snapshot.
+	 *
+	 * @return the snapshot path
+	 */
+	public final Path initialProject()
+	{
+		return initialProject;
+	}
+
+	/**
+	 * Returns the path of the project's final snapshot.
+	 *
+	 * @return the snapshot path
+	 */
+	public final Path effects()
+	{
+		return effects;
 	}
 
 	@Override

@@ -1,0 +1,25 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"type": "object",
+	"required": ["reviews"],
+	"additionalProperties": false,
+	"properties": {
+		"reviews": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"required": ["assertion_id", "kind", "rationale", "tool"],
+				"additionalProperties": false,
+				"properties": {
+					"assertion_id": {"type": "string", "pattern": "\\S"},
+					"kind": {
+						"type": "string",
+						"pattern": "^(no_finding|response_depends_on_actions|actions_depends_only_on_replies|action_decidable_by_tool)$"
+					},
+					"rationale": {"type": "string", "pattern": "\\S"},
+					"tool": {"type": ["string", "null"], "pattern": "\\S"}
+				}
+			}
+		}
+	}
+}

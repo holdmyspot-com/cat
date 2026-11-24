@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -15,16 +16,19 @@ import java.util.function.UnaryOperator;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
- * Reads the activity format shared by a peer trial and a prompt test's assertion example.
+ * Reads and writes the activity format shared by a peer trial and a prompt test's assertion example.
  */
 public final class ActivityFile
 {
 	/**
-	 * The supported activity file format.
+	 * The activity file name for an assertion example.
 	 */
-	public static final int VERSION = 1;
+	public static final String EXAMPLE_NAME = "activity.json";
+	private static final int VERSION = 1;
 
 	/**
 	 * Reads the trial activity, applying the given replacement to its text values.
@@ -65,6 +69,89 @@ public final class ActivityFile
 		catch (JacksonException | IllegalArgumentException | DateTimeException e)
 		{
 			throw new IOException("Malformed retained evaluator activity in " + file, e);
+		}
+	}
+
+	/**
+	 * Writes normalized activity to a path that the caller owns.
+	 *
+	 * @param json the process mapper
+	 * @param file the activity file
+	 * @param evidence the normalized trial activity
+	 * @throws NullPointerException if any argument is null
+	 * @throws IOException if the activity cannot be written
+	 */
+	public static void write(JsonMapper json, Path file, SessionEvidence evidence) throws IOException
+	{
+		requireThat(json, "json").isNotNull();
+		requireThat(file, "file").isNotNull();
+		requireThat(evidence, "evidence").isNotNull();
+
+		ObjectNode document = json.createObjectNode().put("format_version", VERSION);
+		ArrayNode entries = document.putArray("entries");
+		for (SessionEvidence.Entry entry : evidence.entries())
+			writeEntry(json, entries.addObject(), entry);
+		document.set("received", json.valueToTree(evidence.received()));
+		Duration slowest = evidence.commands().slowest();
+		Integer empty = evidence.commands().emptyRunningResults();
+		if (slowest != null)
+			document.put("slowest_command", slowest.toString());
+		if (empty != null)
+			document.put("empty_running_results", empty);
+
+		try (OutputStream output = Files.newOutputStream(file))
+		{
+			json.writeValue(output, document);
+		}
+		catch (JacksonException e)
+		{
+			throw new IOException("Cannot write trial activity to " + file, e);
+		}
+	}
+
+	/**
+	 * Writes an activity entry without opening the native evidence package for reflective access.
+	 *
+	 * @param json   the process mapper
+	 * @param record the activity record
+	 * @param entry  the normalized activity entry
+	 */
+	private static void writeEntry(JsonMapper json, ObjectNode record, SessionEvidence.Entry entry)
+	{
+		ObjectNode node = record.putObject("entry").put("turn", entry.turn()).put("agent", entry.agent());
+		switch (entry)
+		{
+			case SessionEvidence.Tool tool ->
+			{
+				record.put("type", "tool");
+				node.put("tool", tool.tool()).put("input", tool.input()).put("command", tool.command()).
+					put("exit_status", tool.exitStatus()).put("output", tool.output()).
+					set("running", json.valueToTree(tool.running()));
+			}
+			case SessionEvidence.CommandEnd command ->
+			{
+				record.put("type", "command_end");
+				node.put("input", command.input()).put("exit_status", command.exitStatus()).put("output", command.output());
+			}
+			case SessionEvidence.Hook hook ->
+			{
+				record.put("type", "hook");
+				node.put("hook", hook.hook()).put("status", hook.status());
+			}
+			case SessionEvidence.Assistant assistant ->
+			{
+				record.put("type", "assistant");
+				node.put("position", assistant.position()).put("text", assistant.text());
+				ArrayNode questions = node.putArray("questions");
+				for (SessionEvidence.Question question : assistant.questions())
+					questions.addObject().put("title", question.title()).set("options", json.valueToTree(question.options()));
+			}
+			case SessionEvidence.ChildEvent event ->
+			{
+				record.put("type", "child_event");
+				node.put("child", event.child()).put("name", event.name()).put("kind", event.kind().name()).
+					put("text", event.text());
+			}
 		}
 	}
 

@@ -65,6 +65,8 @@ import com.holdmyspot.cat.common.optimizer.proposal.ContractAuthorProtocol;
 import com.holdmyspot.cat.common.optimizer.proposal.JsonResponse;
 import com.holdmyspot.cat.common.optimizer.proposal.JudgeTemplate;
 import com.holdmyspot.cat.common.optimizer.proposal.OutputFile;
+import com.holdmyspot.cat.common.optimizer.proposal.AssertionExampleCheck;
+import com.holdmyspot.cat.common.optimizer.proposal.ProposalCheck;
 import com.holdmyspot.cat.common.optimizer.proposal.PluginCheck;
 import com.holdmyspot.cat.common.optimizer.proposal.PluginMapping;
 import com.holdmyspot.cat.common.optimizer.proposal.ProfileEvidence;
@@ -3507,6 +3509,34 @@ public final class ProposalTest
 			requireThat(e.getMessage(), "problems").contains("uses_requested_tone").contains("pass_casual_tone").
 				contains("keeps_requested_tone").contains("pass_item_kind").contains("failed a passing example");
 		}
+	}
+
+	/**
+	 * Verifies that a mechanical refusal retains the examples of the tests that passed their mechanical checks.
+	 *
+	 * @throws IOException if the authored draft cannot be read or written
+	 */
+	@Test
+	public void retainsOnlyReviewableExamples() throws IOException
+	{
+		// Requirement: R-L16
+		SessionResult.Completed result = replyExample("judge", "pass_item_kind", "A list with no items.");
+		Path project = result.effects();
+		Path draft = project.resolve(DraftDirectory.name(result.initialProject()));
+		Path missing = draft.resolve(".cat/tests/CLAUDE/formatting/examples/uses_requested_tone/pass_casual_tone");
+		Files.delete(missing.resolve("replies.json"));
+		Files.delete(missing);
+		ObjectNode output = (ObjectNode) json.readTree(Files.readString(
+			project.resolve(OutputFile.name(result.initialProject())), UTF_8));
+		ProposalCheck proposalCheck = new ProposalCheck(json, schema, judge, Path.of("CLAUDE.md"), true, List.of());
+
+		ProposalCheck.Assessment assessed = proposalCheck.inspect(output, project, draft, OBSERVED, PROFILES, SALT,
+			Map.of());
+
+		requireThat(String.join("\n", assessed.problems()), "problems").
+			contains("uses_requested_tone").contains("keeps_requested_tone");
+		requireThat(assessed.proposal().orElseThrow().exampleChecks().stream().map(AssertionExampleCheck::testId).
+			distinct().toList(), "reviewableTests").isEqualTo(List.of("safety"));
 	}
 
 	/**

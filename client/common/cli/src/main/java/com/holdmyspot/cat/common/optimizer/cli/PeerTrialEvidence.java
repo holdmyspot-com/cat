@@ -8,11 +8,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.util.function.UnaryOperator;
 import tools.jackson.databind.json.JsonMapper;
-import tools.jackson.databind.node.ArrayNode;
-import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Keeps the peer harness's parsed trial activity beside its retained native transcript.
@@ -33,72 +30,15 @@ final class PeerTrialEvidence
 	static void write(JsonMapper json, FileReplacer replacer, Path transcript, SessionEvidence evidence)
 		throws IOException
 	{
-		ObjectNode document = json.createObjectNode().put("format_version", ActivityFile.VERSION);
-		ArrayNode entries = document.putArray("entries");
-		for (SessionEvidence.Entry entry : evidence.entries())
-			writeEntry(json, entries.addObject(), entry);
-		document.set("received", json.valueToTree(evidence.received()));
-		Duration slowest = evidence.commands().slowest();
-		Integer empty = evidence.commands().emptyRunningResults();
-		if (slowest != null)
-			document.put("slowest_command", slowest.toString());
-		if (empty != null)
-			document.put("empty_running_results", empty);
 		Path temporary = Files.createTempFile(transcript.getParent(), "evaluator-evidence-", ".tmp");
 		try
 		{
-			json.writeValue(temporary.toFile(), document);
+			ActivityFile.write(json, temporary, evidence);
 			replacer.replace(temporary, transcript.resolveSibling(FILE));
 		}
 		finally
 		{
 			Files.deleteIfExists(temporary);
-		}
-	}
-
-	/**
-	 * Writes an activity entry without opening the native evidence package for reflective access.
-	 *
-	 * @param json   the process mapper
-	 * @param record the activity record
-	 * @param entry  the parsed native entry
-	 */
-	private static void writeEntry(JsonMapper json, ObjectNode record, SessionEvidence.Entry entry)
-	{
-		ObjectNode node = record.putObject("entry").put("turn", entry.turn()).put("agent", entry.agent());
-		switch (entry)
-		{
-			case SessionEvidence.Tool tool ->
-			{
-				record.put("type", "tool");
-				node.put("tool", tool.tool()).put("input", tool.input()).put("command", tool.command()).
-					put("exit_status", tool.exitStatus()).put("output", tool.output()).
-					set("running", json.valueToTree(tool.running()));
-			}
-			case SessionEvidence.CommandEnd command ->
-			{
-				record.put("type", "command_end");
-				node.put("input", command.input()).put("exit_status", command.exitStatus()).put("output", command.output());
-			}
-			case SessionEvidence.Hook hook ->
-			{
-				record.put("type", "hook");
-				node.put("hook", hook.hook()).put("status", hook.status());
-			}
-			case SessionEvidence.Assistant assistant ->
-			{
-				record.put("type", "assistant");
-				node.put("position", assistant.position()).put("text", assistant.text());
-				ArrayNode questions = node.putArray("questions");
-				for (SessionEvidence.Question question : assistant.questions())
-					questions.addObject().put("title", question.title()).set("options", json.valueToTree(question.options()));
-			}
-			case SessionEvidence.ChildEvent event ->
-			{
-				record.put("type", "child_event");
-				node.put("child", event.child()).put("name", event.name()).put("kind", event.kind().name()).
-					put("text", event.text());
-			}
 		}
 	}
 

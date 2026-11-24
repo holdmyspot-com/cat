@@ -1,7 +1,9 @@
 package com.holdmyspot.cat.common.optimizer.contract.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static java.net.StandardProtocolFamily.UNIX;
 
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestFiles;
@@ -9,6 +11,8 @@ import com.holdmyspot.cat.common.optimizer.contract.ScenarioFormatException;
 import com.holdmyspot.cat.common.optimizer.contract.ValuesFile;
 import java.io.BufferedWriter;
 import java.io.IOException;
+import java.net.UnixDomainSocketAddress;
+import java.nio.channels.ServerSocketChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -144,14 +148,14 @@ public final class PromptTestFilesTest
 	}
 
 	/**
-	 * Verifies that an example containing a named pipe is refused before its files can be used.
+	 * Verifies that an example containing a special file is refused before its files can be used.
 	 *
 	 * @throws IOException             if the fixture cannot be written or read
 	 * @throws InterruptedException    if interrupted while creating the pipe
-	 * @throws ScenarioFormatException if the pipe is refused
+	 * @throws ScenarioFormatException if the special file is refused
 	 */
 	@Test(expectedExceptions = ScenarioFormatException.class, expectedExceptionsMessageRegExp =
-		".*examples/pipe.*regular file.*")
+		".*examples/special.*regular file.*")
 	public void refusesSpecialExampleFile() throws IOException, InterruptedException, ScenarioFormatException
 	{
 		// Requirement: R-L15
@@ -159,7 +163,18 @@ public final class PromptTestFilesTest
 		{
 			Path directory = promptTest(jvm.temporaryDirectory(), cleanup);
 			Path examples = Files.createDirectory(directory.resolve("examples"));
-			try (Process mkfifo = new ProcessBuilder("mkfifo", examples.resolve("pipe").toString()).
+			Path special = examples.resolve("special");
+			// Windows has no named pipe entries in its filesystem.
+			if (Platform.current().isWindows())
+			{
+				try (ServerSocketChannel server = ServerSocketChannel.open(UNIX))
+				{
+					server.bind(UnixDomainSocketAddress.of(special));
+					PromptTestFiles.readScenario(directory, directory, directory);
+					return;
+				}
+			}
+			try (Process mkfifo = new ProcessBuilder("mkfifo", special.toString()).
 				directory(directory.toFile()).start())
 			{
 				requireThat(mkfifo.waitFor(), "mkfifo").isEqualTo(0);

@@ -166,6 +166,42 @@ public final class ProposalCheck
 	}
 
 	/**
+	 * The mechanical validation of a draft. A proposal whose contract structure can be parsed can retain the
+	 * mechanically valid tests' example checks even when another test has example problems.
+	 *
+	 * @param proposal the parsed proposal, or empty when the draft cannot be assembled or parsed
+	 * @param problems the reasons that prevent acceptance
+	 */
+	public record Assessment(Optional<DerivedProposal> proposal, List<String> problems)
+	{
+		/**
+		 * Creates a mechanical assessment.
+		 *
+		 * @param proposal the parsed proposal, if any
+		 * @param problems the reasons that prevent acceptance
+		 * @throws NullPointerException if either argument or a problem is null
+		 */
+		public Assessment
+		{
+			requireThat(proposal, "proposal").isNotNull();
+			problems = List.copyOf(problems);
+		}
+
+		/**
+		 * Returns the proposal when every mechanical check passes.
+		 *
+		 * @return the accepted proposal
+		 * @throws InvalidProposalException if the assessment contains problems
+		 */
+		DerivedProposal requireValid() throws InvalidProposalException
+		{
+			if (!problems.isEmpty())
+				throw new InvalidProposalException(problems);
+			return proposal.orElseThrow();
+		}
+	}
+
+	/**
 	 * Creates a validator.
 	 *
 	 * @param json              the operation-owned JSON mapper
@@ -227,7 +263,7 @@ public final class ProposalCheck
 		ProfileEvidence profiles, long salt) throws InvalidProposalException
 	{
 		requireThat(project, "project").isNotNull();
-		return check(proposalFile, project, draft, observedSources, profiles, salt, true, Map.of());
+		return inspect(proposalFile, project, draft, observedSources, profiles, salt, Map.of()).requireValid();
 	}
 
 	/**
@@ -256,7 +292,29 @@ public final class ProposalCheck
 	{
 		requireThat(project, "project").isNotNull();
 		requireThat(fixed, "fixed").isNotNull();
-		return check(proposalFile, project, draft, observedSources, profiles, salt, true, fixed);
+		return inspect(proposalFile, project, draft, observedSources, profiles, salt, fixed).requireValid();
+	}
+
+	/**
+	 * Assesses a newly authored draft for a proposal or test revision.
+	 *
+	 * @param proposalFile the proposal file, which this method changes
+	 * @param project the session's project directory
+	 * @param draft the draft directory
+	 * @param observedSources the prompt sources that the session observed loading
+	 * @param profiles the profile inventory and capability ranking
+	 * @param salt the salt that CAT drew for the proposal
+	 * @param fixed completed tests that the draft directory need not hold, by their directory
+	 * @return the mechanically checked draft and any problems
+	 * @throws NullPointerException if any argument is null
+	 * @throws UncheckedIOException if a file cannot be read
+	 */
+	public Assessment inspect(ObjectNode proposalFile, Path project, Path draft, String observedSources,
+		ProfileEvidence profiles, long salt, Map<Path, ObjectNode> fixed)
+	{
+		requireThat(project, "project").isNotNull();
+		requireThat(fixed, "fixed").isNotNull();
+		return assess(proposalFile, project, draft, observedSources, profiles, salt, true, fixed);
 	}
 
 	/**
@@ -282,7 +340,7 @@ public final class ProposalCheck
 	{
 		requireThat(project, "project").isNotNull();
 		requireThat(draft, "draft").isNotNull();
-		return check(proposalFile, project, draft, observedSources, profiles, salt, false, Map.of());
+		return assess(proposalFile, project, draft, observedSources, profiles, salt, false, Map.of()).requireValid();
 	}
 
 	/**
@@ -297,12 +355,10 @@ public final class ProposalCheck
 	 * @param authoring        whether to apply the checks for authoring a proposal
 	 * @param fixed            the completed form of each prompt test whose files the draft directory need not hold,
 	 *                         by its directory
-	 * @return the proposal
-	 * @throws InvalidProposalException if the proposal is invalid
+	 * @return the assessment
 	 */
-	private DerivedProposal check(ObjectNode proposalFile, Path project, Path draft, String observedSources,
+	private Assessment assess(ObjectNode proposalFile, Path project, Path draft, String observedSources,
 		ProfileEvidence profiles, long salt, boolean authoring, Map<Path, ObjectNode> fixed)
-		throws InvalidProposalException
 	{
 		requireThat(proposalFile, "proposalFile").isNotNull();
 		requireThat(draft, "draft").isNotNull();
@@ -355,7 +411,7 @@ public final class ProposalCheck
 		// Read from the raw file so that a missing recorded prompt test is reported even when the schema rejects it
 		problems.addAll(missingRecorded(proposalFile));
 		if (!complete || !violations.isEmpty())
-			throw new InvalidProposalException(problems);
+			return new Assessment(Optional.empty(), problems);
 
 		Contract contract = null;
 		List<AssertionExampleCheck> exampleChecks = List.of();
@@ -377,10 +433,11 @@ public final class ProposalCheck
 			for (String problem : e.problems())
 				problems.add(assembled.locate(problem));
 		}
-		if (!problems.isEmpty())
-			throw new InvalidProposalException(problems);
-		return new DerivedProposal(contract, List.of(), scopeConditions, conflicts, observedSources, derivation, draft,
-			Map.of(), exampleChecks);
+		if (contract == null)
+			return new Assessment(Optional.empty(), problems);
+		DerivedProposal proposal = new DerivedProposal(contract, List.of(), scopeConditions, conflicts, observedSources,
+			derivation, draft, Map.of(), exampleChecks);
+		return new Assessment(Optional.of(proposal), problems);
 	}
 
 	/**
@@ -973,7 +1030,11 @@ public final class ProposalCheck
 							cases = test.testCases();
 						ordered.add(cases.get(position.index()));
 					}
-					checked.addAll(ExampleChecks.check(json, test, input.files(), ordered, project, excluded, problems));
+					int before = problems.size();
+					List<AssertionExampleCheck> checks = ExampleChecks.check(json, test, input.files(), ordered,
+						project, excluded, problems);
+					if (problems.size() == before)
+						checked.addAll(checks);
 				}
 				return List.copyOf(checked);
 			}

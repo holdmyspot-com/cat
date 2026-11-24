@@ -1,0 +1,210 @@
+package com.holdmyspot.cat.common.optimizer.proposal.test;
+
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
+import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
+import com.holdmyspot.cat.common.optimizer.contract.Assertion;
+import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
+import com.holdmyspot.cat.common.optimizer.contract.Contract;
+import com.holdmyspot.cat.common.optimizer.contract.EvidenceScope;
+import com.holdmyspot.cat.common.optimizer.contract.MappedAssertion;
+import com.holdmyspot.cat.common.optimizer.contract.OnToolFailure;
+import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
+import com.holdmyspot.cat.common.optimizer.contract.Requirement;
+import com.holdmyspot.cat.common.optimizer.contract.RiskRank;
+import com.holdmyspot.cat.common.optimizer.contract.TestCase;
+import com.holdmyspot.cat.common.optimizer.contract.VariableDeclaration;
+import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
+import com.holdmyspot.cat.common.optimizer.execution.AssertionVerdict;
+import com.holdmyspot.cat.common.optimizer.proposal.AssertionChecks;
+import com.holdmyspot.cat.common.optimizer.proposal.AssertionChecks.Disposition;
+import com.holdmyspot.cat.common.optimizer.proposal.AssertionChecks.ExampleResult;
+import com.holdmyspot.cat.common.optimizer.proposal.AssertionChecks.JudgedExample;
+import com.holdmyspot.cat.common.optimizer.proposal.AssertionExampleCheck;
+import com.holdmyspot.cat.common.optimizer.proposal.DerivedProposal;
+
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+import org.testng.annotations.DataProvider;
+import org.testng.annotations.Test;
+
+/**
+ * Tests the selection and interpretation of authored assertion examples that require a judge.
+ */
+public final class AssertionChecksTest
+{
+	private static final String FORMATTING = "formatting";
+	private static final String SECOND_TEST = "formatting_follow_up";
+	private static final String READABLE = "readable";
+	private static final String REPORT_MENTIONED = "report_mentioned";
+	private static final String PLAIN_TEXT = "plain_text";
+	private static final String PASS_REGULAR = "pass_regular";
+	private static final String FAIL_MISSING = "fail_missing";
+
+	/**
+	 * Creates the test fixture.
+	 */
+	public AssertionChecksTest()
+	{
+	}
+
+	/**
+	 * Verifies that the selector keeps both examples of a tool-free assertion and a failed tool result under
+	 * `judge`. It skips tool decisions and the implicit outcome assertion.
+	 */
+	@Test
+	public void selectsExamplesThatNeedTheJudge()
+	{
+		// Requirement: R-L16
+		// Requirement: R-L19
+		DerivedProposal proposal = proposal();
+		List<AssertionExampleCheck> checks = proposal.exampleChecks();
+
+		List<JudgedExample> selected = AssertionChecks.selectExamples(proposal.contract(), checks);
+
+		requireThat(selected.stream().map(JudgedExample::check).toList(), "selectedChecks").
+			isEqualTo(List.of(checks.get(0), checks.get(1), checks.get(3), checks.get(7), checks.get(8)));
+		JudgedExample response = selected.getFirst();
+		requireThat(response.assertion().scope(), "responseScope").isEqualTo(EvidenceScope.RESPONSE);
+		requireThat(response.assertion().requirement(), "responseRequirement").
+			isEqualTo(proposal.contract().requirements().getFirst());
+		JudgedExample actions = selected.get(3);
+		requireThat(actions.assertion().scope(), "actionsScope").isEqualTo(EvidenceScope.ACTIONS);
+		requireThat(actions.test().id(), "actionsTest").isEqualTo(SECOND_TEST);
+	}
+
+	/**
+	 * Verifies that a caller can supply only the examples of tests that passed mechanical checks.
+	 */
+	@Test
+	public void selectsFromMechanicallyCleanTests()
+	{
+		// Requirement: R-L16
+		DerivedProposal proposal = proposal();
+		List<AssertionExampleCheck> checks = proposal.exampleChecks().stream().
+			filter(check -> check.testId().equals(SECOND_TEST)).toList();
+
+		List<JudgedExample> selected = AssertionChecks.selectExamples(proposal.contract(), checks);
+
+		requireThat(selected.stream().map(JudgedExample::check).toList(), "selectedChecks").isEqualTo(checks);
+		requireThat(selected.getFirst().test().id(), "selectedTest").isEqualTo(SECOND_TEST);
+	}
+
+	/**
+	 * Returns the expected disposition and diagnostic wording of each example and verdict pairing.
+	 *
+	 * @return the rows
+	 */
+	@DataProvider(name = "exampleVerdicts")
+	public static Object[][] exampleVerdicts()
+	{
+		return new Object[][]
+			{
+				{PASS_REGULAR, Verdict.PASS, Disposition.ACCEPTED, ""},
+				{FAIL_MISSING, Verdict.FAIL, Disposition.ACCEPTED, ""},
+				{FAIL_MISSING, Verdict.PASS, Disposition.REFUSAL, "the judge passed a failing example. "},
+				{PASS_REGULAR, Verdict.FAIL, Disposition.WARNING, "the judge failed a passing example. "}
+			};
+	}
+
+	/**
+	 * Verifies that the judge's example verdict and rationale are retained. A mismatch names the test, assertion
+	 * and example in author-facing terms.
+	 *
+	 * @param exampleId   the example's identifier
+	 * @param label       the verdict that the judge returned
+	 * @param disposition the expected effect on the proposal
+	 * @param message     the explanation of a mismatch, or empty for an accepted verdict
+	 */
+	@Test(dataProvider = "exampleVerdicts")
+	public void interpretsExampleVerdict(String exampleId, Verdict label, Disposition disposition, String message)
+	{
+		// Requirement: R-L16
+		DerivedProposal proposal = proposal();
+		JudgedExample example = AssertionChecks.selectExamples(proposal.contract(), proposal.exampleChecks()).stream().
+			filter(candidate -> candidate.test().id().equals(FORMATTING) &&
+				candidate.check().assertionId().equals(READABLE) && candidate.check().exampleId().equals(exampleId)).
+			findFirst().orElseThrow();
+		String behavior = null;
+		String rationale = "The reply names the requested subject.";
+		if (label == Verdict.FAIL)
+		{
+			behavior = "unclear";
+			rationale = "The reply leaves the subject ambiguous.";
+		}
+		AssertionVerdict verdict = new AssertionVerdict(READABLE, behavior, rationale);
+
+		ExampleResult result = new ExampleResult(example, verdict);
+
+		requireThat(result.example(), "resultExample").isEqualTo(example);
+		requireThat(result.verdict(), "assertionVerdict").isEqualTo(verdict);
+		requireThat(result.disposition(), "disposition").isEqualTo(disposition);
+		Optional<String> diagnostic = Optional.empty();
+		if (!message.isEmpty())
+		{
+			diagnostic = Optional.of("For prompt test `formatting`, assertion `readable`, example `" + exampleId +
+				"`, " + message + rationale);
+		}
+		requireThat(result.diagnostic(), "diagnostic").isEqualTo(diagnostic);
+	}
+
+	/**
+	 * Creates a proposal that has two tests using the same assertion identifier, one with a mix of tool policies.
+	 *
+	 * @return the derived proposal and its example checks
+	 */
+	private static DerivedProposal proposal()
+	{
+		MappedAssertion readable = new MappedAssertion(new Assertion(READABLE, AssertionKind.EFFECT, null,
+			OnToolFailure.FAIL, "The reply names the requested subject.", "The judge evaluates the wording.",
+			EvidenceScope.RESPONSE), "r1");
+		MappedAssertion mentionsReport = new MappedAssertion(new Assertion(REPORT_MENTIONED, AssertionKind.EFFECT,
+			"pattern Report", OnToolFailure.JUDGE, "The reply identifies the report.", null, EvidenceScope.RESPONSE),
+			"r1");
+		MappedAssertion readsReport = new MappedAssertion(new Assertion(READABLE, AssertionKind.EFFECT, null,
+			OnToolFailure.FAIL, "The agent consulted the relevant report.", "The judge identifies the relevant report.",
+			EvidenceScope.ACTIONS), "r1");
+		MappedAssertion plain = new MappedAssertion(new Assertion(PLAIN_TEXT, AssertionKind.EFFECT, "exact-text Yes.",
+			OnToolFailure.FAIL, "The reply says Yes."), "r1");
+		List<PromptTest> tests = List.of(promptTest(FORMATTING, List.of(readable, mentionsReport, plain)),
+			promptTest(SECOND_TEST, List.of(readsReport)));
+		List<Requirement> requirements = List.of(new Requirement("r1", "Answer the user's question clearly.",
+			"CLAUDE.md", null, List.of("unclear")));
+		Contract contract = new Contract(requirements, tests, ContractFixtures.profiles(requirements, tests),
+			ContractFixtures.judge(), List.of(), Contract.DEFAULT_MINIMUM_PASS_RATE, ContractFixtures.SALT);
+		List<AssertionExampleCheck> checks = List.of(
+			new AssertionExampleCheck(FORMATTING, READABLE, PASS_REGULAR, null, false),
+			new AssertionExampleCheck(FORMATTING, READABLE, FAIL_MISSING, null, false),
+			new AssertionExampleCheck(FORMATTING, REPORT_MENTIONED, PASS_REGULAR, "pattern", true),
+			new AssertionExampleCheck(FORMATTING, REPORT_MENTIONED, FAIL_MISSING, "pattern", false),
+			new AssertionExampleCheck(FORMATTING, PLAIN_TEXT, PASS_REGULAR, "exact-text", true),
+			new AssertionExampleCheck(FORMATTING, PLAIN_TEXT, FAIL_MISSING, "exact-text", false),
+			new AssertionExampleCheck(FORMATTING, TestCase.EXPECTED_OUTCOME, PASS_REGULAR, null, false),
+			new AssertionExampleCheck(SECOND_TEST, READABLE, PASS_REGULAR, null, false),
+			new AssertionExampleCheck(SECOND_TEST, READABLE, FAIL_MISSING, null, false));
+		return new DerivedProposal(contract, List.of(), List.of(), List.of(), "none", "{}", Path.of("draft"),
+			Map.of(), checks);
+	}
+
+	/**
+	 * Creates a test of the fixture's requirement.
+	 *
+	 * @param id         the test identifier
+	 * @param assertions the test's declared assertions
+	 * @return the prompt test
+	 */
+	private static PromptTest promptTest(String id, List<MappedAssertion> assertions)
+	{
+		return new PromptTest(id, new RiskRank(2), List.of("r1"), List.of(),
+			"The user asks about a report.", List.of("Was {{report}} completed?"), Duration.ofMinutes(1),
+			"The reply identifies the report and states its status.", List.of(),
+			List.of(new VariableDeclaration("report", "The report the user asks about.")), List.of(),
+			List.of(ContractFixtures.testCase("The budget report was completed.", "regular",
+				Map.of("report", "the budget report"))),
+			assertions, List.of(), List.of());
+	}
+}

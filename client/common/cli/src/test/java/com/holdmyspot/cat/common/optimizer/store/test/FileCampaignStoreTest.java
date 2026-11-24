@@ -2868,6 +2868,73 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	}
 
 	/**
+	 * A stored assertion check is present only under the campaign's held-out directory.
+	 *
+	 * @throws IOException if the assertion check cannot be written or the campaign directory cannot be read
+	 */
+	@Test
+	public void writesAssertionCheckOnlyInHeldOut() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path campaigns = cleanup.add(Files.createTempDirectory("cat-assertion-check-"));
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
+			Sha256 key = Sha256.of("assertion review".getBytes(UTF_8));
+			ObjectNode review = JSON.createObjectNode();
+			review.putArray("findings").addObject().put("assertion", "asks_first").put("finding", "needs_actions");
+
+			store.writeAssertionCheck(ID, key, review);
+
+			Path heldOut = heldOutDirectory(campaigns);
+			Path file = heldOut.resolve("assertion_checks").resolve(key.hex() + ".json");
+			requireThat(list(campaignDirectory(campaigns)), "campaignEntries").isEqualTo(List.of(heldOut));
+			requireThat(JSON.readTree(file), "storedReview").isEqualTo(review);
+		}
+	}
+
+	/**
+	 * An assertion check with invalid JSON raises an I/O error that names the file.
+	 *
+	 * @throws IOException if the record cannot be read
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = "(?s).*assertion_checks.*JSON.*")
+	public void rejectsMalformedAssertionCheck() throws IOException
+	{
+		readInvalidAssertionCheck("{} {}");
+	}
+
+	/**
+	 * An assertion check whose JSON value is an array raises an I/O error identifying the invalid value.
+	 *
+	 * @throws IOException if the record cannot be read
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = "(?s).*assertion_checks.*object.*")
+	public void rejectsNonObjectAssertionCheck() throws IOException
+	{
+		readInvalidAssertionCheck("[]");
+	}
+
+	/**
+	 * Reads a fixture holding one invalid assertion check.
+	 *
+	 * @param content the stored file contents
+	 * @throws IOException if the fixture cannot be written or read
+	 */
+	private static void readInvalidAssertionCheck(String content) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path campaigns = cleanup.add(Files.createTempDirectory("cat-assertion-check-"));
+			Sha256 key = Sha256.of("invalid check".getBytes(UTF_8));
+			Path file = heldOutDirectory(campaigns).resolve("assertion_checks").resolve(key.hex() + ".json");
+			Files.createDirectories(file.getParent());
+			Files.writeString(file, content, UTF_8);
+
+			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).readAssertionCheck(ID, key);
+		}
+	}
+
+	/**
 	 * A snapshot written in a different format version is detected instead of being misread.
 	 *
 	 * @throws IOException if the store fails

@@ -29,13 +29,15 @@ import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Stores campaigns in one directory, one campaign per subdirectory {@code <campaign-id>/}: in production, the
  * {@link SessionDirectory#campaigns() campaigns directory} of the session that started them. Another session's
  * store is read only. The campaign's {@code held_out} directory holds every file with held-out
  * content: the snapshot in {@code campaign.json}, the proposal in {@code proposal.json}, and one record per logical
- * trial in {@code trials/<sha256 of the trial key>.json}. A trial's latest launch and observer progress are in
+ * trial in {@code trials/<sha256 of the trial key>.json}. Assertion checks live in
+ * {@code assertion_checks/<check key>.json}. A trial's latest launch and observer progress are in
  * {@code trials/<sha256 of the trial key>.recovery.json}. The delivery journal is {@code delivery.json} in the campaign
  * directory. The {@code held_out} and {@code trials} directories exist from the first snapshot write.
  * <p>
@@ -70,6 +72,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	private static final String SNAPSHOT = "campaign.json";
 	private static final String TRIALS = "trials";
 	private static final String VERDICTS = "verdicts";
+	private static final String ASSERTION_CHECKS = "assertion_checks";
 	private static final String JOURNAL = "delivery.json";
 	private static final String RECORD_SUFFIX = ".json";
 	private static final String RECOVERY_SUFFIX = ".recovery.json";
@@ -475,6 +478,38 @@ public final class FileCampaignStore extends AbstractCampaignStore
 			" was created by another writer but cannot be found"));
 	}
 
+	@Override
+	public Optional<ObjectNode> readAssertionCheck(String campaignId, Sha256 key) throws IOException
+	{
+		requireCampaignId(campaignId);
+		requireThat(key, "key").isNotNull();
+		Path file = assertionCheckFile(campaignId, key);
+		if (Files.notExists(file))
+			return Optional.empty();
+		return Optional.of(JsonFiles.read(json, file, document ->
+		{
+			JsonFields.requireObject(document, "$");
+			return (ObjectNode) document;
+		}, MALFORMED));
+	}
+
+	@Override
+	public ObjectNode writeAssertionCheck(String campaignId, Sha256 key, ObjectNode record) throws IOException
+	{
+		requireThat(record, "record").isNotNull();
+		ObjectNode stored = readAssertionCheck(campaignId, key).orElse(null);
+		if (stored != null)
+			return stored;
+
+		Path file = assertionCheckFile(campaignId, key);
+		ObjectNode snapshot = record.deepCopy();
+		AtomicFiles.createDirectories(file.getParent());
+		if (AtomicFiles.createOnce(file, JsonFiles.write(json, snapshot), afterStep))
+			return snapshot;
+		return readAssertionCheck(campaignId, key).orElseThrow(() -> new IOException("The assertion check " + file +
+			" was created by another writer but cannot be found"));
+	}
+
 	/**
 	 * Returns the file that holds the verdict stored under a key.
 	 *
@@ -485,6 +520,18 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	private Path verdictFile(String campaignId, VerdictKey key)
 	{
 		return heldOutDirectory(campaigns, campaignId).resolve(VERDICTS).resolve(key.digest().hex() + RECORD_SUFFIX);
+	}
+
+	/**
+	 * Returns the file that holds the assertion check stored under a key.
+	 *
+	 * @param campaignId the campaign's identifier
+	 * @param key        the digest identifying the assertion check
+	 * @return the file
+	 */
+	private Path assertionCheckFile(String campaignId, Sha256 key)
+	{
+		return heldOutDirectory(campaigns, campaignId).resolve(ASSERTION_CHECKS).resolve(key.hex() + RECORD_SUFFIX);
 	}
 
 	@Override

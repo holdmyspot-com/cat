@@ -66,7 +66,7 @@ public final class AssertionExamples
 	 * @throws IllegalArgumentException if {@code turns} is negative
 	 * @throws IOException              if the example is malformed or its files cannot be read or written
 	 */
-	public static TrialRecord render(JsonMapper json, int turns, TestCase testCase, Map<String, Path> exampleFiles,
+	public static RecordedTrial render(JsonMapper json, int turns, TestCase testCase, Map<String, Path> exampleFiles,
 		Set<String> exampleDirectories, Path defaultInitialProject, Path scratch) throws IOException
 	{
 		requireThat(json, "json").isNotNull();
@@ -79,7 +79,7 @@ public final class AssertionExamples
 			throw new IOException("Assertion example scratch directory is missing or is a link: " + scratch);
 		Map<String, String> textByName = PromptTest.textByName(testCase);
 		List<List<String>> replies = replies(json, exampleFiles.get("replies.json"), turns, textByName);
-		Path activitySource = exampleFiles.get("activity.json");
+		Path activitySource = exampleFiles.get(ActivityFile.EXAMPLE_NAME);
 		SessionEvidence activity;
 		if (activitySource == null)
 			activity = new SessionEvidence(List.of());

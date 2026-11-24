@@ -1,10 +1,13 @@
 package com.holdmyspot.cat.common.optimizer.store.test;
 
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.Header;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.execution.VerdictKey;
 import com.holdmyspot.cat.common.optimizer.execution.VerdictRecord;
+import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.store.AbstractCampaignStore;
 import com.holdmyspot.cat.common.optimizer.store.CampaignStore;
 import com.holdmyspot.cat.common.optimizer.store.DeliveryJournal;
@@ -18,8 +21,11 @@ import java.util.Optional;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 
+import tools.jackson.databind.node.ObjectNode;
+
 /**
- * A {@link CampaignStore} that holds snapshots, trial records, stored verdicts and delivery journals in memory.
+ * A {@link CampaignStore} that holds snapshots, trial records, stored verdicts, assertion checks and delivery journals
+ * in memory.
  * <p>
  * The driver tests use it instead of {@code FileCampaignStore}, because the file store forces every write to the
  * storage device and a driver test writes thousands of times. The record rules are the real ones, those of
@@ -31,6 +37,7 @@ public final class InMemoryCampaignStore extends AbstractCampaignStore
 	private final Map<String, Map<TrialKey, TrialRecord>> records = new HashMap<>();
 	private final Map<String, DeliveryJournal> journals = new HashMap<>();
 	private final Map<String, Map<VerdictKey, VerdictRecord>> verdicts = new ConcurrentHashMap<>();
+	private final Map<String, Map<Sha256, ObjectNode>> assertionChecks = new ConcurrentHashMap<>();
 
 	/**
 	 * Creates an empty store.
@@ -104,6 +111,26 @@ public final class InMemoryCampaignStore extends AbstractCampaignStore
 		if (stored == null)
 			return verdict;
 		return stored;
+	}
+
+	@Override
+	public Optional<ObjectNode> readAssertionCheck(String campaignId, Sha256 key)
+	{
+		requireCampaignId(campaignId);
+		requireThat(key, "key").isNotNull();
+		ObjectNode stored = assertionChecks.getOrDefault(campaignId, Map.of()).get(key);
+		return Optional.ofNullable(stored).map(ObjectNode::deepCopy);
+	}
+
+	@Override
+	public ObjectNode writeAssertionCheck(String campaignId, Sha256 key, ObjectNode record)
+	{
+		requireCampaignId(campaignId);
+		requireThat(key, "key").isNotNull();
+		requireThat(record, "record").isNotNull();
+		ObjectNode stored = assertionChecks.computeIfAbsent(campaignId, _ -> new ConcurrentHashMap<>()).
+			computeIfAbsent(key, _ -> record.deepCopy());
+		return stored.deepCopy();
 	}
 
 	/**

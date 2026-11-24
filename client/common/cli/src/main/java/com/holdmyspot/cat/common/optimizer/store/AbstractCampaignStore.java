@@ -154,7 +154,7 @@ public abstract class AbstractCampaignStore implements CampaignStore
 	 * @throws IllegalArgumentException if {@code campaignId} is blank, {@code .}, {@code ..}, or contains a path
 	 *   separator or a NUL character
 	 */
-	static void requireCampaignId(String campaignId)
+	protected static void requireCampaignId(String campaignId)
 	{
 		requireThat(campaignId, "campaignId").isNotBlank().doesNotContain("/").doesNotContain("\\").
 			doesNotContain("\0").isNotEqualTo(".").isNotEqualTo("..");

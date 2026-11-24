@@ -113,6 +113,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 import org.testng.annotations.Test;
+import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * The behaviour that every {@link CampaignStore} implementation must provide. Each implementation's test extends this
@@ -232,6 +234,47 @@ public abstract class CampaignStoreContract
 			VerdictRecord winner = fixture.reopen().readVerdict(id, concurrent).orElseThrow();
 			for (VerdictRecord record : stored)
 				requireThat(record, "returnedVerdict").isEqualTo(winner);
+		}
+	}
+
+	/**
+	 * An assertion check survives reopening under its campaign and key. Later writes return the first check, and
+	 * changing a supplied or returned object cannot change the stored check.
+	 *
+	 * @throws IOException if the assertion check cannot be read or written
+	 */
+	@Test
+	public void retainsFirstAssertionCheck() throws IOException
+	{
+		try (StoreFixture fixture = open())
+		{
+			Campaign campaign = new Builder().confirmed().working(1).build();
+			CampaignStore store = fixture.store();
+			store.replaceSnapshot(campaign);
+			String id = campaign.header().id();
+			Sha256 key = Sha256.of("judged example".getBytes(UTF_8));
+			requireThat(store.readAssertionCheck(id, key), "beforeWrite").isEqualTo(Optional.empty());
+
+			ObjectNode supplied = JsonNodeFactory.instance.objectNode().put("label", "pass").put("rationale", "It asked.");
+			ObjectNode example = supplied.putObject("filled_example").put("reply", "Proceed?");
+			ObjectNode expected = supplied.deepCopy();
+			ObjectNode written = store.writeAssertionCheck(id, key, supplied);
+			requireThat(written, "written").isEqualTo(expected);
+			example.put("reply", "Changed input");
+			((ObjectNode) written.get("filled_example")).put("reply", "Changed output");
+
+			CampaignStore reopened = fixture.reopen();
+			ObjectNode reloaded = reopened.readAssertionCheck(id, key).orElseThrow();
+			requireThat(reloaded, "reloaded").isEqualTo(expected);
+			((ObjectNode) reloaded.get("filled_example")).put("reply", "Changed read");
+			ObjectNode retried = reopened.writeAssertionCheck(id, key,
+				JsonNodeFactory.instance.objectNode().put("label", "fail"));
+			requireThat(retried, "retried").isEqualTo(expected);
+			retried.put("rationale", "Changed retry");
+			requireThat(reopened.readAssertionCheck(id, key), "retained").isEqualTo(Optional.of(expected));
+			Sha256 otherKey = Sha256.of("other check".getBytes(UTF_8));
+			requireThat(reopened.readAssertionCheck(id, otherKey), "otherKey").isEqualTo(Optional.empty());
+			requireThat(reopened.readAssertionCheck("other-campaign", key), "otherCampaign").isEqualTo(Optional.empty());
 		}
 	}
 

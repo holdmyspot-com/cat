@@ -9,6 +9,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.LogicalTrial;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.execution.VerdictKey;
 import com.holdmyspot.cat.common.optimizer.execution.VerdictRecord;
+import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.store.CampaignStore;
 import com.holdmyspot.cat.common.optimizer.store.DeliveryJournal;
 import com.holdmyspot.cat.common.optimizer.store.TrialSession;
@@ -19,6 +20,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * A {@link CampaignStore} that simulates a crash: once armed, it fails the first snapshot replacement after the next
@@ -190,6 +193,20 @@ public final class CrashingStore implements CampaignStore
 	{
 		requireAlive();
 		return delegate.writeVerdict(campaignId, key, verdict);
+	}
+
+	@Override
+	public Optional<ObjectNode> readAssertionCheck(String campaignId, Sha256 key) throws IOException
+	{
+		requireAlive();
+		return delegate.readAssertionCheck(campaignId, key);
+	}
+
+	@Override
+	public ObjectNode writeAssertionCheck(String campaignId, Sha256 key, ObjectNode record) throws IOException
+	{
+		requireAlive();
+		return delegate.writeAssertionCheck(campaignId, key, record);
 	}
 
 	/**

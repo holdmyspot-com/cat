@@ -10,10 +10,13 @@ import com.holdmyspot.cat.common.optimizer.campaign.LogicalTrial;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.execution.VerdictKey;
 import com.holdmyspot.cat.common.optimizer.execution.VerdictRecord;
+import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
+
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * A campaign store that records each prompt test's development judge whenever a campaign ends: when a snapshot moves
@@ -134,5 +137,17 @@ public final class JudgeRecordingStore implements CampaignStore
 	public VerdictRecord writeVerdict(String campaignId, VerdictKey key, VerdictRecord verdict) throws IOException
 	{
 		return delegate.writeVerdict(campaignId, key, verdict);
+	}
+
+	@Override
+	public Optional<ObjectNode> readAssertionCheck(String campaignId, Sha256 key) throws IOException
+	{
+		return delegate.readAssertionCheck(campaignId, key);
+	}
+
+	@Override
+	public ObjectNode writeAssertionCheck(String campaignId, Sha256 key, ObjectNode record) throws IOException
+	{
+		return delegate.writeAssertionCheck(campaignId, key, record);
 	}
 }

@@ -7,10 +7,13 @@ import com.holdmyspot.cat.common.optimizer.campaign.LogicalTrial;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.execution.VerdictKey;
 import com.holdmyspot.cat.common.optimizer.execution.VerdictRecord;
+import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
+
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Persists campaign snapshots and logical-trial records.
@@ -204,4 +207,30 @@ public interface CampaignStore
 	 * @throws IOException if the verdict cannot be read or written
 	 */
 	VerdictRecord writeVerdict(String campaignId, VerdictKey key, VerdictRecord verdict) throws IOException;
+
+	/**
+	 * Reads a campaign's assertion check. Changes to the returned object do not affect stored data.
+	 *
+	 * @param campaignId the campaign's identifier
+	 * @param key        the digest identifying the assertion check
+	 * @return an independent copy of the check, or empty if none has been stored under the key
+	 * @throws NullPointerException     if any argument is null
+	 * @throws IllegalArgumentException if {@code campaignId} is not a single path segment
+	 * @throws IOException              if the check cannot be read or is malformed
+	 */
+	Optional<ObjectNode> readAssertionCheck(String campaignId, Sha256 key) throws IOException;
+
+	/**
+	 * Stores a campaign's assertion check. The first write under a key wins, including when writes overlap.
+	 * Changes to the supplied or returned object after this call do not affect stored data.
+	 *
+	 * @param campaignId the campaign's identifier
+	 * @param key        the digest identifying the assertion check
+	 * @param record     the validated assertion check to store
+	 * @return an independent copy of the check that won the first write
+	 * @throws NullPointerException     if any argument is null
+	 * @throws IllegalArgumentException if {@code campaignId} is not a single path segment
+	 * @throws IOException              if the check cannot be read or written
+	 */
+	ObjectNode writeAssertionCheck(String campaignId, Sha256 key, ObjectNode record) throws IOException;
 }
