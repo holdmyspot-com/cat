@@ -899,7 +899,7 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 	 * @return the complete turn sequence of the test case
 	 * @throws NullPointerException if {@code testCase} is null
 	 */
-	List<String> expandTurns(TestCase testCase)
+	public List<String> expandTurns(TestCase testCase)
 	{
 		Map<String, String> textByVariable = textByVariable(testCase);
 		return turns.stream().map(turn -> Placeholders.fill(turn, textByVariable)).toList();
