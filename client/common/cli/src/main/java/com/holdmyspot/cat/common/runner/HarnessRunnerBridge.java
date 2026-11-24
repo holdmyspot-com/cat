@@ -281,7 +281,8 @@ public final class HarnessRunnerBridge
 												{
 													try
 													{
-														evidence = captureRetainedTurn(session, currentTurn);
+													evidence = captureRetainedTurn(session, currentTurn,
+														Optional.ofNullable(options.resultProjectLinks()));
 													}
 													catch (IOException _)
 													{
@@ -290,7 +291,8 @@ public final class HarnessRunnerBridge
 														recoverableEvidence = false;
 													}
 												}
-												if (options.resultProjectLinks() == null)
+											if (options.resultProjectLinks() == null ||
+												!evidence.equals(session.nestedSession().directory()))
 													ResultsCopy.copyTurn(evidence, options.turnCopy());
 												else
 													ResultsCopy.copyTurn(evidence, options.turnCopy(), options.resultProjectLinks());
@@ -487,10 +489,12 @@ public final class HarnessRunnerBridge
 	 *
 	 * @param session the running nested session
 	 * @param turn the completed turn number
+	 * @param links the selected project directory whose link declarations the snapshot carries
 	 * @return the private snapshot directory
 	 * @throws IOException if the turn evidence cannot be captured
 	 */
-	private static Path captureRetainedTurn(LiveNestedSession session, int turn) throws IOException
+	private static Path captureRetainedTurn(LiveNestedSession session, int turn, Optional<Path> links)
+		throws IOException
 	{
 		Optional<String> nativeRoot = Optional.empty();
 		if (session.nestedSession().harness().equals("codex"))
@@ -499,7 +503,7 @@ public final class HarnessRunnerBridge
 				new IOException("The finished Codex turn has no native transcript"));
 			nativeRoot = Optional.of(transcript.getFileName().toString());
 		}
-		return RetainedTrialPrefix.capture(session.nestedSession().directory(), turn, nativeRoot);
+		return RetainedTrialPrefix.capture(session.nestedSession().directory(), turn, nativeRoot, links);
 	}
 
 	/**

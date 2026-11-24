@@ -1414,8 +1414,11 @@ public final class SessionRequestBroker implements Closeable
 			else if (succeeded)
 				{
 					NestedSessionReceipt.read(json, directory.resolve("receipt.json"), results.resolve("project"));
-					if (request.resultProjectLinks().isPresent())
-						ResultProjectLinks.capture(child, results, request.resultProjectLinks().get());
+					Optional<Path> links = request.resultProjectLinks();
+					if (request.resume().isPresent())
+						links = NestedSessionLaunch.resultProjectLinks(json, child);
+					if (links.isPresent())
+						ResultProjectLinks.capture(child, results, links.get());
 				}
 			}
 			respond(id, request.harness(), outcome, diagnostic, sessionId, directory);

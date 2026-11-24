@@ -1776,8 +1776,11 @@ public final class SessionRequestBrokerTest
 				List<String> replies = records.stream().filter(record -> record.path("type").asString().
 					equals("turn_completed")).map(record -> record.path("assistant_response").asString()).toList();
 				requireThat(replies, "turnReplies").isEqualTo(List.of("retained reply", "resumed reply"));
-				requireThat(Files.readString(results.resolve("claude").resolve(RESUMED_SESSION).resolve("project/marker")),
-					"resumedProject").isEqualTo("retained project");
+				Path session = results.resolve("claude").resolve(RESUMED_SESSION);
+				requireThat(Files.readString(session.resolve("project/marker")), "resumedProject").
+					isEqualTo("retained project");
+				requireThat(Files.readString(session.resolve("project-link-declarations/draft/kept")), "resumedLink").
+					isEqualTo(Path.of("../marker").toString());
 			}
 		}
 	}
@@ -1817,7 +1820,7 @@ public final class SessionRequestBrokerTest
 		throws IOException
 	{
 		List<String> arguments = new ArrayList<>(List.of("--artifact", fixture.root.toString(), "--turn-copy",
-			fixture.root.resolve("turn-copy").toString()));
+			fixture.root.resolve("turn-copy").toString(), RunnerArguments.RESULT_PROJECT_LINKS_OPTION, "draft"));
 		arguments.addAll(options);
 		String[] args = arguments.toArray(String[]::new);
 		HarnessRunnerOptions parsed = HarnessRunnerOptions.parse(args, harness, HarnessTemporaryRoot.of(fixture.root));
@@ -1832,6 +1835,7 @@ public final class SessionRequestBrokerTest
 			process.reportHarnessSession(RESUMED_SESSION);
 			NestedSession nested = manager.create(harness);
 			Files.createDirectories(nested.directory().resolve("initial-project"));
+			writeDraftLink(nested.directory());
 			StringWriter output = new StringWriter();
 			HarnessRunnerBridge.serve(() -> new LiveNestedSession(nested, process, new TestHarnessRunnerScope()),
 				manager, parsed, fixture.json, Yielding.fileReplacer(), input, output);
@@ -1845,6 +1849,8 @@ public final class SessionRequestBrokerTest
 			JsonNode checkpoint = fixture.json.readTree(Files.readString(nested.directory().resolve("turn-checkpoint.json")));
 			requireThat(checkpoint.path("turn_number").asInt(), "turnNumber").isEqualTo(1);
 			requireThat(checkpoint.path("state").asString(), "state").isEqualTo("ready");
+			Path declaration = parsed.turnCopy().resolve("project-link-declarations/draft/kept");
+			requireThat(Files.readString(declaration), "keptLink").isEqualTo(Path.of("../marker").toString());
 			// The bridge used its scripted input. The fixture transport acknowledges the broker's ordinary end.
 			AtomicReference<FakeHarnessCli> transport = new AtomicReference<>();
 			FakeHarnessCli child = new FakeHarnessCli(exitOnCompleteRecord(fixture.json, transport));
@@ -1855,6 +1861,18 @@ public final class SessionRequestBrokerTest
 		{
 			manager.closeStartupLease();
 		}
+	}
+
+	/**
+	 * Adds a draft workspace link whose literal target must survive a results copy.
+	 *
+	 * @param directory the session directory
+	 * @throws IOException if the fixture cannot create the link
+	 */
+	private static void writeDraftLink(Path directory) throws IOException
+	{
+		Path draft = Files.createDirectory(directory.resolve("project/draft"));
+		Files.createSymbolicLink(draft.resolve("kept"), Path.of("../marker"));
 	}
 
 	/**
@@ -1912,13 +1930,15 @@ public final class SessionRequestBrokerTest
 		SessionSlots slots = new SessionSlots(base, 1, new ProcessHandleLiveness(), fixture.fileLocks);
 		SessionSlots.Slot slot = slots.acquire(false);
 		NestedSessionManager manager = new NestedSessionManager(fixture.fileLocks, slot.root(), Clock.systemUTC(),
-			Yielding.fileReplacer()).withFixedSlotId(slot.slotId());
+			Yielding.fileReplacer()).withFixedSlotId(slot.slotId()).
+			withLaunchArguments(List.of(RunnerArguments.RESULT_PROJECT_LINKS_OPTION, "draft"));
 		NestedSession session = manager.create("claude");
 		manager.recordHarnessSession(session, RESUMED_SESSION);
 		manager.writeTurnOutput(session, 1, new HarnessProcessResult(0, "retained event\n", ""));
 		manager.recordTurnEnded(session, 1);
 		Path directory = session.directory();
 		Files.writeString(directory.resolve("project/marker"), "retained project");
+		writeDraftLink(directory);
 		Files.createDirectory(directory.resolve("initial-project"));
 		Files.writeString(directory.resolve("artifacts/turn-1.reply.json"), """
 			{"type":"turn_completed","exit_code":0,"error":"","assistant_response":"retained reply",

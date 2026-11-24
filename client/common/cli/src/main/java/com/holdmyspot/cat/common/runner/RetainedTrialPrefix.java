@@ -72,6 +72,22 @@ public final class RetainedTrialPrefix
 	 */
 	public static Path capture(Path session, int turn, Optional<String> expectedNativeRoot) throws IOException
 	{
+		return capture(session, turn, expectedNativeRoot, Optional.empty());
+	}
+
+	/**
+	 * Captures the turn and any draft-link declarations selected by the original runner.
+	 *
+	 * @param session the private nested session
+	 * @param turn the one-based turn that the harness just completed
+	 * @param expectedNativeRoot the required native root transcript basename, or empty when none is required
+	 * @param linkDirectory the selected project directory, or empty when no link declarations are captured
+	 * @return the private snapshot directory
+	 * @throws IOException if any required evidence is absent or cannot be copied
+	 */
+	static Path capture(Path session, int turn, Optional<String> expectedNativeRoot, Optional<Path> linkDirectory)
+		throws IOException
+	{
 		requireThat(session, "session").isNotNull();
 		requireThat(turn, "turn").isPositive();
 		requireThat(expectedNativeRoot, "expectedNativeRoot").isNotNull();
@@ -84,6 +100,8 @@ public final class RetainedTrialPrefix
 		{
 			Path pending = cleanup.add(Files.createTempDirectory(session, SNAPSHOT_STAGING_PREFIX));
 			copyTurn(session, pending, expectedNativeRoot);
+			if (linkDirectory.isPresent())
+				ResultProjectLinks.capture(session, pending, linkDirectory.get());
 			ObjectNode stamp = JSON.createObjectNode().put(VERSION_FIELD, FORMAT_VERSION).put(TURN_FIELD, turn);
 			expectedNativeRoot.ifPresent(root -> stamp.put(NATIVE_ROOT_FIELD, root));
 			Files.write(pending.resolve(SNAPSHOT_STAMP), JSON.writeValueAsBytes(stamp));

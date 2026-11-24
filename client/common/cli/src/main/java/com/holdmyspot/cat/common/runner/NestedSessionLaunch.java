@@ -10,9 +10,11 @@ import tools.jackson.databind.node.ObjectNode;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
@@ -215,5 +217,40 @@ public final class NestedSessionLaunch
 			arguments.add(value.stringValue());
 		}
 		return List.copyOf(arguments);
+	}
+
+	/**
+	 * Returns the project directory whose link declarations the original launch selected.
+	 *
+	 * @param json the mapper
+	 * @param directory the nested session's directory
+	 * @return the selected project directory's name, or empty when the recorded launch selected none
+	 * @throws IOException if the recorded name or launch options are malformed
+	 */
+	static Optional<Path> resultProjectLinks(JsonMapper json, Path directory) throws IOException
+	{
+		Path launch = directory.resolve(FILE_NAME);
+		if (Files.notExists(launch, LinkOption.NOFOLLOW_LINKS))
+			return Optional.empty();
+		if (!Files.isRegularFile(launch, LinkOption.NOFOLLOW_LINKS))
+			throw new IOException("The recorded launch is not a regular file: " + launch);
+		List<String> arguments = read(json, directory);
+		for (int index = 0; index < arguments.size(); ++index)
+		{
+			String option = arguments.get(index);
+			if (!FIXED_VALUE_OPTIONS.contains(option))
+				continue;
+			++index;
+			if (index == arguments.size())
+				throw new IOException("The recorded launch option has no value: " + option);
+			if (option.equals(RunnerArguments.RESULT_PROJECT_LINKS_OPTION))
+			{
+				String name = arguments.get(index);
+				if (!ResultProjectLinks.isDirectoryName(name))
+					throw new IOException("The recorded link directory is not a project directory name: " + name);
+				return Optional.of(Path.of(name));
+			}
+		}
+		return Optional.empty();
 	}
 }
