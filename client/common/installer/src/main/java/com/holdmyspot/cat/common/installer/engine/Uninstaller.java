@@ -32,9 +32,11 @@ import tools.jackson.databind.node.ObjectNode;
  * Removes one harness's CAT installation: the permission entries that install added, the harness registration, the
  * plugin files, including every version folder, and the files of the uninstalling user's home folder that hold a
  * secret for the harness's CAT sessions alone. CAT's plugin data, which holds the policy, the installer's state and the
- * release cache, stays unless the user asks to delete it. Each completed step is recorded in
- * {@code state/uninstall.json}, so that a later uninstall continues with the first step that did not complete; an
- * uninstall that completes leaves no record, so that an uninstall after a later install runs every step again.
+ * release cache, stays unless the user asks to delete it. A file or folder that a step would delete and that is already
+ * absent is no failure, and an unknown home folder only leaves the user's secret files, which the outcome then
+ * describes. Each completed step is recorded in {@code state/uninstall.json}, so that a later uninstall continues with
+ * the first step that did not complete; an uninstall that completes leaves no record, so that an uninstall after a
+ * later install runs every step again.
  */
 public final class Uninstaller
 {
@@ -76,7 +78,7 @@ public final class Uninstaller
 	private final Path running;
 	/**
 	 * The uninstalling user's home folder, whose files that hold a secret for the harness's CAT sessions alone the
-	 * uninstall removes.
+	 * uninstall removes, or null when the environment names none, so that the uninstall cannot find those files.
 	 */
 	private final Path userHome;
 	private final Clock clock;
@@ -84,7 +86,8 @@ public final class Uninstaller
 	private final InstallerState state;
 	private final Path journal;
 	/**
-	 * The sentences that tell the user which recorded entries this uninstall left in place.
+	 * The sentences that tell the user what this uninstall may have left in place: recorded entries that it kept, and
+	 * the user's secret files that it could not look for.
 	 */
 	private final List<String> retained = new ArrayList<>();
 	/**
@@ -106,10 +109,10 @@ public final class Uninstaller
 	 * @param activation the harness's activation provider
 	 * @param session    unregisters the plugin and removes the permission entries
 	 * @param running    the version folder that the running installer belongs to
-	 * @param userHome   the uninstalling user's absolute home folder
+	 * @param userHome   the uninstalling user's absolute home folder, or null when the environment names none
 	 * @param clock      operation time source
 	 * @param waiting    creates pauses between lock attempts
-	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws NullPointerException     if any of the arguments other than {@code userHome} are null
 	 * @throws IllegalArgumentException if {@code userHome} is relative
 	 */
 	public Uninstaller(Path data, TrustPolicy policy, PluginActivation activation, HarnessSession session,
@@ -120,7 +123,8 @@ public final class Uninstaller
 		requireThat(activation, "activation").isNotNull();
 		requireThat(session, "session").isNotNull();
 		requireThat(running, "running").isNotNull();
-		requireThat(userHome, "userHome").isAbsolute();
+		if (userHome != null)
+			requireThat(userHome, "userHome").isAbsolute();
 		requireThat(clock, "clock").isNotNull();
 		requireThat(waiting, "waiting").isNotNull();
 		this.data = data.toAbsolutePath().normalize();
@@ -138,8 +142,10 @@ public final class Uninstaller
 	/**
 	 * Runs every step that an earlier uninstall did not complete. When the harness program that install recorded no
 	 * longer exists, the plugin cannot be unregistered, so that step is skipped without being recorded as completed and
-	 * every other step still runs. The harness is asked to keep CAT's plugin data unless {@code deleteData} is true;
-	 * then the plugin data is deleted once every step completed.
+	 * every other step still runs. When the environment named no home folder for the user, the step that removes the
+	 * user's secret files adds the integration's sentences about the files that it could not look for to the outcome's
+	 * message instead. The harness is asked to keep CAT's plugin data unless {@code deleteData} is true; then the plugin
+	 * data is deleted once every step completed.
 	 * <p>
 	 * A folder of plugin files that holds the running installer's version folder is not deleted while the installer
 	 * runs; the outcome's {@link UpdateResult#exitDeletions() exit deletions} name it instead.
@@ -245,7 +251,7 @@ public final class Uninstaller
 	 * @param harness       the installation's harness
 	 * @param keyIds        the identifiers of the policy's keys
 	 * @param unregistered  true if the plugin was unregistered through the harness program
-	 * @param retained      the sentences that tell the user which recorded entries the uninstall left in place
+	 * @param retained      the sentences that tell the user what the uninstall may have left in place
 	 * @param secrets       the files of the user's home folder that held a secret and that the uninstall removed
 	 * @param exitDeletions the folders to delete once the installer no longer needs its own files
 	 * @return the outcome, whose message names each removed secret file and whose paths are those files
@@ -307,7 +313,13 @@ public final class Uninstaller
 			}
 			case UNREGISTER -> session.integration().unregister(home, session.cli(), !deleteData);
 			case PLUGIN -> deletePlugin(home);
-			case SECRETS -> removedSecrets.addAll(session.integration().removeUserSecrets(userHome));
+			case SECRETS ->
+			{
+				if (userHome == null)
+					retained.addAll(session.integration().describeUnsearchedUserSecrets());
+				else
+					removedSecrets.addAll(session.integration().removeUserSecrets(userHome));
+			}
 			default -> throw new AssertionError(step);
 		}
 	}

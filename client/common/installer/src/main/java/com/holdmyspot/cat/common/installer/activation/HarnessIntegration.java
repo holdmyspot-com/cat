@@ -159,7 +159,9 @@ public interface HarnessIntegration
 	/**
 	 * Removes the files in the user's home folder that hold a secret that the user saved for this harness's CAT sessions
 	 * alone, because nothing uses the secret once CAT is uninstalled. Uninstall calls it whether or not it deletes CAT's
-	 * plugin data. A file under a home folder other than {@code userHome} stays.
+	 * plugin data, when the environment names the user's home folder; otherwise it calls
+	 * {@link #describeUnsearchedUserSecrets()} instead. A file under a home folder other than {@code userHome} stays, and
+	 * a file or folder that is already absent is no failure.
 	 *
 	 * @param userHome the uninstalling user's absolute home folder
 	 * @return the files that this call removed; empty when the home folder held none
@@ -169,6 +171,15 @@ public interface HarnessIntegration
 	 *                                  the wrong kind; the message names the path
 	 */
 	List<Path> removeUserSecrets(Path userHome) throws IOException;
+
+	/**
+	 * Returns the sentences that an uninstall adds to its report when the environment names no home folder for the
+	 * user, so that it cannot call {@link #removeUserSecrets(Path)}: for each file that {@code removeUserSecrets} would
+	 * remove, a sentence that tells the user that the uninstall could not look for it and how to remove it.
+	 *
+	 * @return the sentences; empty when the harness's CAT sessions use no such file
+	 */
+	List<String> describeUnsearchedUserSecrets();
 
 	/**
 	 * Adds the entries that let an agent run the installer's routine operations without a permission prompt or sandbox,

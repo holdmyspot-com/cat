@@ -106,7 +106,8 @@ public final class Invocation
 	private String resolvedHarness;
 	/**
 	 * The user's home directory, which the environment names in the platform's home variable, as it does for the
-	 * runtime; known once install or {@code status --verbose} has checked that the environment sets it.
+	 * runtime; known once install, uninstall or {@code status --verbose} has checked that the environment sets it, and
+	 * null for an uninstall whose environment does not set it.
 	 */
 	private Path userHome;
 	/**
@@ -350,7 +351,7 @@ public final class Invocation
 			}
 		}
 		// Uninstall removes the user's own files that hold a secret for the harness's CAT sessions alone
-		Optional<UpdateResult> homeRefusal = readUserHome(own);
+		Optional<UpdateResult> homeRefusal = readUninstallHome(own);
 		if (homeRefusal.isPresent())
 			return print(homeRefusal.get(), arguments, locations);
 		HarnessSession session = managed.session();
@@ -445,6 +446,29 @@ public final class Invocation
 		return Optional.of(failure(Result.REFUSED, harness, "The user's home folder is wrong: " + refusal +
 			". CAT takes it from " + platform.homeVariable() + " in the environment, as the runtime does; set it to " +
 			"an absolute path and run the command again.", List.of()));
+	}
+
+	/**
+	 * Reads the user's home folder from the environment into {@link #userHome} for uninstall, which needs it only to
+	 * remove the user's files that hold a secret for the harness's CAT sessions alone. When the environment does not
+	 * set the platform's home variable, {@link #userHome} stays null and the uninstall reports those files instead of
+	 * removing them, so that a user can always uninstall.
+	 *
+	 * @param harness the harness that the operation names
+	 * @return the refusal if the environment sets the platform's home variable to a relative path
+	 */
+	private Optional<UpdateResult> readUninstallHome(String harness)
+	{
+		try
+		{
+			platform.homeDirectory(platform.environment(environment));
+		}
+		catch (IOException _)
+		{
+			// Platform.homeDirectory throws only when the environment does not set the home variable
+			return Optional.empty();
+		}
+		return readUserHome(harness);
 	}
 
 	/**

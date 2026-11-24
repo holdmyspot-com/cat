@@ -162,10 +162,14 @@ installation:
 - in Claude Code, the token that you saved with `claude-credential set` in `~/.cat/claude/.credentials.json`, whether or
   not you delete the plugin data, because it is a long-lived secret that nothing uses without CAT. The report names the
   file. A token that you saved for another home folder with `--home <dir>` stays; remove it with
-  `claude-credential remove --home <dir>` before you uninstall.
+  `claude-credential remove --home <dir>` before you uninstall. If `HOME` (`USERPROFILE` on Windows) is not set, the
+  uninstall cannot find your home folder: it removes everything else, leaves the file, and its report tells you to
+  delete `.cat/claude/.credentials.json` in your home folder yourself.
 
 It never deletes unrelated settings, your own files, or your rules in `~/.cat/rules`. CAT's plugin data stays in
-`plugins/data/cat-cat/` in the harness home unless you delete it. If the uninstall stops, run it again. When the
+`plugins/data/cat-cat/` in the harness home unless you delete it. A file or folder that the uninstall would delete
+and that is already gone does not stop it, except `policy.json` in the plugin data: when it is gone, the uninstall
+refuses and names the CAT entry command to run first. If the uninstall stops, run it again. When the
 harness program that the install recorded is gone, the harness may still list the plugin, and the installer tells you
 the commands that remove it. To install CAT again, repeat [step 1](#1-install); it reuses the plugin data that you kept.
 

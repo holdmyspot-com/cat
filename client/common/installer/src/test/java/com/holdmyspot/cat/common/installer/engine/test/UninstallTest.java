@@ -9,6 +9,7 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.installer.activation.HarnessCommand;
 import com.holdmyspot.cat.common.installer.engine.InstallRequest;
+import com.holdmyspot.cat.common.installer.engine.LinkSafeDeletion;
 import com.holdmyspot.cat.common.installer.engine.UninstallResult;
 import com.holdmyspot.cat.common.installer.engine.Uninstaller;
 import com.holdmyspot.cat.common.installer.engine.UpdateEngine;
@@ -165,6 +166,71 @@ public final class UninstallTest
 			requireThat(result.message(), "message").contains(secret.toString());
 			requireThat(result.paths(), "paths").isEqualTo(List.of(secret));
 			requireThat(fixture.user.resolve(".cat/rules/rule.md"), "rules").isRegularFile();
+		}
+	}
+
+	/**
+	 * When the environment names no home folder for the user, uninstall cannot find the user's files that hold a
+	 * secret for the harness's CAT sessions alone: it still removes everything else, whether or not it deletes CAT's
+	 * plugin data, leaves those files alone, names no removed file, and puts the integration's sentences about the
+	 * files that it could not look for in its outcome.
+	 *
+	 * @param deleteData {@code true} to delete CAT's plugin data
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test(dataProvider = "dataDeletion")
+	public void uninstallsWithoutUserHome(boolean deleteData) throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("uninstall-no-home-")));
+			Path secret = Files.writeString(Files.createDirectories(fixture.user.resolve(".cat/harness-a")).
+				resolve("secret"), "fixture secret");
+			RecordingIntegration integration = new RecordingIntegration().holdingUserSecret(".cat/harness-a/secret");
+
+			UpdateResult result = fixture.uninstaller(integration, null).uninstall(deleteData).outcome();
+
+			requireThat(result.result(), "result").withContext(result.message(), "message").
+				isEqualTo(Result.UNINSTALLED);
+			requireThat(integration.calls(), "calls").isEqualTo(List.of("removePermissions", "unregister",
+				"describeUnsearchedUserSecrets"));
+			requireThat(result.message(), "message").isEqualTo("CAT was removed from this harness. CAT could not " +
+				"look for .cat/harness-a/secret in the user's home folder.");
+			requireThat(result.paths(), "paths").isEmpty();
+			requireThat(secret, "secret").isRegularFile();
+			requireThat(Files.exists(fixture.marketplace, NOFOLLOW_LINKS), "marketplace").isFalse();
+			requireThat(Files.exists(fixture.data, NOFOLLOW_LINKS), "data").isEqualTo(!deleteData);
+		}
+	}
+
+	/**
+	 * Uninstall completes when the files that it would delete are already gone: the marketplace folder, the record of
+	 * the permission entries, the release cache in CAT's plugin data and the user's file that holds a secret. Its
+	 * outcome names no removed file.
+	 *
+	 * @param deleteData {@code true} to delete CAT's plugin data
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test(dataProvider = "dataDeletion")
+	public void uninstallsWhatIsAlreadyGone(boolean deleteData) throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("uninstall-gone-")));
+			LinkSafeDeletion.delete(fixture.marketplace, fixture.home, interval -> () -> {});
+			Files.delete(fixture.data.resolve("state/permissions/harness-a.json"));
+			LinkSafeDeletion.delete(fixture.data.resolve("releases"), fixture.home, interval -> () -> {});
+			RecordingIntegration integration = new RecordingIntegration().holdingUserSecret(".cat/harness-a/secret");
+
+			UpdateResult result = fixture.uninstaller(integration).uninstall(deleteData).outcome();
+
+			requireThat(result.result(), "result").withContext(result.message(), "message").
+				isEqualTo(Result.UNINSTALLED);
+			requireThat(result.message(), "message").isEqualTo("CAT was removed from this harness.");
+			requireThat(result.paths(), "paths").isEmpty();
+			requireThat(integration.calls(), "calls").isEqualTo(List.of("unregister", "removeUserSecrets"));
 		}
 	}
 
@@ -502,7 +568,19 @@ public final class UninstallTest
 		 */
 		private Uninstaller uninstaller(RecordingIntegration integration)
 		{
-			return new Uninstaller(data, trust, new RegisteredProvider(), integration.session(), running, user,
+			return uninstaller(integration, user);
+		}
+
+		/**
+		 * Creates an uninstaller for the installation run by a user with a given home folder.
+		 *
+		 * @param integration the harness integration
+		 * @param userHome    the user's home folder, or null when the environment names none
+		 * @return the uninstaller
+		 */
+		private Uninstaller uninstaller(RecordingIntegration integration, Path userHome)
+		{
+			return new Uninstaller(data, trust, new RegisteredProvider(), integration.session(), running, userHome,
 				Clock.systemUTC(), interval -> () -> {});
 		}
 	}

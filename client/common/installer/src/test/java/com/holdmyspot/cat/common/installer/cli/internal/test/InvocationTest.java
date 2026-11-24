@@ -570,6 +570,69 @@ public final class InvocationTest
 	}
 
 	/**
+	 * Uninstall in an environment that names no home folder for the user does not refuse: it removes the installation,
+	 * skips the user's files that hold a secret for the harness's CAT sessions alone, and its result carries the
+	 * integration's sentence about the file that it could not look for.
+	 *
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void uninstallsWithoutHomeVariable() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Installation installation = new Installation(cleanup.add(testDirectory("invocation-uninstall-no-home-")));
+			installation.writePolicy(installation.trustPolicy());
+			Files.writeString(RecordingIntegration.registeredVersion(installation.home), "1.2");
+			RecordingIntegration integration = new RecordingIntegration().holdingUserSecret(".cat/harness-a/secret");
+
+			Run run = run(installation.image, null, Map.of(), List.of(new RegisteredProvider()), integration,
+				"uninstall");
+
+			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(0);
+			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("uninstalled");
+			requireThat(run.result().path("message").stringValue(), "message").
+				contains("CAT could not look for .cat/harness-a/secret in the user's home folder.");
+			requireThat(integration.calls(), "calls").contains("describeUnsearchedUserSecrets").
+				doesNotContain("removeUserSecrets");
+			requireThat(Files.exists(RecordingIntegration.registeredVersion(installation.home), NOFOLLOW_LINKS),
+				"registered").isFalse();
+		}
+	}
+
+	/**
+	 * Uninstall refuses a home variable that names a relative path before it changes anything, because the variable is
+	 * set to a wrong value rather than missing.
+	 *
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void uninstallRefusesRelativeHome() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Installation installation = new Installation(cleanup.add(testDirectory("invocation-uninstall-relative-")));
+			installation.writePolicy(installation.trustPolicy());
+			Files.writeString(RecordingIntegration.registeredVersion(installation.home), "1.2");
+			RecordingIntegration integration = new RecordingIntegration();
+			String variable = Platform.current().homeVariable();
+
+			Run run = installation.run(Map.of(variable, "relative-home"), List.of(new RegisteredProvider()),
+				integration, "uninstall");
+
+			requireThat(run.status, "status").isEqualTo(3);
+			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("refused");
+			requireThat(run.result().path("message").stringValue(), "message").isEqualTo("The user's home folder is " +
+				"wrong: relative-home is not an absolute path. CAT takes it from " + variable + " in the environment, as " +
+				"the runtime does; set it to an absolute path and run the command again.");
+			requireThat(integration.calls(), "calls").isEmpty();
+			requireThat(RecordingIntegration.registeredVersion(installation.home), "registered").isRegularFile();
+		}
+	}
+
+	/**
 	 * Running the same uninstall again after an uninstall that kept CAT's plugin data runs every step again and
 	 * reports the uninstall again.
 	 *
@@ -1418,7 +1481,8 @@ public final class InvocationTest
 	 * Runs one installer invocation whose harness program never starts.
 	 *
 	 * @param image        the plugin folder of the running installer
-	 * @param defaultHome  the user's home when the environment names none in the platform's home variable
+	 * @param defaultHome  the user's home when the environment names none in the platform's home variable, or null to
+	 *                     leave that variable unset then
 	 * @param environment  the caller's environment
 	 * @param activations  the installed activation providers
 	 * @param integration  the harness integration
@@ -1435,7 +1499,8 @@ public final class InvocationTest
 	 * Runs one installer invocation, with a terminal, whose harness program never starts.
 	 *
 	 * @param image        the plugin folder of the running installer
-	 * @param defaultHome  the user's home when the environment names none in the platform's home variable
+	 * @param defaultHome  the user's home when the environment names none in the platform's home variable, or null to
+	 *                     leave that variable unset then
 	 * @param environment  the caller's environment
 	 * @param activations  the installed activation providers
 	 * @param integration  the harness integration
@@ -1456,7 +1521,8 @@ public final class InvocationTest
 	 * Runs one installer invocation on a platform, whose harness program never starts.
 	 *
 	 * @param image        the plugin folder of the running installer
-	 * @param defaultHome  the user's home when the environment names none in the platform's home variable
+	 * @param defaultHome  the user's home when the environment names none in the platform's home variable, or null to
+	 *                     leave that variable unset then
 	 * @param environment  the caller's environment
 	 * @param activations  the installed activation providers
 	 * @param integration  the harness integration
@@ -1477,7 +1543,8 @@ public final class InvocationTest
 	 * Runs one installer invocation on a platform, with a terminal, whose harness program never starts.
 	 *
 	 * @param image        the plugin folder of the running installer
-	 * @param defaultHome  the user's home when the environment names none in the platform's home variable
+	 * @param defaultHome  the user's home when the environment names none in the platform's home variable, or null to
+	 *                     leave that variable unset then
 	 * @param environment  the caller's environment
 	 * @param activations  the installed activation providers
 	 * @param integration  the harness integration
@@ -1499,7 +1566,8 @@ public final class InvocationTest
 	 * Runs one installer invocation on a platform, with a terminal and a harness program.
 	 *
 	 * @param image        the plugin folder of the running installer
-	 * @param defaultHome  the user's home when the environment names none in the platform's home variable
+	 * @param defaultHome  the user's home when the environment names none in the platform's home variable, or null to
+	 *                     leave that variable unset then
 	 * @param environment  the caller's environment
 	 * @param activations  the installed activation providers
 	 * @param integration  the harness integration
@@ -1525,7 +1593,8 @@ public final class InvocationTest
 		{
 			// The user's home is the one that the environment names, as the installer's process has it
 			Map<String, String> variables = new HashMap<>(environment);
-			variables.putIfAbsent(platform.homeVariable(), defaultHome.toString());
+			if (defaultHome != null)
+				variables.putIfAbsent(platform.homeVariable(), defaultHome.toString());
 			Invocation invocation = new Invocation(image, platform, variables, ACCOUNT_HOME, activations,
 				List.of(integration), cliFactory, Clock.systemUTC(), interval -> () -> {}, replacer(), terminal, starter,
 				stdout, stderr);

@@ -16,6 +16,7 @@ import com.holdmyspot.cat.common.installer.activation.EntryGroup;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.ArrayList;
@@ -92,6 +93,16 @@ public final class IntegrationTest
 			requireThat(removed, "removed").isEmpty();
 			requireThat(credential, "credential").isRegularFile();
 		}
+	}
+
+	/**
+	 * Codex's uninstall in an environment that names no home folder for the user says nothing about the home folder,
+	 * because it removes no file of it.
+	 */
+	@Test
+	public void describesNoUnsearchedSecrets()
+	{
+		requireThat(provider().describeUnsearchedUserSecrets(), "sentences").isEmpty();
 	}
 
 	/**
@@ -1121,6 +1132,37 @@ public final class IntegrationTest
 			provider().removePermissions(home, added, replacer());
 			requireThat(Files.exists(file), "fileExists").isFalse();
 			requireThat(userRules, "userRules").isRegularFile();
+		}
+	}
+
+	/**
+	 * Uninstall's removal of the recorded entries completes when the rules folder and {@code config.toml} are already
+	 * gone, creates neither, and reports nothing that it left in place.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void removesEntriesFromAbsentConfiguration() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			Map<String, List<String>> added = provider().installPermissions(permissionEnvironment(home),
+				home, installer(home, VERSION), replacer(),
+					entries ->
+					{
+					});
+			Path rules = home.resolve("rules");
+			Path configuration = home.resolve("config.toml");
+			TemporaryDirectories.deleteRecursively(rules);
+			Files.deleteIfExists(configuration);
+
+			provider().removePermissions(home, added, replacer());
+			List<String> retained = provider().describeRetained(home, added);
+
+			requireThat(Files.exists(rules, LinkOption.NOFOLLOW_LINKS), "rules").isFalse();
+			requireThat(Files.exists(configuration, LinkOption.NOFOLLOW_LINKS), "configuration").isFalse();
+			requireThat(retained, "retained").isEmpty();
 		}
 	}
 

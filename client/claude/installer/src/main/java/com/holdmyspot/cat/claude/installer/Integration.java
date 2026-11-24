@@ -525,6 +525,22 @@ public final class Integration implements HarnessIntegration
 	}
 
 	/**
+	 * Returns the sentence that tells the user that the uninstall could not look for CAT's Claude credential file,
+	 * {@code .cat/claude/.credentials.json} in the home folder, and that the user deletes it or removes it with
+	 * {@code claude-credential remove --home}. The command must come from a CAT installation that the user keeps,
+	 * because the uninstall deletes the plugin's own {@code claude-credential} with the plugin.
+	 *
+	 * @return the sentence
+	 */
+	@Override
+	public List<String> describeUnsearchedUserSecrets()
+	{
+		return List.of("CAT could not look for its Claude credential file, which may hold a long-lived token, because " +
+			platform.homeVariable() + " is not set. If .cat/claude/.credentials.json exists in your home folder, delete " +
+			"it, or run claude-credential remove --home <your home folder> from a CAT installation that you keep.");
+	}
+
+	/**
 	 * Merges the installer's entries into {@code sandbox.excludedCommands} and {@code permissions.allow} of
 	 * {@code settings.json}, creating the file and members when absent. Every operation runs outside the shell
 	 * sandbox; install into Claude Code, of the latest or a named release, and status are also allowed without asking

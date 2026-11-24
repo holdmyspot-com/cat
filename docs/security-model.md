@@ -254,7 +254,11 @@ the harness keeps (in Codex `plugins/cache/cat`), and the Codex custom agents th
 manifest and still unchanged; and, in Claude Code, your CAT credential file `~/.cat/claude/.credentials.json`, with
 `~/.cat/claude` when that leaves it empty, whether or not you delete the plugin data, because the long-lived token in it
 has no use without CAT. Its result names the deleted file. A credential file that you saved under another home folder
-with `--home` stays until `claude-credential remove --home <dir>` removes it. It never deletes unrelated settings,
+with `--home` stays until `claude-credential remove --home <dir>` removes it. When `HOME` (`USERPROFILE` on Windows) is
+not set, the uninstall cannot find your home folder, so it leaves your credential file and its result says so and how to
+remove it; it does not refuse. A file or folder that a step would delete and that is already gone is no failure; only
+a missing `policy.json` refuses the uninstall, with the CAT entry command to run first. It never deletes unrelated
+settings,
 agents that CAT does not own, or your own files, including `~/.cat/rules`. When the harness program that the first install recorded no longer exists, uninstall cannot
 unregister the plugin: it removes everything else and reports `uninstalled` with `"unregistered": false`.
 

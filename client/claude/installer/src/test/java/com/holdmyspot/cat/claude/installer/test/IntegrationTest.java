@@ -522,6 +522,44 @@ public final class IntegrationTest
 	}
 
 	/**
+	 * An uninstall in an environment that names no home folder for the user tells the user, in one sentence, that it
+	 * could not look for CAT's Claude credential file, which variable names the home folder, and the two ways to remove
+	 * the file: deleting it, or {@code claude-credential remove --home} from a CAT installation that stays.
+	 */
+	@Test
+	public void describesUnsearchedCredentialFile()
+	{
+		String variable = Platform.current().homeVariable();
+
+		List<String> sentences = new Integration(Platform.current()).describeUnsearchedUserSecrets();
+
+		requireThat(sentences, "sentences").isEqualTo(List.of("CAT could not look for its Claude credential file, " +
+			"which may hold a long-lived token, because " + variable + " is not set. If .cat/claude/.credentials.json " +
+			"exists in your home folder, delete it, or run claude-credential remove --home <your home folder> from a CAT " +
+			"installation that you keep."));
+	}
+
+	/**
+	 * Uninstall's removal of the recorded entries completes when {@code settings.json} is already gone, and creates no
+	 * settings file.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void removesEntriesFromAbsentSettings() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(testDirectory());
+			Path launcher = launcher(home);
+
+			integration().removePermissions(home, platformEntries(launcher), replacer());
+
+			requireThat(Files.exists(home.resolve("settings.json"), LinkOption.NOFOLLOW_LINKS), "settings").isFalse();
+		}
+	}
+
+	/**
 	 * Unregistration uninstalls CAT and then removes its marketplace, treating Claude Code's not-found answers as
 	 * success.
 	 *

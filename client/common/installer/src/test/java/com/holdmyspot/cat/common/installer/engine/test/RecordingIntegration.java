@@ -643,6 +643,20 @@ public final class RecordingIntegration implements HarnessIntegration
 		return deleted;
 	}
 
+	/**
+	 * Returns, for each file that {@link #holdingUserSecret} made one that holds a secret, the sentence
+	 * {@code CAT could not look for <file> in the user's home folder.}, with the file relative to the home folder.
+	 *
+	 * @return the sentences
+	 */
+	@Override
+	public List<String> describeUnsearchedUserSecrets()
+	{
+		calls.add("describeUnsearchedUserSecrets " + userSecrets);
+		return userSecrets.stream().map(secret -> "CAT could not look for " + secret + " in the user's home folder.").
+			toList();
+	}
+
 	@Override
 	public boolean runsInstead(PluginVersion candidate, PluginVersion active)
 	{
