@@ -59,6 +59,34 @@ public interface SessionPort
 	}
 
 	/**
+	 * Starts a contract author and suspends it after its configured turns, or resumes its checkpoint for one
+	 * correction turn and completes the conversation. A successful resumed result includes the retained replies and
+	 * the correction reply, with usage for the conversation.
+	 *
+	 * @param request the original author turns or the single correction turn
+	 * @param requestId the request identifier recorded before the original launch
+	 * @param claim the checkpoint that the broker must recheck, or empty for a fresh launch
+	 * @return the running session's handle
+	 * @throws IllegalArgumentException if the request or claim does not match the author phase
+	 * @throws IOException if the phase cannot be started
+	 */
+	default SessionHandle startContractAuthor(SessionRequest request, UUID requestId, Optional<RetainedTrialClaim> claim)
+		throws IOException
+	{
+		throw new IOException("This session port does not support contract-author recovery");
+	}
+
+	/**
+	 * Indicates whether the port can suspend and continue a contract author through the broker.
+	 *
+	 * @return whether this port supports contract-author recovery
+	 */
+	default boolean recoversContractAuthor()
+	{
+		return false;
+	}
+
+	/**
 	 * Asks the broker to inspect or discard a trial that the port launched.
 	 *
 	 * @param request the operation and original trial request identifier

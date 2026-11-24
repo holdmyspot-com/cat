@@ -61,6 +61,19 @@ public final class ExtraPermissionSessions implements SessionPort
 	}
 
 	@Override
+	public SessionHandle startContractAuthor(SessionRequest request, UUID requestId, Optional<RetainedTrialClaim> claim)
+		throws IOException
+	{
+		return delegate.startContractAuthor(request.withExtraPermissions(extraPermissions), requestId, claim);
+	}
+
+	@Override
+	public boolean recoversContractAuthor()
+	{
+		return delegate.recoversContractAuthor();
+	}
+
+	@Override
 	public RetainedTrialResponse retainedTrial(RetainedTrialRequest request) throws IOException
 	{
 		return delegate.retainedTrial(request);

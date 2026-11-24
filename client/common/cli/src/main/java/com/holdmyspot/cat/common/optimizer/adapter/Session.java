@@ -84,6 +84,7 @@ final class Session implements SessionHandle
 	private final SessionRequest request;
 	private final Optional<UUID> requestId;
 	private final Optional<RetainedTrialClaim> retained;
+	private final int priorAuthorTurns;
 	private final Clock clock;
 	/**
 	 * The longest time that the driver waits for the runner's next message before it checks the clock again.
@@ -124,12 +125,12 @@ final class Session implements SessionHandle
 	}
 
 	/**
-	 * Creates a session, optionally bound to a durable trial request or retained checkpoint.
+	 * Creates a session, optionally bound to a durable broker request or retained checkpoint.
 	 *
 	 * @param sessions the port that starts the session
 	 * @param request what the session does
 	 * @param poll the longest wait for a runner message before the driver checks the clock
-	 * @param requestId the original trial request identifier, or empty for an untracked session
+	 * @param requestId the original broker request identifier, or empty for an untracked session
 	 * @param retained the checkpoint to resume, or empty for a fresh session
 	 */
 	Session(RunnerSessions sessions, SessionRequest request, Duration poll, Optional<UUID> requestId,
@@ -140,6 +141,10 @@ final class Session implements SessionHandle
 		this.request = request;
 		this.requestId = requestId;
 		this.retained = retained;
+		if (request.role() == SessionRole.CONTRACT_AUTHOR && retained.isPresent())
+			priorAuthorTurns = retained.get().completedTurns();
+		else
+			priorAuthorTurns = 0;
 		this.clock = settings.clock();
 		this.poll = poll;
 		this.events = sessions.newEvents(json);
@@ -233,10 +238,10 @@ final class Session implements SessionHandle
 				int turn = restoredTurns();
 				if (turn > 0)
 					outcome = Outcome.TURN_COMPLETED;
-				while (turn < request.turns().size() && !isStopping() && !endedEarly)
+				while (turn < requestedTurns() && !isStopping() && !endedEarly)
 				{
 					turn += 1;
-					String prompt = request.turns().get(turn - 1);
+					String prompt = request.turns().get(turn - 1 - priorAuthorTurns);
 					if (turn == 1)
 					{
 						if (request.evidencePrompt().isPresent())
@@ -251,7 +256,7 @@ final class Session implements SessionHandle
 					outcome = sendTurn(turn, prompt);
 					if (outcome != Outcome.TURN_COMPLETED)
 						break;
-					if (turn < request.turns().size() && request.turnObserver().isPresent())
+					if (turn < requestedTurns() && request.turnObserver().isPresent())
 						observeTurn(request.turnObserver().get(), turn);
 				}
 				if (outcome == Outcome.TURN_COMPLETED && !isStopping() && isTurnClean() &&
@@ -270,7 +275,7 @@ final class Session implements SessionHandle
 			{
 				try
 				{
-					// An observer or evidence error cannot complete a tracked trial. Disconnect so the broker
+					// An observer or evidence error cannot complete a tracked session. Disconnect so the broker
 					// settles the interrupted launch before a later driver decides whether to resume it.
 					if (requestId.isPresent())
 						stopRunner(runner, Outcome.STUCK);
@@ -285,8 +290,33 @@ final class Session implements SessionHandle
 				throw failure;
 			}
 		}
+		if (outcome == Outcome.TURN_COMPLETED && trackedAuthor() && retained.isEmpty() && !isStopping() &&
+			responses.size() == requestedTurns())
+		{
+			outcome = Outcome.SUSPEND;
+		}
 		stopRunner(runner, outcome);
 		return result();
+	}
+
+	/**
+	 * Indicates whether this is a contract-author session that can suspend or resume over the broker.
+	 *
+	 * @return whether the request is a tracked contract author
+	 */
+	private boolean trackedAuthor()
+	{
+		return requestId.isPresent() && request.role() == SessionRole.CONTRACT_AUTHOR;
+	}
+
+	/**
+	 * Counts the requested turns in the conversation, including an author's retained prefix on correction.
+	 *
+	 * @return the number of requested turns
+	 */
+	private int requestedTurns()
+	{
+		return request.turns().size() + priorAuthorTurns;
 	}
 
 	/**
@@ -303,7 +333,7 @@ final class Session implements SessionHandle
 		RetainedTrialClaim claim = retained.get();
 		int turns = claim.completedTurns();
 		if (!claim.identity().session().orElseThrow().sessionId().equals(sessionId) || responses.size() != turns)
-			throw new IOException("The retained trial did not deliver its claimed checkpoint");
+			throw new IOException("The retained session did not deliver its claimed checkpoint");
 		if (request.turnObserver().isPresent())
 		{
 			TurnObserver observer = request.turnObserver().get();
@@ -484,15 +514,31 @@ final class Session implements SessionHandle
 	{
 		if (ended == null && outcome != Outcome.STUCK && outcome != Outcome.STARTUP_TIMEOUT)
 		{
-			// Every successful stop, including settlement between turns, completes the bridge protocol. EOF alone
-			// means the requester disappeared and makes the bridge fail the session.
-			feed.send("{\"type\":\"complete\"}");
+			// An explicit terminal command lets the broker distinguish a clean stop from a lost requester.
+			if (outcome == Outcome.SUSPEND)
+				feed.send(json.createObjectNode().put("type", "suspend").put("completed_turns", responses.size()).toString());
+			else
+				feed.send("{\"type\":\"complete\"}");
 			feed.end();
 			graceDeadline = clock.instant().plus(GRACE);
+			int acknowledgedTurns = 0;
 			while (ended == null && !clock.instant().isAfter(graceDeadline))
-				awaitMessage();
-			if (ended != null && ended.failure() != null && failure == null)
-				failure = describe(ended.failure(), "The runner failed");
+			{
+				if (awaitMessage() instanceof Message.Suspended suspended)
+				{
+					if (acknowledgedTurns == 0)
+						acknowledgedTurns = suspended.completedTurns();
+					else
+						acknowledgedTurns = -1;
+				}
+			}
+			if (ended != null && failure == null)
+			{
+				if (ended.failure() != null)
+					failure = describe(ended.failure(), "The runner failed");
+				else if (outcome == Outcome.SUSPEND && acknowledgedTurns != responses.size())
+					failure = "The runner did not acknowledge the contract author's completed checkpoint";
+			}
 		}
 		if (ended == null)
 		{
@@ -671,7 +717,7 @@ final class Session implements SessionHandle
 		{
 			if (failure == null && events.error() != null)
 				failure = events.error();
-			if (failure == null && responses.size() < request.turns().size() && !endedEarly)
+			if (failure == null && responses.size() < requestedTurns() && !endedEarly)
 				failure = "The session ended before every turn had a reply";
 			if (failure != null)
 				return new SessionResult.Failed(failure, windows);
@@ -692,7 +738,7 @@ final class Session implements SessionHandle
 		return new SessionResult.Completed(artifacts.resolve(EventSink.TRANSCRIPT), responses,
 			sessionFolder().resolve("project"), sessionFolder().resolve("initial-project"), events.model(),
 			events.reasoning(), events.usage(), events.windows(), sink.promptSources(),
-			events.toolCalls(), Math.max(request.turns().size(), responses.size()), endedEarly, settledAssertions);
+			events.toolCalls(), Math.max(requestedTurns(), responses.size()), endedEarly, settledAssertions);
 	}
 
 	/**
@@ -743,8 +789,8 @@ final class Session implements SessionHandle
 		}
 		arguments.addAll(List.of("--artifact", artifact.toString(), "--project", request.source().toString(),
 			"--results", resultsFolder().toString()));
-		// Only a trial's transcripts are read, to learn what its agents received
-		if (request.role() == SessionRole.TRIAL)
+		// A trial retains its agent evidence and a tracked contract author retains its completed checkpoint.
+		if (request.role() == SessionRole.TRIAL || trackedAuthor())
 			arguments.add("--session-transcripts");
 		// Only a session that receives a draft directory writes one, so only its result carries the draft's links
 		if (request.role() == SessionRole.CONTRACT_AUTHOR && !request.files().isEmpty())
@@ -862,6 +908,10 @@ final class Session implements SessionHandle
 		 * The runner reported the end of the turn.
 		 */
 		TURN_COMPLETED,
+		/**
+		 * The original author phase completed its turns and will suspend at that checkpoint.
+		 */
+		SUSPEND,
 		/**
 		 * The turn ended without a result.
 		 */

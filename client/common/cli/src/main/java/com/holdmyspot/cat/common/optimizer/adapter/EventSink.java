@@ -29,7 +29,7 @@ import tools.jackson.databind.json.JsonMapper;
  * The runner's response stream. It reads each response line as the runner writes it.
  * <p>
  * A {@code harness_event} response goes to the transcript, the event parser and the prompt-source observation. A
- * {@code started}, {@code turn_completed} or {@code turn_failed} response goes to the session driver.
+ * {@code started}, {@code turn_completed}, {@code turn_failed} or {@code suspended} response goes to the driver.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -168,7 +168,7 @@ public final class EventSink extends Writer
 	 * Handles one complete response line.
 	 *
 	 * @param line the line
-	 * @throws IOException if the transcript cannot be written or the completed message list is malformed
+	 * @throws IOException if the transcript cannot be written or a completed turn or checkpoint is malformed
 	 */
 	private void accept(String line) throws IOException
 	{
@@ -211,6 +211,13 @@ public final class EventSink extends Writer
 				messages.add(new TurnCompleted(assistantMessages));
 			}
 			case "turn_failed" -> messages.add(new Message.TurnFailed(response.path("error").asString("")));
+			case "suspended" ->
+			{
+				JsonNode turns = response.path("completed_turns");
+				if (!turns.isInt() || turns.intValue() < 1)
+					throw new IOException("Runner suspended requires a positive completed_turns count");
+				messages.add(new Message.Suspended(turns.intValue()));
+			}
 			default ->
 			{
 			}

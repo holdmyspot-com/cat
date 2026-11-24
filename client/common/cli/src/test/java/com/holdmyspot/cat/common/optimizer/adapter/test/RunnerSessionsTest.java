@@ -29,6 +29,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionHandle;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
+import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
 import com.holdmyspot.cat.common.optimizer.port.TurnObserver;
 import com.holdmyspot.cat.common.optimizer.proposal.DraftDirectory;
 import com.holdmyspot.cat.common.runner.AuthenticationOptions;
@@ -38,6 +39,7 @@ import com.holdmyspot.cat.common.runner.LaunchRefusedException;
 import com.holdmyspot.cat.common.runner.LiveNestedSession;
 import com.holdmyspot.cat.common.runner.NestedSession;
 import com.holdmyspot.cat.common.runner.NestedSessionManager;
+import com.holdmyspot.cat.common.runner.RetainedNestedSessionClient;
 import com.holdmyspot.cat.common.runner.RetainedTrialClaim;
 import com.holdmyspot.cat.common.runner.RetainedTrialResponse;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness;
@@ -1189,6 +1191,242 @@ public final class RunnerSessionsTest
 				}
 			}
 		};
+	}
+
+	/**
+	 * Verifies each phase's terminal command, capacity release and retained evidence.
+	 *
+	 * @throws IOException if the session evidence cannot be read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
+	 */
+	@Test
+	public void suspendsAndResumesContractAuthor() throws IOException, InterruptedException, ExecutionException,
+		TimeoutException
+	{
+		try (TestJvmScope jvm = new TestJvmScope(); TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-author-adapter-"));
+			AuthorBridge bridge = new AuthorBridge(root, "{\"type\":\"suspended\",\"completed_turns\":1}\n");
+			HarnessCapacity capacity = HarnessCapacity.of(jvm.fileLocks(), root.resolve("locks"), 1, () -> {},
+				Clock.systemUTC());
+			TestSessions sessions = bridge.sessions(jvm, capacity);
+			SessionRequest original = request(SessionRole.CONTRACT_AUTHOR, SESSION_PROFILE, root, List.of(), "author");
+
+			SessionResult first = await(sessions.startContractAuthor(original, bridge.claim.requestId(), Optional.empty()));
+
+			requireThat(bridge.commands.getLast().toString(), "firstTerminalCommand").
+				isEqualTo("{\"type\":\"suspend\",\"completed_turns\":1}");
+			requireThat(first, "first").isInstanceOf(SessionResult.Completed.class);
+			SessionResult.Completed suspended = (SessionResult.Completed) first;
+			requireThat(suspended.requestedTurns(), "originalTurns").isEqualTo(1);
+			requireThat(suspended.responses(), "originalReplies").isEqualTo(List.of(List.of("first")));
+			requireThat(suspended.usage(), "originalUsage").isEqualTo(new TokenUsage(10, 0, 5, 0));
+			requireThat(Files.readString(suspended.effects().resolve("draft.md")), "firstEvidence").isEqualTo("first");
+			Optional<HarnessCapacity.Permit> afterSuspend = capacity.tryAcquire();
+			requireThat(afterSuspend.isPresent(), "releasedAfterSuspension").isTrue();
+			afterSuspend.orElseThrow().close();
+
+			SessionRequest correction = request(SessionRole.CONTRACT_AUTHOR, SESSION_PROFILE, root, List.of(), "correct");
+			SessionResult continued = await(sessions.startContractAuthor(correction, bridge.claim.requestId(),
+				Optional.of(bridge.claim)));
+
+			requireThat(bridge.claims, "brokerClaims").isEqualTo(List.of(Optional.empty(), Optional.of(bridge.claim)));
+			requireThat(bridge.commands.size(), "sentCommands").isEqualTo(4);
+			requireThat(bridge.commands.get(2).path("prompt").stringValue(), "correctionPrompt").isEqualTo("correct");
+			requireThat(bridge.commands.getLast().path("type").stringValue(), "lastCommand").isEqualTo("complete");
+			requireThat(continued, "continued").isInstanceOf(SessionResult.Completed.class);
+			SessionResult.Completed completed = (SessionResult.Completed) continued;
+			requireThat(completed.requestedTurns(), "resumedTurns").isEqualTo(2);
+			requireThat(completed.endedEarly(), "endedEarly").isFalse();
+			requireThat(completed.responses(), "replies").isEqualTo(List.of(List.of("first"), List.of("corrected")));
+			requireThat(completed.usage(), "cumulativeUsage").isEqualTo(new TokenUsage(13, 0, 8, 0));
+			requireThat(Files.readAllLines(completed.transcript()), "retainedEvents").
+				isEqualTo(List.of(TestSessions.USAGE_EVENT, AuthorBridge.RESUMED_USAGE));
+			requireThat(Files.readString(completed.effects().resolve("draft.md")), "finalEvidence").isEqualTo("corrected");
+		}
+	}
+
+	/**
+	 * Supplies a missing or incorrect acknowledgement of the completed checkpoint.
+	 *
+	 * @return the runner's terminal records
+	 */
+	@DataProvider
+	public Object[][] unacknowledgedCheckpoints()
+	{
+		return new Object[][]
+		{
+			{""},
+			{"{\"type\":\"suspended\",\"completed_turns\":2}\n"}
+		};
+	}
+
+	/**
+	 * Verifies the session only returns successful suspension after the runner confirms the completed turn count.
+	 *
+	 * @param acknowledgement the runner's terminal record
+	 * @throws IOException if the session evidence cannot be read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
+	 */
+	@Test(dataProvider = "unacknowledgedCheckpoints")
+	public void requiresCheckpointAcknowledgement(String acknowledgement) throws IOException, InterruptedException,
+		ExecutionException, TimeoutException
+	{
+		try (TestJvmScope jvm = new TestJvmScope(); TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-author-unacknowledged-"));
+			AuthorBridge bridge = new AuthorBridge(root, acknowledgement);
+			TestSessions sessions = bridge.sessions(jvm, HarnessCapacity.unlimited());
+			SessionRequest author = request(SessionRole.CONTRACT_AUTHOR, SESSION_PROFILE, root, List.of(), "author");
+
+			SessionResult result = await(sessions.startContractAuthor(author, bridge.claim.requestId(), Optional.empty()));
+
+			requireThat(result, "result").isInstanceOf(SessionResult.Failed.class);
+		}
+	}
+
+	/**
+	 * Verifies the adapter refuses a checkpoint bound to a different request before launching a runner.
+	 *
+	 * @throws IOException if the fixture cannot be created or the session cannot be started
+	 */
+	@Test(expectedExceptions = IllegalArgumentException.class,
+		expectedExceptionsMessageRegExp = "The retained checkpoint does not match the contract author")
+	public void rejectsAnotherAuthorRequestClaim() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope(); TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-author-forged-"));
+			AuthorBridge bridge = new AuthorBridge(root, "");
+			TestSessions sessions = bridge.sessions(jvm, HarnessCapacity.unlimited());
+			SessionRequest correction = request(SessionRole.CONTRACT_AUTHOR, SESSION_PROFILE, root, List.of(), "correct");
+
+			sessions.startContractAuthor(correction, UUID.randomUUID(), Optional.of(bridge.claim));
+		}
+	}
+
+	/**
+	 * Models broker records across an original author phase and its claimed continuation.
+	 */
+	private static final class AuthorBridge implements Bridge
+	{
+		private static final String RESUMED_USAGE = "{\"type\":\"usage\",\"input\":13,\"output\":8}";
+		private final Path root;
+		private final String acknowledgement;
+		private final String id = UUID.randomUUID().toString();
+		private final RetainedTrialClaim claim = new RetainedTrialClaim(UUID.randomUUID(),
+			new RetainedTrialResponse.Identity(UUID.randomUUID(),
+				Optional.of(new RetainedTrialResponse.HarnessSession(TestSessions.HARNESS, id))), 1);
+		private final List<JsonNode> commands = new CopyOnWriteArrayList<>();
+		private final List<Optional<RetainedTrialClaim>> claims = new CopyOnWriteArrayList<>();
+
+		/**
+		 * Creates a bridge for one tracked conversation.
+		 *
+		 * @param root the fixture directory
+		 * @param acknowledgement the record to send in reply to a suspension request
+		 */
+		private AuthorBridge(Path root, String acknowledgement)
+		{
+			this.root = root;
+			this.acknowledgement = acknowledgement;
+		}
+
+		/**
+		 * Creates a port served by this fixture bridge.
+		 *
+		 * @param jvm the JVM scope
+		 * @param capacity the optimizer's capacity
+		 * @return the port
+		 * @throws IOException if the role rules cannot be written
+		 */
+		private TestSessions sessions(TestJvmScope jvm, HarnessCapacity capacity) throws IOException
+		{
+			Path artifact = root.resolve("artifact");
+			RoleRuleFixtures.write(artifact);
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, root.resolve("results"),
+				List::of, false, Map.of(), root, capacity, Clock.systemUTC(), Yielding.fileReplacer());
+			return new TestSessions(settings, this,
+				new RetainedNestedSessionClient(Optional::empty, JsonMapper.builder().build(), () -> {}));
+		}
+
+		@Override
+		public void serve(List<String> arguments, Reader input, Writer output) throws IOException
+		{
+			phase(false, input, output);
+		}
+
+		@Override
+		public void serveTrial(UUID requestId, Optional<RetainedTrialClaim> retained, Path source,
+			List<String> arguments, Reader input, Writer output) throws IOException
+		{
+			if (!claim.requestId().equals(requestId) || !arguments.contains("--session-transcripts"))
+				throw new IOException("Author launch omitted its request identity or transcript option");
+			claims.add(retained);
+			phase(retained.isPresent(), input, output);
+		}
+
+		/**
+		 * Streams one original or resumed phase, exposing its draft after the stream ends.
+		 *
+		 * @param resumed whether to replay the retained first turn
+		 * @param input the adapter's requests
+		 * @param output the broker's response
+		 * @throws IOException if a record or the project cannot be read or written
+		 */
+		private void phase(boolean resumed, Reader input, Writer output) throws IOException
+		{
+			JsonMapper json = JsonMapper.builder().build();
+			String reply = "first";
+			String usage = TestSessions.USAGE_EVENT;
+			if (resumed)
+			{
+				output.write("{\"type\":\"retained_session_id\",\"session_id\":\"" + id + "\"}\n");
+				output.write("{\"type\":\"retained_turn_start\"}\n");
+				writeTurn(json, output, reply, usage);
+				reply = "corrected";
+				usage = RESUMED_USAGE;
+			}
+			output.write("{\"type\":\"started\",\"resumed\":" + resumed + "}\n");
+			if (!resumed)
+				output.write("{\"type\":\"session_id\",\"session_id\":\"" + id + "\"}\n");
+			BufferedReader requests = new BufferedReader(input);
+			for (String line = requests.readLine(); line != null; line = requests.readLine())
+			{
+				JsonNode command = json.readTree(line);
+				commands.add(command);
+				switch (command.path("type").stringValue(""))
+				{
+					case "turn" -> writeTurn(json, output, reply, usage);
+					case "suspend" -> output.write(acknowledgement);
+					default ->
+					{
+					}
+				}
+			}
+			Path project = Files.createDirectories(root.resolve("results").resolve(TestSessions.HARNESS).resolve(id).
+				resolve("project"));
+			Files.writeString(project.resolve("draft.md"), reply);
+		}
+
+		/**
+		 * Writes a usage sample and the assistant's completed turn.
+		 *
+		 * @param json the record mapper
+		 * @param output the broker's response
+		 * @param reply the assistant's reply
+		 * @param usage the harness's cumulative usage
+		 * @throws IOException if the records cannot be written
+		 */
+		private static void writeTurn(JsonMapper json, Writer output, String reply, String usage) throws IOException
+		{
+			output.write(json.createObjectNode().put("type", "harness_event").put("event", usage).toString() + "\n");
+			output.write("{\"type\":\"turn_completed\",\"assistant_messages\":[\"" + reply + "\"]}\n");
+		}
 	}
 
 	/**

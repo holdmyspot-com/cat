@@ -412,6 +412,54 @@ public abstract class RunnerSessions implements SessionPort
 				throw new IllegalArgumentException("The retained checkpoint does not match the trial");
 			}
 		}
+		return startTracked(request, requestId, claim);
+	}
+
+	@Override
+	public final SessionHandle startContractAuthor(SessionRequest request, UUID requestId,
+		Optional<RetainedTrialClaim> claim) throws IOException
+	{
+		requireThat(request, "request").isNotNull();
+		requireThat(requestId, "requestId").isNotNull();
+		requireThat(claim, "claim").isNotNull();
+		if (request.role() != SessionRole.CONTRACT_AUTHOR || request.followUp().isPresent() ||
+			request.evidencePrompt().isPresent())
+		{
+			throw new IllegalArgumentException("A tracked contract author requires author turns without follow-up or " +
+				"staged evidence");
+		}
+		if (claim.isPresent())
+		{
+			RetainedTrialClaim retained = claim.get();
+			if (!retained.requestId().equals(requestId) || retained.completedTurns() == 0 ||
+				!retained.identity().session().orElseThrow().harness().equals(harness))
+			{
+				throw new IllegalArgumentException("The retained checkpoint does not match the contract author");
+			}
+			if (request.turns().size() != 1)
+				throw new IllegalArgumentException("A resumed contract author requires one correction turn");
+		}
+		if (!recoversContractAuthor())
+			throw new IOException("No broker serves contract-author recovery");
+		return startTracked(request, requestId, claim);
+	}
+
+	@Override
+	public final boolean recoversContractAuthor()
+	{
+		return recoversTrials();
+	}
+
+	/**
+	 * Starts a session with a durable broker request identifier.
+	 *
+	 * @param request what the session does
+	 * @param requestId the original request identifier
+	 * @param claim the checkpoint to resume, or empty for a fresh session
+	 * @return the running session's handle
+	 */
+	private SessionHandle startTracked(SessionRequest request, UUID requestId, Optional<RetainedTrialClaim> claim)
+	{
 		Session session = new Session(this, request, POLL, Optional.of(requestId), claim);
 		session.begin();
 		return session;

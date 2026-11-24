@@ -8,7 +8,7 @@ import java.io.IOException;
  * <b>Thread Safety:</b> Implementations are thread-safe.
  */
 public sealed interface Message permits Message.Started, Message.Identified, TurnCompleted, Message.TurnFailed,
-	Message.Ended, Message.Wake
+	Message.Suspended, Message.Ended, Message.Wake
 {
 	/**
 	 * The runner started its harness and is ready for turns.
@@ -32,6 +32,15 @@ public sealed interface Message permits Message.Started, Message.Identified, Tur
 	 * @param error why the turn failed
 	 */
 	record TurnFailed(String error) implements Message
+	{
+	}
+
+	/**
+	 * The runner suspended a session at a completed checkpoint.
+	 *
+	 * @param completedTurns the number of turns in the checkpoint
+	 */
+	record Suspended(int completedTurns) implements Message
 	{
 	}
 

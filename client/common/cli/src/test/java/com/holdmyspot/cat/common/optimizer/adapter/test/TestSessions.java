@@ -12,6 +12,7 @@ import com.holdmyspot.cat.common.optimizer.port.RateLimitWindow;
 import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
 
 import com.holdmyspot.cat.common.runner.AuthenticationEvidence;
+import com.holdmyspot.cat.common.runner.RetainedNestedSessionClient;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -88,6 +89,18 @@ final class TestSessions extends RunnerSessions
 	TestSessions(Settings settings, Bridge bridge)
 	{
 		this(HARNESS, settings, bridge);
+	}
+
+	/**
+	 * Creates a port with a retained session client.
+	 *
+	 * @param settings how the runner is configured
+	 * @param bridge runs the runner's bridge
+	 * @param retained the client that can inspect retained sessions
+	 */
+	TestSessions(Settings settings, Bridge bridge, RetainedNestedSessionClient retained)
+	{
+		super(HARNESS, settings, bridge, Optional.of(retained));
 	}
 
 	/**
