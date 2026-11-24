@@ -107,13 +107,32 @@
 					"uncovered_interactions": {"description": "Material interactions that this test cannot cover. Empty if none.", "type": "array", "items": {"type": "string", "pattern": "\\S"}},
 					"regression_scenarios": {"description": "Recorded regression scenario paths covered by this test, exactly as CAT presents them. Empty if none.", "type": "array", "items": {"type": "string", "pattern": "\\S"}},
 					"draft": {
-						"description": "The test's directory in the draft directory and the scenario.md that it holds, which delivery writes. CAT copies them from the draft.",
+						"description": "The test directory and files that CAT copies from the draft for delivery.",
 						"type": "object",
 						"additionalProperties": false,
 						"required": ["directory", "scenario"],
 						"properties": {
 							"directory": {"description": "The directory relative to the draft directory, which is also its path relative to the project, using / as the separator.", "type": "string", "pattern": "\\S"},
 							"scenario": {"type": "string", "pattern": "\\S"},
+							"example_files": {
+								"description": "The assertion example files as they were at confirmation.",
+								"type": "array",
+								"items": {
+									"type": "object",
+									"additionalProperties": false,
+									"required": ["path", "sha256", "content"],
+									"properties": {
+										"path": {"description": "The file's path relative to examples, using / as the separator.", "type": "string", "pattern": "\\S"},
+										"sha256": {"description": "The SHA-256 digest of the file's raw bytes.", "type": "string", "pattern": "^[0-9a-f]{64}$"},
+										"content": {"description": "The file's raw bytes encoded as Base64.", "type": "string"}
+									}
+								}
+							},
+							"example_directories": {
+								"description": "Explicit assertion example directories relative to examples, using / as the separator. Parent directories are implicit.",
+								"type": "array",
+								"items": {"type": "string", "pattern": "\\S"}
+							},
 							"copied_links": {
 								"description": "Each link of the test's workspace directory whose target lies outside that directory, which trials receive as a copy of the target and delivery writes as the link. CAT copies them from the draft.",
 								"type": "array",

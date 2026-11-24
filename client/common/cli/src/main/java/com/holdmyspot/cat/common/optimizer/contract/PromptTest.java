@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.optimizer.contract;
 
 import com.holdmyspot.cat.common.Identifier;
 import com.holdmyspot.cat.common.PortablePaths;
+import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -18,6 +19,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
+import java.util.regex.Pattern;
 
 /**
  * One kind of trial that checks one or more requirements through its assertions. A trial passes when it passes every
@@ -68,28 +71,37 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 	/**
 	 * A prompt test's directory in the contract author's draft directory.
 	 *
-	 * @param directory   the directory, relative to the draft directory, which is also its path relative to the
-	 *                    project
-	 * @param scenario    the content of the {@value PromptTestFiles#SCENARIO} that it holds
-	 * @param copiedLinks the target of each link of its {@value PromptTestFiles#WORKSPACE} directory whose target lies
-	 *                    outside that directory, so that trials receive a copy of the target, by the link's path
-	 *                    relative to {@value PromptTestFiles#WORKSPACE}; each target is relative to the link's
-	 *                    directory, and paths and targets have {@code /} separators
+	 * @param directory          the directory, relative to the draft directory, which is also its path relative to
+	 *                           the project
+	 * @param scenario           the content of the {@value PromptTestFiles#SCENARIO} that it holds
+	 * @param copiedLinks        the target of each link of its {@value PromptTestFiles#WORKSPACE} directory whose
+	 *                           target lies outside that directory, so that trials receive a copy of the target, by
+	 *                           the link's path relative to {@value PromptTestFiles#WORKSPACE}; each target is
+	 *                           relative to the link's directory, and paths and targets have {@code /} separators
+	 * @param exampleFiles       the example evidence files by their path relative to {@code examples}, using
+	 *                           {@code /} separators
+	 * @param exampleDirectories the explicitly recorded example evidence directories, each relative to
+	 *                           {@code examples}, using {@code /} separators; parent directories are implicit
 	 */
-	public record Draft(Path directory, String scenario, Map<String, String> copiedLinks)
+	public record Draft(Path directory, String scenario, Map<String, String> copiedLinks,
+		Map<String, FileContent> exampleFiles, Set<String> exampleDirectories)
 	{
+		private static final Pattern RESERVED_PATH_CHARACTERS = Pattern.compile("[\\p{Cntrl}\\\\:*?\"<>|]");
+
 		/**
 		 * Creates a draft directory of a prompt test.
 		 *
-		 * @param directory   the directory, relative to the draft directory, which is also its path relative to the
-		 *                    project
-		 * @param scenario    the content of the {@value PromptTestFiles#SCENARIO} that it holds
-		 * @param copiedLinks the target of each link of its {@value PromptTestFiles#WORKSPACE} directory whose target
-		 *                    lies outside that directory, by the link's path relative to
-		 *                    {@value PromptTestFiles#WORKSPACE}
-		 * @throws NullPointerException     if any of the arguments are null
+		 * @param directory          the directory, relative to the draft directory, which is also its path relative to
+		 *                           the project
+		 * @param scenario           the content of the {@value PromptTestFiles#SCENARIO} that it holds
+		 * @param copiedLinks        the target of each copied link, by its path relative to
+		 *                           {@value PromptTestFiles#WORKSPACE}
+		 * @param exampleFiles       the example evidence files by their path relative to {@code examples}
+		 * @param exampleDirectories the explicitly recorded directories relative to {@code examples}
+		 * @throws NullPointerException     if any of the arguments or example data is null
 		 * @throws IllegalArgumentException if {@code directory} is absolute, empty or not normalized or
-		 *                                  leaves the draft directory, or {@code scenario} is blank
+		 *                                  leaves the draft directory, {@code scenario} is blank, an example path
+		 *                                  is malformed, or an example file occupies a directory's path
 		 */
 		public Draft
 		{
@@ -100,6 +112,33 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 			requireThat(directory.startsWith(".."), "directory.startsWith(\"..\")").isFalse();
 			requireThat(scenario, "scenario").isNotBlank();
 			copiedLinks = Collections.unmodifiableMap(new TreeMap<>(copiedLinks));
+			exampleFiles = Collections.unmodifiableMap(new TreeMap<>(Map.copyOf(exampleFiles)));
+			exampleDirectories = Collections.unmodifiableSet(new TreeSet<>(exampleDirectories));
+			for (String path : exampleFiles.keySet())
+				checkExamplePath(path, exampleFiles);
+			for (String path : exampleDirectories)
+			{
+				checkExamplePath(path, exampleFiles);
+				if (exampleFiles.containsKey(path))
+					throw new IllegalArgumentException("The example path '" + path + "' is both a file and a directory.");
+			}
+		}
+
+		/**
+		 * Creates a draft directory of a prompt test without assertion examples.
+		 *
+		 * @param directory   the directory, relative to the draft directory, which is also its path relative to the
+		 *                    project
+		 * @param scenario    the content of the {@value PromptTestFiles#SCENARIO} that it holds
+		 * @param copiedLinks the target of each copied link, by its path relative to
+		 *                    {@value PromptTestFiles#WORKSPACE}
+		 * @throws NullPointerException     if any of the arguments are null
+		 * @throws IllegalArgumentException if {@code directory} is absolute, empty or not normalized or
+		 *                                  leaves the draft directory, or {@code scenario} is blank
+		 */
+		public Draft(Path directory, String scenario, Map<String, String> copiedLinks)
+		{
+			this(directory, scenario, copiedLinks, Map.of(), Set.of());
 		}
 
 		/**
@@ -116,6 +155,34 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 		public Draft(Path directory, String scenario)
 		{
 			this(directory, scenario, Map.of());
+		}
+
+		/**
+		 * Checks an example path and the implicit directories it needs.
+		 *
+		 * @param path         the example path
+		 * @param exampleFiles the example files by relative path
+		 * @throws IllegalArgumentException if the path is malformed or a parent is a file
+		 */
+		private static void checkExamplePath(String path, Map<String, FileContent> exampleFiles)
+		{
+			for (String segment : path.split("/", -1))
+			{
+				if (segment.isEmpty() || segment.equals(".") || segment.equals("..") ||
+					RESERVED_PATH_CHARACTERS.matcher(segment).find())
+				{
+					throw new IllegalArgumentException("The example path '" + path + "' must be a portable relative path.");
+				}
+			}
+			for (int slash = path.indexOf('/'); slash != -1; slash = path.indexOf('/', slash + 1))
+			{
+				String parent = path.substring(0, slash);
+				if (exampleFiles.containsKey(parent))
+				{
+					throw new IllegalArgumentException("The example path '" + parent + "' is a file but '" + path +
+						"' uses it as a directory.");
+				}
+			}
 		}
 	}
 

@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
+import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
 import com.holdmyspot.cat.common.optimizer.report.EnumNames;
 import java.io.IOException;
 import java.io.InputStream;
@@ -12,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -59,8 +61,7 @@ public final class ProposalSchema
 	 */
 	private static final String REGRESSION_SCENARIOS = "regression_scenarios";
 	/**
-	 * The property of a test that holds its directory in the draft directory and the {@code scenario.md} that it holds,
-	 * which CAT copies from the draft rather than the contract author writes.
+	 * The property of a test that holds the prompt test files that CAT copies from the draft directory.
 	 */
 	private static final String DRAFT = "draft";
 	/**
@@ -77,6 +78,8 @@ public final class ProposalSchema
 	 * outside that directory, each with its path and target, which delivery writes as links.
 	 */
 	public static final String COPIED_LINKS = "copied_links";
+	private static final String EXAMPLE_FILES = "example_files";
+	private static final String EXAMPLE_DIRECTORIES = "example_directories";
 	/**
 	 * The property of a test that holds the test cases that an earlier campaign committed, which CAT reads rather than
 	 * the contract author writes.
@@ -664,6 +667,57 @@ public final class ProposalSchema
 	}
 
 	/**
+	 * Writes the prompt test files that CAT copies from a draft.
+	 *
+	 * @param draft the draft record
+	 * @param node  the object that receives the draft properties
+	 * @throws NullPointerException if either argument is null
+	 */
+	public static void writeDraft(PromptTest.Draft draft, ObjectNode node)
+	{
+		requireThat(draft, "draft").isNotNull();
+		requireThat(node, "node").isNotNull();
+		node.put("directory", PortablePaths.text(draft.directory()));
+		node.put("scenario", draft.scenario());
+		// Omit empty optional properties to preserve the identity of older contracts
+		if (!draft.copiedLinks().isEmpty())
+		{
+			ArrayNode links = node.putArray(COPIED_LINKS);
+			for (Map.Entry<String, String> link : draft.copiedLinks().entrySet())
+				links.addObject().put("path", link.getKey()).put("target", link.getValue());
+		}
+		if (!draft.exampleFiles().isEmpty())
+		{
+			ArrayNode files = node.putArray(EXAMPLE_FILES);
+			Base64.Encoder encoder = Base64.getEncoder();
+			for (Map.Entry<String, FileContent> file : draft.exampleFiles().entrySet())
+			{
+				FileContent content = file.getValue();
+				files.addObject().put("path", file.getKey()).put("sha256", content.hash().hex()).
+					put("content", encoder.encodeToString(content.bytes()));
+			}
+		}
+		if (!draft.exampleDirectories().isEmpty())
+		{
+			ArrayNode directories = node.putArray(EXAMPLE_DIRECTORIES);
+			draft.exampleDirectories().forEach(directories::add);
+		}
+	}
+
+	/**
+	 * Removes assertion example evidence from a serialized prompt test for a role that cannot see it.
+	 *
+	 * @param test the serialized test
+	 * @throws NullPointerException if {@code test} is null
+	 */
+	public static void omitExamples(ObjectNode test)
+	{
+		requireThat(test, "test").isNotNull();
+		if (test.get(DRAFT) instanceof ObjectNode draft)
+			draft.remove(List.of(EXAMPLE_FILES, EXAMPLE_DIRECTORIES));
+	}
+
+	/**
 	 * Writes one prompt test.
 	 *
 	 * @param test the prompt test
@@ -687,23 +741,7 @@ public final class ProposalSchema
 		ArrayNode scenarios = node.putArray(REGRESSION_SCENARIOS);
 		test.regressionScenarios().forEach(scenarios::add);
 		// A test without a draft directory keeps the identity that it had before the property existed
-		test.draft().ifPresent(draft ->
-		{
-			ObjectNode draftNode = node.putObject(DRAFT);
-			draftNode.put("directory", PortablePaths.text(draft.directory()));
-			draftNode.put("scenario", draft.scenario());
-			// A draft without such links keeps the identity that it had before the property existed
-			if (!draft.copiedLinks().isEmpty())
-			{
-				ArrayNode links = draftNode.putArray(COPIED_LINKS);
-				for (Map.Entry<String, String> link : draft.copiedLinks().entrySet())
-				{
-					ObjectNode linkNode = links.addObject();
-					linkNode.put("path", link.getKey());
-					linkNode.put("target", link.getValue());
-				}
-			}
-		});
+		test.draft().ifPresent(draft -> writeDraft(draft, node.putObject(DRAFT)));
 		ArrayNode workspaceFiles = node.putArray("workspace_files");
 		ArrayNode recorded = null;
 		for (WorkspaceFile workspaceFile : test.workspaceFiles())
@@ -1087,14 +1125,8 @@ public final class ProposalSchema
 			if (problems.size() > problemsBefore)
 				return null;
 			List<TestCase> committed = committedTestCases;
-			Optional<PromptTest.Draft> draft = Optional.ofNullable(node.get(DRAFT)).map(draftNode ->
-			{
-				Map<String, String> copiedLinks = new HashMap<>();
-				for (JsonNode link : draftNode.path(COPIED_LINKS))
-					copiedLinks.put(text(link, "path"), text(link, "target"));
-				return new PromptTest.Draft(Path.of(text(draftNode, "directory")), text(draftNode, "scenario"),
-					copiedLinks);
-			});
+			Optional<PromptTest.Draft> draft = Optional.ofNullable(node.get(DRAFT)).
+				map(draftNode -> attempt(location + "." + DRAFT, () -> draft(draftNode)));
 			Optional<ExpectedOutcomeTool> expectedOutcomeTool = Optional.ofNullable(node.get(EXPECTED_OUTCOME_TOOL)).
 				map(toolNode -> attempt(location + "." + EXPECTED_OUTCOME_TOOL, () -> new ExpectedOutcomeTool(
 					text(toolNode, "tool"), EnumNames.parse(text(toolNode, "on_tool_failure"), OnToolFailure.class))));
@@ -1121,6 +1153,49 @@ public final class ProposalSchema
 			if (attempt(location, () -> test.scenario().render()) == null)
 				return null;
 			return test;
+		}
+
+		/**
+		 * Reads the prompt test files from its draft record.
+		 *
+		 * @param node the draft object
+		 * @return the draft record
+		 * @throws IllegalArgumentException if the draft has an invalid path or inconsistent example evidence
+		 */
+		private static PromptTest.Draft draft(JsonNode node)
+		{
+			Map<String, String> copiedLinks = new HashMap<>();
+			for (JsonNode link : node.path(COPIED_LINKS))
+				copiedLinks.put(text(link, "path"), text(link, "target"));
+			Map<String, FileContent> exampleFiles = new HashMap<>();
+			for (JsonNode file : node.path(EXAMPLE_FILES))
+			{
+				String path = text(file, "path");
+				FileContent content;
+				try
+				{
+					content = new FileContent(Base64.getDecoder().decode(text(file, "content")));
+				}
+				catch (IllegalArgumentException e)
+				{
+					throw new IllegalArgumentException("The example file '" + path + "' has invalid Base64 content.", e);
+				}
+				if (!content.hash().hex().equals(text(file, "sha256")))
+				{
+					throw new IllegalArgumentException("The example file '" + path + "' does not match its SHA-256 digest.");
+				}
+				if (exampleFiles.putIfAbsent(path, content) != null)
+					throw new IllegalArgumentException("The example file '" + path + "' appears more than once.");
+			}
+			Set<String> exampleDirectories = new HashSet<>();
+			for (JsonNode directory : node.path(EXAMPLE_DIRECTORIES))
+			{
+				String path = directory.asString();
+				if (!exampleDirectories.add(path))
+					throw new IllegalArgumentException("The example directory '" + path + "' appears more than once.");
+			}
+			return new PromptTest.Draft(Path.of(text(node, "directory")), text(node, "scenario"), copiedLinks,
+				exampleFiles, exampleDirectories);
 		}
 
 		/**

@@ -23,9 +23,13 @@ import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TestValue;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfiles;
+import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
+import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 
 import java.math.BigDecimal;
 import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.Base64;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -160,6 +164,132 @@ public final class ProposalSchemaTest
 		ProposalSchema schema = schema();
 		requireThat(ContractIdentity.of(schema, loaded), "identity").
 			isNotEqualTo(ContractIdentity.of(schema, ContractFixtures.contract()));
+	}
+
+	/**
+	 * Verifies that the confirmed contract carries an example's exact file bytes and its explicit empty directory.
+	 *
+	 * @throws InvalidProposalException if the stored contract is rejected
+	 */
+	@Test
+	public void storesAssertionExampleFiles() throws InvalidProposalException
+	{
+		// Requirement: R-L15
+		ProposalSchema schema = schema();
+		String path = "arrives/pass_same_day/initial/result.dat";
+		ObjectNode stored = contractWithExample(path);
+
+		Contract loaded = schema.parse(json.writeValueAsString(stored));
+
+		PromptTest.Draft draft = loaded.tests().getFirst().draft().orElseThrow();
+		requireThat(draft.exampleDirectories(), "exampleDirectories").isEqualTo(Set.of("arrives/pass_same_day/project"));
+		FileContent evidence = draft.exampleFiles().get(path);
+		byte[] bytes = evidence.bytes();
+		requireThat(Arrays.equals(bytes, new byte[] {(byte) 0xff, 0}), "exampleBytesMatch").isTrue();
+		bytes[0] = 0;
+		requireThat(json.readTree(schema.toJson(loaded)), "roundTrip").isEqualTo(stored);
+
+		ObjectNode file = (ObjectNode) stored.at("/tests/0/draft/example_files/0");
+		file.put("content", Base64.getEncoder().encodeToString(bytes)).put("sha256", Sha256.of(bytes).hex());
+		Contract changed = schema.parse(json.writeValueAsString(stored));
+		requireThat(ContractIdentity.of(schema, changed), "changedIdentity").
+			isNotEqualTo(ContractIdentity.of(schema, loaded));
+	}
+
+	/**
+	 * Verifies that a draft created before contracts stored assertion examples keeps its original serialized form.
+	 *
+	 * @throws InvalidProposalException if the stored contract is rejected
+	 */
+	@Test
+	public void preservesLegacyDraftFormat() throws InvalidProposalException
+	{
+		ProposalSchema schema = schema();
+		ObjectNode stored = contractWithExample("arrives/pass_same_day/initial/result.dat");
+		ProposalSchema.omitExamples((ObjectNode) stored.at("/tests/0"));
+
+		Contract loaded = schema.parse(json.writeValueAsString(stored));
+
+		PromptTest.Draft draft = loaded.tests().getFirst().draft().orElseThrow();
+		requireThat(draft.exampleFiles(), "exampleFiles").isEmpty();
+		requireThat(draft.exampleDirectories(), "exampleDirectories").isEmpty();
+		requireThat(json.readTree(schema.toJson(loaded)), "roundTrip").isEqualTo(stored);
+	}
+
+	/**
+	 * Verifies that the confirmed codec refuses example bytes whose digest differs from the stored digest.
+	 *
+	 * @throws InvalidProposalException if the codec detects the inconsistent digest
+	 */
+	@Test(expectedExceptions = InvalidProposalException.class,
+		expectedExceptionsMessageRegExp = "(?s).*arrives/pass_same_day/initial/result.dat.*SHA-256.*")
+	public void refusesChangedExampleContent() throws InvalidProposalException
+	{
+		ObjectNode stored = contractWithExample("arrives/pass_same_day/initial/result.dat");
+		ObjectNode file = (ObjectNode) stored.at("/tests/0/draft/example_files/0");
+		file.put("content", "AA==");
+
+		schema().parse(json.writeValueAsString(stored));
+	}
+
+	/**
+	 * Verifies that an example file cannot use a path outside its examples directory.
+	 *
+	 * @throws InvalidProposalException if the codec detects the path
+	 */
+	@Test(expectedExceptions = InvalidProposalException.class,
+		expectedExceptionsMessageRegExp = "(?s).*example path.*[.][.]/outside[.]dat.*")
+	public void refusesEscapingExampleFile() throws InvalidProposalException
+	{
+		ObjectNode stored = contractWithExample("../outside.dat");
+
+		schema().parse(json.writeValueAsString(stored));
+	}
+
+	/**
+	 * Verifies that a stored example file cannot occupy an example directory's path.
+	 *
+	 * @throws InvalidProposalException if the codec detects the collision
+	 */
+	@Test(expectedExceptions = InvalidProposalException.class,
+		expectedExceptionsMessageRegExp = "(?s).*arrives/pass_same_day/project.*both a file and a directory.*")
+	public void refusesExamplePathCollision() throws InvalidProposalException
+	{
+		ObjectNode stored = contractWithExample("arrives/pass_same_day/project");
+
+		schema().parse(json.writeValueAsString(stored));
+	}
+
+	/**
+	 * Verifies that an example cannot have a directory underneath a file.
+	 *
+	 * @throws InvalidProposalException if the codec detects the occupied parent directory
+	 */
+	@Test(expectedExceptions = InvalidProposalException.class,
+		expectedExceptionsMessageRegExp = "(?s).*arrives/pass_same_day.*uses it as a directory.*")
+	public void refusesExampleFileAsParent() throws InvalidProposalException
+	{
+		ObjectNode stored = contractWithExample("arrives/pass_same_day");
+
+		schema().parse(json.writeValueAsString(stored));
+	}
+
+	/**
+	 * Supplies stored example evidence with an explicit empty project and one file at the given path.
+	 *
+	 * @param path the file's path relative to the examples directory
+	 * @return a stored contract with the example evidence
+	 */
+	private ObjectNode contractWithExample(String path)
+	{
+		ObjectNode stored = (ObjectNode) json.readTree(schema().toJson(ContractFixtures.contract()));
+		ObjectNode draft = ((ObjectNode) stored.get("tests").get(0)).putObject("draft");
+		draft.put("directory", ".cat/tests/guidance/formatting").put("scenario", "# Formatting test");
+		draft.putArray("example_directories").add("arrives/pass_same_day/project");
+		byte[] bytes = {(byte) 0xff, 0};
+		draft.putArray("example_files").addObject().put("path", path).put("sha256", Sha256.of(bytes).hex()).
+			put("content", Base64.getEncoder().encodeToString(bytes));
+		return stored;
 	}
 
 	/**
