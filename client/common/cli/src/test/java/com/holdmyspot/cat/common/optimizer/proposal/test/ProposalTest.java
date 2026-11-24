@@ -1706,6 +1706,33 @@ public final class ProposalTest
 	}
 
 	/**
+	 * Verifies that revision feedback repeats assertion review warnings without carrying example judgments.
+	 *
+	 * @throws InvalidProposalException if the fixture is rejected
+	 */
+	@Test
+	public void revisionBriefRepeatsReviewWarnings() throws InvalidProposalException
+	{
+		DerivedProposal first = contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM, PROFILES, SALT);
+		TestReport formatting = new TestReport(List.of(new ExampleJudgment("uses_requested_tone", "pass_hidden_example",
+			Verdict.PASS, "The held-out reply says 'hidden reply marker'.")), List.of(new Finding("uses_requested_tone",
+			Kind.ACTIONS_DEPENDS_ONLY_ON_REPLIES, "The summary text is enough to check tone.", null)));
+		TestReport plainList = new TestReport(List.of(), List.of(new Finding("keeps_requested_tone",
+			Kind.ACTION_DECIDABLE_BY_TOOL, "A tool call identifies the action.", "tool-used")));
+		DerivedProposal reported = first.withJudgedReports(Map.of("formatting", formatting, "plain_list", plainList));
+
+		String brief = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), List.of(), reported, "Keep the tests.",
+			Map.of()).turns().getFirst();
+
+		requireThat(brief, "brief").contains("### Assertion review warnings").
+			contains("Test `formatting`, assertion `uses_requested_tone`. This assertion depends only on replies.").
+			contains("The summary text is enough to check tone.").
+			contains("Test `plain_list`, assertion `keeps_requested_tone`. " +
+				"`tool-used` can decide whether the action happened.").
+			doesNotContain("pass_hidden_example").doesNotContain("hidden reply marker").doesNotContain("Judge passed.");
+	}
+
+	/**
 	 * Verifies that the revision brief carries the latest guard pilot results after the previous proposal.
 	 *
 	 * @throws InvalidProposalException if the fixture is rejected

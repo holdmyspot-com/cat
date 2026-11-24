@@ -74,7 +74,7 @@ retained. The `evidence_section` gives each tool call's input, exit status and o
 the agent received all of the output or only part of it; it leaves out the text of each output and names the trial's
 transcript, which holds each tool's complete output:
 
-{{kinds}}
+{{kinds}}{{assertion_review_warnings}}
 
 ### What to decide
 

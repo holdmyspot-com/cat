@@ -30,6 +30,7 @@ import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.contract.ValuesFile;
 import com.holdmyspot.cat.common.optimizer.contract.VariableDeclaration;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveredTest;
+import com.holdmyspot.cat.common.optimizer.execution.AssertionReview;
 import com.holdmyspot.cat.common.optimizer.execution.AssertionReview.Finding;
 import com.holdmyspot.cat.common.optimizer.execution.PilotResult;
 import com.holdmyspot.cat.common.optimizer.inventory.Authority;
@@ -733,8 +734,7 @@ public final class Markdown
 				else
 					text.append(assertion.judgeReason());
 				text.append('\n');
-				findings.stream().filter(finding -> finding.assertionId().equals(assertion.id()) &&
-					!finding.kind().refuses()).forEach(this::reviewWarning);
+				findings.stream().filter(finding -> warnsAbout(finding, assertion)).forEach(this::reviewWarning);
 				any = true;
 			}
 		}
@@ -755,18 +755,66 @@ public final class Markdown
 	}
 
 	/**
+	 * Lists the assertion review warnings applicable to the tests in a revision brief.
+	 *
+	 * @param proposal the proposal with the reports
+	 * @param tests the tests that the brief covers, in order
+	 * @return the warning section with leading blank lines, or an empty string
+	 */
+	static String revisionWarnings(DerivedProposal proposal, List<PromptTest> tests)
+	{
+		StringJoiner warnings = new StringJoiner("\n", "\n\n### Assertion review warnings\n\n", "").setEmptyValue("");
+		for (PromptTest test : tests)
+		{
+			TestReport report = proposal.judgedReports().get(test.id());
+			if (report == null || report.findings().isEmpty())
+				continue;
+			for (MappedAssertion mapped : test.assertions())
+			{
+				Assertion assertion = mapped.assertion();
+				if (AssertionReview.scopeOf(assertion).isEmpty())
+					continue;
+				report.findings().stream().filter(finding -> warnsAbout(finding, assertion)).
+					forEach(finding -> warnings.add("- Test `" + test.id() + "`, assertion `" + assertion.id() +
+						"`. " + reviewWarningText(finding)));
+			}
+		}
+		return warnings.toString();
+	}
+
+	/**
+	 * Indicates whether a finding is a warning for the assertion.
+	 *
+	 * @param finding the review finding
+	 * @param assertion the declaration
+	 * @return whether the finding warns about the assertion
+	 */
+	private static boolean warnsAbout(Finding finding, Assertion assertion)
+	{
+		return !finding.kind().refuses() && finding.assertionId().equals(assertion.id());
+	}
+
+	/**
 	 * Lists a review warning under its assertion.
 	 *
 	 * @param finding a finding that allows the proposal to proceed
 	 */
 	private void reviewWarning(Finding finding)
 	{
-		text.append("    - Warning. ");
+		text.append("    - Warning. ").append(reviewWarningText(finding)).append('\n');
+	}
+
+	/**
+	 * Describes a review warning and includes the reviewer's rationale.
+	 *
+	 * @param finding a finding that allows the proposal to proceed
+	 * @return the warning text
+	 */
+	private static String reviewWarningText(Finding finding)
+	{
 		if (finding.tool() == null)
-			text.append("This assertion depends only on replies. ");
-		else
-			text.append('`').append(finding.tool()).append("` can decide whether the action happened. ");
-		text.append(finding.rationale()).append('\n');
+			return "This assertion depends only on replies. " + finding.rationale();
+		return "`" + finding.tool() + "` can decide whether the action happened. " + finding.rationale();
 	}
 
 	/**

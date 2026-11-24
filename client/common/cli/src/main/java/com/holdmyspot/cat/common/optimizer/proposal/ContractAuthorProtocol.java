@@ -459,8 +459,9 @@ public final class ContractAuthorProtocol
 		Path previousDraft = previous.draft();
 		requireThat(previousDraft, "previous.draft()").isNotNull();
 		String pilotResults = PilotReport.render(previous.contract(), pilots, false);
+		String warnings = Markdown.revisionWarnings(previous, previous.contract().tests());
 		return request(promptSystem, profiles, hooks, loadedFiles, previous.derivation() + "\n\nGuard pilot " +
-				"results of the previous proposal:\n\n" + pilotResults, feedback,
+				"results of the previous proposal:\n\n" + pilotResults + warnings, feedback,
 			draft -> DraftDirectory.copy(previousDraft, draft), previous.contract().salt(), judged);
 	}
 

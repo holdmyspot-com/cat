@@ -202,11 +202,14 @@ public final class TestRevisionProtocol
 		ContractAuthorFiles files = contractAuthor.files(promptSystem, examined.profiles(),
 			draft -> DraftDirectory.copyTestForRevision(confirmedDraft, directory, draft),
 			Optional.of(revision(examined, sharedFiles)));
+		String warnings = Markdown.revisionWarnings(confirmed,
+			List.of(confirmed.contract().findTest(request.test()).orElseThrow()));
 		String turn = prompt.fill(Map.ofEntries(Map.entry("target_prompt_file", contractAuthor.targetPromptFile()),
 			Map.entry("goal", contractAuthor.goal()), Map.entry("contract", confirmed.derivation()),
 			Map.entry("test", request.test()), Map.entry("examined_directory", PortablePaths.text(directory)),
 			Map.entry("trigger", trigger),
 			Map.entry("kinds", json.writerWithDefaultPrettyPrinter().writeValueAsString(kinds)),
+			Map.entry("assertion_review_warnings", warnings),
 			Map.entry("generators", ValueGenerators.describeAll()), Map.entry("output_schema", outputSchema),
 			Map.entry("output_file", files.context().proposalFile()), Map.entry("draft_directory", files.draft()),
 			Map.entry("launcher", contractAuthor.launcher()), Map.entry("context_file", files.contextFile())));

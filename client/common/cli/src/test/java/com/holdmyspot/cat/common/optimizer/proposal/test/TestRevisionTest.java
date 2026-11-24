@@ -7,9 +7,12 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.campaign.FailureKind;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorKind;
 import com.holdmyspot.cat.common.optimizer.campaign.TestRevisionRequest;
+import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
 import com.holdmyspot.cat.common.optimizer.contract.InvalidProposalException;
 import com.holdmyspot.cat.common.optimizer.contract.ProposalSchema;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
+import com.holdmyspot.cat.common.optimizer.execution.AssertionReview.Finding;
+import com.holdmyspot.cat.common.optimizer.execution.AssertionReview.Kind;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.port.FollowUp;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
@@ -17,6 +20,8 @@ import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.proposal.ContractAuthorProtocol;
 import com.holdmyspot.cat.common.optimizer.proposal.ContractContext;
 import com.holdmyspot.cat.common.optimizer.proposal.DerivedProposal;
+import com.holdmyspot.cat.common.optimizer.proposal.DerivedProposal.ExampleJudgment;
+import com.holdmyspot.cat.common.optimizer.proposal.DerivedProposal.TestReport;
 import com.holdmyspot.cat.common.optimizer.proposal.ProfileEvidence;
 import com.holdmyspot.cat.common.optimizer.proposal.ProposalCheck;
 import com.holdmyspot.cat.common.optimizer.proposal.TestRevisionProtocol;
@@ -258,6 +263,36 @@ public final class TestRevisionTest
 
 		requireThat(Files.exists(project.resolve(context.draft()).resolve(example)), "previousExample").isFalse();
 		requireThat(Files.readString(previous), "retainedExample").contains("Original reply.");
+	}
+
+	/**
+	 * Verifies that the test revision brief repeats warnings for the examined assertion, excluding other test
+	 * findings and example judgments.
+	 *
+	 * @throws IOException if a file cannot be read or written
+	 * @throws InvalidProposalException if the confirmed proposal is refused
+	 */
+	@Test
+	public void briefRepeatsExaminedWarning() throws IOException, InvalidProposalException
+	{
+		Examination examined = examination();
+		TestReport formatting = new TestReport(List.of(new ExampleJudgment("uses_requested_tone", "fail_hidden_example",
+			Verdict.FAIL, "The held-out reply says 'hidden reply marker'.")), List.of(new Finding("uses_requested_tone",
+			Kind.ACTION_DECIDABLE_BY_TOOL, "A recorded update identifies the action.", "file-exists")));
+		TestReport plainList = new TestReport(List.of(), List.of(new Finding("keeps_requested_tone",
+			Kind.ACTIONS_DEPENDS_ONLY_ON_REPLIES, "Only the sibling reply matters.", null)));
+		DerivedProposal confirmed = examined.confirmed().withJudgedReports(
+			Map.of("formatting", formatting, "plain_list", plainList));
+		Examination reported = new Examination(confirmed, examined.profiles(), examined.request(),
+			examined.evidenceSections());
+
+		String brief = protocol.request(ContractToolSessions.PROMPT_SYSTEM, reported).turns().getFirst();
+
+		requireThat(brief, "brief").contains("### Assertion review warnings").
+			contains("Test `formatting`, assertion `uses_requested_tone`. " +
+				"`file-exists` can decide whether the action happened.").
+			contains("A recorded update identifies the action.").doesNotContain("Only the sibling reply matters.").
+			doesNotContain("fail_hidden_example").doesNotContain("hidden reply marker").doesNotContain("Judge failed.");
 	}
 
 	/**
