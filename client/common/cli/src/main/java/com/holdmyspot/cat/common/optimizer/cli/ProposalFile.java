@@ -207,6 +207,26 @@ final class ProposalFile
 	void write(DerivedProposal derived, ProfileEvidence profiles, Map<Harness, EvaluatorMetadata> evaluators)
 		throws IOException
 	{
+		ObjectNode root = document(derived, profiles, evaluators);
+		Path temporary = file.resolveSibling(file.getFileName() + ".tmp");
+		Files.writeString(temporary, json.writerWithDefaultPrettyPrinter().writeValueAsString(root),
+			StandardCharsets.UTF_8);
+		replacer.replace(temporary, file);
+		// The stored proposal names the new draft directory only now, so the previous one stayed whole until then
+		if (prunes)
+			DraftDirectory.keepOnly(heldOut, derived.draft());
+	}
+
+	/**
+	 * Encodes a proposal for an atomic held-out checkpoint.
+	 *
+	 * @param derived the proposal and its stored draft
+	 * @param profiles the stored profile evidence
+	 * @param evaluators the stored evaluator evidence
+	 * @return the proposal document
+	 */
+	ObjectNode document(DerivedProposal derived, ProfileEvidence profiles, Map<Harness, EvaluatorMetadata> evaluators)
+	{
 		requireThat(derived, "derived").isNotNull();
 		requireThat(profiles, "profiles").isNotNull();
 		Path draft = derived.draft();
@@ -237,13 +257,7 @@ final class ProposalFile
 			for (EvaluatorMetadata evaluator : new EnumMap<>(evaluators).values())
 				evaluator.write(json, reports.addObject());
 		}
-		Path temporary = file.resolveSibling(file.getFileName() + ".tmp");
-		Files.writeString(temporary, json.writerWithDefaultPrettyPrinter().writeValueAsString(root),
-			StandardCharsets.UTF_8);
-		replacer.replace(temporary, file);
-		// The stored proposal names the new draft directory only now, so the previous one stayed whole until then
-		if (prunes)
-			DraftDirectory.keepOnly(heldOut, draft);
+		return root;
 	}
 
 	/**
@@ -296,7 +310,18 @@ final class ProposalFile
 	{
 		if (!Files.exists(file))
 			return Optional.empty();
-		JsonNode root = json.readTree(Files.readString(file, StandardCharsets.UTF_8));
+		return Optional.of(readDocument(json.readTree(Files.readString(file, StandardCharsets.UTF_8))));
+	}
+
+	/**
+	 * Reads a proposal document within a held-out checkpoint.
+	 *
+	 * @param root the proposal document
+	 * @return the stored proposal
+	 * @throws IOException if the document is invalid or its draft is missing
+	 */
+	Stored readDocument(JsonNode root) throws IOException
+	{
 		int version = root.path("format_version").asInt();
 		if (version != FORMAT_VERSION)
 		{
@@ -320,9 +345,9 @@ final class ProposalFile
 		{
 			for (JsonNode node : root.get("derived_sources"))
 				derivedSources.add(new DerivedSource(node.path("path").asString(), node.path("rule").asString()));
-			return Optional.of(new Stored(derivation, draft, root.get("observed_sources").asString(), derivedSources,
+			return new Stored(derivation, draft, root.get("observed_sources").asString(), derivedSources,
 				ProfileEvidence.read(root), readEvaluators(root.path("evaluators")), root.get("salt").asLong(),
-				readExampleChecks(root.path("example_checks")), readJudgedReports(root.path(JUDGED_REPORTS))));
+				readExampleChecks(root.path("example_checks")), readJudgedReports(root.path(JUDGED_REPORTS)));
 		}
 		catch (IllegalArgumentException | JacksonException e)
 		{

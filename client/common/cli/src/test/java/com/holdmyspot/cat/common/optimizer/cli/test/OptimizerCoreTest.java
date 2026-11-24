@@ -7153,20 +7153,84 @@ public final class OptimizerCoreTest
 	private static void requestTestRevision(Repository repository, String id, boolean keepPending)
 		throws IOException, CommandRefusedException
 	{
+		requestTestRevisions(repository, id, keepPending, List.of("formatting"));
+	}
+
+	/**
+	 * Requests revisions in the order that the campaign must examine its tests.
+	 *
+	 * @param repository the owned project
+	 * @param id the campaign identifier
+	 * @param keepPending whether to keep current decisions
+	 * @param tests the ordered test identifiers
+	 * @throws IOException if the store fails
+	 * @throws CommandRefusedException if the project cannot be opened
+	 */
+	private static void requestTestRevisions(Repository repository, String id, boolean keepPending, List<String> tests)
+		throws IOException, CommandRefusedException
+	{
 		Campaign c = repository.load(id);
 		List<PendingDecision> pending = List.of();
 		if (keepPending)
 			pending = c.pendingDecisions();
 		PromptAuthorKind kind = new PromptAuthorKind("tone_named_in_turn", List.of("f1"), FailureKind.TEST_DEFECT,
 			List.of(), "The first turn names the tone that the assertion expects.");
-		TestRevisions requested = c.testRevisions().request(new TestRevisionRequest("formatting",
-			TestRevisionRequest.Trigger.TEST_DEFECT, List.of(kind), Map.of()));
+		TestRevisions requested = c.testRevisions();
+		for (String test : tests)
+			requested = requested.request(new TestRevisionRequest(test, TestRevisionRequest.Trigger.TEST_DEFECT,
+				List.of(kind), Map.of()));
 		OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().
 			store(repository.scope()).replaceSnapshot(new Campaign(c.header(),
 			c.ceiling(), c.lineages(), c.identity(), c.incumbent(), c.candidates(), c.promptAuthorAttempts(),
 			c.development(), c.baseline(), c.attempts(), c.trials(), c.sequences(), c.evidenceRevision(), c.windows(),
 			c.throttle(), pending, c.revisionRequested(), c.outcome(), c.delivery(),
 			c.optimization(), c.answeredWarnings(), requested, c.plugins()));
+	}
+
+	/**
+	 * A second test's failed author session preserves the first test's completed revision across commands.
+	 *
+	 * @throws Exception if a fixture or command fails
+	 */
+	@Test
+	public void keepsCompletedTestRevisionOnRetry() throws Exception
+	{
+		// Requirement: R-L16
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, count -> switch (count)
+			{
+				case 0 -> derivation(_ ->
+				{
+				});
+				case 1 -> revisedFormatting(_ ->
+				{
+				});
+				default -> unrevised("sound", "The test already proves its requirement.", null);
+			});
+			String id = repository.core().start(Path.of("CLAUDE.md"), 1).status().campaignId();
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
+			requestTestRevisions(repository, id, false, List.of("formatting", "plain_list"));
+			repository.authorEnd().set(number ->
+			{
+				if (number == 2)
+					return new SessionResult.Failed("The second test author stopped.", List.of());
+				return null;
+			});
+
+			CommandResult unfinished = repository.core().continueCampaign(id);
+
+			requireThat(unfinished.message(), "message").contains("plain_list").contains("second test author stopped");
+			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).size(), "initialAuthors").isEqualTo(3);
+
+			repository.core().continueCampaign(id);
+
+			List<SessionRequest> authors = repository.sessions().requests(SessionRole.CONTRACT_AUTHOR);
+			requireThat(authors.get(3).turns().getFirst(), "resumedAuthor").contains("You examine the test `plain_list`");
+			requireThat(authors.size(), "authors").isEqualTo(4);
+			requireThat(repository.load(id).testRevisions().revisions().getFirst().test(), "revisedTest").
+				isEqualTo("formatting");
+		}
 	}
 
 	/**
@@ -7369,7 +7433,8 @@ public final class OptimizerCoreTest
 			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).size(), "authors").
 				isEqualTo(authors + 1);
 			requireThat(Files.isRegularFile(heldOut.resolve("revision.json")), "revisionStored").isTrue();
-			requireThat(Files.isRegularFile(heldOut.resolve("revised_proposal.json")), "contractStored").isTrue();
+			JsonNode revision = JSON.readTree(Files.readString(heldOut.resolve("revision.json")));
+			requireThat(revision.path("proposal").isObject(), "contractStored").isTrue();
 			requireThat(Files.readString(heldOut.resolve("proposal.json")), "confirmedProposal").isEqualTo(confirmed);
 			int decided = decidedTrials(first.get("message").asString());
 			repository.sessions().sessionDuration(Duration.ofSeconds(60));
@@ -7389,6 +7454,7 @@ public final class OptimizerCoreTest
 	/**
 	 * Verifies that the run that confirms the revised contract deletes the stored revision and the draft directories
 	 * that only it needed, and that the stored proposal is then the revised contract of the first test revision.
+	 * The unfinished pilot uses the earlier two-file revision format.
 	 */
 	@Test
 	public void confirmedRevisionDeletesStoredRevision() throws Exception
@@ -7398,6 +7464,12 @@ public final class OptimizerCoreTest
 			Repository repository = changingAuthorRepository(scope);
 			String id = unfinishedRevision(repository);
 			Path heldOut = repository.directory(id).resolve("held_out");
+			Path revision = heldOut.resolve("revision.json");
+			ObjectNode checkpoint = (ObjectNode) JSON.readTree(Files.readString(revision));
+			JsonNode earlierProposal = checkpoint.remove("proposal");
+			checkpoint.put("format_version", 1);
+			Files.writeString(revision, JSON.writeValueAsString(checkpoint));
+			Files.writeString(heldOut.resolve("revised_proposal.json"), JSON.writeValueAsString(earlierProposal));
 			int authors = repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).size();
 
 			for (int slices = 0; repository.load(id).awaitsTestRevision(); ++slices)

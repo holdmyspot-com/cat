@@ -2517,34 +2517,28 @@ public final class OptimizerCore implements Core
 		RevisionFile revisionFile = revisionFile(id);
 		Optional<RevisionFile.Stored> pending = revisionFile.read();
 		ForkView fork = openFork(root, campaign);
-		DerivedProposal current;
-		List<TestRevision> revisions;
-		List<CampaignEvent.BlockTestRevision> blocked;
+		Examined examined;
 		if (pending.isPresent())
 		{
-			// The sessions ended in an earlier slice, which stored what they decided
-			current = restore(contractAuthor, pending.get().proposal());
-			revisions = pending.get().revisions();
-			blocked = pending.get().blocked();
+			RevisionFile.Stored saved = pending.orElseThrow();
+			examined = new Examined(restore(contractAuthor, saved.proposal()), saved.revisions(), saved.blocked(), null);
 		}
 		else
+			examined = new Examined(restore(contractAuthor, stored), List.of(), List.of(), null);
+		Set<String> completed = examined.completedTests();
+		if (campaign.testRevisions().requests().stream().anyMatch(request -> !completed.contains(request.test())))
 		{
-			Examined examined = examineTests(root, campaign, lock, contractAuthor, fork, restore(contractAuthor, stored),
-				stored.profiles(), sliceStart);
+			examined = examineTests(root, campaign, lock, contractAuthor, fork, stored, examined, sliceStart);
 			if (examined.notice() != null)
 				return Optional.of(examined.notice());
-			current = examined.current();
-			revisions = examined.revisions();
-			blocked = examined.blocked();
-			if (!revisions.isEmpty())
-				revisionFile.write(current, stored, revisions, blocked);
 		}
 
 		campaign = require(scope.store(), id, true);
 		List<CampaignEvent> events = new ArrayList<>();
-		if (!revisions.isEmpty())
+		if (!examined.revisions().isEmpty())
 		{
-			RevisedContract revised = revisedContract(root, campaign, fork, current, stored, revisions, sliceStart);
+			RevisedContract revised = revisedContract(root, campaign, fork, examined.current(), stored, examined.revisions(),
+				sliceStart);
 			// A blocked revision is examined again with the next run, which also continues the pilot
 			if (revised.unfinished() != null)
 				return Optional.of(revised.unfinished());
@@ -2556,7 +2550,7 @@ public final class OptimizerCore implements Core
 			events.addAll(revised.events());
 		}
 		// Confirming the revised contract clears pending decisions, so a blocked revision pauses the campaign after it
-		events.addAll(blocked);
+		events.addAll(examined.blocked());
 		if (!events.isEmpty())
 			apply(root, campaign, events, lock);
 		discardRevision(id);
@@ -2571,8 +2565,8 @@ public final class OptimizerCore implements Core
 	 * @param lock the campaign's write lock, which the caller holds
 	 * @param contractAuthor the contract author's protocol
 	 * @param fork the campaign's fork
-	 * @param confirmed the confirmed contract
-	 * @param profiles the confirmed contract's profile evidence
+	 * @param stored the confirmed contract's saved proposal and evaluator evidence
+	 * @param examined the decisions kept from previous sessions
 	 * @param sliceStart when the command started
 	 * @return what the sessions decided, or a notice that a session failed or its result is invalid
 	 * @throws CommandRefusedException if the campaign does not accept a test revision
@@ -2580,7 +2574,7 @@ public final class OptimizerCore implements Core
 	 * @throws InterruptedException if the thread is interrupted while it waits for a session
 	 */
 	private Examined examineTests(Path root, Campaign campaign, CampaignLock lock,
-		ContractAuthorProtocol contractAuthor, ForkView fork, DerivedProposal confirmed, ProfileEvidence profiles,
+		ContractAuthorProtocol contractAuthor, ForkView fork, ProposalFile.Stored stored, Examined examined,
 		Instant sliceStart) throws CommandRefusedException, IOException, InterruptedException
 	{
 		String id = campaign.header().id();
@@ -2589,13 +2583,17 @@ public final class OptimizerCore implements Core
 			scope.json(), scope.fileReplacer()).require(campaign.incumbent().snapshot());
 		Path staged = fork.workspace().stage(incumbent, Set.of());
 
-		DerivedProposal current = confirmed;
-		List<TestRevision> revisions = new ArrayList<>();
-		List<CampaignEvent.BlockTestRevision> blocked = new ArrayList<>();
+		DerivedProposal current = examined.current();
+		List<TestRevision> revisions = new ArrayList<>(examined.revisions());
+		List<CampaignEvent.BlockTestRevision> blocked = new ArrayList<>(examined.blocked());
+		Set<String> completedTests = examined.completedTests();
+		RevisionFile revisionFile = revisionFile(id);
 		for (TestRevisionRequest request : campaign.testRevisions().requests())
 		{
-			TestRevisionProtocol.Examination examined = new TestRevisionProtocol.Examination(current, profiles, request,
-				evidenceSections(request));
+			if (completedTests.contains(request.test()))
+				continue;
+			TestRevisionProtocol.Examination examination = new TestRevisionProtocol.Examination(current, stored.profiles(),
+				request, evidenceSections(request));
 			String session = "The test revision of `" + request.test() + "`";
 			SessionPort port = sessions(campaign);
 			CampaignStore store = scope.store();
@@ -2606,7 +2604,7 @@ public final class OptimizerCore implements Core
 			SessionResult result;
 			try
 			{
-				result = author(port, protocol.request(staged, examined, checks), draft, operation, salt, "");
+				result = author(port, protocol.request(staged, examination, checks), draft, operation, salt, "");
 			}
 			catch (AssertionCheckRun.Deferred e)
 			{
@@ -2622,7 +2620,7 @@ public final class OptimizerCore implements Core
 			TestRevisionProtocol.Result outcome;
 			try
 			{
-				outcome = protocol.result(completed, staged, examined, checks);
+				outcome = protocol.result(completed, staged, examination, checks);
 			}
 			catch (AssertionCheckRun.Deferred e)
 			{
@@ -2645,7 +2643,6 @@ public final class OptimizerCore implements Core
 					". Run `continue` again to retry.");
 			}
 			campaign = recordAuthorUsage(store, require(store, id, true), completed);
-			draft.delete();
 			switch (outcome)
 			{
 				case TestRevisionProtocol.Result.Revised revised ->
@@ -2656,13 +2653,19 @@ public final class OptimizerCore implements Core
 						after.scenario().render(), revised.reasons()));
 					current = revised.proposal().withJudgedReports(current.judgedReports()).withJudgedReport(
 						request.test(), checks.reports().getOrDefault(request.test(), DerivedProposal.TestReport.EMPTY));
+					revisionFile.write(current, stored, revisions, blocked);
 				}
 				// A sound test is recorded at once, so a later failed session does not examine it again
 				case TestRevisionProtocol.Result.Sound sound -> apply(root, campaign,
 					List.of(new CampaignEvent.ReportTestSound(request.test(), sound.reasons())), lock);
-				case TestRevisionProtocol.Result.Blocked block -> blocked.add(new CampaignEvent.BlockTestRevision(
-					request.test(), block.reason(), block.reasons(), block.proposedChange()));
+				case TestRevisionProtocol.Result.Blocked block ->
+				{
+					blocked.add(new CampaignEvent.BlockTestRevision(request.test(), block.reason(), block.reasons(),
+						block.proposedChange()));
+					revisionFile.write(current, stored, revisions, blocked);
+				}
 			}
+			draft.delete();
 		}
 		return new Examined(current, revisions, blocked, null);
 	}
@@ -2678,6 +2681,21 @@ public final class OptimizerCore implements Core
 	private record Examined(DerivedProposal current, List<TestRevision> revisions,
 		List<CampaignEvent.BlockTestRevision> blocked, String notice)
 	{
+		/**
+		 * Identifies decisions that the revision checkpoint already holds.
+		 *
+		 * @return the tests with a correction or a reason they cannot be corrected
+		 */
+		Set<String> completedTests()
+		{
+			Set<String> completed = new HashSet<>();
+			for (TestRevision revision : revisions)
+				completed.add(revision.test());
+			for (CampaignEvent.BlockTestRevision block : blocked)
+				completed.add(block.test());
+			return completed;
+		}
+
 		/**
 		 * Returns the outcome of sessions that did not all end.
 		 *

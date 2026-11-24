@@ -21,14 +21,10 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Persists the revised contract of a test revision, and what the revision decided, while the guard pilot of the
- * contract has not ended, so that the next {@code continue} continues the pilot instead of asking the contract author
- * again.
+ * Persists the current revised contract and each completed test revision until the batch and its guard pilot finish.
  * <p>
- * The revised contract is stored beside the confirmed proposal, which stays the confirmed contract until the revised
- * one is confirmed: {@link ProposalFile#revised} holds the contract, and this file holds the corrections and the
- * test revisions that cannot proceed. The directory of the revised contract's draft is one of the draft directories
- * that the held-out directory stores. Both files hold held-out content.
+ * The checkpoint holds the contract and its completed decisions together. It can also read the earlier two-file
+ * layout. The confirmed proposal and its draft remain available until the revised contract is confirmed.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -41,7 +37,7 @@ final class RevisionFile
 	/**
 	 * The version of the file's layout.
 	 */
-	private static final int FORMAT_VERSION = 1;
+	private static final int FORMAT_VERSION = 2;
 	private final Path file;
 	private final ProposalFile proposal;
 	private final JsonMapper json;
@@ -110,6 +106,7 @@ final class RevisionFile
 		requireThat(blocked, "blocked").isNotNull();
 		ObjectNode root = json.createObjectNode();
 		root.put("format_version", FORMAT_VERSION);
+		root.set("proposal", proposal.document(derived, confirmed.profiles(), confirmed.evaluators()));
 		ArrayNode corrections = root.putArray("revisions");
 		for (TestRevision revision : revisions)
 		{
@@ -126,8 +123,6 @@ final class RevisionFile
 		Files.writeString(temporary, json.writerWithDefaultPrettyPrinter().writeValueAsString(root),
 			StandardCharsets.UTF_8);
 		replacer.replace(temporary, file);
-		// The contract is stored last, and a stored test revision is the one whose contract is stored
-		proposal.write(derived, confirmed.profiles(), confirmed.evaluators());
 	}
 
 	/**
@@ -138,17 +133,28 @@ final class RevisionFile
 	 */
 	Optional<Stored> read() throws IOException
 	{
-		Optional<ProposalFile.Stored> contract = proposal.read();
-		if (contract.isEmpty())
-			return Optional.empty();
 		if (!Files.exists(file))
-			throw new IOException("A revised contract is stored without " + file + ".");
+		{
+			if (proposal.read().isPresent())
+				throw new IOException("A revised contract is stored without " + file + ".");
+			return Optional.empty();
+		}
 		JsonNode root = json.readTree(Files.readString(file, StandardCharsets.UTF_8));
 		int version = root.path("format_version").asInt();
-		if (version != FORMAT_VERSION)
+		ProposalFile.Stored contract;
+		if (version == 1)
+		{
+			Optional<ProposalFile.Stored> legacy = proposal.read();
+			if (legacy.isEmpty())
+				return Optional.empty();
+			contract = legacy.orElseThrow();
+		}
+		else if (version == FORMAT_VERSION)
+			contract = proposal.readDocument(root.path("proposal"));
+		else
 		{
 			throw new IOException(file + " is a version " + version + " test revision file, but this version of CAT " +
-				"reads version " + FORMAT_VERSION + ".");
+				"reads versions 1 and " + FORMAT_VERSION + ".");
 		}
 		if (!root.path("revisions").isArray() || !root.path("blocked").isArray())
 			throw new IOException(file + " is not a valid version " + version + " test revision file.");
@@ -167,7 +173,7 @@ final class RevisionFile
 					PendingDecision.TestRevisionBlocked.Reason.valueOf(node.path("reason").asString()),
 					node.path("reasons").asString(), node.path("proposed_change").asString()));
 			}
-			return Optional.of(new Stored(contract.get(), revisions, blocked));
+			return Optional.of(new Stored(contract, revisions, blocked));
 		}
 		catch (IllegalArgumentException e)
 		{
@@ -183,9 +189,8 @@ final class RevisionFile
 	 */
 	boolean delete() throws IOException
 	{
-		// The contract goes first, so an interrupted deletion leaves no test revision stored
-		boolean stored = proposal.delete();
-		Files.deleteIfExists(file);
-		return stored;
+		// The earlier separate contract goes first, so an interrupted deletion cannot leave it without its decisions
+		boolean legacy = proposal.delete();
+		return Files.deleteIfExists(file) || legacy;
 	}
 }
