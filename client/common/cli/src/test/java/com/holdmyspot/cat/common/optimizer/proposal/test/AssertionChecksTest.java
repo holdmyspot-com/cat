@@ -10,8 +10,10 @@ import com.holdmyspot.cat.common.optimizer.contract.EvidenceScope;
 import com.holdmyspot.cat.common.optimizer.contract.MappedAssertion;
 import com.holdmyspot.cat.common.optimizer.contract.OnToolFailure;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
+import com.holdmyspot.cat.common.optimizer.contract.PromptTestFiles;
 import com.holdmyspot.cat.common.optimizer.contract.Requirement;
 import com.holdmyspot.cat.common.optimizer.contract.RiskRank;
+import com.holdmyspot.cat.common.optimizer.contract.Scenario;
 import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.contract.VariableDeclaration;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
@@ -20,6 +22,7 @@ import com.holdmyspot.cat.common.optimizer.proposal.AssertionChecks;
 import com.holdmyspot.cat.common.optimizer.proposal.AssertionChecks.Disposition;
 import com.holdmyspot.cat.common.optimizer.proposal.AssertionChecks.ExampleResult;
 import com.holdmyspot.cat.common.optimizer.proposal.AssertionChecks.JudgedExample;
+import com.holdmyspot.cat.common.optimizer.proposal.AssertionChecks.PreparedExample;
 import com.holdmyspot.cat.common.optimizer.proposal.AssertionExampleCheck;
 import com.holdmyspot.cat.common.optimizer.proposal.DerivedProposal;
 
@@ -28,6 +31,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -44,6 +48,8 @@ public final class AssertionChecksTest
 	private static final String PLAIN_TEXT = "plain_text";
 	private static final String PASS_REGULAR = "pass_regular";
 	private static final String FAIL_MISSING = "fail_missing";
+	private static final String FIRST_OUTCOME = "The annual report is still in progress.";
+	private static final String REGULAR_OUTCOME = "The budget report was completed.\nIt covers revenue and costs.";
 
 	/**
 	 * Creates the test fixture.
@@ -150,6 +156,60 @@ public final class AssertionChecksTest
 				"`, " + message + rationale);
 		}
 		requireThat(result.diagnostic(), "diagnostic").isEqualTo(diagnostic);
+
+		int casePosition = 1;
+		String expectedOutcome = FIRST_OUTCOME;
+		if (exampleId.equals(PASS_REGULAR))
+		{
+			casePosition = 2;
+			expectedOutcome = REGULAR_OUTCOME;
+		}
+		PreparedExample prepared = prepare(example, casePosition);
+		Optional<String> diagnosticWithCase = Optional.empty();
+		if (diagnostic.isPresent())
+		{
+			diagnosticWithCase = Optional.of(diagnostic.orElseThrow() + "\nValues file case " + casePosition +
+				" has this expected outcome.\n" + expectedOutcome);
+		}
+		requireThat(result.diagnostic(prepared), "diagnosticWithCase").isEqualTo(diagnosticWithCase);
+	}
+
+	/**
+	 * Verifies that a case prepared for another prompt test cannot be used for this result, even when both tests
+	 * declare the same assertion and example identifiers.
+	 */
+	@Test(expectedExceptions = IllegalArgumentException.class)
+	public void rejectsCaseFromAnotherTest()
+	{
+		// Requirement: R-L16
+		DerivedProposal proposal = proposal();
+		List<JudgedExample> examples = AssertionChecks.selectExamples(proposal.contract(), proposal.exampleChecks());
+		JudgedExample original = examples.getFirst();
+		JudgedExample otherTest = examples.stream().filter(candidate -> candidate.test().id().equals(SECOND_TEST) &&
+			candidate.check().exampleId().equals(original.check().exampleId())).findFirst().orElseThrow();
+		PreparedExample prepared = prepare(otherTest, 2);
+		ExampleResult result = new ExampleResult(original, new AssertionVerdict(READABLE, null, "The reply is clear."));
+
+		result.diagnostic(prepared);
+	}
+
+	/**
+	 * Binds an example to a case at the supplied position in the fixture's values file.
+	 *
+	 * @param example      the example that was judged
+	 * @param casePosition the case's one-based position
+	 * @return the example and the selected authored case
+	 */
+	private static PreparedExample prepare(JudgedExample example, int casePosition)
+	{
+		PromptTest test = example.test();
+		Path directory = Path.of("draft").resolve(test.id());
+		Scenario scenario = new Scenario(test.variables(), test.turns(),
+			test.assertions().stream().map(MappedAssertion::assertion).toList());
+		PromptTestFiles files = new PromptTestFiles(directory, directory, scenario, List.of(), Map.of(), Map.of(),
+			test.testCases());
+		return new PreparedExample(example.check(), test, files.testCases().get(casePosition - 1), casePosition,
+			files, Set.of());
 	}
 
 	/**
@@ -203,8 +263,8 @@ public final class AssertionChecksTest
 			"The user asks about a report.", List.of("Was {{report}} completed?"), Duration.ofMinutes(1),
 			"The reply identifies the report and states its status.", List.of(),
 			List.of(new VariableDeclaration("report", "The report the user asks about.")), List.of(),
-			List.of(ContractFixtures.testCase("The budget report was completed.", "regular",
-				Map.of("report", "the budget report"))),
+			List.of(ContractFixtures.testCase(FIRST_OUTCOME, "in_progress", Map.of("report", "the annual report")),
+				ContractFixtures.testCase(REGULAR_OUTCOME, "regular", Map.of("report", "the budget report"))),
 			assertions, List.of(), List.of());
 	}
 }

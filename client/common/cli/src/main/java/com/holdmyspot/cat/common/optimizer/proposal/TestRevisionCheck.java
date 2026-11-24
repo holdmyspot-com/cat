@@ -18,6 +18,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ArrayNode;
@@ -173,6 +174,27 @@ final class TestRevisionCheck
 	Result validate(ObjectNode output, Path project, Path draft, String observedSources, ProfileEvidence profiles,
 		long salt, boolean split) throws InvalidProposalException
 	{
+		return validate(output, project, draft, observedSources, profiles, salt, split, ignored -> List.of());
+	}
+
+	/**
+	 * Validates a revision and checks the new test after its mechanical checks pass.
+	 *
+	 * @param output the result file's object
+	 * @param project the session's project
+	 * @param draft the session's draft directory
+	 * @param observedSources the prompt sources reported when the contract author ran
+	 * @param profiles the confirmed proposal's profile evidence
+	 * @param salt the confirmed contract's salt
+	 * @param split whether to check distinct outcomes in each part
+	 * @param checkReadyTest returns additional problems of a mechanically valid revision
+	 * @return the examination outcome
+	 * @throws InvalidProposalException if any check refuses it
+	 */
+	Result validate(ObjectNode output, Path project, Path draft, String observedSources, ProfileEvidence profiles,
+		long salt, boolean split, Function<ProposalCheck.Assessment, List<String>> checkReadyTest)
+		throws InvalidProposalException
+	{
 		List<String> problems = new ArrayList<>();
 		String kind = text(output, "result");
 		String reasons = text(output, "reasons");
@@ -189,7 +211,7 @@ final class TestRevisionCheck
 				if (corrected instanceof ObjectNode item)
 				{
 					Optional<DerivedProposal> revised = revised(item, project, draft, observedSources, profiles, salt,
-						split, problems);
+						split, problems, checkReadyTest);
 					if (revised.isPresent() && reasons != null)
 						outcome = new Result.Revised(revised.get(), reasons);
 				}
@@ -278,10 +300,12 @@ final class TestRevisionCheck
 	 * @param salt            the salt that validates the corrected contract
 	 * @param split           {@code true} to check the corrected test's expected outcomes in each part of the split
 	 * @param problems        the problems found so far, which this method adds to
+	 * @param checkReadyTest  returns additional problems of a mechanically valid revision
 	 * @return the revised proposal, or empty if it has a problem
 	 */
 	private Optional<DerivedProposal> revised(ObjectNode corrected, Path project, Path draft, String observedSources,
-		ProfileEvidence profiles, long salt, boolean split, List<String> problems)
+		ProfileEvidence profiles, long salt, boolean split, List<String> problems,
+		Function<ProposalCheck.Assessment, List<String>> checkReadyTest)
 	{
 		String directoryText = PortablePaths.text(directory);
 		JsonNode correctedDirectory = corrected.get("directory");
@@ -305,15 +329,12 @@ final class TestRevisionCheck
 		}
 		if (index == -1)
 			throw new AssertionError("The confirmed proposal file has no item for " + directoryText);
-		DerivedProposal revised;
-		try
-		{
-			revised = check.check(spliced, project, draft, observedSources, profiles, salt, fixed);
-		}
-		catch (InvalidProposalException e)
+		ProposalCheck.Assessment assessment = check.inspect(spliced, project, draft, observedSources, profiles, salt,
+			fixed);
+		if (!assessment.problems().isEmpty())
 		{
 			String location = "$.tests[" + index + "]";
-			for (String problem : e.problems())
+			for (String problem : assessment.problems())
 			{
 				if (problem.startsWith(location))
 					problems.add("$.test" + problem.substring(location.length()));
@@ -323,6 +344,7 @@ final class TestRevisionCheck
 			return Optional.empty();
 		}
 
+		DerivedProposal revised = assessment.proposal().orElseThrow();
 		PromptTest after = revised.contract().findTest(test).orElseThrow();
 		List<String> changes = new ArrayList<>();
 		if (!after.requirementIds().equals(requirementIds))
@@ -362,6 +384,8 @@ final class TestRevisionCheck
 			problems.addAll(changes);
 			return Optional.empty();
 		}
+		if (problems.isEmpty())
+			problems.addAll(checkReadyTest.apply(assessment));
 		return Optional.of(revised);
 	}
 }

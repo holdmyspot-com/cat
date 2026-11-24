@@ -11,11 +11,14 @@ import com.holdmyspot.cat.common.optimizer.contract.InvalidProposalException;
 import com.holdmyspot.cat.common.optimizer.contract.ProposalSchema;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
+import com.holdmyspot.cat.common.optimizer.port.FollowUp;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
+import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.proposal.ContractAuthorProtocol;
 import com.holdmyspot.cat.common.optimizer.proposal.ContractContext;
 import com.holdmyspot.cat.common.optimizer.proposal.DerivedProposal;
 import com.holdmyspot.cat.common.optimizer.proposal.ProfileEvidence;
+import com.holdmyspot.cat.common.optimizer.proposal.ProposalCheck;
 import com.holdmyspot.cat.common.optimizer.proposal.TestRevisionProtocol;
 import com.holdmyspot.cat.common.optimizer.proposal.TestRevisionProtocol.Examination;
 import com.holdmyspot.cat.common.optimizer.proposal.TestRevisionProtocol.Result;
@@ -24,6 +27,7 @@ import com.holdmyspot.cat.common.optimizer.proposal.test.ContractToolSessions.Re
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.OptionalLong;
@@ -31,6 +35,7 @@ import java.util.Set;
 import java.util.StringJoiner;
 import java.util.TreeSet;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Stream;
 
 import org.testng.annotations.AfterClass;
@@ -412,6 +417,51 @@ public final class TestRevisionTest
 			contains("uses_requested_tone").contains("evidence_scope");
 		requireThat(report.output(), "output").isEqualTo(problemReport(problems));
 		requireThat(report.exitCode(), "exitCode").isEqualTo(1);
+	}
+
+	/**
+	 * Verifies that a revision judges the corrected test only after mechanical validation, uses the one
+	 * correction turn and rejects a still-invalid final result.
+	 *
+	 * @throws IOException if a fixture cannot be written
+	 * @throws InvalidProposalException if the confirmed proposal is refused
+	 */
+	@Test
+	public void judgesTheCorrectedTestOnly() throws IOException, InvalidProposalException
+	{
+		// Requirement: R-L16
+		Examination examined = examination();
+		Path rejectedProject = revisionProject(examined, revisedFormatting(test ->
+			((ObjectNode) test.get("assertions").get(0)).putNull("evidence_scope")));
+		Path correctedProject = revisionProject(examined, revisedFormatting(_ ->
+		{
+		}));
+		Path initial = directories.add(Files.createTempDirectory("test-revision-initial-"));
+		List<List<String>> checked = new ArrayList<>();
+		String refusal = "The judge passed the corrected test's failing example.";
+		Function<ProposalCheck.Assessment, List<String>> judged = assessment ->
+		{
+			checked.add(assessment.examples().stream().map(example -> example.check().testId()).distinct().toList());
+			return List.of(refusal);
+		};
+		FollowUp followUp = protocol.request(ContractToolSessions.PROMPT_SYSTEM, examined, judged).
+			followUp().orElseThrow();
+
+		requireThat(followUp.next(ContractToolSessions.completed(rejectedProject, initial)).orElseThrow(),
+			"mechanicalCorrection").contains("evidence_scope").doesNotContain(refusal);
+		requireThat(checked, "checked").isEmpty();
+		SessionResult.Completed corrected = ContractToolSessions.completed(correctedProject, initial);
+		requireThat(followUp.next(corrected).orElseThrow(), "judgedCorrection").contains(refusal);
+		try
+		{
+			protocol.result(corrected, ContractToolSessions.PROMPT_SYSTEM, examined, judged);
+			throw new AssertionError("The corrected test was accepted after a second refusal");
+		}
+		catch (InvalidProposalException e)
+		{
+			requireThat(e.problems(), "problems").isEqualTo(List.of(refusal));
+		}
+		requireThat(checked, "checked").isEqualTo(List.of(List.of("formatting"), List.of("formatting")));
 	}
 
 	/**

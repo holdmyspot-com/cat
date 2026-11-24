@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.StringJoiner;
+import java.util.function.Function;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -56,6 +57,7 @@ public final class TestRevisionProtocol
 	 * they concern with its examination still in context.
 	 */
 	private static final String CORRECTION_RESOURCE = "/optimizer/proposal/test-revision-correction.md";
+	private static final Function<ProposalCheck.Assessment, List<String>> NO_JUDGED_CHECKS = ignored -> List.of();
 	private final JsonMapper json;
 	private final ProposalSchema schema;
 	private final ContractAuthorProtocol contractAuthor;
@@ -143,8 +145,24 @@ public final class TestRevisionProtocol
 	 */
 	public SessionRequest request(Path promptSystem, Examination examined)
 	{
+		return request(promptSystem, examined, NO_JUDGED_CHECKS);
+	}
+
+	/**
+	 * Returns a test revision request whose correction includes refusals from judged checks.
+	 *
+	 * @param promptSystem the staged project
+	 * @param examined the test under examination
+	 * @param judged returns the judged refusals of the mechanically valid revised test
+	 * @return the revision request
+	 * @throws NullPointerException if an argument is null
+	 */
+	public SessionRequest request(Path promptSystem, Examination examined,
+		Function<ProposalCheck.Assessment, List<String>> judged)
+	{
 		requireThat(promptSystem, "promptSystem").isNotNull();
 		requireThat(examined, "examined").isNotNull();
+		requireThat(judged, "judged").isNotNull();
 		TestRevisionRequest request = examined.request();
 		String trigger = switch (request.trigger())
 		{
@@ -192,7 +210,7 @@ public final class TestRevisionProtocol
 			Map.entry("generators", ValueGenerators.describeAll()), Map.entry("output_schema", outputSchema),
 			Map.entry("output_file", files.context().proposalFile()), Map.entry("draft_directory", files.draft()),
 			Map.entry("launcher", contractAuthor.launcher()), Map.entry("context_file", files.contextFile())));
-		FollowUp correct = result -> correction(result, promptSystem, examined, files);
+		FollowUp correct = result -> correction(result, promptSystem, examined, files, judged);
 		return new SessionRequest(SessionRole.CONTRACT_AUTHOR, Part.DEVELOPMENT, promptSystem, List.of(turn),
 			List.of(), TIME_LIMIT, contractAuthor.role(), files, List.of(), Optional.of(correct));
 	}
@@ -258,14 +276,15 @@ public final class TestRevisionProtocol
 	 * @param promptSystem the directory that holds the prompt system, which the request named
 	 * @param examined     what the session examined
 	 * @param files        the files that the session's project received
+	 * @param judged       returns the judged refusals of the mechanically valid revised test
 	 * @return the turn that lists the result's problems, or empty if the result is valid
 	 */
 	private Optional<String> correction(SessionResult.Completed result, Path promptSystem, Examination examined,
-		ContractAuthorFiles files)
+		ContractAuthorFiles files, Function<ProposalCheck.Assessment, List<String>> judged)
 	{
 		try
 		{
-			validate(result, promptSystem, examined);
+			validate(result, promptSystem, examined, judged);
 			return Optional.empty();
 		}
 		catch (InvalidProposalException e)
@@ -305,7 +324,26 @@ public final class TestRevisionProtocol
 	public Result result(SessionResult.Completed result, Path promptSystem, Examination examined)
 		throws InvalidProposalException
 	{
-		Result outcome = validate(result, promptSystem, examined);
+		return result(result, promptSystem, examined, NO_JUDGED_CHECKS);
+	}
+
+	/**
+	 * Validates the final test revision, including the same judged checks as the correction turn.
+	 *
+	 * @param result the completed revision session
+	 * @param promptSystem the staged project
+	 * @param examined the test under examination
+	 * @param judged returns the judged refusals of the mechanically valid revised test
+	 * @return the examination outcome, with a new complete draft for a revised test
+	 * @throws NullPointerException if an argument is null
+	 * @throws InvalidProposalException if any check refuses the revision
+	 * @throws UncheckedIOException if a file cannot be read or written
+	 */
+	public Result result(SessionResult.Completed result, Path promptSystem, Examination examined,
+		Function<ProposalCheck.Assessment, List<String>> judged) throws InvalidProposalException
+	{
+		requireThat(judged, "judged").isNotNull();
+		Result outcome = validate(result, promptSystem, examined, judged);
 		if (!(outcome instanceof Result.Revised revised))
 			return outcome;
 		DerivedProposal confirmed = examined.confirmed();
@@ -332,14 +370,15 @@ public final class TestRevisionProtocol
 	 * @param result       the session's result
 	 * @param promptSystem the directory that holds the prompt system, which the request named
 	 * @param examined     what the session examined
+	 * @param judged       returns the judged refusals of the mechanically valid revised test
 	 * @return the outcome of the examination; a corrected test's proposal has the session's draft directory, which
 	 *   holds only the corrected test
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws InvalidProposalException if the result is invalid
 	 * @throws UncheckedIOException     if a file cannot be read
 	 */
-	private Result validate(SessionResult.Completed result, Path promptSystem, Examination examined)
-		throws InvalidProposalException
+	private Result validate(SessionResult.Completed result, Path promptSystem, Examination examined,
+		Function<ProposalCheck.Assessment, List<String>> judged) throws InvalidProposalException
 	{
 		requireThat(result, "result").isNotNull();
 		requireThat(promptSystem, "promptSystem").isNotNull();
@@ -354,24 +393,40 @@ public final class TestRevisionProtocol
 		String draftName = DraftDirectory.name(promptSystem);
 		DraftDirectory.restoreReturnedLinks(effects, draftName);
 		Path draft = effects.resolve(draftName);
-		Result outcome = check.validate(output, effects, draft, confirmed.observedSources(), examined.profiles(),
-			confirmed.contract().salt(), true);
-		if (!(outcome instanceof Result.Revised))
-			return outcome;
+		return check.validate(output, effects, draft, confirmed.observedSources(), examined.profiles(),
+			confirmed.contract().salt(), true, assessment ->
+			{
+				List<String> outside = outsideProblems(check, draft, draftName, confirmed.draft());
+				if (!outside.isEmpty())
+					return outside;
+				return judged.apply(assessment);
+			});
+	}
 
+	/**
+	 * Returns any problems due to files edited outside the revised test's directory.
+	 *
+	 * @param check the revision validator
+	 * @param draft the session's authored draft
+	 * @param draftName the draft's directory name
+	 * @param confirmedDraft the full confirmed draft
+	 * @return the problems of the files that changed outside the revised test
+	 * @throws UncheckedIOException if a file cannot be read
+	 */
+	private static List<String> outsideProblems(TestRevisionCheck check, Path draft, String draftName,
+		Path confirmedDraft)
+	{
 		List<Path> changed;
 		try
 		{
 			changed = DraftDirectory.changedOutside(draft, check.directory(),
-				DraftDirectory.sharedFiles(confirmed.draft(), check.directory()));
+				DraftDirectory.sharedFiles(confirmedDraft, check.directory()));
 		}
 		catch (IOException e)
 		{
 			throw new UncheckedIOException(e);
 		}
-		if (changed.isEmpty())
-			return outcome;
-		throw new InvalidProposalException(check.outsideProblems(draftName, changed));
+		return check.outsideProblems(draftName, changed);
 	}
 
 	/**

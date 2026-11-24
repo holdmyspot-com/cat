@@ -220,6 +220,24 @@ public final class AssertionChecks
 			return Optional.of("For prompt test `" + check.testId() + "`, assertion `" + check.assertionId() +
 				"`, example `" + check.exampleId() + "`, " + message + " " + verdict.rationale());
 		}
+
+		/**
+		 * Returns the author-facing diagnostic with the case that filled the example.
+		 *
+		 * @param prepared the prepared example that the judge decided
+		 * @return the diagnostic with the case's position in the values file and its exact expected outcome,
+		 *   or empty if accepted
+		 * @throws NullPointerException     if {@code prepared} is null
+		 * @throws IllegalArgumentException if {@code prepared} has a different owning test or mechanical check
+		 */
+		public Optional<String> diagnostic(PreparedExample prepared)
+		{
+			requireThat(prepared, "prepared").isNotNull();
+			requireThat(prepared.check(), "prepared.check()").isEqualTo(example.check());
+			requireThat(prepared.test().id(), "prepared.test().id()").isEqualTo(example.test().id());
+			return diagnostic().map(text -> text + "\nValues file case " + prepared.casePosition() +
+				" has this expected outcome.\n" + prepared.testCase().expectedOutcome());
+		}
 	}
 
 	/**
