@@ -4110,7 +4110,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-21 | `optimize-high` | A proposal check, a rule edit under CAT's prompt rules, and a migration whose completeness an audit must prove. |
 | WI-22 | `optimize-high` | A result-shape change through both adapters, the checks, the judge and the prompt author evidence, with recorded-event tests per harness. |
 | WI-23 | `optimize-high` | Scenario discovery across module test resources, a rule edit, and moving 64 scenarios with their fixtures. |
-| WI-24 | `optimize-high` | A new contract author finding through the schema, parser, proposal rendering and the confirm command. |
+| WI-24 | `optimize-high` | A new contract author finding through the schema, parser, proposal rendering and the `approve` command. |
 | WI-25 | `optimize-high` | New contract author and prompt author outputs, a pause state with choices, a revision from a choice, and two prompt-wording changes. |
 | WI-26 | `optimize-xhigh` | The promotion and reduction rules and the prompt author's approach decide which edits ship and when a campaign plateaus. |
 | WI-27 | `optimize-high` | Per-role session setup in both runners, rule delivery from the installed artifact, and the rule loader's path-trigger text. |
@@ -4221,13 +4221,14 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-155 | `optimize-xhigh` | Adds outcome conditions to the scenario format, coverage replies to the proposal, and the mechanical coverage, agreement and bare-value refusals; an error accepts a test with a condition that no assertion checks, refuses a covered one, or lets a refusal tell the author which part holds a test case. |
 | WI-156 | `optimize-xhigh` | Starts judge sessions before confirmation that label coverage replies and review each test's outcomes, within the one correction turn; an error accepts a judged assertion that passes an omission reply, starts a session for a test that tools cover, gives a held-out case to a session that shapes a candidate, or ends a derivation that the correction turn could have fixed. |
 | WI-157 | `optimize-xhigh` | Removes the assertion that CAT adds to every prompt test from contracts, trials, judging, adoption, reports and prompts, increments the judge version and treats stored campaigns; an error leaves a trial judged on the removed assertion, lets a requirement-less assertion break a profile set or a failure group, loses a stored campaign, or keeps a certification current under a changed judge. |
-| WI-158 | `optimize-xhigh` | Records a confirmed campaign's revision request and feedback as a pending decision, retries a failed derivation, pauses with retry and stop, and makes `status` and `run` report a waiting revision as `awaiting_user` with text that is true of its state; an error leaves a campaign that waits for a revision no session derives, reports `running` for it, loses the user's feedback, or retries a session that CAT interrupted. |
+| WI-158 | `optimize-xhigh` | Records a confirmed campaign's revision request and feedback as a pending decision, retries a failed derivation, pauses with retry and stop, and makes `status` and `continue` report a waiting revision as `awaiting_user` with text that is true of its state; an error leaves a campaign that waits for a revision no session derives, reports `running` for it, loses the user's feedback, or retries a session that CAT interrupted. |
 | WI-159 | `optimize-xhigh` | Changes how every Claude session gets its credential, from a source home's Claude files instead of from the caller's environment and the shared login store, what its process environment and settings hold, what its commands may read, what the request server accepts and what the evidence records; an error lets a session's command read a secret, puts a secret in a command line, a record, an environment or a file that commands can read, leaves a session's key file behind after its Claude process ends, starts a session under a credential other than the source home's, copies source configuration other than authentication, accepts a source file that the requester may not read, or lets a requested session name a folder that the runner reads. |
 | WI-160 | `optimize-xhigh` | Changes how every Codex session gets its credential, where its Codex files live (`CODEX_HOME` moves to the session home's `.codex` folder), what its environment and configuration hold and what its commands may read, and replaces the copy of the user's Codex login; an error lets a session's command read a secret or the login copy, leaves a login copy behind after its app-server ends, writes an inline token into a file that commands read, starts a session under a credential or host other than the source home's, loses a resumed session's files in the move, or breaks Codex sessions that a Claude session requests. |
 | WI-161 | `optimize-xhigh` | Changes what every judge session reads, how a trial's judged assertions are grouped into sessions, which verdicts are recorded and reused, the scenario and proposal formats, the contract author's instructions and the outcome review; an error judges an assertion about actions without the trial's activity, reuses a verdict whose evidence differed, records or waits on an `actions` verdict, starts more than one session per scope, or loses a stored contract. |
 | WI-162 | `optimize-high` | Carries the user's Codex hook approvals into a trial copy of CAT that the project builds by declaration hash; an error approves a hook of another plugin or a changed declaration, runs a hook that Codex does not report as trusted, or leaves CAT's built hooks skipped. |
 | WI-163 | `optimize-xhigh` | Adds a built-in tool that runs a program of the test's own, sandboxed, on every trial, and changes the scenario format, the proposal checks, outcome coverage, the guard pilot and the runtime; an error passes a trial that the program fails, lets a trial or judge see the program, lets the program reach the network, write outside its scratch directory or read held-out content, accepts a program that its examples contradict, or makes a host problem count as a failure. |
 | WI-164 | `optimize-high` | Adds checks, run once per launch, that refuse a Claude launch before Claude Code starts when its command sandbox cannot start, and changes what the Claude runner does when the sandbox fails to start anyway; an error lets a session's command run outside its sandbox, refuses a launch whose sandbox could start, counts a sandbox failure as the model's pass or fail outcome, or gives the Claude process a temporary folder whose socket paths exceed the system limit. |
+| WI-165 | `optimize-medium` | Renames five commands across parsing, help, status and proposal text, the skill and tests, and refuses the former names; an error leaves a former name that still runs, a refusal that changes a campaign or names the wrong command, or text that tells an agent or user to run a removed name. |
 | WI-108 | `optimize-medium` | Changes how every CAT launcher starts its JVM; an error makes launchers fail outside a sandbox too, or lets two JVMs in separate PID namespaces write the same perf-data file. |
 | WI-107 | `optimize-medium` | Changes what every nested session may read and which host permissions a Claude session receives; an error lets trials and judges read the user's project again, denies a session its own run or evidence, or removes a grant that trials need. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
@@ -5425,9 +5426,9 @@ models that `codex debug models` reports and asked; given `gpt-6-luna`, `low`, i
 | WI-152 | Implemented 2026-11-23 (`c3ef649dd`; clone full build 6414 tests, 0 failures); designed 2026-11-23 (`design.md` failure summary and reproduction step 1, D155). Needs WI-151. Closes R-L12. |
 | WI-153 | Implemented 2026-11-23 (`5166a8c97`; clone full build passed, 0 failures); designed 2026-11-23 (`design.md` guard pilot and "Assertion agreement", D156 as revised by D159). The comparison with the assertion that CAT adds was dropped the same day: WI-155 checks wording against reference replies instead. Needs WI-151. Closes R-L13. |
 | WI-154 | Withdrawn 2026-11-23 (user ruling). It refused a judged `expected_outcome`, the assertion that CAT adds to every prompt test, and the outcome coverage ruling removes that assertion (D158). Its stopped WIP patch (`.cat/sessions/fab0ed75-654f-4a5c-b939-08335a367474/temp/wi154-5903a6/patch/`) is not applied; WI-155 carries over its bare-value predicate and test, its notations guidance and its bare-outcome helper (D160). R-L14 moves to WI-155. |
-| WI-155 | Not started; designed 2026-11-23 (`design.md` "Outcome coverage", "Assertion agreement", "Mechanically decidable conditions", D158 to D160). Not ready: waits for the user's choices of where conditions are declared, how assertion agreement is checked and whether the bare-value refusal stays (the list at the end of `design.md` "Outcome coverage"). Needs WI-10 and WI-151. Closes R-L14 and R-L15. |
-| WI-156 | Not started; designed 2026-11-23 (`design.md` "Outcome coverage" steps 2 and 3, "Coverage and the held-out part", D158, D159). Not ready: waits for the user's choice of how a condition that no tool covers is checked. Needs WI-155. Closes R-L16. |
-| WI-157 | Not started; designed 2026-11-23 (`design.md` §6.4, "Outcome coverage", "Contracts and campaigns from before this ruling", D158). Not ready: waits for the user's choices of how stored campaigns are treated, whether the judge still receives the expected outcome and whether a covering assertion may name no requirement. Needs WI-155 and WI-156. Closes R-L17. |
+| WI-155 | Not started; designed 2026-11-23 (`design.md` "Outcome coverage", "Assertion agreement", "Mechanically decidable conditions", D158 to D160). The user chose reference replies for assertion agreement on 2026-11-23. Not ready: waits for the user's choices of where conditions are declared and whether the bare-value refusal stays (the list at the end of `design.md` "Outcome coverage"). Needs WI-10 and WI-151. Closes R-L14 and R-L15. |
+| WI-156 | Not started; designed 2026-11-23 (`design.md` "Outcome coverage" steps 2 and 3, "Coverage and the held-out part", D158, D159). The user chose reference replies for assertion agreement on 2026-11-23, which settles its judged warning. Not ready: waits for the user's choice of how a condition that no tool covers is checked. Needs WI-155. Closes R-L16. |
+| WI-157 | Not started; designed 2026-11-23 (`design.md` §6.4, "Outcome coverage", "Contracts and campaigns from before this ruling", D158). The user chose on 2026-11-23 that stored campaigns get test revisions and that the judge receives a test case's expected outcome only through `{{expected_outcome}}` in a statement. Not ready: waits for the user's choice of whether a covering assertion may name no requirement. Needs WI-155 and WI-156. Closes R-L17. |
 | WI-158 | Implemented 2026-11-23 (`9d20fd2df`, `b4ed36bc4`; clone full build 6407 tests, 0 failures; `design.md` §7 "Revision request", D161). Closes R-L18. |
 | WI-159 | In progress: order steps 2 to 5 implemented 2026-11-23 by a delegated `optimize-xhigh` session in its own clone of v1.0 from the design that used the scrub, and integrated on v1.0; the parent session's clean full build passed outside the sandbox the same day. Designed 2026-11-23 (`design.md` §8 "Claude authentication", D162, D170, H42, H43, H45, P20, P22 and P29), revised the same day by the user's source-home ruling, which settles Q17 and Q21, and by the ruling "Q22-Q24: a"; step 1 is done (P20 and P22 passed 2026-11-23, receipts in the parent session `fab0ed75-654f-4a5c-b939-08335a367474`). Tests (a) to (k) were written first, and each of their 47 invocations failed on the missing behavior before production code changed; all pass now. Deviations from the plan: (f) checks the requester's reads once the request server has read the archive's manifest, which names `--home`, and before the child starts; (j)'s Codex refusals wait for WI-160, so until then `codex-runner` accepts `--home` and the class and keeps its copied Codex login; a peer evaluator's trials take no source home; a requester-read refusal names the read denial that holds the file. The user ruled the same day, option (c) in a choice dialog, that a token reaches Claude Code through an `apiKeyHelper` that reads a key file that the session's commands are denied, so no session sets the scrub (D170); a selected `CLAUDE_CODE_OAUTH_TOKEN` is refused, and P22 is obsolete. Step 6 replaces the token environment and scrub of steps 2 to 5; its P29 is ready. The user also ruled the same day, in a choice dialog, that on macOS a source home whose only Claude login is in the Keychain counts as a stored login when Claude Code's Keychain entry exists, checked without reading its secret, with the default store selection kept as before; this needs a macOS probe of the entry's naming first and is not yet in the design. Remaining: that design and probe, step 6, the build and the end-to-end checks. Needs WI-142 and WI-147. Closes R-I14. |
 | WI-160 | Not started; designed 2026-11-23 (`design.md` §8 "Codex authentication", D163, H44, H45, P24 and P26) and revised the same day by the user's source-home ruling. The user ruled Q22 to Q24 the same day: "Q22-Q24: a"; the ruling on Q22 refuses a ChatGPT sign-in, which replaces P26. P24 is not run. Needs WI-159. Closes R-I15. |
@@ -5435,6 +5436,7 @@ models that `codex debug models` reports and asked; given `gpt-6-luna`, `low`, i
 | WI-162 | Implemented 2026-11-23 (clone full build 6472 tests, 0 failures; `design.md` "Each trial installs every trial plugin", D167). Codex campaigns whose trial plugin is CAT built from the project, such as `20261123T152244Z-94bfcc`, measured trials without session rules until a build with WI-162 is installed. Amends R-W12. |
 | WI-163 | Not started; designed 2026-11-23 (`design.md` §6.4 "Check programs", §6.3 test design rule 5, the scenario format and "Outcome coverage" step 1, §6.1 "Guard pilot" and "Assertion agreement", D168, H46 and P27). Not ready: waits for P27, for its macOS part only (the user ruled Q25, Q26 and the check-program limits on 2026-11-23). Needs WI-155, WI-156 and WI-161. Closes R-L21 and R-L22. |
 | WI-164 | Not started; designed 2026-11-23 (`design.md` §8 "Sandbox start", D169, H47, H48 and P28). The user ruled Q27 on 2026-11-23: pre-launch checks and a check of Claude Code's report at the first Bash result, each once per session; the scrub for every session rejected. Step 1 (P28) is ready. Needs WI-147. Closes R-I16. |
+| WI-165 | Not started; designed 2026-11-23 (`design.md` §8 "Command names", D171) from the user's approval ("1. Yes") of the renaming proposal. Ready. Until it lands, the code and installed builds accept only the former names `run`, `confirm`, `revise`, `choose` and `cancel`, while the design and plan name the new ones. Needs WI-13 and WI-14. Closes R-I17. |
 | WI-145 | Implemented 2026-11-16 (Claude implementer; `87db96986`..`a378c7aa5`; clean full build 6034 tests, 0 failures, 0 errors, 6 skipped): one in-place registrar (`GitWorktreeRegistrar`) for add, recreate, remove and repair behind `Fork`, `GitForks` and the session-start sweep; worktree requests (`worktree-<uuid>.tar`, document of operation and campaign only) served on a thread of their own by the request server (with the `.git/config`/`.git/hooks` write check against the session's policy) and by a run's runner (the one campaign of that identifier in the run's project; refused when the run allows no requests), counted against no limit; the client (`WorktreeRequestClient`) sends by the launch route, sends nothing for intact links, and `start`, `run`, `choose` and `cancel` refuse with status 2 before any change when no server serves the session; the Claude runner's `.git/worktrees` grant removed (session environment version 25); the build-command limit stated in the prompt-optimizer skill. Remaining: the live checks in Claude Code and Codex. Decided 2026-11-16: the code stays (`status` never reconnects; a campaign without its worktree is not a fork, `ForksContract.missingWorktreeIsNotAFork`), and the live check names the next command that reconnects (`run` or `choose`) instead. Probe evidence: `~/cat/worktrees/gitwt-probe4/` and `gitwt-probe3/`. |
 | Incremental build-workflow rule (user request, 2026-10-25) | Done 2026-10-27 (Codex; `ebe1687e7d`, released in v1.0). Record: [history](plan-history.md). |
 | G9 Git diff owner (`4da627d85c`) | Done 2026-10-27 (Claude `optimize-high`). Record: [history](plan-history.md). |
@@ -5839,7 +5841,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-E8 | Shared harness capacity is an injected per-harness instance, acquired by both runner CLIs and per optimizer session, with `tryAcquire` and an injected pause. | §3.6 | WI-5 | U: `HarnessCapacityTest`; E: E8 |
 | R-E9 | Slices: status kinds, admission cutoff from the 90th-percentile duration or the time limit, 1-minute grace, cancellation of the remainder, `busy` for a second driver. | §3.7 | WI-9 | U: `SliceTest` |
 | R-E10 | Interrupts: the Codex rollout watcher stops within 15 seconds; the Claude transcript backstop; Claude kill recovery. | §3.8 | WI-8, WI-9 | U: `RolloutInterruptSignalTest`, `TranscriptInterruptSignalTest`, `DriverTest`; E: E2 per harness |
-| R-E11 | Reconciliation runs first in every `run`: adopts recorded outcomes, reruns started trials that have no outcome, checks the worktree, and terminates the recorded processes of nested sessions that an earlier driver left running, under the results folder and the held-out results folder, never those of a live driver. | §3.8 | WI-9, WI-39 | U: `ReconciliationTest`, `LeftoverNestedSessionsTest` |
+| R-E11 | Reconciliation runs first in every `continue`: adopts recorded outcomes, reruns started trials that have no outcome, checks the worktree, and terminates the recorded processes of nested sessions that an earlier driver left running, under the results folder and the held-out results folder, never those of a live driver. | §3.8 | WI-9, WI-39 | U: `ReconciliationTest`, `LeftoverNestedSessionsTest` |
 | R-E12 | Minimum remaining trials by the §3.9 formulas for the development and formal phases, the development minimum summing over every development cell, inside the certification scope or not; token statistics; no totals or time estimates. | §3.9 | WI-12, WI-44 | U: `RemainingWorkTest` |
 | R-E19 | Development cells: representative development trials and prompt author rounds only in a prompt test's development cells (its weakest cell, plus every cell where a certification attempt of the lineage adopted a failure); the coverage floor among them. | §3.3, §6.6, D27 | WI-32 | U: `SchedulerTest` (only development cells sampled, the floor among them, a formal failure adding a cell), `DriverTest` trace 19 |
 | R-E18 | The status compares the working candidate with the incumbent on the size (bytes and words) of the target prompt file alone, not of derived sources, project rules or the rest of the prompt system, and on median input tokens per trial in each cell where both have outcomes. | §3.9, D11, G5 | WI-18 | U: `StatusReportTest` |
@@ -5865,7 +5867,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-W4 | Edit authority rules, including rejection of ambiguous dual-path edits, plus diagnosis warnings. | §4.3 | WI-6 | U: `AuthorityTest` |
 | R-W5 | Staged source: tracked files, recorded participants, fixtures and overlay; links dereferenced; cycles and missing targets block confirmation; `.cat/sessions/` excluded; caches deleted when unused. | §4.4 | WI-7 | U: `StagedSourceTest`; the runner's project copy accepts the staged source in both harnesses |
 | R-W6 | Symbolic-link report contents, and the limitation recorded on results. | §4.5 | WI-7, WI-12 | U: `LinkReportTest`, `StatusReportTest` |
-| R-W7 | Inventory validation of prompt author attempts; unowned-change detection at every `run`, before promotion and before delivery. | §4.6 | WI-6, WI-9 | U: `InventoryDiffTest`, `DriverTest` |
+| R-W7 | Inventory validation of prompt author attempts; unowned-change detection at every `continue`, before promotion and before delivery. | §4.6 | WI-6, WI-9 | U: `InventoryDiffTest`, `DriverTest` |
 | R-W8 | Delivery: verify the optimization worktree and materialize a selected candidate that is not the working candidate, preflight, journal, preimage checks, resume applying each change at most once, final verification, historical result after a base-only prompt edit. CAT never commits. | §1, §4.7 | WI-6, WI-11 | U: `DeliveryPlanTest`, `DeliveryTest` (fault between writes, concurrent edit, no commit created) |
 | R-W9 | Cleanup: once a certified candidate's delivery completes and is verified, or the user keeps the incumbent instead of a regressing certified candidate and the prompt-test delivery that follows completes and is verified, CAT removes the optimization worktree, the campaign's results copies in both results folders and then the campaign directory; an interrupted removal completes on the next command for the target; every other campaign keeps its files. | §4.1, §4.7 | WI-43 | U: `CleanupTest` (each ending, fault before each step); E: E1 |
 | R-W10 | Control source: the incumbent's staged source with the target prompt file emptied to zero bytes, each dependent that the contract author lists removed (a file deleted, a hook registration unregistered, or an exact span deleted), and every other prompt file unchanged, the same for every candidate; the proposal lists the target and each dependent with the instruction it serves, and CAT refuses an entry that names the target, a path outside the prompt system and the project-built trial plugins, or a span that does not occur exactly once. | §4.4, §6.1, D71, D72, D78 | WI-65, WI-75, WI-76, WI-81, WI-91 | U: `StagedSourceTest`, `ControlSourceTest`, `ProposalTest`, `OptimizerCoreTest` |
@@ -5899,9 +5901,9 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-C10 | Trial profiles: the inventory per harness with its source; bindings from Claude skill and subagent frontmatter and Codex agent TOML only, partial bindings fixing one dimension, `inherit` binding nothing; the profile set per prompt test from the requirements mapped to its assertions, and the resulting cells; a user restriction narrows the set; the proposal lists inventory, bindings, cells and their minimum session count; confirmation freezes the set. | §6.6, §2.1, D22 | WI-16, WI-64 | U: `ProfileSetTest`, `ProposalTest`, per-harness inventory and binding tests over recorded catalog output; E: E1 proposal per harness |
 | R-C11 | Cells are the statistical unit: one prompt test under one profile; every §2 and §3 rule applies per cell, and `K` counts the cells of the certification scope. | §2.1 | WI-16, WI-32, WI-64 | U: `SchedulerTest`, `CommitGateTest`, `CommitTest` (a prompt test with two profiles gives two cells with separate counts, gates and decisions) |
 | R-C12 | A turn's reply is every assistant message of the turn; built-in tools of reply text, the trial record, the judge's evidence and the prompt author's failure records all use it. | §1.2, §6.4, D29 | WI-22, WI-63 | U: per-harness adapter tests over recorded events (`ClaudeProcessTest`, `CodexProcessTest`, `CodexSessionsTest`, `RunnerSessionsTest`), `HarnessRunnerBridgeTest`, `EventSinkTest`, `BuiltInToolTest`, `JudgePromptTest`, `TrialEvidenceTest`, `PromptAuthorTest`, `TransitionsTest`, `FileCampaignStoreTest`, `ProposalTest`, `DriverTest`; E: E1 per harness |
-| R-C13 | A proposal lists every conflict between requirements with its evidence, and `confirm` is refused while one is listed. | §6.1, D31 | WI-24 | U: `ProposalTest`, `OptimizerCoreTest` |
+| R-C13 | A proposal lists every conflict between requirements with its evidence, and `approve` is refused while one is listed. | §6.1, D31 | WI-24 | U: `ProposalTest`, `OptimizerCoreTest` |
 | R-C14 | Each proposal conflict offers at least two resolutions and a recommended one with its reason; the agent asks the user to resolve every conflict before offering confirmation. | §6.1, §8, D31 | WI-25 | U: `ProposalTest`; E: E1 per harness |
-| R-C15 | Certification scope: weakest cell only unless the user chooses latest model versions (every cell of each family's latest version) or a set of inventory cells mapped from the user's own description and passed to `revise`; `confirm` without a scope confirms the weakest cell only; CAT refuses a described cell outside the inventory; the choice is frozen with the contract, a change is a revision, and formal and baseline trials run in the scope's cells only. | §6.1, §6.6, D42 | WI-32 | U: `OptimizerCoreTest` (confirm without a scope confirms the weakest cell; each choice), `CommandsTest` (`confirm <campaign>` alone), `ProposalTest` (a described scope, a cell outside the inventory), `SchedulerTest` (formal cells per scope), `CampaignStoreContract` (round trip) |
+| R-C15 | Certification scope: weakest cell only unless the user chooses latest model versions (every cell of each family's latest version) or a set of inventory cells mapped from the user's own description and passed to `request-changes`; `approve` without a scope confirms the weakest cell only; CAT refuses a described cell outside the inventory; the choice is frozen with the contract, a change is a revision, and formal and baseline trials run in the scope's cells only. | §6.1, §6.6, D42 | WI-32 | U: `OptimizerCoreTest` (confirm without a scope confirms the weakest cell; each choice), `CommandsTest` (`approve <campaign>` alone), `ProposalTest` (a described scope, a cell outside the inventory), `SchedulerTest` (formal cells per scope), `CampaignStoreContract` (round trip) |
 | R-C16 | Split: CAT draws a salt at the first validated proposal and keeps it; each test case's part is a salted SHA-256 of its normalized expected outcome, probability ½; committed test cases and new ones sharing a committed outcome are development; a prompt test with fewer than 2 distinct normalized outcomes in either part is refused. | §6.3, D61 | WI-33, WI-62 | U: `SplitTest`, `ProposalTest`, `ProposalSchemaTest`, `GeneratorTest`, `DriverTest` |
 | R-C17 | After an attempt ends with formal failures, a contract author session receives each failed prompt test with only its development test cases, and each failure's cell, failed assertions and behaviors, and writes at least 4 new test cases per failed test; CAT refuses one whose normalized expected outcome equals a held-out one; the added test cases are development only and take half of that test's development draws; development counts restart; the held-out part, the contract and the measurement identity are unchanged; the user's report lists them and delivery writes them. | §6.3, D44, D61 | WI-34, WI-62 | U: `DriverTest` (no held-out test case or salt in the input; a shared held-out outcome refused; draws; counts restart) |
 | R-C18 | Failure behavior: each requirement lists the behaviors through which it can fail; each failed built-in tool names the behavior it detects; the judge names one listed behavior or `other` per failed assertion; a formal failure summary carries its cell, test, failed assertions and behaviors. | §6.1, §6.3, D47 | WI-38, WI-63 | U: proposal and contract tests (`ProposalTest`, `ProposalSchemaTest`, `ContractTest`, `OptimizerCoreTest`), `JudgeTest`, `JudgePromptTest`, `FailureSummaryTest`, `BuiltInToolTest`, `DriverTest`, `PromptAuthorTest` |
@@ -5933,12 +5935,12 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-L14 | CAT refuses a prompt test whose every expected outcome is a bare value when none of the assertions that cover its reply conditions has a built-in tool, and shows every other judged covering assertion with its reason under "Judged assertions". | §6.1, §6.4 | WI-155 | U: `BareValueTest`, `ProposalTest`, `ContractCheckTest` |
 | R-L15 | Every prompt test declares its outcome conditions and covers each with one of its own assertions. CAT refuses a test without conditions, an uncovered condition, a `covers` or `classes` entry that names nothing declared, a reply condition that no reply-examining assertion covers, a missing coverage reply, a reply tool that passes an omission reply, and a reply tool under `fail` that fails a reference reply; a tool under `fail` that passes the reference reply and fails the omission reply covers its condition without a session. A covering assertion may name no requirement, joins no profile set and fails with `unexpected_outcome`. Coverage replies are filled from each class's first test case in the values file, whatever the salt, and no refusal names a part. | §6.1, §6.3 | WI-155 | U: `ScenarioTest`, `ProposalTest`, `ContractCheckTest`, `CoverageRepliesTest`, `TestRevisionTest`, `ProfileSetTest`, `ValuesPromptTest` |
 | R-L16 | A condition that no tool covers mechanically is checked once before confirmation by the judge that the proposal would freeze: a judged covering assertion that passes its omission reply is refused, one that fails a reference reply is a warning, and the outcome review refuses an outcome that states an undeclared condition and an effect condition that no assertion covers. Every problem reaches the contract author in its one correction turn without naming a part; the records stay in the held-out directory, appear under "Outcome coverage", rerun only for changed tests and reach no session that shapes a candidate. | §6.1, §6.3 | WI-156 | U: `OutcomeCoverageTest`, `ContractCheckTest`, `ProposalTest`, `OptimizerCoreTest`, `FileCampaignStoreTest`, `ValuesPromptTest` |
-| R-L17 | No prompt test has an assertion that its scenario does not declare. A trial whose tools decide every assertion starts no judge session and can end early; the judge's prompt names no added assertion and the judge version increments in both harnesses; the removed assertion's scenario and proposal forms are refused with a conversion instruction; a confirmed stored campaign whose contract lacks conditions revises each such test before other work, an unconfirmed one is refused at `confirm`, and stored `expected_outcome` verdicts reload as history. | §6.3, §6.4, §7 | WI-157 | U: `ContractTest`, `ScenarioTest`, `ProposalSchemaTest`, `DriverTest`, `EarlyTrialEndTest`, `AdoptionTest`, `JudgePromptTest`, `TransitionsTest`, `OptimizerCoreTest`, `FileCampaignStoreTest` |
-| R-L18 | A confirmed campaign keeps each revision request and its feedback from `revise`, a chosen requirement change and a conflict's last resolution until the revised contract is confirmed or the campaign stops. A failed derivation (a failed, interrupted, rate-limited or refused session, an invalid proposal, or a session that cannot be prepared) is retried up to 3 times with the saved feedback, except after an interruption by CAT or a failure that no new session changes; then the campaign pauses with `retry` and `stop`, and `retry` derives from the saved feedback. `status` and `run` report `awaiting_user` with the same text, which says whether the revision is being derived, failed or waits for confirmation, and carry no `proposal_file`; `confirm` and `start` are refused while a derivation is pending. | §7, §8 | WI-158 | U: `TransitionsTest`, `FileCampaignStoreTest`, `StatusReportTest`, `OptimizerCoreTest`, `DriverTest` |
+| R-L17 | No prompt test has an assertion that its scenario does not declare. A trial whose tools decide every assertion starts no judge session and can end early; the judge's prompt names no added assertion and the judge version increments in both harnesses; the removed assertion's scenario and proposal forms are refused with a conversion instruction; a confirmed stored campaign whose contract lacks conditions revises each such test before other work, an unconfirmed one is refused at `approve`, and stored `expected_outcome` verdicts reload as history. | §6.3, §6.4, §7 | WI-157 | U: `ContractTest`, `ScenarioTest`, `ProposalSchemaTest`, `DriverTest`, `EarlyTrialEndTest`, `AdoptionTest`, `JudgePromptTest`, `TransitionsTest`, `OptimizerCoreTest`, `FileCampaignStoreTest` |
+| R-L18 | A confirmed campaign keeps each revision request and its feedback from `request-changes`, a chosen requirement change and a conflict's last resolution until the revised contract is confirmed or the campaign stops. A failed derivation (a failed, interrupted, rate-limited or refused session, an invalid proposal, or a session that cannot be prepared) is retried up to 3 times with the saved feedback, except after an interruption by CAT or a failure that no new session changes; then the campaign pauses with `retry` and `stop`, and `retry` derives from the saved feedback. `status` and `continue` report `awaiting_user` with the same text, which says whether the revision is being derived, failed or waits for confirmation, and carry no `proposal_file`; `approve` and `start` are refused while a derivation is pending. | §7, §8 | WI-158 | U: `TransitionsTest`, `FileCampaignStoreTest`, `StatusReportTest`, `OptimizerCoreTest`, `DriverTest` |
 | R-L19 | Every judged assertion declares an evidence scope, `response` (the turns and the replies) or `actions` (tool activity, tool results and file changes as well as the replies), with `actions` when it needs both or is unclear. CAT refuses `evidence_scope` on a mechanical assertion, a value other than `response` or `actions`, `response` on an assertion whose tool examines more than the replies, and a judged assertion of a proposal or test revision without it; a recorded scenario without it parses, and a contract stored without it judges every assertion as `actions`. A trial's judged assertions are decided in at most one fresh session per scope: a `response` session's prompt holds the test case and the replies and no evidence section, tool result or path, and it is granted no evidence root; an `actions` session's prompt is unchanged. Only `response` verdicts are recorded and reused, keyed on the replies and not on tool activity or the transcript; an `actions` verdict is never recorded, looked up or waited for. The outcome review refuses a `response` assertion that depends on what the agent did and warns on an `actions` assertion that depends only on the replies. The judge version increments in both harnesses. | §6.3, §6.4, D164 | WI-161 | U: `ScenarioTest`, `ProposalSchemaTest`, `ProposalTest`, `ContractCheckTest`, `FileCampaignStoreTest`, `JudgePromptTest`, `VerdictKeyTest`, `DriverTest`, `GuardPilotTest`, `DevelopmentJudgeDriverTest`, `OutcomeCoverageTest` |
-| R-L20 | Where a requirement is about an action, the contract author splits its assertions: a built-in tool decides whether the action happened and a narrow judged assertion only the part that needs meaning, whose judge reason names that part; the contract author's and test revision's instructions state this duty. The outcome review warns, naming the tool, on an `actions` assertion whose happening a built-in tool could decide; the proposal lists the warning under "Judged assertions", the revision brief repeats it, `confirm` is not refused for it, and a test with any judged assertion gets an outcome review. | §6.3 test design rule 5, §6.4, D165 | WI-161 | U: `PromptTemplateTest`, `OutcomeCoverageTest`, `ProposalTest` |
+| R-L20 | Where a requirement is about an action, the contract author splits its assertions: a built-in tool decides whether the action happened and a narrow judged assertion only the part that needs meaning, whose judge reason names that part; the contract author's and test revision's instructions state this duty. The outcome review warns, naming the tool, on an `actions` assertion whose happening a built-in tool could decide; the proposal lists the warning under "Judged assertions", the revision brief repeats it, `approve` is not refused for it, and a test with any judged assertion gets an outcome review. | §6.3 test design rule 5, §6.4, D165 | WI-161 | U: `PromptTemplateTest`, `OutcomeCoverageTest`, `ProposalTest` |
 | R-L21 | A prompt test may decide an assertion with `check-program <program> [<argument>...]`, a program in its `checks/` directory that no trial project and no judge prompt holds, which CAT runs once after the trial's last turn in the campaign owner's driver, for a trial of either harness, with a read-only input directory holding the trial's final project, initial project, activity (activity format version 1) and replies, a new scratch directory as its working directory, its filled arguments and a fixed environment. The program has no network, writes only its scratch directory and cannot read the held-out directory, the held-out results folder or the driver's denied reads: under bubblewrap on Linux and Seatbelt on macOS, and native Windows refuses it. Exit 0 passes and 1 fails; any other status, the 60-second time limit, the 16 KiB output limit and a program that does not start are program errors, which `on_tool_failure` handles as a failure; a host fault is an infrastructure failure. The output is the observed value. A test with a check program never ends early. The program's files are part of the confirmed contract and are delivered with the test. | §6.4 "Check programs", §3.2, D168 | WI-163 | U: `ScenarioTest`, `BuiltInToolTest`, `CheckProgramTest`, `DriverTest`, `EarlyTrialEndTest`, `JlinkImageBuilderTest`; E: a guard pilot with a check program in each harness on Linux |
-| R-L22 | CAT refuses a check-program assertion without a passing example for each boundary class of its test and a failing example for each effect condition that it covers (or one of each when it covers none), and a program that, in either of two runs, fails or errs on a passing example or does not fail a failing one; a program under `fail` that passes every passing example and fails every failing one covers its effect conditions mechanically, and the outcome review is not asked about them. The guard pilot runs each program twice per pilot trial and `confirm` refuses one whose outcomes differ or whose run takes more than half its time limit. `contract check` runs the examples; a problem names the test, assertion, example and outputs and never a part; a revision that changes a test's scenario, `checks/`, `check-examples/` or test cases reruns its examples. The author instructions document the tool, its inputs and its examples. | §6.1, §6.3 "Outcome coverage", §6.4 "Check programs", D168 | WI-163 | U: `ProposalTest`, `ContractCheckTest`, `OutcomeCoverageTest`, `GuardPilotTest`, `PromptTemplateTest` |
+| R-L22 | CAT refuses a check-program assertion without a passing example for each boundary class of its test and a failing example for each effect condition that it covers (or one of each when it covers none), and a program that, in either of two runs, fails or errs on a passing example or does not fail a failing one; a program under `fail` that passes every passing example and fails every failing one covers its effect conditions mechanically, and the outcome review is not asked about them. The guard pilot runs each program twice per pilot trial and `approve` refuses one whose outcomes differ or whose run takes more than half its time limit. `contract check` runs the examples; a problem names the test, assertion, example and outputs and never a part; a revision that changes a test's scenario, `checks/`, `check-examples/` or test cases reruns its examples. The author instructions document the tool, its inputs and its examples. | §6.1, §6.3 "Outcome coverage", §6.4 "Check programs", D168 | WI-163 | U: `ProposalTest`, `ContractCheckTest`, `OutcomeCoverageTest`, `GuardPilotTest`, `PromptTemplateTest` |
 
 ### 3.7 Reporting, interface and testability
 
@@ -5964,6 +5966,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-I14 | A Claude session authenticates with the authentication parts of a source home's `.claude` folder, which are `apiKeyHelper`, the `env` entries `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY` and `CLAUDE_CODE_OAUTH_TOKEN` of `settings.json`, and the stored login `.credentials.json`; the source home is the folder that `--home <dir>` names, or else the runner's home folder, whose `.claude` folder is then the one that the runner's `CLAUDE_CONFIG_DIR` names when set. Only those parts reach the session's isolated home, through one `apiKeyHelper` in its settings that delivers whichever of `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY` and the source helper Claude Code's order selects: the source helper wrapped to run with the source home as its home folder, or the token through a key file in the session's `.claude` folder, created owner-only, denied to the session's commands and deleted when the Claude process exits; no session sets `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`, the Claude process's environment holds no token, and a selected `CLAUDE_CODE_OAUTH_TOKEN` refuses the launch (D170). The stored login is never copied: the runner sets `CLAUDE_SECURESTORAGE_CONFIG_DIR` to the source `.claude` folder, and the session's Claude Code reads and refreshes that login in place; no hook, permission, plugin, MCP server or other source setting does, and Claude Code ranks the parts by its own order. A source home with no Claude authentication, or whose settings select a credential that the runner does not copy, refuses the launch before a capacity slot or nested session, with a message that never quotes a secret. Every source file that holds a secret is a regular file, not a link, that denies group and other access and that the requesting session's sandbox lets it read; the session's commands and file tools, and those of every session that it requests, are denied the file and its copies. The session gets none of the runner's `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `CLAUDE_CODE_OAUTH_TOKEN` and `CLAUDE_SECURESTORAGE_CONFIG_DIR`, and a project or managed settings file that sets one of them or `apiKeyHelper` refuses the session. `--gateway-login-class <subscription|api_key>` is required when the copied parts set `ANTHROPIC_BASE_URL`, and `CAT_HOST_LOGIN` states the class of the credential that Claude Code's order selects. Requested sessions of both harnesses get the runner's source home and class, never a session's home, and `--home` or the class inside a nested session is refused. One class covers the base URLs of both harnesses, and a request for the other harness whose credential uses a base URL, from a launch that named no class, is refused, naming the option. The prompt optimizer records them per launch, outside its measurement identity, so a resume may change them. `session.json`, the receipt and each response record the source home, the names of the copied parts and the class, never a value. | §8 "Claude authentication", D162, D170, P20, P29 | WI-159 | P: P20, P29; U: `ClaudeRunnerCliTest`, `SecretFileTest`, `ClaudeRunnerTest`, `ClaudeConnectionSettingsTest`, `ParentPolicyTest`, `NestedSessionManagerTest`, `SessionRequestBrokerTest`, `SessionRequestForwarderTest`, `SessionRequestCliTest`, optimizer command tests; E: one live launch from a source home whose settings hold only `apiKeyHelper`, whose `init` reports `apiKeySource` `apiKeyHelper`, and one through the user's local gateway, each with results that hold no secret |
 | R-I15 | A Codex session authenticates with the authentication parts of the source home's `.codex` folder, which are an `auth.json` that holds an API key, while one that holds a ChatGPT sign-in refuses the launch, and the `model_provider`, `openai_base_url` and `forced_login_method` settings of `config.toml` with the selected `[model_providers.<id>]` table, with R-I14's source home, whose `.codex` folder is, without `--home`, the one that the runner's `CODEX_HOME` names when set, and with its refusals, checks of a secret file, requester's read check, denied reads, inheritance, gateway class, optimizer treatment and evidence. An inline provider secret reaches Codex in a variable of the app-server's environment that the provider's `env_key` or `env_http_headers` names, never in the session's `config.toml`; a provider's token command runs with the source home as its home folder; and the copy of `auth.json` is readable by its owner alone and removed when the app-server ends. The session's Codex gets neither of the runner's `CODEX_API_KEY` and `OPENAI_API_KEY`, apart from a variable that the selected provider names, and a system or managed layer that sets `openai_base_url`, `forced_login_method`, `model_provider` or `model_providers` refuses the session. The session's `CODEX_HOME` is its home's `.codex` folder, and a resume of a session in the earlier layout moves its files there first. | §8 "Codex authentication", D163, P24, P26 | WI-160 | P: P24; U: `CodexRunnerCliTest`, `CodexRunnerTest`, `CodexConnectionConfigurationTest`, `CredentialsTest`, the optimizer's Codex session tests and WI-159's common tests for Codex; E: one live launch from a source home whose `auth.json` holds an API key and one through a provider's token command, each with results that hold no secret |
 | R-I16 | No command of a nested Claude session runs outside its sandbox, apart from D169's known limitation. Before Claude Code starts, on Linux, WSL2 included, and macOS, the runner refuses a launch whose sandbox cannot start for a deterministic cause, before it creates or resumes the nested session and with a message that names the check, the value found and the fix: a temporary folder, or a `TMPDIR` that a project or managed settings `env` sets, longer than its sockets allow (72 bytes on Linux, 68 on macOS); on Linux, no executable `bwrap` or `sandbox.bwrapPath`, no `socat` on the Claude process's `PATH`, a failing `bwrap --unshare-user --dev-bind / / true`, or a temporary folder in which no file can be created; on macOS, a missing or failing `/usr/bin/sandbox-exec`. When Claude Code's sandbox fails to start anyway, the runner reads its report at the session's first Bash result, ends the session, and its turn is an infrastructure failure whose reason names the sandbox failure and says whether a Bash result followed it, never a pass or fail outcome. Each check runs once per launch, never once per command (user ruling on Q27, 2026-11-23). On Linux and macOS, the Claude process's environment holds no `TMPDIR`, `TMP` or `TEMP`, so its sandbox's sockets lie in `/tmp`. Bash calls that the model issues in the same assistant message as the call that receives the report can run outside the sandbox before the runner stops the session (D169). | §8 "Sandbox start", D169, H47, H48, P28 | WI-164 | P: P28; U: `ClaudeSessionSandboxTest` (each pre-launch check refuses with its message when its cause is present and passes otherwise), `ClaudeRunnerTest` (refusal before a nested session; `processEnvironment`), `ClaudeProcessTest` replaying recorded sandbox failures, `HarnessEnvironmentTest` (`PATH` search); E: one live launch without `socat` refused before any nested session, and one whose sandbox cannot start past the pre-launch checks runs no command and ends as an infrastructure failure |
+| R-I17 | The `prompt-optimizer` launcher's commands are `start`, `continue`, `status`, `approve`, `request-changes`, `decide` and `stop`, with the contract tools and `help`. Each former name (`run`, `confirm`, `revise`, `choose`, `cancel`) is refused as invalid input, with exit status 2 and a message that names its replacement, before any campaign, store or session changes; it is never an alias. The usage text, refusals, pending texts, status summaries and choices, proposal text, skill, rules and documentation name only the new commands. | §8, D171 | WI-165 | U: `CommandsTest`, `PromptOptimizerCliTest`, `StatusReportTest`, `ProposalTest`, `DriverTest`, `PromptOptimizerSkillTest`; E: both installed launchers |
 | R-T1 | The testability contract T1–T7 holds. | §10 | WI-1 | U: `TestabilityAuditTest` (source scan of the optimizer and capacity code: no non-`final` static fields, no `Thread.sleep`, no reads of `HOME`, `user.home` or `System.getenv` outside `main` classes and harness production scopes, only `final` fields in test classes); review audit at each work item's exit |
 | R-T2 | Packages, ports and adapters follow §9: the harness-neutral core imports no harness package, and production sources import no test-support type. | §9 | WI-1 | U: `TestabilityAuditTest` (import scan) |
 
@@ -6247,8 +6250,8 @@ The riskiest pure code, built first.
 ### WI-13 — Commands, wiring and distribution
 
 - **Contents:**
-	- `optimizer.cli.Commands` parses `start`, `run`, `status`, `confirm`, `revise`, `choose` and `cancel` and calls the
-		core;
+	- `optimizer.cli.Commands` parses `start`, `continue`, `status`, `approve`, `request-changes`, `decide` and `stop`
+		and calls the core;
 	- `ClaudePromptOptimizer.main` and `CodexPromptOptimizer.main` resolve `HOME`, the host session environment
 		variables, the capacity, the clock and the store, then wire the adapters;
 	- `prompt-optimizer` launchers for both harnesses in `DistributionMain`;
@@ -6499,14 +6502,14 @@ The riskiest pure code, built first.
 	use only them.
 - **Scope:** the contract holds the certification scope: `WEAKEST_CELL`, `LATEST_VERSIONS`, or a set
 	of inventory cells that revision feedback supplies from the user's own description (refused when a cell is outside
-	the inventory). `confirm` takes the scope as a required argument; the command, `Core.confirm` and
+	the inventory). `approve` takes the scope as a required argument; the command, `Core.confirm` and
 	`OptimizerCore.confirm` refuse a confirmation without one, naming every choice. `LATEST_VERSIONS` keeps each family's
 	highest listed version. Formal trials, the formal rule and `K` cover the scope's cells only. Baseline targets: 50 in
 	every scope cell, plus 50 in a scope cell below 95% not yet proven deficient.
 - **Proposal and report:** the proposal shows the capability ranking with its source, and for each scope its cells,
 	each category's weakest cell and the minimum session count; the confirmation skill presents the three choices with
-	the `design.md` §6.6 tradeoffs, asks the user, and for `other` maps the user's words to cells through `revise` and
-	shows the result for confirmation. The status shows
+	the `design.md` §6.6 tradeoffs, asks the user, and for `other` maps the user's words to cells through
+	`request-changes` and shows the result for confirmation. The status shows
 	each category's weakest cell (or that it is not yet fixed) and development cells; a weakest-only claim names the
 	profile and says no other profile was certified.
 - **Format:** the campaign format version increases; the previous format is refused, as format 2 was.
@@ -6697,8 +6700,9 @@ The riskiest pure code, built first.
 - **Change:** when a contract author, judge, triage or prompt author session reaches its time limit, the session's
 	result is `SessionResult.Failed` with the reason "The <role> session reached its <N>-minute time limit", and each
 	role's existing handling of a failed session applies. A trial session that reaches its time limit stays a completed
-	session judged on its behaviour. `start` and `revise` report a contract author session that did not complete by its
-	reason (failed), as interrupted, or as rate-limited until its reset time, never by the result's record text.
+	session judged on its behaviour. `start` and `request-changes` report a contract author session that did not
+	complete by its reason (failed), as interrupted, or as rate-limited until its reset time, never by the result's
+	record text.
 - **Closes:** R-E13 for a contract author session that reaches its time limit; found by the E7 rerun on 2026-10-05,
 	where the provider streamed the contract author's proposal about 8 times slower than in the previous run, the
 	30-minute limit stopped the output turn, and `start` reported "the final response is not exactly one JSON object".
@@ -6890,12 +6894,12 @@ The riskiest pure code, built first.
 
 - **Change:** an external file, reached through a link or read directly, is a read-only member of the prompt family.
 	`Authority` takes no authorized targets and returns `EXTERNAL_TARGET_READ_ONLY` for every operation on an external
-	file; its warnings offer `use_authorized_source`, stop and revise only. Remove the `authorize_target` choice, the
-	`--target` option, `Campaign.authorizedTargets`, the authorized targets in the prompt author brief and prompt, and
-	`authorized_targets` in `campaign.json`, raising its `format_version` by one. Delivery plans and writes in-project
-	changes only: an overlay that changes an external file is refused before any write, and the delivery output has no
-	external change record. Delivery still scans the external files the fork recorded, so a change made to one after
-	the fork makes the result historical.
+	file; its warnings offer `use_authorized_source`, stop and `request-changes` only. Remove the `authorize_target`
+	choice, the `--target` option, `Campaign.authorizedTargets`, the authorized targets in the prompt author brief and
+	prompt, and `authorized_targets` in `campaign.json`, raising its `format_version` by one. Delivery plans and writes
+	in-project changes only: an overlay that changes an external file is refused before any write, and the delivery
+	output has no external change record. Delivery still scans the external files the fork recorded, so a change made to
+	one after the fork makes the result historical.
 - **Closes:** R-W4 and R-W8 under the ruling.
 - **Tests:** `AuthorityTest`: a content edit, create, delete, mode change and retarget of an external file each return
 	`EXTERNAL_TARGET_READ_ONLY`, and the warning lists no choice that edits it; `CommandsTest`: `choose <id>
@@ -7056,17 +7060,17 @@ The riskiest pure code, built first.
 	`contract-author.md` takes the approved `### Conflicts` wording verbatim.
 - **Agent flow:** `first-use.md` takes the approved step 2 and step 4 wording: the agent asks the user to resolve each
 	conflict, naming the recommended resolution, never offers confirmation while one is listed, and passes the answers to
-	`revise`.
+	`request-changes`.
 - **Mid-campaign conflicts:** the prompt author manifest gains the `conflict` classification with the requirement ids,
 	each quoted passage with its file, the resolutions and the recommended one. The prompt author brief carries the
 	campaign's edits since confirmation so the prompt author can tell a conflict it inherited from one a campaign edit
 	introduced. CAT rejects a `conflict` report whose quotation is absent from the snapshot confirmed with the contract. A
 	valid report pauses the campaign: no new trials are scheduled, in-flight work finishes, and the choices are each
-	resolution (recommended one marked, with its reason) and `stop`; `revise` with the user's own wording is also
-	accepted. Choosing a resolution runs a revision with it as feedback and returns the revised proposal for confirmation;
-	a running certification attempt then ends `not certified: stopped for contract revision`, and the confirmed revision
-	starts a new lineage (`design.md` §2.7, §7, D32). `prompt-author.md` takes the approved step 1 and step 2 wording
-	verbatim.
+	resolution (recommended one marked, with its reason) and `stop`; `request-changes` with the user's own wording is
+	also accepted. Choosing a resolution runs a revision with it as feedback and returns the revised proposal for
+	confirmation; a running certification attempt then ends `not certified: stopped for contract revision`, and the
+	confirmed revision starts a new lineage (`design.md` §2.7, §7, D32). `prompt-author.md` takes the approved step 1
+	and step 2 wording verbatim.
 - **Closes:** R-C14, R-D13.
 - **Tests:** resolution parsing and rendering; the prompt author conflict report accepted when its quotation is in the
 	confirmed snapshot and rejected when only a campaign edit holds it; the pause and its choices; choosing a resolution
@@ -7082,11 +7086,11 @@ The riskiest pure code, built first.
 	contract author reports a conflict instead of settling which requirement prevails, and drops it from a revision once
 	the user's feedback resolves it (`design.md` §6.1, D31).
 - **Proposal:** a `Conflicts` section lists each conflict, or states that the contract author found none.
-- **Confirmation:** `confirm` is refused while the stored proposal lists a conflict, and the refusal names each conflict
+- **Confirmation:** `approve` is refused while the stored proposal lists a conflict, and the refusal names each conflict
 	and says that feedback must resolve it. Nothing is recorded on refusal.
 - **Closes:** R-C13.
 - **Tests:** the findings parser accepts a valid conflict and rejects one that names fewer than two requirements or an
-	unknown requirement; the proposal renders the section in both states; `confirm` is refused with a conflict and
+	unknown requirement; the proposal renders the section in both states; `approve` is refused with a conflict and
 	succeeds after a revision without one.
 - **Exit:** unit tests pass; the full build passes.
 
@@ -7430,8 +7434,8 @@ including mappings of one source into several plugins; the old two-plugin refusa
 	the goal and target in the prompt; schema and citation problems reported together; no extra requirement marked (D124); the
 	control source lists only the target), `CommandsTest` and `OptimizerCoreTest` (`start --goal` stores the goal and
 	passes it to the contract author; `start` refuses a directory; the guard pilot's control source empties only the
-	target; `run` revises a test under a new lineage, records a sound test, pauses on a requirement change whose proposed
-	change revises the contract, and refuses a revision that changes requirements or reuses a test case),
+	target; `continue` revises a test under a new lineage, records a sound test, pauses on a requirement change whose
+	proposed change revises the contract, and refuses a revision that changes requirements or reuses a test case),
 	`CampaignStoreContract` (the goal survives a reload), `PromptAuthorManifestTest` (a test defect kind without its rule
 	rejected), `DriverTest` and `CampaignTransitionsTest` (a test revision's lineage, attempt outcome, sound report and
 	pause), `StatusReportTest` (the revision's difference and reasons), `StagedSourceTest` (the control source empties
@@ -7743,10 +7747,11 @@ including mappings of one source into several plugins; the old two-plugin refusa
 	failure leaves that session directory in place and is reported on standard error.
 - **Closes:** R-W1's and R-L1's new wording.
 - **Tests:** `FileCampaignStoreTest` (the session's storage), `CampaignRegistryTest` and `OptimizerCoreTest` (a campaign
-	started in one session: `status` from another shows its owner; `run`, a choice, `cancel` and `start` for its target
-	from another session are refused, naming the session, with no state change), `SessionSweepTest` (a deleted session's
-	campaign worktree removed through Git before the directory; a failed worktree removal keeps the directory),
-	`CleanupTest`, `ClaudeSessionsTest` and `CodexSessionsTest` (the deny lists at the new paths), `ForkTest`.
+	started in one session: `status` from another shows its owner; `continue`, a choice, `stop` and `start` for its
+	target from another session are refused, naming the session, with no state change), `SessionSweepTest` (a deleted
+	session's campaign worktree removed through Git before the directory; a failed worktree removal keeps the
+	directory), `CleanupTest`, `ClaudeSessionsTest` and `CodexSessionsTest` (the deny lists at the new paths),
+	`ForkTest`.
 - **Exit:** unit tests pass; the full build passes; WI-71's next certification start creates its campaign under its
 	session's work directory.
 
@@ -8205,7 +8210,7 @@ including mappings of one source into several plugins; the old two-plugin refusa
 	proposal can cause the same state.
 - **Change:** commands take the prompt sources from the derived sources that the stored proposal file lists, which
 	validation never changes. Resuming an unconfirmed campaign whose proposal no longer validates derives a new proposal
-	and tells the user why; `confirm` and `revise` refuse it and point to `start`.
+	and tells the user why; `approve` and `request-changes` refuse it and point to `start`.
 - **Tests:** `OptimizerCoreTest.cancelIgnoresInvalidProposal`, `OptimizerCoreTest.resumeDerivesAgainForInvalidProposal`.
 - **Exit:** the full build passes, the tests failed before the change, and the Claude E7 campaign stored before WI-114
 	cancels through the installed skill.
@@ -9069,7 +9074,7 @@ selection and download it describes are unchanged.
 	installed final-artifact `prompt-optimizer` skill. Keep the owning host session alive. After campaign records
 	contain a completed outcome and a running logical trial with a durable assignment, record the driver and nested
 	processes by PID and process-start identity. Send SIGKILL only to that driver, wait for its abnormal exit, and
-	preserve an independent copy of its campaign and run records. In the same host session, invoke `run` again.
+	preserve an independent copy of its campaign and run records. In the same host session, invoke `continue` again.
 	Record recovery of the interrupted nested sessions, retention of completed outcomes, and continuation between turns
 	or discard and rerun during a turn. Confirm that each recovered attempt keeps its logical key, that no outcome is
 	adopted twice, and that the certification-attempt index survives. Distinguish processes that exited
@@ -9167,7 +9172,7 @@ selection and download it describes are unchanged.
 	the same installed artifact produced its cancellation receipt, and its saved status is resumable with
 	no ordinary development record or active race. Revalidate those inputs and use the original owner to
 	activate it with the public foreground resume choice. Capture T6 evidence in a separate directory and
-	arm the observer before the first `run`; retain the G6 receipts as recorded. The read-only review
+	arm the observer before the first `continue`; retain the G6 receipts as recorded. The read-only review
 	confirmed that the foreground resume choice reactivates the campaign and a separate `run` starts the
 	driver. A policy error stopped the subsequent controller-preparation task. No new interruption attempt
 	was launched. Leave that operation for review and continue the independent acceptance checks.
@@ -9189,13 +9194,13 @@ selection and download it describes are unchanged.
 	the completed optimizer command must wake that same idle host through its native exit notice or queued message;
 	the callback calls `status <target>` and reads the stored proposal. A standalone queue probe, foreground E2
 	interruption or background refusal does not pass this native branch.
-	After reading the acceptable proposal, use `confirm <campaign>` and `run <campaign> --background`. While its recorded
-	driver is live, interrupt a later unrelated host turn through real ESC and observe that the same background driver
-	survives. Use `cancel <campaign>` and observe its actual driver and children through terminal exit within the grace
-	period plus 30 seconds, retaining cancelled/resumable status. If it ends before the selecting action, record that
-	branch as unproved. Do not race live `revise`, `choose` or `confirm` probes against a naturally ending driver;
-	the controlled-lock unit checks prove those refusals. Reuse the final passing unit mappings in the G6 row for
-	notification ordering, queue-write failure reporting, snapshot/driver status, busy/refusal policy, bounded
+	After reading the acceptable proposal, use `approve <campaign>` and `continue <campaign> --background`. While its
+	recorded driver is live, interrupt a later unrelated host turn through real ESC and observe that the same background
+	driver survives. Use `stop <campaign>` and observe its actual driver and children through terminal exit within the
+	grace period plus 30 seconds, retaining cancelled/resumable status. If it ends before the selecting action, record
+	that branch as unproved. Do not race live `request-changes`, `decide` or `approve` probes against a naturally ending
+	driver; the controlled-lock unit checks prove those refusals. Reuse the final passing unit mappings in the G6 row
+	for notification ordering, queue-write failure reporting, snapshot/driver status, busy/refusal policy, bounded
 	cancellation and admission beyond eight minutes. In a separately owned sandbox-bound Codex host, retain the actual
 	background refusal reason and absence of a new campaign; never treat refusal as successful queued wakeup. Preserve
 	untrimmed native events, actual background tool invocation and the idle interval showing no turn-start checks.
@@ -9590,16 +9595,16 @@ selection and download it describes are unchanged.
 
 ### WI-144 — The guard pilot runs in slices (user ruling, 2026-11-12)
 
-- **Problem:** `start`, `revise` and the `retry` choice run the whole guard pilot inside one call, which a host's tool
-	timeout can end, losing the trials in flight and leaving the agent without a status.
+- **Problem:** `start`, `request-changes` and the `retry` choice run the whole guard pilot inside one call, which a
+	host's tool timeout can end, losing the trials in flight and leaving the agent without a status.
 - **Scope:** `client/common/cli/` (the pilot's run in `OptimizerCore` and `GuardPilot`, the status), the
 	prompt-optimizer skill (uncertified text, user approval 2026-11-09), this design and plan.
 - **Change:** as `design.md` D141 and the paragraph on unfinished pilots define it.
 - **Verification:** requirement-level tests with CAT's real classes and fakes: a pilot longer than the budget returns
 	`running` with its progress and decided trials kept; repeating `start` continues it without repeating decided trials
 	and ends by presenting the proposal; the admission rule and grace period apply; a cancelled trial is not an
-	infrastructure attempt; `revise` and `retry` behave the same. Then the clean full offline build, reporting every test
-	taking at least one second.
+	infrastructure attempt; `request-changes` and `retry` behave the same. Then the clean full offline build, reporting
+	every test taking at least one second.
 
 ### WI-145 — The optimizer's worktree registration is served outside the session's sandbox (user ruling, 2026-11-16)
 
@@ -9663,11 +9668,13 @@ selection and download it describes are unchanged.
 	client's refusal for `unrepairable` followed by recreate; the settings the Claude runner writes holding no
 	`.git/worktrees` entry. Then the clean full offline build, reporting every test taking at least one second. Then live
 	checks on the installed artifacts, which no Java test may replace: in a Claude Code 2.1.323 session with its server
-	started, `start` creates the worktree and `git worktree list` shows it, and `cancel` removes it and its
-	registration; deleting the worktree directory from a sandboxed command and then running the next command that reconnects the worktree (`run` or `choose`, through `Workspace.reconnectWorktree`) recreates it through the server, while `status` does not reconnect and reports the campaign without its worktree as no fork (decided 2026-11-16); `start` with
-	no server refuses with the command; the SessionStart sweep removes the worktree of an ended session in Claude Code
-	(a hook is not confined by the command sandbox); one in-run `start` in a copied project is served by the run's runner;
-	the same `start` and `cancel` in Codex.
+	started, `start` creates the worktree and `git worktree list` shows it, and `stop` removes it and its
+	registration; deleting the worktree directory from a sandboxed command and then running the next command that
+	reconnects the worktree (`continue` or `decide`, through `Workspace.reconnectWorktree`) recreates it through the
+	server, while `status` does not reconnect and reports the campaign without its worktree as no fork (decided
+	2026-11-16); `start` with no server refuses with the command; the SessionStart sweep removes the worktree of an
+	ended session in Claude Code (a hook is not confined by the command sandbox); one in-run `start` in a copied project
+	is served by the run's runner; the same `start` and `stop` in Codex.
 - **Exit:** the tests, the clean build and the live checks pass on the committed revision. Closes D148 and R-W17.
 
 ### WI-146 — Interrupted runs keep their slot and resume (user rulings, 2026-11-19)
@@ -9716,8 +9723,8 @@ selection and download it describes are unchanged.
 			infrastructure-attempt count. Count an interrupted attempt and allow a fresh
 			launch only after the broker confirms discard or absence. Apply the same recovery to a pilot after a host crash
 			while preserving the guard pilot's rules for cancellation at a slice boundary.
-		- Check the public optimizer `run` path when a continuation has spent its launch allowance. Every command that
-			creates a new session continues to pay the existing allowance.
+		- Check the public optimizer `continue` path when a continuation has spent its launch allowance. Every command
+			that creates a new session continues to pay the existing allowance.
 	8. The runner rule's section on resuming a run.
 - **Q7 (user ruling, 2026-11-19):** only a trial interrupted between turns is resumed; one interrupted during a turn
 	has its nested session discarded and reruns as the same logical trial.
@@ -9727,9 +9734,9 @@ selection and download it describes are unchanged.
 	starts an optimizer campaign, the parent's harness ended mid-turn and resumed under its ID, its request server
 	started, a new launch taking another slot, then `--resume <session-id>`, where the child reports the same session or
 	thread ID and the campaign's status, and `{"end": true}` leaves the results copy and an empty slot; and an optimizer
-	campaign whose host session ends during a trial, whose next `run` resumes the trial or discards and reruns it and
-	never counts it twice. Before a live resume, no driver of the slot may still run: the stop of recorded processes does
-	not see a driver that escaped its session (E1).
+	campaign whose host session ends during a trial, whose next `continue` resumes the trial or discards and reruns it
+	and never counts it twice. Before a live resume, no driver of the slot may still run: the stop of recorded processes
+	does not see a driver that escaped its session (E1).
 - **Exit:** the tests, the clean build and the live checks pass on the committed revision. Closes D151 and R-I12.
 
 ### WI-147 — Runs become nested sessions, and `--keep-run` goes (user rulings, 2026-11-19 and 2026-11-20)
@@ -10409,7 +10416,8 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 - **Verification:** write these first and see each fail. (a) `GuardPilotTest`: a test with 3 classes gets at least 2
 	trials per class; with 11 classes the pilot grows past 20 trials; a fake judge that fails a guard on every reply of one
 	class lists those failures under that class only. (b) `ProposalTest`: the proposal shows the failures by class and
-	`confirm` is not refused for them. Then the clean full offline build, reporting every test taking at least one second.
+	`approve` is not refused for them. Then the clean full offline build, reporting every test taking at least one
+	second.
 - **Classes affected:** `GuardPilot`, `PilotResult`, `Markdown`.
 - **Exit:** the tests pass and failed before. Closes R-L13.
 
@@ -10496,16 +10504,16 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 - **Verification:** write these first and see each fail, with the existing model-free session port. (a)
 	`OutcomeCoverageTest`: a judge that passes the omission reply on a judged covering assertion makes a refusal that names
 	the test, the condition, the assertion, the reply as written and the rationale; one that fails it accepts and records
-	the label; a judge that fails a reference reply makes a warning that does not block `confirm`; a review that reports an
-	undeclared condition for the third test case refuses it, naming position 3 and its outcome and no part; a test whose
-	every outcome is bare, that has no effect condition and whose `{{expected_outcome}}` condition a fail-mode tool covers
-	starts no session. (b) `ContractCheckTest` and the correction-turn tests of the contract author and test revision
-	protocols: problems of steps 1 and 2 arrive in one correction turn, and a correction that CAT still refuses ends the
-	derivation with them. (c) `OptimizerCoreTest`: a review session that fails 3 times pauses `start` with retry and stop,
-	retry continues with the same replies, and a `revise` that changes one test reruns only its checks. (d)
-	`FileCampaignStoreTest` and the shared `CampaignStoreContract`: the records survive a reload. (e) `ValuesPromptTest`,
-	`PromptAuthorTest` and `TestRevisionTest`: no brief holds a coverage reply or label. Then the clean full offline build,
-	reporting every test taking at least one second.
+	the label; a judge that fails a reference reply makes a warning that does not block `approve`; a review that reports
+	an undeclared condition for the third test case refuses it, naming position 3 and its outcome and no part; a test
+	whose every outcome is bare, that has no effect condition and whose `{{expected_outcome}}` condition a fail-mode
+	tool covers starts no session. (b) `ContractCheckTest` and the correction-turn tests of the contract author and test
+	revision protocols: problems of steps 1 and 2 arrive in one correction turn, and a correction that CAT still refuses
+	ends the derivation with them. (c) `OptimizerCoreTest`: a review session that fails 3 times pauses `start` with
+	retry and stop, retry continues with the same replies, and a `request-changes` that changes one test reruns only its
+	checks. (d) `FileCampaignStoreTest` and the shared `CampaignStoreContract`: the records survive a reload. (e)
+	`ValuesPromptTest`, `PromptAuthorTest` and `TestRevisionTest`: no brief holds a coverage reply or label. Then the
+	clean full offline build, reporting every test taking at least one second.
 - **Classes affected:** `ContractAuthorProtocol`, `TestRevisionProtocol`, `Markdown`, `NearMissBatch`, `NearMissJob`,
 	`OptimizerCore`, `CampaignStore`, `FileCampaignStore`, `InMemoryCampaignStore`, the Claude and Codex session adapters,
 	new `OutcomeCoverage`, `OutcomeReview` and `OutcomeReviewPrompt`.
@@ -10542,10 +10550,10 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 	from `judge.md` and stop passing the outcome beside the values, increment the judge version (Claude 14 to 15, Codex 16
 	to 17, the fake 5 to 6), and remove the assertion from every prompt resource. Refuse the removed scenario and proposal
 	forms with the conversion instruction. For stored campaigns, a confirmed contract whose test lacks conditions makes the
-	next `run` start a test revision of that test before other work, an unconfirmed proposal is refused at `confirm`, and
-	stored `expected_outcome` verdicts reload as history. WI-150 hashes the judge's prompt and version into its verdict key
-	and WI-153 changes `GuardPilot`, so whichever of them lands after this item rebases onto it; neither needs the added
-	assertion.
+	next `continue` start a test revision of that test before other work, an unconfirmed proposal is refused at
+	`approve`, and stored `expected_outcome` verdicts reload as history. WI-150 hashes the judge's prompt and version
+	into its verdict key and WI-153 changes `GuardPilot`, so whichever of them lands after this item rebases onto it;
+	neither needs the added assertion.
 - **Verification:** write these first and see each fail on the current tree, with CAT's real classes and no model. (a)
 	`ContractTest`: a prompt test's assertions are exactly its declared ones. (b) `DriverTest`: a trial whose every
 	declared assertion has a passing tool starts no judge session; a judged trial's prompt names no added assertion and
@@ -10556,11 +10564,11 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 	and `ProposalSchemaTest`: `### expected_outcome` among the assertions, `expected_outcome_tool` and
 	`expected_outcome_judge_reason` are refused with the conversion instruction. (g) `TransitionsTest`, `OptimizerCoreTest`
 	and `FileCampaignStoreTest`, with a campaign stored before the change: a confirmed contract without conditions loads
-	and `run` starts a test revision for each such test before other work, ending a running attempt
-	`not certified: stopped for test revision`; an unconfirmed proposal is refused at `confirm` and `revise` regenerates
-	it; stored trial records with `expected_outcome` verdicts reload and report as history. Then the clean full offline
-	build, reporting every test taking at least one second, and a search that finds no `ExpectedOutcomeTool`,
-	`EXPECTED_OUTCOME_STATEMENT` or `expectedOutcomeTool` in main code.
+	and `continue` starts a test revision for each such test before other work, ending a running attempt
+	`not certified: stopped for test revision`; an unconfirmed proposal is refused at `approve` and `request-changes`
+	regenerates it; stored trial records with `expected_outcome` verdicts reload and report as history. Then the clean
+	full offline build, reporting every test taking at least one second, and a search that finds no
+	`ExpectedOutcomeTool`, `EXPECTED_OUTCOME_STATEMENT` or `expectedOutcomeTool` in main code.
 - **Classes affected:** `PromptTest`, `Assertion`, `ExpectedOutcomeTool` (deleted), `Scenario`, `ScenarioParser`,
 	`ProposalSchema`, `JudgedAssertion`, `Driver`, `GuardPilot`, `EarlyTrialEnd`, `JudgePrompt`, `ValuesPrompt`,
 	`TrialAdoption`, `Transitions`, `Markdown`, `PilotReport`, `ProposalCheck`, `ContractContext`, `ContractTools`,
@@ -10573,31 +10581,31 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 - **Problem:** after a conflict resolution was chosen and the request server was unavailable, the campaign stayed
 	confirmed and waited for a revised contract that no session was deriving. Its feedback was gone, `run` said that a
 	revision waited for confirmation of a proposal that did not exist, and `status` said `running`, so the host agent had
-	no way forward. The earlier fix refuses `revise` and the last resolution up front when no request server serves the
-	session; it does not cover a contract author that fails after it starts.
+	no way forward. The earlier fix refuses `request-changes` and the last resolution up front when no request server
+	serves the session; it does not cover a contract author that fails after it starts.
 - **Scope:** `client/common/cli/src/main/java/com/holdmyspot/cat/common/optimizer/` `campaign/` (`PendingDecision`,
 	`CampaignEvent`, `Transitions`, `Campaign`, `UserChoices`), `store/CampaignJson`, `report/StatusReport`,
 	`execution/SliceReports` and `Driver`, `cli/` (`OptimizerCore`, `Core`), the skill `first-use.md`, the tests of these
 	classes, this design and plan.
 - **Change:** as `design.md` §7 "Revision request" and D161 define it. A new pending decision, *contract revision*,
-	holds the feedback and, once every attempt has failed, the reason. `revise`, a chosen proposed change and the last
-	conflict resolution apply the revision request and this decision before the contract author starts. A derivation that
-	succeeds stores the proposal and clears the decision. One that fails is repeated up to 3 more times, except after an
-	interruption by CAT, and a failure before a session can start is not repeated; then the reason is recorded and the
-	decision offers `retry` and `stop`. `choose retry` derives again from the saved feedback; `confirm` and `start` are
-	refused while the decision is pending. `StatusReport` reports a confirmed campaign whose revision request has no
-	decision as `awaiting_user` with the text that `run` reports, and the pending text of each state says which state
-	holds. The skill shows the failure pause and passes `retry` and `stop` like a paused guard pilot's.
+	holds the feedback and, once every attempt has failed, the reason. `request-changes`, a chosen proposed change and
+	the last conflict resolution apply the revision request and this decision before the contract author starts. A
+	derivation that succeeds stores the proposal and clears the decision. One that fails is repeated up to 3 more times,
+	except after an interruption by CAT, and a failure before a session can start is not repeated; then the reason is
+	recorded and the decision offers `retry` and `stop`. `decide retry` derives again from the saved feedback; `approve`
+	and `start` are refused while the decision is pending. `StatusReport` reports a confirmed campaign whose revision
+	request has no decision as `awaiting_user` with the text that `continue` reports, and the pending text of each state
+	says which state holds. The skill shows the failure pause and passes `retry` and `stop` like a paused guard pilot's.
 - **Verification:** write these first and see each fail on the current tree, with CAT's real classes and the scripted
-	sessions. (a) `OptimizerCoreTest`: a contract author that fails on `revise` for every kind of failed result and for an
-	invalid proposal leaves the saved feedback and a failure decision with `retry` and `stop` after 4 sessions, with no
-	`running` status from `status` or `run`; one that fails twice and then succeeds presents the proposal and leaves no
-	decision; an interrupted session starts no second one. (b) The same through `choose proposed_change` and the last
-	`choose resolution_N`, whose feedback `retry` reuses after the author is repaired; `revise` with other feedback
-	replaces it. (c) `confirm` and `start` are refused while the decision is pending. (d) `StatusReportTest` and
-	`DriverTest`: `status` and `run` report the same `awaiting_user` text for each state, with no `proposal_file`.
-	(e) `TransitionsTest` and `FileCampaignStoreTest`: the decision reloads. Then the clean full offline build,
-	reporting every test taking at least one second.
+	sessions. (a) `OptimizerCoreTest`: a contract author that fails on `request-changes` for every kind of failed result
+	and for an invalid proposal leaves the saved feedback and a failure decision with `retry` and `stop` after 4
+	sessions, with no `running` status from `status` or `continue`; one that fails twice and then succeeds presents the
+	proposal and leaves no decision; an interrupted session starts no second one. (b) The same through
+	`decide proposed_change` and the last `decide resolution_N`, whose feedback `retry` reuses after the author is
+	repaired; `request-changes` with other feedback replaces it. (c) `approve` and `start` are refused while the
+	decision is pending. (d) `StatusReportTest` and `DriverTest`: `status` and `continue` report the same
+	`awaiting_user` text for each state, with no `proposal_file`. (e) `TransitionsTest` and `FileCampaignStoreTest`: the
+	decision reloads. Then the clean full offline build, reporting every test taking at least one second.
 - **Classes affected:** `PendingDecision`, `CampaignEvent`, `Transitions`, `Campaign`, `UserChoices`, `CampaignJson`,
 	`StatusReport`, `SliceReports`, `Driver`, `OptimizerCore`, `Core`.
 - **Exit:** the tests pass and failed before; no design or plan ID appears in code. Closes R-L18.
@@ -11013,7 +11021,7 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 	brief test beside it: the contract author's and test revision's briefs state both scope values, the `actions`
 	fallback and rule 5. (i) For step 3, `OutcomeCoverageTest` with a fake review: a reported `response` assertion that
 	depends on actions is refused in the one correction turn with no part named; a reported reply-only `actions`
-	assertion and a reported decidable happening, with its tool, are warnings that do not block `confirm`, appear under
+	assertion and a reported decidable happening, with its tool, are warnings that do not block `approve`, appear under
 	"Judged assertions" and reach the revision brief; a test whose outcomes are bare and covered mechanically but that has
 	a judged assertion starts a review. Then the clean full offline build, reporting every test taking at least one
 	second.
@@ -11142,7 +11150,7 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 	under `judge` they send the assertion to the judge with the observed value and no program text; the judge prompt
 	never holds the program or an example. `EarlyTrialEndTest`: a test with a check program does not end early. (e)
 	`GuardPilotTest`: a program whose two runs on one pilot trial differ, and one whose run exceeds half the limit, are
-	proposal problems that `confirm` refuses. (f) `ProposalTest`, `ContractCheckTest` and, for step 3,
+	proposal problems that `approve` refuses. (f) `ProposalTest`, `ContractCheckTest` and, for step 3,
 	`OutcomeCoverageTest`: a missing passing example for a class, a missing failing example for a covered condition,
 	one that covers none and lacks either, a program that fails a passing example, passes a failing one, errs on a
 	passing one or differs between its two runs, and a run past half the limit are refused with test, assertion,
@@ -11306,6 +11314,58 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 	change, the clean full offline build passes, both end-to-end checks passed, and `docs/security-model.md` states the
 	known limitation. Closes R-I16.
 
+### WI-165 — Command names that say what each command does (user ruling, 2026-11-23)
+
+- **Problem:** the user approved ("1. Yes") renaming five of the prompt optimizer's commands so that each name says
+	what it does: `run` becomes `continue`, `confirm` becomes `approve`, `revise` becomes `request-changes`, `choose`
+	becomes `decide` and `cancel` becomes `stop`, while `start`, `status`, the contract tools and `help` keep their
+	names. The code, the skill, the help and the tests still use the former names, and a former name must be refused
+	with a message that names its replacement, not kept as an alias.
+- **Scope:** `client/common/cli/src/main/java/com/holdmyspot/cat/common/optimizer/` `cli/` (`Commands`, with its usage
+	text and `--background` check, `Command`, `Core`, `OptimizerCore`, `PromptOptimizerCli`), `execution/Driver`,
+	`report/` (`StatusReport`, and `ReportJson`, whose authority-warning choice `revise` becomes `request-changes`),
+	`proposal/Markdown`, and every other main class whose user-facing text names a command; the skill's shared
+	`first-use.md`, the Claude and Codex `SKILL.md` wrappers and the skill scenarios under
+	`client/common/skills/src/test/resources/prompt-optimizer/`; every bundled rule and `docs/` page that names a
+	command; the tests of these classes and resources in `client/common`, `client/claude` and `client/codex`; this
+	design and plan. The captures under `docs/changelog/1.0/captures/` record past sessions and keep their text.
+- **Change:** as `design.md` §8 "Command names" and D171 define it. `Commands` parses the new names with the
+	arguments and options of the former ones, and refuses each former name before it reads the remaining arguments,
+	with the `invalid_input` status object, exit status 2 and a message that names the replacement, such as
+	`run is now continue: prompt-optimizer continue <campaign>`. The `--background` check names `start`, `continue`,
+	`request-changes` and `decide`. The `Command` records and `Core` methods take the new names: `Continue` with
+	`continueCampaign`, because `continue` is a Java keyword, `Approve` with `approve`, `RequestChanges` with
+	`requestChanges`, `Decide` with `decide` and `Stop` with `stop`. The persisted campaign events and states keep
+	their names, so no stored campaign changes. The usage text, refusals, pending texts, status summaries, the
+	authority warning's choice and the proposal text name only the new commands, and the skill calls only them.
+- **Verification:** write these tests first and see each fail on the current tree, with CAT's real classes and no
+	model. (a) `CommandsTest`: each new name parses to its command with the arguments and options that its former name
+	took (`continue <campaign> [--background]`, `approve <campaign> [<scope>]`,
+	`request-changes <campaign> <feedback> [--background]`,
+	`decide <campaign> <choice> [--attempt N | --review-point N] [--background]`, `stop <campaign>`); each former name,
+	alone, with valid arguments and with `--background`, is refused with a message that names its replacement;
+	`--background` on `status`, `approve` or `stop` is refused, naming the four commands that accept it; the usage text
+	lists every new name and no former one. (b) `PromptOptimizerCliTest`: `run <campaign>` on a stored campaign exits 2
+	with the `invalid_input` status naming `continue`, leaves the campaign's files byte for byte unchanged and calls no
+	core method, and `continue <campaign>` reaches the core. (c) `StatusReportTest`, `ProposalTest` and `DriverTest`:
+	every status summary, pending text, refusal and proposal text that names a command names a new one, and the
+	authority warning offers `request-changes`. (d) `PromptOptimizerSkillTest` and the first-use scenarios: the skill
+	names only the new commands. (e) `ClaudePromptOptimizerTest` and `CodexPromptOptimizerTest` pass with the new
+	names. Then search `client/` and `docs/`, outside build output and `docs/changelog/1.0/captures/`, for each former
+	name in backticks, in quotes and after `prompt-optimizer`, and classify every hit: only the refusal, its tests and
+	unrelated meanings, such as the Codex runner's own `run`, may remain. Then the clean full offline build, reporting
+	every test taking at least one second, and, with each harness's installed build, `prompt-optimizer run` refused
+	naming `continue` and `status` and `continue` working on a campaign.
+- **Classes affected:** `Commands`, `Command`, `Core`, `OptimizerCore`, `PromptOptimizerCli`, `Driver`,
+	`StatusReport`, `ReportJson`, `Markdown`, and every other class whose user-facing text names a command.
+- **Tier and dependencies:** `optimize-medium`. Needs WI-13 and WI-14. Implement it before the work items not yet
+	started whose steps name commands (WI-156, WI-157, WI-163 and WI-161's step 3), so that they build on the
+	new names; an item that lands first uses the names that the code has then, and this item renames them. Installed
+	builds and their campaigns accept only the former names until a build with this item is installed.
+- **Exit:** the tests pass and failed before, the search finds a former name only where the classification allows it,
+	the clean full offline build passes, and both installed launchers refuse `run` naming `continue`. No design or plan
+	ID appears in code. Closes R-I17.
+
 ## 6. Dependency order
 
 A work item starts once every work item it needs is integrated. A premise gate listed in [§4](#4-premise-gates-wi-0)
@@ -11465,6 +11525,7 @@ blocks only the part of a work item that it names.
 | WI-162 | WI-81 |
 | WI-163 | WI-161; its step 3 also needs WI-155 and WI-156 |
 | WI-164 | WI-147 |
+| WI-165 | WI-13, WI-14 |
 | WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57, WI-60 to WI-69, WI-90, WI-91, WI-92, WI-93, WI-95, WI-96, WI-97, WI-98, WI-99, WI-100, WI-101, WI-102, WI-103, WI-104, WI-105, WI-107, WI-108, WI-109, WI-110, WI-114, WI-115 and WI-116. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
@@ -11480,14 +11541,14 @@ distinct from the harness-evidence IDs `Hn` of `design.md` §11.
 
 | Handoff | Producer → consumer | Ready when | Identity and authority | Failure and resumption | Proof |
 |---|---|---|---|---|---|
-| H-1 Confirmed contract | WI-10 → WI-3, WI-2 | The user's `confirm` on proposal revision `r` | Contract hash and lineage `ℓ`. Only the confirmation event freezes it. | Only guard-pilot trials may run before confirmation. A revision creates `ℓ + 1`. | `DriverTest`, WI-149 shared-campaign check |
+| H-1 Confirmed contract | WI-10 → WI-3, WI-2 | The user's `approve` on proposal revision `r` | Contract hash and lineage `ℓ`. Only the confirmation event freezes it. | Only guard-pilot trials may run before confirmation. A revision creates `ℓ + 1`. | `DriverTest`, WI-149 shared-campaign check |
 | H-2 Assignment | WI-3 `Scheduler` → WI-4 → WI-9 → WI-8 | The assignment record is durable | Campaign, purpose, candidate snapshot, cell (test, evaluator and profile), sequence and test case. The draw comes from the stream's persisted position. | Recovery keeps the assignment identity and evaluator. It resumes a between-turn checkpoint or repeats the trial in a fresh session after a mid-turn interruption. | `ReconciliationTest`, WI-149 shared-campaign check |
 | H-3 Trial result → judge | WI-8 → WI-9 (WI-17 checks) → WI-8 (judge) | Session completed, children reconciled and an assertion remains that no deterministic check decided, a trial that failed a check included. Otherwise CAT records the outcome without a judge session (`design.md` §6.4). | Logical trial identity. The judge receives read-only evidence and the deterministic results, which it cannot override. | Interruption or infrastructure failure means rerun the trial. An invalid judge result means rerun the judge with the same evidence. | `DriverTest` (trace 16), `DeterministicCheckTest`, `JudgeVerdictTest` |
 | H-4 Outcome → adoption | WI-9 → WI-3 | Outcome durable, and every earlier sequence number adopted | Sequence order per category and purpose | A crash between write and adoption is adopted during reconciliation. | `AdoptionTest`, `ReconciliationTest` |
 | H-5 Prompt author delta → candidate | WI-7 → WI-6, WI-18 → WI-3, WI-20 → WI-7 | Delta captured; inventory and manifest validated; promotion replays passed; in a weak round, the attempt won the selection; the minimality pass finished (`design.md` §2.7) | Overlay hash. Authority comes from the contract. | A rejected attempt is retained with no candidate. The prompt author reruns as a new attempt. | `InventoryDiffTest`, `PromptAuthorManifestTest`, `PromotionTest`, `AttemptSelectionTest`, `MinimalityTest`, `DriverTest` |
 | H-6 Commit | WI-3 → WI-1 → WI-4 | The same candidate meets the commit gate in every required development cell, and the required baseline is ready | One frozen snapshot, the certification cells and their evaluator conditions, certification index `i`, `α_i`, `β_i`, frozen `UI(k)` and `LI(k)`, `DecisionBoundaries` and caps, all persisted before the first draw | Calibration failure leaves the attempt uncommitted and blocks admission. | `CommitTest`, `AdmissionTest`, WI-149 joint certification check |
 | H-7 Decision → delivery or user | WI-3 → WI-11 or WI-12 → skill | Attempt terminal and in-flight trials drained | Attempt and candidate identity. A keep-improvement choice names the qualifying attempt. | A pending choice, including the keep-improvement pause, survives restart. Delivery resumes from the journal. | `DecisionTableTest`, `KeepImprovementTest`, `DeliveryTest` |
-| H-8 Status → skill → choice | WI-12 → WI-14 → WI-13 | `run` returned | Campaign identity and choice identifier. Only listed choices are accepted. | An unknown or stale choice is rejected with no change. | `CommandsTest`, E-scenarios |
+| H-8 Status → skill → choice | WI-12 → WI-14 → WI-13 | `continue` returned | Campaign identity and choice identifier. Only listed choices are accepted. | An unknown or stale choice is rejected with no change. | `CommandsTest`, E-scenarios |
 | H-9 Capacity permit | WI-5 → WI-8 | `tryAcquire` succeeded | One permit per nested session | Process death releases the file lock. | `HarnessCapacityTest` |
 | H-10 Host interrupt | WI-8 → WI-9 | An interrupt record later than the driver start | Host thread or session ID from the environment | Stop admissions, interrupt sessions, persist, exit within 15 seconds. | `RolloutInterruptSignalTest`, `DriverTest`, E2 |
 | H-11 Trial profile | WI-16 (`ProfileInventory`, profile sets) → WI-9 → WI-8 | The assignment selects the evaluator and profile. Confirmation freezes the set used for development and formal trials. | The cell in H-2 determines the trial's evaluator and profile. Contract author, judge and prompt author sessions use their role profiles. The observed evaluator and profile determine comparability. | A mismatch with the trial's measurement identity yields no outcome, and CAT pauses as `MEASUREMENT_CHANGED` (`design.md` §5). | `ProfileSetTest`, `ClaudeSessionsTest`, `CodexSessionsTest`, `MeasurementIdentityTest`, `DriverTest` (traces 15 and 22) |
