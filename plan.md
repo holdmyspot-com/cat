@@ -9,7 +9,25 @@ disagree, fix `design.md` first, then this plan, before dependent work continues
 Continue on branch `v1.0` in this worktree. Preserve the existing local changes and session evidence.
 The status and evidence ledger is [§2](#2-status). The dated handoffs below record the state at their transfers.
 
-### Handoff to the next agent
+### Handoff (2026-11-24, session `fab0ed75-654f-4a5c-b939-08335a367474`): API credits exhausted
+
+The user asked that, once the API-billed `claude-runner` sessions run out of credits, this session stop and hand the
+work to another agent rather than continue on subagents. The credits ran out on 2026-11-24: the Q29 runner session's
+first turn failed with "Credit balance is too low". Resume on branch `v1.0` in this worktree, from the commit that adds
+this handoff, which follows `327669318`. Nothing is pushed. Paths starting with `temp/` in this section are under
+`.cat/sessions/fab0ed75-654f-4a5c-b939-08335a367474/`. The last clean full build (`client/mvnw -q
+-Dmaven.build.cache.enabled=false -f client/pom.xml clean verify` with `java.io.tmpdir` outside the sandbox) passed on
+`327669318`: 6,589 tests, no failures, 13 tests of 1 s or more, none new.
+
+| Work | Verified state and next action |
+|---|---|
+| Q29, uninstall without `policy.json` | Ruled (b) by the user on 2026-11-24, with the report of what was not removed and why (WI-166, open question Q29). Not recorded in `design.md` and not implemented. The brief is ready in the unchanged clone `/home/gili/cat/worktrees/q29-8d1e/.cat-task/brief.md` (planning commit, then failing tests first, then the feature commit). |
+| P29 and WI-159 step 9 | The user saved a `claude setup-token` token with `claude-credential set` into the throwaway source home `/home/gili/cat/worktrees/p29-home`; `claude-credential status` reports it usable, class `subscription`. A launch from inside a CAT session refuses `--home` ("A session request may not choose home"), as designed, so the user must run `temp/p29-2/run-p29.sh` from their own terminal. It runs one haiku/low session from `p29-home` in the scratch project `/home/gili/cat/worktrees/p29-proj` whose four commands check clause (3) without printing a token. Then check the transcript at `temp/p29-2/transcript.jsonl`: clause (4) passes when `init` reports `apiKeySource` `apiKeyHelper` and the turn completes; clause (3) passes when both key-file reads are denied and no environment up to the Claude process holds `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` or a `sk-ant-` value. Clause (1) needs an API key saved by the user in a second throwaway home; clause (2) needs the local gateway. Record P29 in `design.md`, then run WI-159 step 9's end-to-end launches, then delete `p29-home` and `p29-proj`. Never copy a file from `/home/gili/cat/home/secrets/`; the user fills credential files. |
+| WI-166 gaps | The manual check of the hidden terminal prompt; the common `uninstall` skill, which does not yet relay the deleted credential file to the user; the end-to-end check with the installed plugin. |
+| Later work | WI-159 step 9; WI-164 (Q27); WI-155 to WI-157 (assertion examples); WI-160; WI-161; WI-163; the Codex failure-reporting rerun and the E4 and E7 reruns, which need a plugin reinstall, never while probes run; the failure-reporting runs of `failure-regression-promotion.md` through the installed new optimizer in both harnesses, with the same 8 cases and `weakest_cell`, reported with evidence and with any rule change asked of the user before delivery; the §9 gates and the final report. |
+| Clean-up | Integrated clones that can be removed after a look: `/home/gili/cat/worktrees/uninst-3a7c`, `q28-2b7f`, `credfile-9e41`, `credfile-7c2d` (stopped, superseded) and `oauth-helper-5e2b`. The background request server started by `temp/request-server-api.sh` bills the exhausted API account; stop it before relying on it. |
+
+### Earlier handoff to the next agent
 
 The goal is to implement and verify the full design and plan. The first shared-candidate delivery passed, and final
 acceptance is open. Resume in this worktree at HEAD `0fc33e2e46431` and preserve the existing uncommitted changes.
@@ -11622,7 +11640,10 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 		words but removes files on the authority of the installer's own location alone, and it leaves settings entries that
 		only the lost record identifies. Recommended: (b), because the ruling asks that the user can always uninstall and
 		the version folder already fixes the harness home without reading the environment; it needs the user's ruling
-		because it changes what authorizes a removal. Not implemented until the user rules.
+		because it changes what authorizes a removal. The user ruled (b) on 2026-11-24 and added: "In the case of (b) it
+		should report what it did not remove and why", so the report lists each item that the uninstall did not remove,
+		such as the plugin registration and the settings entries, with its reason and the command or edit that removes it.
+		Not yet recorded in `design.md` or implemented; see the handoff of 2026-11-24 under "Current work".
 - **Classes affected:** `ClaudeCredentialFile` (new), `ClaudeCredentialCli` (new), the Claude Code distribution's
 	launcher list, the Claude Code installer's `uninstall`; for the ruling of 2026-11-24, `HarnessIntegration` and its
 	two harness integrations, `Uninstaller` and the installer's `Invocation`.
