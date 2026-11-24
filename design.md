@@ -3929,10 +3929,15 @@ uninstall deletes the plugin's own `claude-credential` with the plugin. A `HOME`
 refuses the uninstall before it changes anything. A `.cat/claude` or `.credentials.json` that is a symbolic link or an
 entry of the wrong kind, and a failed read or write, still stop the uninstall at that step, which the next uninstall
 continues, because none of them is a missing file. Codex's uninstaller removes no file of the user's home folder, so it
-needs no home folder and its report says nothing about one. The one missing file that still refuses an uninstall, of
-either harness, is CAT's `policy.json` in the plugin data folder, which names the harness home and the harness program
-that the uninstall acts on: the refusal tells the user to run the CAT entry command again, which writes it, and then to
-uninstall. Whether an uninstall without it should go ahead awaits the user's ruling (`plan.md` WI-166).
+needs no home folder and its report says nothing about one.
+
+When the installer finds no `policy.json`, uninstall uses the harness home identified by the running installer's
+version folder (user ruling Q29 in WI-166). It removes the plugin files and the uninstalling user's applicable
+secret files. It also removes any plugin data directory created solely to take the uninstall lock. Existing plugin
+data is removed only with `--delete-data`. The installer skips unregistering CAT because it has no record of the
+harness program, and skips settings cleanup because it cannot establish which entries CAT added. It reports each
+skipped step, its reason, and the commands or settings edits needed to finish cleanup. A present but unusable policy
+still refuses the uninstall.
 
 **No shared login (user ruling, 2026-11-23; D176):** a session never uses a login that Claude Code's `/login` stores.
 The runner neither shares nor copies one: it gives the session's Claude process no `CLAUDE_SECURESTORAGE_CONFIG_DIR`,
