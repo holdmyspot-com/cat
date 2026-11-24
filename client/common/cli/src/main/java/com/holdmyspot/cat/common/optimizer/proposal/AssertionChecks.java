@@ -18,7 +18,10 @@ import com.holdmyspot.cat.common.optimizer.execution.AssertionVerdict;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import tools.jackson.databind.json.JsonMapper;
@@ -96,22 +99,45 @@ public final class AssertionChecks
 	{
 		requireThat(contract, "contract").isNotNull();
 		requireThat(checks, "checks").isNotNull();
+		Map<String, Requirement> requirements = new HashMap<>();
+		for (Requirement requirement : contract.requirements())
+			requirements.put(requirement.id(), requirement);
 		List<JudgedExample> selected = new ArrayList<>();
 		for (AssertionExampleCheck check : checks)
 		{
 			if (check.passed() || check.assertionId().equals(TestCase.EXPECTED_OUTCOME))
 				continue;
 			PromptTest test = contract.findTest(check.testId()).orElseThrow();
-			MappedAssertion mapped = test.assertions().stream().
-				filter(candidate -> candidate.assertion().id().equals(check.assertionId())).findFirst().orElseThrow();
-			Assertion assertion = mapped.assertion();
-			if (assertion.tool() != null && assertion.onToolFailure() != OnToolFailure.JUDGE)
-				continue;
-			Requirement requirement = contract.requirements().stream().
-				filter(candidate -> candidate.id().equals(mapped.requirementId())).findFirst().orElseThrow();
-			selected.add(new JudgedExample(test, new JudgedAssertion(assertion, requirement), check));
+			selectExample(test, requirements, check).ifPresent(selected::add);
 		}
 		return List.copyOf(selected);
+	}
+
+	/**
+	 * Selects the one declaration that needs judgment on this example.
+	 *
+	 * @param test the mechanically accepted test
+	 * @param requirements the requirements that it may check, by ID
+	 * @param check the mechanical result of the example
+	 * @return a judged example if the tool did not decide it
+	 * @throws NullPointerException if any argument is null or the assertion's requirement is missing
+	 * @throws java.util.NoSuchElementException if the declared assertion is missing
+	 */
+	public static Optional<JudgedExample> selectExample(PromptTest test, Map<String, Requirement> requirements,
+		AssertionExampleCheck check)
+	{
+		requireThat(test, "test").isNotNull();
+		requireThat(requirements, "requirements").isNotNull();
+		requireThat(check, "check").isNotNull();
+		if (check.passed() || check.assertionId().equals(TestCase.EXPECTED_OUTCOME))
+			return Optional.empty();
+		MappedAssertion mapped = test.assertions().stream().
+			filter(candidate -> candidate.assertion().id().equals(check.assertionId())).findFirst().orElseThrow();
+		Assertion assertion = mapped.assertion();
+		if (assertion.tool() != null && assertion.onToolFailure() != OnToolFailure.JUDGE)
+			return Optional.empty();
+		Requirement requirement = Objects.requireNonNull(requirements.get(mapped.requirementId()));
+		return Optional.of(new JudgedExample(test, new JudgedAssertion(assertion, requirement), check));
 	}
 
 	/**

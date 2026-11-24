@@ -1503,16 +1503,53 @@ public final class OptimizerCoreTest
 	 */
 	private static String judgment(SessionRequest request)
 	{
+		String turn = request.turns().getFirst();
+		if (turn.startsWith("# Assertion review"))
+			return review(turn);
 		ObjectNode output = JSON.createObjectNode();
 		ArrayNode assertions = output.putArray("assertions");
-		Matcher id = DECIDED_ASSERTION.matcher(request.turns().getFirst());
+		Matcher id = DECIDED_ASSERTION.matcher(turn);
 		while (id.find())
 		{
 			ObjectNode assertion = assertions.addObject();
 			assertion.put("id", id.group(1));
-			assertion.put("verdict", "pass");
-			assertion.put("rationale", "The answer follows the rubric.");
-			assertion.putNull("behavior");
+			Matcher behaviors = Pattern.compile("\"behaviors\" : \\[ \"([^\"]+)\"").matcher(turn);
+			if (turn.contains("[ [ \"\" ]") && behaviors.find(id.end()))
+			{
+				assertion.put("verdict", "fail");
+				assertion.put("rationale", "The example gives no answer.");
+				assertion.put("behavior", behaviors.group(1));
+			}
+			else
+			{
+				assertion.put("verdict", "pass");
+				assertion.put("rationale", "The answer follows the rubric.");
+				assertion.putNull("behavior");
+			}
+		}
+		return JSON.writeValueAsString(output);
+	}
+
+	/**
+	 * Returns a valid assertion review with no findings for the judge fixture.
+	 *
+	 * @param turn the review's prompt
+	 * @return the review result
+	 */
+	private static String review(String turn)
+	{
+		String opening = "<assertions>\n";
+		int start = turn.indexOf(opening) + opening.length();
+		JsonNode declarations = JSON.readTree(turn.substring(start, turn.indexOf("</assertions>", start)));
+		ObjectNode output = JSON.createObjectNode();
+		ArrayNode reviews = output.putArray("reviews");
+		for (JsonNode assertion : declarations)
+		{
+			if (assertion.has("evidence_scope"))
+			{
+				reviews.addObject().put("assertion_id", assertion.get("id").asString()).put("kind", "no_finding").
+					put("rationale", "The declared evidence is sufficient.").putNull("tool");
+			}
 		}
 		return JSON.writeValueAsString(output);
 	}
@@ -2081,6 +2118,36 @@ public final class OptimizerCoreTest
 			requireThat(campaign.trials(), "countedTrials").isEmpty();
 			requireThat(campaign.development().counts(), "developmentCounts").isEmpty();
 			requireThat(campaign.baseline(), "baseline").isNull();
+		}
+	}
+
+	/**
+	 * Verifies that assertion examples and reviews run under the held-out judge before any guard pilot trial starts.
+	 *
+	 * @throws Exception if the model-free command or campaign fixture fails
+	 */
+	@Test
+	public void startJudgesAssertionsBeforePilot() throws Exception
+	{
+		// Requirement: R-L16
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+
+			CommandResult result = repository.core().start(Path.of("CLAUDE.md"));
+
+			List<SessionRole> roles = repository.sessions().roles();
+			int firstTrial = roles.indexOf(SessionRole.TRIAL);
+			requireThat(firstTrial, "firstTrial").isGreaterThan(1);
+			requireThat(roles.subList(1, firstTrial), "beforePilot").contains(SessionRole.JUDGE);
+			List<SessionRequest> judgments = repository.sessions().requests(SessionRole.JUDGE);
+			requireThat(judgments.stream().filter(request -> request.turns().getFirst().startsWith("# Assertion review")).
+				count(), "reviews").isEqualTo(3L);
+			requireThat(judgments.stream().allMatch(request -> request.part() == Part.HELD_OUT), "heldOut").isTrue();
+			Path records = repository.directory(result.status().campaignId()).resolve("held_out/assertion_checks");
+			requireThat(records, "assertionChecks").isDirectory();
 		}
 	}
 
@@ -5632,10 +5699,13 @@ public final class OptimizerCoreTest
 			{
 			}));
 			CommandResult started = repository.core().start(target);
-			requireThat(proposalText(started), "legacyProposal").contains("Judge pending.");
+			requireThat(proposalText(started), "checkedProposal").contains("Judge passed.").contains("Judge failed.");
 			Path heldOut = repository.directory(started.status().campaignId()).resolve("held_out");
 			Path file = heldOut.resolve("proposal.json");
 			ObjectNode stored = (ObjectNode) JSON.readTree(Files.readString(file, StandardCharsets.UTF_8));
+			stored.remove("judged_assertion_reports");
+			Files.writeString(file, JSON.writeValueAsString(stored), StandardCharsets.UTF_8);
+			requireThat(proposalText(repository.core().start(target)), "legacyProposal").contains("Judge pending.");
 			stored.set("judged_assertion_reports", JSON.readTree("""
 				[
 				  {

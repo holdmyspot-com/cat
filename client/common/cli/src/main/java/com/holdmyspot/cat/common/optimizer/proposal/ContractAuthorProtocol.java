@@ -316,8 +316,26 @@ public final class ContractAuthorProtocol
 	public SessionRequest request(Path promptSystem, ProfileEvidence profiles, Map<Harness, List<HookRegistration>> hooks,
 		List<DerivedSource> loadedFiles, long salt)
 	{
+		return request(promptSystem, profiles, hooks, loadedFiles, salt, NO_JUDGED_CHECKS);
+	}
+
+	/**
+	 * Returns an initial request with evaluator-specific registrations and judged checks.
+	 *
+	 * @param promptSystem the staged project
+	 * @param profiles the offered trial profiles by evaluator
+	 * @param hooks the native registrations by evaluator
+	 * @param loadedFiles the files that load in trials
+	 * @param salt the proposal's salt
+	 * @param judged returns refusals from the mechanically valid tests
+	 * @return the contract author request
+	 * @throws NullPointerException if any argument is null
+	 */
+	public SessionRequest request(Path promptSystem, ProfileEvidence profiles, Map<Harness, List<HookRegistration>> hooks,
+		List<DerivedSource> loadedFiles, long salt, Function<ProposalCheck.Assessment, List<String>> judged)
+	{
 		return request(promptSystem, profiles, hookRegistrations(hooks), loadedFiles, NONE, NONE,
-			draft -> DraftDirectory.seed(scenarios, draft), salt, NO_JUDGED_CHECKS);
+			draft -> DraftDirectory.seed(scenarios, draft), salt, judged);
 	}
 
 	/**
@@ -341,8 +359,35 @@ public final class ContractAuthorProtocol
 	public SessionRequest request(Path promptSystem, ProfileEvidence profiles, List<HookRegistration> hooks,
 		List<DerivedSource> loadedFiles, DerivedProposal previous, String feedback, Map<String, PilotResult> pilots)
 	{
+		return request(promptSystem, profiles, hooks, loadedFiles, previous, feedback, pilots, NO_JUDGED_CHECKS);
+	}
+
+	/**
+	 * Returns the request for regenerating the complete proposal from the user's feedback. The session's draft
+	 * directory starts as a copy of the previous proposal's.
+	 *
+	 * @param promptSystem the directory that holds the prompt system
+	 * @param profiles     the harness's profile inventory, which a profile restriction selects from, and its
+	 *                     capability ranking
+	 * @param hooks        every hook registration of the prompt system and of the trial plugins
+	 * @param loadedFiles  the files that load in trials, each with the rule that loads it
+	 * @param previous     the proposal that the user gave feedback on
+	 * @param feedback     the user's feedback
+	 * @param pilots       the latest guard pilot of each prompt test of {@code previous} that has one, by prompt test;
+	 *                     the request shows their results after the previous proposal
+	 * @param judged returns refusals from the mechanically valid tests
+	 * @return a request whose proposal keeps the salt of {@code previous}, so the test cases that the user reviewed
+	 *   keep their parts, and whose role is {@link SessionRole#CONTRACT_AUTHOR}
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code feedback} is blank or {@code previous} has no draft directory
+	 */
+	public SessionRequest request(Path promptSystem, ProfileEvidence profiles, List<HookRegistration> hooks,
+		List<DerivedSource> loadedFiles, DerivedProposal previous, String feedback, Map<String, PilotResult> pilots,
+		Function<ProposalCheck.Assessment, List<String>> judged)
+	{
 		requireThat(hooks, "hooks").isNotNull();
-		return revisedRequest(promptSystem, profiles, hookRegistrations(hooks), loadedFiles, previous, feedback, pilots);
+		return revisedRequest(promptSystem, profiles, hookRegistrations(hooks), loadedFiles, previous, feedback, pilots,
+			judged);
 	}
 
 	/**
@@ -362,7 +407,30 @@ public final class ContractAuthorProtocol
 	public SessionRequest request(Path promptSystem, ProfileEvidence profiles, Map<Harness, List<HookRegistration>> hooks,
 		List<DerivedSource> loadedFiles, DerivedProposal previous, String feedback, Map<String, PilotResult> pilots)
 	{
-		return revisedRequest(promptSystem, profiles, hookRegistrations(hooks), loadedFiles, previous, feedback, pilots);
+		return request(promptSystem, profiles, hooks, loadedFiles, previous, feedback, pilots, NO_JUDGED_CHECKS);
+	}
+
+	/**
+	 * Returns the feedback request for a proposal whose evaluator registrations differ.
+	 *
+	 * @param promptSystem the staged project
+	 * @param profiles the offered trial profiles by evaluator
+	 * @param hooks the native registrations by evaluator
+	 * @param loadedFiles the files that load in trials
+	 * @param previous the proposal that the user reviewed
+	 * @param feedback the user's feedback
+	 * @param pilots the previously observed guard pilot results
+	 * @param judged returns refusals from the mechanically valid tests
+	 * @return the contract author request
+	 * @throws NullPointerException if any argument is null
+	 * @throws IllegalArgumentException if the feedback is blank or the previous proposal holds no draft
+	 */
+	public SessionRequest request(Path promptSystem, ProfileEvidence profiles, Map<Harness, List<HookRegistration>> hooks,
+		List<DerivedSource> loadedFiles, DerivedProposal previous, String feedback, Map<String, PilotResult> pilots,
+		Function<ProposalCheck.Assessment, List<String>> judged)
+	{
+		return revisedRequest(promptSystem, profiles, hookRegistrations(hooks), loadedFiles, previous, feedback, pilots,
+			judged);
 	}
 
 	/**
@@ -375,10 +443,12 @@ public final class ContractAuthorProtocol
 	 * @param previous the proposal that the user reviewed
 	 * @param feedback the user's feedback
 	 * @param pilots the previously observed guard pilot results
+	 * @param judged returns refusals from the mechanically valid tests
 	 * @return the contract author request
 	 */
 	private SessionRequest revisedRequest(Path promptSystem, ProfileEvidence profiles, String hooks,
-		List<DerivedSource> loadedFiles, DerivedProposal previous, String feedback, Map<String, PilotResult> pilots)
+		List<DerivedSource> loadedFiles, DerivedProposal previous, String feedback, Map<String, PilotResult> pilots,
+		Function<ProposalCheck.Assessment, List<String>> judged)
 	{
 		requireThat(promptSystem, "promptSystem").isNotNull();
 		requireThat(profiles, "profiles").isNotNull();
@@ -391,7 +461,7 @@ public final class ContractAuthorProtocol
 		String pilotResults = PilotReport.render(previous.contract(), pilots, false);
 		return request(promptSystem, profiles, hooks, loadedFiles, previous.derivation() + "\n\nGuard pilot " +
 				"results of the previous proposal:\n\n" + pilotResults, feedback,
-			draft -> DraftDirectory.copy(previousDraft, draft), previous.contract().salt(), NO_JUDGED_CHECKS);
+			draft -> DraftDirectory.copy(previousDraft, draft), previous.contract().salt(), judged);
 	}
 
 	/**

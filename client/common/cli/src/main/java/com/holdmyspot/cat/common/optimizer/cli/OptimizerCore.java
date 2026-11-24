@@ -12,6 +12,7 @@ import tools.jackson.databind.node.ObjectNode;
 import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.PluginInfo;
+import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.SessionIgnore;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
@@ -104,6 +105,7 @@ import com.holdmyspot.cat.common.optimizer.proposal.DerivedProposal;
 import com.holdmyspot.cat.common.optimizer.proposal.DraftDirectory;
 import com.holdmyspot.cat.common.optimizer.proposal.HookReport;
 import com.holdmyspot.cat.common.optimizer.proposal.JudgeTemplate;
+import com.holdmyspot.cat.common.optimizer.proposal.JudgedAssertionChecks;
 import com.holdmyspot.cat.common.optimizer.proposal.PluginCheck;
 import com.holdmyspot.cat.common.optimizer.proposal.PluginMapping;
 import com.holdmyspot.cat.common.optimizer.proposal.ProfileEvidence;
@@ -129,6 +131,10 @@ import com.holdmyspot.cat.common.optimizer.workspace.StagedSources;
 import com.holdmyspot.cat.common.optimizer.workspace.WorkspaceException;
 import com.holdmyspot.cat.common.optimizer.workspace.WorktreeRefusedException;
 import com.holdmyspot.cat.common.runner.PluginManifest;
+import com.holdmyspot.cat.common.runner.RetainedTrialClaim;
+import com.holdmyspot.cat.common.runner.RetainedTrialRequest;
+import com.holdmyspot.cat.common.runner.RetainedTrialResponse;
+import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 
 import com.holdmyspot.cat.common.optimizer.execution.BackgroundDriver;
@@ -151,6 +157,7 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashSet;
@@ -158,6 +165,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.SortedSet;
 import java.util.SplittableRandom;
 import java.util.StringJoiner;
@@ -2563,8 +2571,18 @@ public final class OptimizerCore implements Core
 		{
 			TestRevisionProtocol.Examination examined = new TestRevisionProtocol.Examination(current, profiles, request,
 				evidenceSections(request));
-			SessionResult result = await(sessions(campaign).start(protocol.request(staged, examined)));
 			String session = "The test revision of `" + request.test() + "`";
+			SessionPort port = sessions(campaign);
+			AssertionCheckRun checks = assertionChecks(scope.store(), campaign, staged, port);
+			SessionResult result;
+			try
+			{
+				result = author(port, protocol.request(staged, examined, checks));
+			}
+			catch (AssertionCheckRun.Unavailable e)
+			{
+				return Examined.notice(e.getMessage() + " Run `continue` again to retry.");
+			}
 			if (!(result instanceof SessionResult.Completed completed))
 				return Examined.notice(session + " " + describe(result) + " Run `continue` again to retry.");
 			campaign = require(scope.store(), id, true);
@@ -2578,7 +2596,15 @@ public final class OptimizerCore implements Core
 			TestRevisionProtocol.Result outcome;
 			try
 			{
-				outcome = protocol.result(completed, staged, examined);
+				outcome = protocol.result(completed, staged, examined, checks);
+			}
+			catch (AssertionCheckRun.Unavailable e)
+			{
+				return Examined.notice(e.getMessage() + " Run `continue` again to retry.");
+			}
+			catch (AssertionCheckRun.Interrupted e)
+			{
+				throw (InterruptedException) e.getCause();
 			}
 			catch (InvalidProposalException e)
 			{
@@ -2593,7 +2619,8 @@ public final class OptimizerCore implements Core
 					PromptTest after = revised.proposal().contract().findTest(request.test()).orElseThrow();
 					revisions.add(new TestRevision(campaign.lineage().number(), request.test(), before.scenario().render(),
 						after.scenario().render(), revised.reasons()));
-					current = revised.proposal();
+					current = revised.proposal().withJudgedReports(current.judgedReports()).withJudgedReport(
+						request.test(), checks.reports().getOrDefault(request.test(), DerivedProposal.TestReport.EMPTY));
 				}
 				// A sound test is recorded at once, so a later failed session does not examine it again
 				case TestRevisionProtocol.Result.Sound sound -> apply(root, campaign,
@@ -3725,6 +3752,8 @@ public final class OptimizerCore implements Core
 		Optional<String> failedHooks = checkHooks(root, campaign, fork, incumbent, staged, loaded, evaluators);
 		if (failedHooks.isPresent())
 			throw new DerivationFailed(DerivationFailure.unrepeatable(failedHooks.get(), ""));
+		SessionPort port = sessions(campaign);
+		AssertionCheckRun checks = assertionChecks(store, campaign, staged, port);
 		SessionRequest request;
 		long salt;
 		String invalidRetry;
@@ -3732,9 +3761,9 @@ public final class OptimizerCore implements Core
 		{
 			salt = scope.random().nextLong();
 			if (scopedHooks.isEmpty())
-				request = protocol.request(staged, profiles, hooks, loaded, salt);
+				request = protocol.request(staged, profiles, hooks, loaded, salt, checks);
 			else
-				request = protocol.request(staged, profiles, scopedHooks, loaded, salt);
+				request = protocol.request(staged, profiles, scopedHooks, loaded, salt, checks);
 			invalidRetry = "Run `start` again to retry.";
 		}
 		else
@@ -3743,13 +3772,21 @@ public final class OptimizerCore implements Core
 			salt = previous.contract().salt();
 			Map<String, PilotResult> pilots = pilotFile(campaign).read();
 			if (scopedHooks.isEmpty())
-				request = protocol.request(staged, profiles, hooks, loaded, previous, feedback, pilots);
+				request = protocol.request(staged, profiles, hooks, loaded, previous, feedback, pilots, checks);
 			else
-				request = protocol.request(staged, profiles, scopedHooks, loaded, previous, feedback, pilots);
+				request = protocol.request(staged, profiles, scopedHooks, loaded, previous, feedback, pilots, checks);
 			// The proposal that the user gave feedback on is still stored, so request-changes can regenerate it again
 			invalidRetry = "Run `request-changes` with feedback, or `start`, to retry.";
 		}
-		SessionResult result = await(sessions(campaign).start(request));
+		SessionResult result;
+		try
+		{
+			result = author(port, request);
+		}
+		catch (AssertionCheckRun.Unavailable e)
+		{
+			throw new DerivationFailed(DerivationFailure.repeatable(e.getMessage(), invalidRetry));
+		}
 		SessionResult.Completed completed;
 		switch (result)
 		{
@@ -3814,7 +3851,19 @@ public final class OptimizerCore implements Core
 		DerivedProposal derived;
 		try
 		{
-			derived = protocol.proposal(completed, staged, profiles, salt);
+			derived = protocol.proposal(completed, staged, profiles, salt, checks);
+			Map<String, DerivedProposal.TestReport> reports = new LinkedHashMap<>(checks.reports());
+			Contract checked = derived.contract();
+			reports.keySet().removeIf(id -> checked.findTest(id).isEmpty());
+			derived = derived.withJudgedReports(reports);
+		}
+		catch (AssertionCheckRun.Unavailable e)
+		{
+			throw new DerivationFailed(DerivationFailure.repeatable(e.getMessage(), invalidRetry));
+		}
+		catch (AssertionCheckRun.Interrupted e)
+		{
+			throw (InterruptedException) e.getCause();
 		}
 		catch (InvalidProposalException e)
 		{
@@ -4708,6 +4757,130 @@ public final class OptimizerCore implements Core
 				scoped.add(event);
 		}
 		return scoped;
+	}
+
+	/**
+	 * Creates the held-out checks of the author draft and uses the frozen judge on the campaign's session port.
+	 *
+	 * @param store the campaign store
+	 * @param campaign the campaign whose assertion check records are used
+	 * @param project the staged default project
+	 * @param port the campaign's session port
+	 * @return the check run shared by the first draft and its correction
+	 * @throws IOException if the private judge directory cannot be created
+	 */
+	private AssertionCheckRun assertionChecks(CampaignStore store, Campaign campaign, Path project, SessionPort port)
+		throws IOException
+	{
+		String id = campaign.header().id();
+		Path directory = heldOutDirectory(id).resolve("assertion_judge");
+		Files.createDirectories(directory);
+		JudgedAssertionChecks checks = new JudgedAssertionChecks(scope.json(), new JudgePrompt(scope.json(),
+			directory), store, id, request ->
+			{
+				SessionResult result = await(port.start(request));
+				if (result instanceof SessionResult.Interrupted)
+					throw new InterruptedException("The assertion judge was interrupted.");
+				return result;
+			});
+		return new AssertionCheckRun(scope.json(), schema, checks, project, directory, campaign.incumbent().snapshot());
+	}
+
+	/**
+	 * Runs an author and evaluates its draft between native sessions, when the port can retain the conversation.
+	 *
+	 * @param port the campaign's session port
+	 * @param request the author request with its draft validator
+	 * @return the latest author result, including the first reply if a correction ran
+	 * @throws IOException if the retained session cannot be identified or released
+	 * @throws InterruptedException if a session or the command is interrupted
+	 */
+	private SessionResult author(SessionPort port, SessionRequest request) throws IOException, InterruptedException
+	{
+		try
+		{
+			if (!port.recoversContractAuthor() || request.followUp().isEmpty())
+				return await(port.start(request));
+			return retainedAuthor(port, request);
+		}
+		catch (AssertionCheckRun.Interrupted e)
+		{
+			throw (InterruptedException) e.getCause();
+		}
+	}
+
+	/**
+	 * Evaluates the draft after the original native session has suspended.
+	 *
+	 * @param port the campaign's session port
+	 * @param request the author request with its draft validator
+	 * @return the latest author result
+	 * @throws IOException if the retained session cannot be identified or released
+	 * @throws InterruptedException if a session or the command is interrupted
+	 */
+	private SessionResult retainedAuthor(SessionPort port, SessionRequest request)
+		throws IOException, InterruptedException
+	{
+		UUID id = UUID.randomUUID();
+		SessionResult initial = await(port.startContractAuthor(authorTurns(request, request.turns()), id,
+			Optional.empty()));
+		if (!(initial instanceof SessionResult.Completed completed))
+			return initial;
+		RetainedTrialResponse retained = authorCheckpoint(port, id, request.turns().size());
+		Optional<String> correction = request.followUp().orElseThrow().next(completed);
+		if (correction.isPresent())
+		{
+			RetainedTrialClaim claim = new RetainedTrialClaim(id, retained.identity().orElseThrow(),
+				retained.completedTurns().orElseThrow());
+			return await(port.startContractAuthor(authorTurns(request, List.of(correction.get())), id,
+				Optional.of(claim)));
+		}
+		RetainedTrialResponse discarded = port.retainedTrial(RetainedTrialRequest.discard(id, retained.identity()));
+		if (!id.equals(discarded.requestId()) || discarded.status() != RetainedTrialResponse.Status.DISCARDED)
+			throw new IOException("The broker could not release the retained contract author session.");
+		return initial;
+	}
+
+	/**
+	 * Waits for the broker to finish publishing the original author's suspended session.
+	 *
+	 * @param port the session port that owns the author
+	 * @param id the original request identity
+	 * @param turns the number of completed author turns required by the next phase
+	 * @return the broker's guarded resumption identity
+	 * @throws IOException if no matching checkpoint settles
+	 * @throws InterruptedException if the wait is interrupted
+	 */
+	private RetainedTrialResponse authorCheckpoint(SessionPort port, UUID id, int turns)
+		throws IOException, InterruptedException
+	{
+		Instant deadline = scope.clock().instant().plusSeconds(30L);
+		Pause poll = scope.waiting().every(SessionRequestForwarder.RESPONSE_POLL);
+		while (true)
+		{
+			RetainedTrialResponse status = port.retainedTrial(RetainedTrialRequest.status(id));
+			if (!id.equals(status.requestId()))
+				throw new IOException("The broker answered for a different contract author session.");
+			if (status.status() == RetainedTrialResponse.Status.READY && status.completedTurns().orElseThrow() == turns)
+				return status;
+			if (status.status() != RetainedTrialResponse.Status.BUSY || !scope.clock().instant().isBefore(deadline))
+				throw new IOException("The broker has no matching contract author checkpoint.");
+			poll.pause();
+		}
+	}
+
+	/**
+	 * Keeps the author's launch settings and sends only the listed turns in this phase.
+	 *
+	 * @param source the original request
+	 * @param turns the initial turns or the single correction
+	 * @return a request for one phase, with validation performed after it releases capacity
+	 */
+	private static SessionRequest authorTurns(SessionRequest source, List<String> turns)
+	{
+		return new SessionRequest(source.role(), source.part(), source.source(), turns, source.readOnly(),
+			source.timeLimit(), source.profile(), source.files(), Optional.empty(), source.controlSource(),
+			source.extraPermissions(), source.turnObserver(), source.evidencePrompt(), source.pluginInputs());
 	}
 
 	/**
