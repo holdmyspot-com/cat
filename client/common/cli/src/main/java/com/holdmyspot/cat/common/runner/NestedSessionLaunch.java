@@ -21,9 +21,9 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 /**
  * The launch options that a nested session's start fixed, which a nested session keeps in {@value #FILE_NAME} beside
  * its manifest, so that a later runner can continue the nested session's harness session as the nested session started
- * it. The options are those that decide what the session's project, plugins, sandbox and tools are; the model, the
- * effort and the options that only describe one launch, such as its output, may differ from one launch of the nested
- * session to the next.
+ * it. These options configure the session's project, plugins, sandbox, tools and the project directory whose links
+ * are retained in results. The model, effort and options that describe one launch, such as its output, may differ
+ * across launches of the nested session.
  * <p>
  * The file holds a JSON object of exactly two fields: {@code schema_version}, which is {@code 1}, and
  * {@code arguments}, the fixed options and their values in the order the launch named them.
@@ -39,7 +39,7 @@ public final class NestedSessionLaunch
 	 */
 	public static final Set<String> FIXED_VALUE_OPTIONS = Set.of("--project", "--plugin", "--workspace",
 		"--read-only-evidence", "--deny-read", "--instruction-files", "--session-role", "--tool-output-token-limit",
-		"--agent", TrialPluginInput.ID_OPTION);
+		"--agent", TrialPluginInput.ID_OPTION, RunnerArguments.RESULT_PROJECT_LINKS_OPTION);
 	/**
 	 * The options that the nested session's start fixed and that take no value.
 	 */

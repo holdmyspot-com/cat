@@ -28,6 +28,7 @@ import com.holdmyspot.cat.common.runner.NestedSessionLock;
 import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.NestedSessionReceipt;
 import com.holdmyspot.cat.common.runner.ProcessHandleLiveness;
+import com.holdmyspot.cat.common.runner.launcher.RunnerArguments;
 import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
 import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 import com.holdmyspot.cat.common.secrets.HarnessProcessesSecrets;
@@ -1990,7 +1991,8 @@ public final class NestedSessionManagerTest
 
 	/**
 	 * Verifies that a runner that resumes a nested session takes the options that the nested session's start fixed,
-	 * followed by its own, and that one that names an option that the start fixed is refused.
+	 * followed by its own. The launch record fixes the relative result project directory and a resume cannot
+	 * replace it.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -2000,11 +2002,16 @@ public final class NestedSessionManagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-results-"));
-			List<String> fixed = List.of("--project", "/source", "--deny-read", "/secret");
+			List<String> fixed = List.of("--project", "/source", "--deny-read", "/secret",
+				RunnerArguments.RESULT_PROJECT_LINKS_OPTION, "test_revision_draft");
+			List<String> start = new ArrayList<>(fixed);
+			start.addAll(List.of("--model", "model-a"));
 			String harness = "codex";
 			NestedSessionManager manager = new NestedSessionManager(new FileLocks(), root, Clock.systemUTC(),
-				Yielding.fileReplacer()).withFixedSlotId("s-1").withLaunchArguments(fixed);
-			manager.create(harness);
+				Yielding.fileReplacer()).withFixedSlotId("s-1").
+				withLaunchArguments(NestedSessionLaunch.fixedArguments(start.toArray(String[]::new)));
+			NestedSession nestedSession = manager.create(harness);
+			requireThat(manager.launchArguments(nestedSession), "recordedArguments").isEqualTo(fixed);
 			JsonMapper json = JsonMapper.builder().build();
 			List<String> own = List.of("--results", root.toString(), "--slot-id", "s-1", "--resume-slot",
 				"5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90", "--model", "model-a", "--effort", "high");
@@ -2027,6 +2034,13 @@ public final class NestedSessionManagerTest
 			InvalidArgumentsException refused = expectThrows(InvalidArgumentsException.class,
 				() -> NestedSessionLaunch.resumedArguments(json, harness, refixed.toArray(String[]::new)));
 			requireThat(refused.getMessage(), "refused").contains("--deny-read");
+
+			List<String> draftOverride = new ArrayList<>(own);
+			draftOverride.addAll(List.of(RunnerArguments.RESULT_PROJECT_LINKS_OPTION, "other_draft"));
+			InvalidArgumentsException refusedDraft = expectThrows(InvalidArgumentsException.class,
+				() -> NestedSessionLaunch.resumedArguments(json, harness, draftOverride.toArray(String[]::new)));
+			requireThat(refusedDraft.getMessage(), "refusedDraft").contains(RunnerArguments.RESULT_PROJECT_LINKS_OPTION);
+
 			String[] started = {"--project", "/source", "--model", "model-a"};
 			requireThat(List.of(NestedSessionLaunch.resumedArguments(json, harness, started)), "started").
 				isEqualTo(List.of(started));
