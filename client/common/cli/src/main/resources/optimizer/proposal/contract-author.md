@@ -68,6 +68,8 @@
 - Give each assertion that the judge decides its `evidence_scope`, as Prompt tests below describes, including each
 	such assertion of a recorded scenario that lacks it. Where a requirement is about what the agent does, let a
 	built-in tool decide whether the action happened and a judged assertion only the part that needs meaning.
+- Map each declared assertion to its requirement and write its required passing and failing examples in the
+	test's `examples/` directory. Add examples to recorded tests that lack them. Follow Assertion examples below.
 - Learn what CAT accepts, and how it stages, runs and records trials, from this prompt, the output schema and the
 	problems that `contract check` prints. Do not read the source code of CAT's optimizer for it, even when the project
 	holds that code.

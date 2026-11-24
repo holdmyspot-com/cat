@@ -38,6 +38,8 @@
 - Give each assertion that the judge decides its `evidence_scope`, as Prompt tests below describes, including each
 	such assertion of the test that lacks it. Where a requirement is about what the agent does, let a built-in tool
 	decide whether the action happened and a judged assertion only the part that needs meaning.
+- Map each declared assertion to a confirmed requirement and write its required passing and failing examples in
+	the revised test's `examples/` directory. Follow Assertion examples below for the revised boundary classes.
 - Learn what CAT accepts from this prompt, the output schema and the problems that `contract check` prints. Do not read
 	the source code of CAT's optimizer for it, even when the project holds that code.
 

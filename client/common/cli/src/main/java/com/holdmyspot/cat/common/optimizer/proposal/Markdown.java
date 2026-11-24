@@ -399,6 +399,7 @@ public final class Markdown
 		text.append("\n### Test `").append(test.id()).append("`\n\n").
 			append("- Risk rank: ").append(test.riskRank().position()).append(" (1 is the riskiest)\n");
 		requirements(test);
+		assertionExamples(test);
 		if (!test.absentTriggers().isEmpty())
 		{
 			text.append("- Leaves these triggers absent, so the obligated action must not occur: ").
@@ -429,6 +430,47 @@ public final class Markdown
 			text.append("- Interactions this test cannot cover:\n");
 			for (String interaction : test.uncoveredInteractions())
 				text.append("  - ").append(interaction).append('\n');
+		}
+	}
+
+	/**
+	 * Lists the mechanical result for each of the test's assertion examples.
+	 *
+	 * @param test the prompt test
+	 */
+	private void assertionExamples(PromptTest test)
+	{
+		List<AssertionExampleCheck> checks = derived.exampleChecks().stream().
+			filter(check -> check.testId().equals(test.id())).toList();
+		if (checks.isEmpty())
+			return;
+		text.append("- Assertion examples:\n");
+		for (AssertionExampleCheck check : checks)
+		{
+			text.append("  - `").append(check.assertionId()).append("` / `").append(check.exampleId()).append("` (");
+			if (check.exampleId().startsWith("pass_"))
+				text.append("boundary class `").append(check.exampleId().substring("pass_".length())).append('`');
+			else
+				text.append("first test case");
+			text.append("): ");
+			if (check.tool() == null)
+				text.append("Judge pending.\n");
+			else
+			{
+				text.append('`').append(check.tool()).append('`');
+				if (check.passed())
+					text.append(" passed.");
+				else
+				{
+					text.append(" failed.");
+					if (test.assertions().stream().anyMatch(mapped -> mapped.assertion().id().equals(check.assertionId()) &&
+						mapped.assertion().onToolFailure() == OnToolFailure.JUDGE))
+					{
+						text.append(" Judge pending.");
+					}
+				}
+				text.append('\n');
+			}
 		}
 	}
 

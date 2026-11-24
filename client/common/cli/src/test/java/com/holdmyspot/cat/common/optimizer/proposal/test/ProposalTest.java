@@ -1393,7 +1393,7 @@ public final class ProposalTest
 			SALT);
 		return new DerivedProposal(ContractFixtures.withReferencedFiles(derived.contract(), List.of(files)),
 			derived.derivedSources(), derived.scopeConditions(), derived.conflicts(), derived.observedSources(),
-			derived.derivation(), derived.draft(), derived.changes());
+			derived.derivation(), derived.draft(), derived.changes(), derived.exampleChecks());
 	}
 
 	/**
@@ -2554,8 +2554,10 @@ public final class ProposalTest
 		String text = render(edited);
 
 		requireThat(text, "text").contains("- Files: recorded at `" + Path.of(".cat/tests/CLAUDE/formatting") +
-				"` and edited; delivery rewrites them with these changes:\n\n    ```diff\n    --- a/" + citation +
-				"\n    +++ b/" + citation + "\n").
+				"` and edited; delivery rewrites them with these changes:\n\n    ```diff\n").
+			contains("    --- a/" + citation + "\n    +++ b/" + citation + "\n").
+			contains("    +++ b/.cat/tests/CLAUDE/formatting/examples/uses_requested_tone/" +
+				"pass_formal_tone/replies.json\n").
 			contains("\n    +### Turn 2\n").contains("\n    -### keeps_tone\n").
 			contains("\n    ```\n\n    `values.json` changes; its values are the test cases listed below.\n\n").
 			doesNotContain("formatting/values.json").
@@ -3222,6 +3224,152 @@ public final class ProposalTest
 			requireThat(assertion.statement(), "statement").isEqualTo(statement);
 			requireThat(assertion.builtInTool().isEmpty(), "judgeDecides").isTrue();
 		}
+	}
+
+	/**
+	 * Verifies that a new proposal cannot leave the judge to decide an assertion without example trials.
+	 *
+	 * @throws IOException if the fixture cannot be changed
+	 * @throws InvalidProposalException if the proposal is refused
+	 */
+	@Test(expectedExceptions = InvalidProposalException.class,
+		expectedExceptionsMessageRegExp = "(?s).*plain_list.*keeps_requested_tone.*pass_.*")
+	public void refusesJudgedAssertionWithoutExamples() throws IOException, InvalidProposalException
+	{
+		// Requirement: R-L15
+		SessionResult.Completed result = session(fixture("derivation-with-checks.json"));
+		Path example = result.effects().resolve(DraftDirectory.name(result.initialProject())).
+			resolve(".cat/tests/CLAUDE/plain_list/examples/keeps_requested_tone/pass_item_kind");
+		Files.delete(example.resolve("replies.json"));
+		Files.delete(example);
+
+		contractAuthor.proposal(result, PROMPT_SYSTEM, PROFILES, SALT);
+	}
+
+	/**
+	 * Verifies that the proposal retains the exact example bytes for a confirmed draft.
+	 *
+	 * @throws IOException if the fixture cannot be read
+	 * @throws InvalidProposalException if the proposal is refused
+	 */
+	@Test
+	public void retainsConfirmedExampleBytes() throws IOException, InvalidProposalException
+	{
+		// Requirement: R-L15
+		SessionResult.Completed result = session(fixture("derivation-with-checks.json"));
+		DerivedProposal proposal = contractAuthor.proposal(result, PROMPT_SYSTEM, PROFILES, SALT);
+		PromptTest.Draft draft = proposal.contract().findTest("plain_list").orElseThrow().draft().orElseThrow();
+		String path = "keeps_requested_tone/pass_item_kind/replies.json";
+		Path source = proposal.draft().resolve(draft.directory()).resolve("examples").resolve(path);
+
+		requireThat(draft.exampleFiles().keySet(), "exampleFiles").contains(path);
+		requireThat(draft.exampleFiles().get(path).hash(), "exampleDigest").
+			isEqualTo(Sha256.of(Files.readAllBytes(source)));
+	}
+
+	/**
+	 * Verifies that the proposal shows the boundary class and the tool's decision for each assertion example.
+	 *
+	 * @throws IOException if the fixture cannot be read
+	 * @throws InvalidProposalException if the proposal is refused
+	 */
+	@Test
+	public void rendersAssertionExampleDecisions() throws IOException, InvalidProposalException
+	{
+		// Requirement: R-L15
+		SessionResult.Completed result = replyExample("fail", "pass_item_kind", "{{expected_outcome}}");
+		DerivedProposal proposal = contractAuthor.proposal(result, PROMPT_SYSTEM, PROFILES, SALT);
+
+		requireThat(render(proposal), "proposal").
+			contains("- Assertion examples:\n").
+			contains("`keeps_requested_tone` / `pass_item_kind` (boundary class `item_kind`): `pattern` passed.").
+			contains("`keeps_requested_tone` / `fail_omits_answer` (first test case): `pattern` failed.");
+	}
+
+	/**
+	 * Verifies that an example for a judged assertion must still describe a readable trial.
+	 *
+	 * @throws IOException if an example cannot be written
+	 * @throws InvalidProposalException if the example is refused
+	 */
+	@Test(expectedExceptions = InvalidProposalException.class,
+		expectedExceptionsMessageRegExp = "(?s).*plain_list.*keeps_requested_tone.*pass_item_kind.*replies.json.*")
+	public void refusesUnreadableJudgedExample() throws IOException, InvalidProposalException
+	{
+		// Requirement: R-L15
+		SessionResult.Completed result = session(fixture("derivation-with-checks.json"));
+		Path draft = result.effects().resolve(DraftDirectory.name(result.initialProject()));
+		Path example = draft.resolve(".cat/tests/CLAUDE/plain_list/examples/keeps_requested_tone/pass_item_kind");
+		Files.writeString(example.resolve("replies.json"), "{}", UTF_8);
+
+		contractAuthor.proposal(result, PROMPT_SYSTEM, PROFILES, SALT);
+	}
+
+	/**
+	 * Returns the choices for whether a judge considers a reply tool failure.
+	 *
+	 * @return the documented choices
+	 */
+	@DataProvider
+	public Object[][] exampleToolFailureChoices()
+	{
+		return new Object[][]{{"fail"}, {"judge"}};
+	}
+
+	/**
+	 * Verifies that a reply tool must accept the passing example under either tool failure choice.
+	 *
+	 * @param onToolFailure the choice for a tool failure
+	 * @throws IOException if an example cannot be written
+	 * @throws InvalidProposalException if the proposal is refused
+	 */
+	@Test(dataProvider = "exampleToolFailureChoices", expectedExceptions = InvalidProposalException.class,
+		expectedExceptionsMessageRegExp = "(?s).*plain_list.*keeps_requested_tone.*pass_item_kind.*")
+	public void refusesToolFailingPassingExample(String onToolFailure) throws IOException, InvalidProposalException
+	{
+		// Requirement: R-L15
+		SessionResult.Completed result = replyExample(onToolFailure, "pass_item_kind", "A list with no items.");
+
+		contractAuthor.proposal(result, PROMPT_SYSTEM, PROFILES, SALT);
+	}
+
+	/**
+	 * Verifies that a reply tool must fail the failing example under either tool failure choice.
+	 *
+	 * @param onToolFailure the choice for a tool failure
+	 * @throws IOException if an example cannot be written
+	 * @throws InvalidProposalException if the proposal is refused
+	 */
+	@Test(dataProvider = "exampleToolFailureChoices", expectedExceptions = InvalidProposalException.class,
+		expectedExceptionsMessageRegExp = "(?s).*plain_list.*keeps_requested_tone.*fail_omits_answer.*")
+	public void refusesToolPassingFailingExample(String onToolFailure) throws IOException, InvalidProposalException
+	{
+		// Requirement: R-L15
+		SessionResult.Completed result = replyExample(onToolFailure, "fail_omits_answer", "{{expected_outcome}}");
+
+		contractAuthor.proposal(result, PROMPT_SYSTEM, PROFILES, SALT);
+	}
+
+	/**
+	 * Creates a proposal with one replaced example of a reply tool.
+	 *
+	 * @param onToolFailure the choice for a tool failure
+	 * @param example the example to replace
+	 * @param reply the example's reply text
+	 * @return the contract author's completed session
+	 * @throws IOException if the example cannot be written
+	 */
+	private SessionResult.Completed replyExample(String onToolFailure, String example, String reply) throws IOException
+	{
+		SessionResult.Completed result = session(changedDerivation(proposal ->
+			((ObjectNode) proposal.at("/tests/1/assertions/0")).put("tool", "pattern \"{{expected_outcome}}\"").
+				put("on_tool_failure", onToolFailure).put("evidence_scope", "response")));
+		Path replies = result.effects().resolve(DraftDirectory.name(result.initialProject())).
+			resolve(".cat/tests/CLAUDE/plain_list/examples/keeps_requested_tone").resolve(example).resolve("replies.json");
+		ArrayNode turns = json.createArrayNode();
+		turns.addArray().add(reply);
+		Files.writeString(replies, json.writeValueAsString(turns), UTF_8);
+		return result;
 	}
 
 	/**

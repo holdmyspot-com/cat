@@ -2,7 +2,10 @@ package com.holdmyspot.cat.common.optimizer.proposal.test;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.common.Identifier;
 import com.holdmyspot.cat.common.PortablePaths;
+import com.holdmyspot.cat.common.optimizer.contract.BuiltInTool;
+import com.holdmyspot.cat.common.optimizer.contract.PromptTestFiles;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestLocations;
 
 import java.io.IOException;
@@ -10,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -150,6 +154,7 @@ public final class DraftFixtures
 		Path testDirectory = Files.createDirectories(draft.resolve(directory));
 		Files.writeString(testDirectory.resolve("scenario.md"), scenario(test), UTF_8);
 		Files.writeString(testDirectory.resolve("values.json"), values(json, test), UTF_8);
+		writeExamples(json, test, testDirectory);
 		for (JsonNode workspaceFile : test.path("workspace_files"))
 		{
 			Path file = testDirectory.resolve("workspace").resolve(workspaceFile.path("path").asString());
@@ -177,6 +182,103 @@ public final class DraftFixtures
 				item.set(name, test.get(name));
 		}
 		return item;
+	}
+
+	/**
+	 * Writes the concrete examples used by the inline proposal fixtures.
+	 *
+	 * @param json the JSON mapper
+	 * @param test the inline prompt test
+	 * @param directory the prompt test's draft directory
+	 * @throws IOException if an example cannot be written
+	 */
+	private static void writeExamples(JsonMapper json, JsonNode test, Path directory) throws IOException
+	{
+		Set<String> classes = new TreeSet<>();
+		for (JsonNode testCase : test.path("test_cases"))
+		{
+			String name = testCase.path("boundary_class").asString("");
+			if (Identifier.SNAKE_CASE.matcher(name).matches())
+				classes.add(name);
+		}
+		for (JsonNode assertion : test.path("assertions"))
+		{
+			String id = assertion.path("id").asString("");
+			if (!Identifier.SNAKE_CASE.matcher(id).matches())
+				continue;
+			BuiltInTool tool;
+			try
+			{
+				JsonNode toolNode = assertion.path("tool");
+				if (toolNode.isString())
+					tool = BuiltInTool.parse(toolNode.asString());
+				else
+					tool = null;
+			}
+			catch (IllegalArgumentException _)
+			{
+				// The proposal parser reports an invalid tool.
+				continue;
+			}
+			if (tool != null && !tool.examinesOnlyReplies() && !assertion.path("on_tool_failure").asString().
+				equals("judge"))
+			{
+				continue;
+			}
+			Path examples = directory.resolve(PromptTestFiles.EXAMPLES).resolve(id);
+			FixtureReplies replies = exampleReplies(tool);
+			for (String name : classes)
+				writeExample(json, examples.resolve("pass_" + name), replies.passing(), replies.turn());
+			writeExample(json, examples.resolve("fail_omits_answer"), replies.failing(), replies.turn());
+		}
+	}
+
+	/**
+	 * Returns a satisfying reply and a near miss for the tools used by the proposal fixtures.
+	 *
+	 * @param tool the fixture assertion's tool, or null if the judge decides it
+	 * @return the two replies and the turn that the tool reads
+	 */
+	private static FixtureReplies exampleReplies(BuiltInTool tool)
+	{
+		return switch (tool)
+		{
+			case BuiltInTool.ExactText exact -> new FixtureReplies(exact.text(), "", exact.turn());
+			case BuiltInTool.ForbiddenText forbidden -> new FixtureReplies("", forbidden.text(), forbidden.turn());
+			case BuiltInTool.PatternMatch pattern -> new FixtureReplies(pattern.regex(), "", pattern.turn());
+			case BuiltInTool.Count count -> new FixtureReplies("- One\n- Two\n- Three", "- One", count.turn());
+			case null, default -> new FixtureReplies("The reply meets the requirement.", "", null);
+		};
+	}
+
+	/**
+	 * Writes one example's ordered replies.
+	 *
+	 * @param json the JSON mapper
+	 * @param directory the example directory
+	 * @param reply the reply text
+	 * @param turn the turn that holds the reply, or null for the first turn
+	 * @throws IOException if the reply file cannot be written
+	 */
+	private static void writeExample(JsonMapper json, Path directory, String reply, Integer turn) throws IOException
+	{
+		ArrayNode turns = json.createArrayNode();
+		for (int i = 1; turn != null && i < turn; ++i)
+			turns.addArray();
+		turns.addArray().add(reply);
+		Files.createDirectories(directory);
+		Files.writeString(directory.resolve("replies.json"), json.writeValueAsString(turns), UTF_8);
+	}
+
+	/**
+	 * The replies that satisfy and fail one fixture assertion.
+	 *
+	 * @param passing the satisfying reply
+	 * @param failing the near miss
+	 * @param turn the turn that the assertion examines, or null for the first turn
+	 */
+	private record FixtureReplies(String passing, String failing, Integer turn)
+	{
 	}
 
 	/**

@@ -5,7 +5,7 @@ hide behind common or easy ones. Write a separate test for each use that needs i
 value is another test case of the same test, not another test.
 
 A prompt test is a directory of files in the draft directory `{{draft_directory}}`, at the path relative to the project
-where it belongs: its `scenario.md`, its `values.json` and its `workspace/` directory. When CAT delivers a certified
+where it belongs, with `scenario.md`, `values.json`, `workspace/` and `examples/`. When CAT delivers a certified
 prompt, it writes these files to the project at the same paths, so the user's project receives them as you write
 them.
 
@@ -19,6 +19,10 @@ Write every test by these rules:
 	only the first lines, make it just over that many lines. A document many times that size adds cost without adding a
 	way to fail, and a workspace file that the requirement does not concern needs only the content that the turn uses.
 - It is organic: no turn, workspace file or file name tells the agent the expected outcome or that it is being tested.
+- Its assertions ask exactly what its requirements and expected outcomes ask of a reply. Each assertion names its
+	requirement, fails a reply that misses it and accepts every reply that meets it in a notation the expected outcome
+	allows. When a requirement asks for more than the result, such as the day of an arrival, state that detail in every
+	expected outcome that the requirement covers.
 
 Each item of `tests` gives:
 
@@ -225,6 +229,15 @@ from it. A built-in tool that passes decides its assertion, and so does one that
 repeats nor overrides it. A built-in tool that fails under `fail` names the behavior in the table below, so list that
 behavior on the assertion's requirement.
 
+Use a text tool for a result that a list of notations can describe, such as a number, date, time, name, count or file
+content. Use `exact-text` for equality and `pattern` for containment or alternatives such as midnight written as
+`00:00` or `12:00 am`. If other wordings are valid, give the tool `on_tool_failure: judge` so it passes the
+recognized notations and the judge handles the rest. The judge reads meanings that a list of notations cannot
+capture, such as whether an explanation justifies a conclusion. If every expected outcome is a bare value and a
+judged assertion's description contains `{{expected_outcome}}`, CAT requires a built-in tool for that assertion.
+A bare value has at most three whitespace-separated tokens, no comma, semicolon, exclamation mark or question
+mark, and no period followed by whitespace or ending the outcome.
+
 Write a built-in tool's name followed by its arguments, separated by spaces. Write an argument that contains a space or
 a double quote in double quotes, with `\"` for a quote and `\\` for a backslash. An argument may contain placeholders,
 and a regular expression matches an inserted value literally. A built-in tool that examines replies examines every
@@ -256,6 +269,29 @@ reports no exit statuses.
 
 A tool verdict is exact and final, so it needs no judge qualification. Qualification and near-miss comparisons apply
 only to assertions the judge decides.
+
+### Assertion examples
+
+For each assertion decided by `exact-text`, `forbidden-text`, `pattern` or `count`, and for each assertion the judge
+can decide, write one passing example for each boundary class and at least one failing example. Each passing example
+meets the assertion's requirement and the expected outcome of its class's first test case. Each failing example
+misses the assertion. An action tool under `on_tool_failure: fail` needs no examples. The CAT-added
+`expected_outcome` assertion needs no examples.
+
+Put each example in `examples/<assertion id>/<example id>/` in the test directory. Name passing examples
+`pass_<boundary class>` and failing examples `fail_<snake_case_name>`. Write `replies.json` as an array of arrays
+of strings, one inner array per turn. List the messages in order within each turn, ending with its final reply.
+A missing file or turn gives an empty reply. For actions, the example may include `initial/` and `project/` for
+the project's initial and final states. Omit `initial/` to use the trial's staged project and omit `project/` to
+leave it unchanged. Optional `activity.json` holds CAT's version 1 activity format, an object with integer
+`format_version` of 1, an `entries` array of records with `type` and `entry` fields, and a `received` array of tool
+results as strings. For a tool call, use `type: tool` and give the entry `turn` (one-based), `agent`, `tool`,
+`input`, boolean `command`, integer or null `exit_status`, `output` and a string array `running`. Omit
+`activity.json` for no activity. Use directories and regular files throughout.
+
+CAT fills placeholders in example file names and UTF-8 contents with the first matching case in `values.json`
+for a passing example and the first case in the file for a failing example. CAT refuses a reply tool that fails a
+passing example and any tool that passes a failing example, under either `on_tool_failure` setting.
 
 ### Near misses
 

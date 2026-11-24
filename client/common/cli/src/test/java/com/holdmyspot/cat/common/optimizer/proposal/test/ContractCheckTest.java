@@ -68,6 +68,33 @@ public final class ContractCheckTest
 	}
 
 	/**
+	 * Verifies that the author's local check identifies the missing examples before the proposal is submitted.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void reportsMissingAssertionExamples() throws IOException
+	{
+		// Requirement: R-L15
+		Path project = directories.add(Files.createTempDirectory("contract-check-examples-"));
+		Path context = ContractToolSessions.write(json, contractAuthor, PROFILES,
+			ContractToolSessions.derivation(json, proposal ->
+			{
+				ObjectNode assertion = (ObjectNode) proposal.at("/tests/1/assertions/0");
+				assertion.put("tool", "pattern \"{{expected_outcome}}\"");
+			}), project);
+		Path example = project.resolve(DraftDirectory.name(ContractToolSessions.PROMPT_SYSTEM)).
+			resolve(".cat/tests/CLAUDE/plain_list/examples/keeps_requested_tone/pass_item_kind");
+		Files.delete(example.resolve("replies.json"));
+		Files.delete(example);
+
+		Report report = ContractToolSessions.check(json, context);
+
+		requireThat(report.exitCode(), "exitCode").isEqualTo(1);
+		requireThat(report.output(), "output").contains("plain_list").contains("pass_");
+	}
+
+	/**
 	 * Verifies that {@code contract check} reports every problem that CAT's validation reports when the session ends,
 	 * at once and in the same words, a problem of the proposal file with its JSON path and a problem of the draft
 	 * directory with its file, and exits with a nonzero status.

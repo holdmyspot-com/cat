@@ -276,10 +276,40 @@ public final class DraftDirectory
 	 */
 	public static void copyTest(Path source, Path testDirectory, Path draft) throws IOException
 	{
+		copyTest(source, testDirectory, draft, true);
+	}
+
+	/**
+	 * Copies the files needed to revise a test. The earlier assertion examples stay in the stored draft.
+	 *
+	 * @param source        the stored draft directory
+	 * @param testDirectory the prompt test's directory relative to the stored draft directory
+	 * @param draft         the new revision draft directory
+	 * @throws IOException if a file cannot be read or written
+	 */
+	static void copyTestForRevision(Path source, Path testDirectory, Path draft) throws IOException
+	{
+		copyTest(source, testDirectory, draft, false);
+	}
+
+	/**
+	 * Copies a prompt test and the files that its workspace links reach.
+	 *
+	 * @param source          the directory that holds the prompt test
+	 * @param testDirectory   the prompt test's directory relative to the source
+	 * @param draft           the new draft directory
+	 * @param includeExamples whether to copy the prompt test's assertion examples
+	 * @throws IOException if a file cannot be read or written
+	 */
+	private static void copyTest(Path source, Path testDirectory, Path draft, boolean includeExamples)
+		throws IOException
+	{
 		requireThat(source, "source").isNotNull();
 		requireThat(PortablePaths.isRooted(testDirectory), "isRooted(testDirectory)").isFalse();
 		requireThat(draft, "draft").isNotNull();
-		copyTree(source.resolve(testDirectory), draft.resolve(testDirectory));
+		Path test = source.resolve(testDirectory);
+		Path examples = test.resolve(PromptTestFiles.EXAMPLES);
+		copyTree(test, draft.resolve(testDirectory), path -> !includeExamples && path.startsWith(examples));
 		for (Path shared : linkedTargets(source, testDirectory))
 			copyEntry(source.resolve(shared), draft.resolve(shared));
 	}

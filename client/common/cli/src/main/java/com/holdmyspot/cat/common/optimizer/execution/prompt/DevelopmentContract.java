@@ -26,8 +26,8 @@ final class DevelopmentContract
 	}
 
 	/**
-	 * Writes the confirmed contract without its held-out part: omits the salt and keeps of each test's test cases only
-	 * the development ones.
+	 * Writes the confirmed contract for development. Keeps the development cases and leaves out the salt and assertion
+	 * examples.
 	 *
 	 * @param json the operation-owned JSON mapper
 	 * @param schema writes the contract in the proposal schema
@@ -41,7 +41,11 @@ final class DevelopmentContract
 		Split split = contract.split();
 		JsonNode testNodes = root.get("tests");
 		for (int i = 0; i < contract.tests().size(); ++i)
-			omitHeldOutTestCases(contract.tests().get(i), (ObjectNode) testNodes.get(i), split);
+		{
+			ObjectNode test = (ObjectNode) testNodes.get(i);
+			omitHeldOutTestCases(contract.tests().get(i), test, split);
+			ProposalSchema.omitExamples(test);
+		}
 		return root;
 	}
 

@@ -6,6 +6,7 @@ import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
+import com.holdmyspot.cat.common.optimizer.proposal.AssertionExampleCheck;
 import com.holdmyspot.cat.common.optimizer.proposal.DerivedProposal;
 import com.holdmyspot.cat.common.optimizer.proposal.DraftDirectory;
 import com.holdmyspot.cat.common.optimizer.proposal.ProfileEvidence;
@@ -74,9 +75,11 @@ final class ProposalFile
 	 * @param profiles the profile inventory, capability ranking and bindings that CAT read when the contract author ran
 	 * @param evaluators the staged loader and runtime evidence of the selected evaluators
 	 * @param salt the salt that CAT drew for the proposal
+	 * @param exampleChecks the decisions from mechanically checking the assertion examples
 	 */
 	record Stored(String derivation, Path draft, String observedSources, List<DerivedSource> derivedSources,
-		ProfileEvidence profiles, Map<Harness, EvaluatorMetadata> evaluators, long salt)
+		ProfileEvidence profiles, Map<Harness, EvaluatorMetadata> evaluators, long salt,
+		List<AssertionExampleCheck> exampleChecks)
 	{
 		/**
 		 * Creates a stored proposal.
@@ -88,6 +91,7 @@ final class ProposalFile
 		 * @param profiles the profile inventory and bindings
 		 * @param evaluators the staged loader and runtime evidence of the selected evaluators
 		 * @param salt the salt that CAT drew for the proposal
+		 * @param exampleChecks the decisions from mechanically checking the assertion examples
 		 * @throws NullPointerException if any of the arguments are null, or {@code derivedSources} contains null
 		 */
 		Stored
@@ -96,6 +100,7 @@ final class ProposalFile
 			requireThat(draft, "draft").isNotNull();
 			requireThat(observedSources, "observedSources").isNotNull();
 			derivedSources = List.copyOf(derivedSources);
+			exampleChecks = List.copyOf(exampleChecks);
 			requireThat(profiles, "profiles").isNotNull();
 			evaluators = Map.copyOf(evaluators);
 			requireThat(evaluators.keySet(), "evaluators").isEqualTo(profiles.byEvaluator().keySet());
@@ -119,7 +124,7 @@ final class ProposalFile
 		 */
 		DerivedProposal restore(DerivedProposal validated)
 		{
-			return validated.withDerivedSources(derivedSources);
+			return validated.withDerivedSources(derivedSources).withExampleChecks(exampleChecks);
 		}
 	}
 
@@ -202,6 +207,15 @@ final class ProposalFile
 			derivedSources.addObject().put("path", source.path()).put("rule", source.rule());
 		root.put("derivation", derived.derivation());
 		root.put("salt", derived.contract().salt());
+		if (!derived.exampleChecks().isEmpty())
+		{
+			ArrayNode examples = root.putArray("example_checks");
+			for (AssertionExampleCheck check : derived.exampleChecks())
+			{
+				examples.addObject().put("test", check.testId()).put("assertion", check.assertionId()).
+					put("example", check.exampleId()).put("tool", check.tool()).put("passed", check.passed());
+			}
+		}
 		profiles.write(root);
 		if (!evaluators.isEmpty())
 		{
@@ -264,12 +278,42 @@ final class ProposalFile
 			for (JsonNode node : root.get("derived_sources"))
 				derivedSources.add(new DerivedSource(node.path("path").asString(), node.path("rule").asString()));
 			return Optional.of(new Stored(derivation, draft, root.get("observed_sources").asString(), derivedSources,
-				ProfileEvidence.read(root), readEvaluators(root.path("evaluators")), root.get("salt").asLong()));
+				ProfileEvidence.read(root), readEvaluators(root.path("evaluators")), root.get("salt").asLong(),
+				readExampleChecks(root.path("example_checks"))));
 		}
 		catch (IllegalArgumentException | JacksonException e)
 		{
-			throw new IOException(file + " holds invalid derived sources or evaluator evidence: " + e.getMessage(), e);
+			throw new IOException(file + " holds invalid derived sources, evaluator evidence or example checks: " +
+				e.getMessage(), e);
 		}
+	}
+
+	/**
+	 * Reads the mechanical decisions in their presentation order. Earlier proposals have no decisions.
+	 *
+	 * @param node the stored decisions, if present
+	 * @return the mechanical results
+	 */
+	private static List<AssertionExampleCheck> readExampleChecks(JsonNode node)
+	{
+		if (node.isMissingNode())
+			return List.of();
+		if (!node.isArray())
+			throw new IllegalArgumentException("Expected an array of assertion example checks.");
+		List<AssertionExampleCheck> result = new ArrayList<>();
+		for (JsonNode example : node)
+		{
+			JsonNode tool = example.path("tool");
+			if (!example.path("test").isString() || !example.path("assertion").isString() ||
+				!example.path("example").isString() || !(tool.isString() || tool.isNull()) ||
+				!example.path("passed").isBoolean())
+			{
+				throw new IllegalArgumentException("Invalid assertion example check.");
+			}
+			result.add(new AssertionExampleCheck(example.get("test").asString(), example.get("assertion").asString(),
+				example.get("example").asString(), tool.stringValue(), example.get("passed").booleanValue()));
+		}
+		return result;
 	}
 
 	/**

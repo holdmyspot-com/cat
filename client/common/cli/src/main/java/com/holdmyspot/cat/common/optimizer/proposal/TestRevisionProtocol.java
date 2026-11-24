@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.StringJoiner;
 
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -181,7 +182,7 @@ public final class TestRevisionProtocol
 			throw new UncheckedIOException(e);
 		}
 		ContractAuthorFiles files = contractAuthor.files(promptSystem, examined.profiles(),
-			draft -> DraftDirectory.copyTest(confirmedDraft, directory, draft),
+			draft -> DraftDirectory.copyTestForRevision(confirmedDraft, directory, draft),
 			Optional.of(revision(examined, sharedFiles)));
 		String turn = prompt.fill(Map.ofEntries(Map.entry("target_prompt_file", contractAuthor.targetPromptFile()),
 			Map.entry("goal", contractAuthor.goal()), Map.entry("contract", confirmed.derivation()),
@@ -208,8 +209,11 @@ public final class TestRevisionProtocol
 	private ContractContext.Revision revision(Examination examined, Map<Path, Sha256> sharedFiles)
 	{
 		DerivedProposal confirmed = examined.confirmed();
+		ArrayNode tests = confirmedTests(confirmed);
+		for (JsonNode test : tests)
+			ProposalSchema.omitExamples((ObjectNode) test);
 		return new ContractContext.Revision(examined.request().test(), confirmedProposalFile(confirmed),
-			confirmedTests(confirmed), sharedFiles);
+			tests, sharedFiles);
 	}
 
 	/**

@@ -21,12 +21,16 @@ import com.holdmyspot.cat.common.optimizer.execution.PromptAuthorBrief;
 import com.holdmyspot.cat.common.optimizer.execution.PromptAuthorBrief.EndedAttempt;
 import com.holdmyspot.cat.common.optimizer.execution.prompt.PromptAuthorPrompt;
 import com.holdmyspot.cat.common.optimizer.execution.prompt.ValuesPrompt;
+import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 import org.testng.annotations.Test;
@@ -40,6 +44,7 @@ import tools.jackson.databind.json.JsonMapper;
 public final class DevelopmentContractTest
 {
 	private static final String CLASS = "arrives_exactly_at_midnight";
+	private static final String EXAMPLE_REPLY = "[[\"A private example reply.\"]]";
 	private static final Path DIRECTORY = Path.of("/results/values").toAbsolutePath();
 	private static final Path COPY = Path.of("/results/prompt-author-3/project").toAbsolutePath();
 	private final JsonMapper json = JsonMapper.builder().build();
@@ -80,7 +85,10 @@ public final class DevelopmentContractTest
 			tests.add(new PromptTest(test.id(), test.riskRank(), test.requirementIds(), test.absentTriggers(),
 				test.applicability(), test.turns(), test.timeLimit(), test.expectedBehaviour(),
 				test.uncoveredInteractions(), test.variables(), test.committedTestCases(), testCases, test.assertions(),
-				test.regressionScenarios(), List.of()));
+				test.regressionScenarios(), List.of(), Optional.of(new PromptTest.Draft(Path.of("safety"),
+					"Scenario from the confirmed draft.", Map.of(),
+					Map.of("asks_before_deleting/pass_" + CLASS + "/replies.json",
+						new FileContent(EXAMPLE_REPLY.getBytes(StandardCharsets.UTF_8))), Set.of()))));
 		}
 		return new Contract(contract.requirements(), tests, ContractFixtures.profiles(contract.requirements(), tests),
 			contract.judge(), contract.limitations(), contract.minimumPassRate(), contract.salt());
@@ -94,6 +102,7 @@ public final class DevelopmentContractTest
 	public void sessionsReadClassWithoutValues()
 	{
 		// Requirement: R-L12
+		// Requirement: R-L16
 		Contract contract = withArrivals();
 		PromptTest test = contract.findTest("safety").orElseThrow();
 		List<TestCase> heldOut = contract.split().testCases(test, Part.HELD_OUT);
@@ -128,6 +137,8 @@ public final class DevelopmentContractTest
 		{
 			String turn = request.turns().getFirst();
 			requireThat(turn, "turn").contains(CLASS);
+			String exampleContent = Base64.getEncoder().encodeToString(EXAMPLE_REPLY.getBytes(StandardCharsets.UTF_8));
+			requireThat(turn, "turn").doesNotContain("example_files").doesNotContain(exampleContent);
 			for (TestCase testCase : heldOut)
 			{
 				requireThat(turn, "turn").doesNotContain(testCase.expectedOutcome());

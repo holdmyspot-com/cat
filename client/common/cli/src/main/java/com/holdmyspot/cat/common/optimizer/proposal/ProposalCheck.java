@@ -38,6 +38,7 @@ import com.holdmyspot.cat.common.optimizer.report.EnumNames;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.StringWriter;
 import java.io.UncheckedIOException;
 import java.nio.charset.CharacterCodingException;
@@ -356,6 +357,7 @@ public final class ProposalCheck
 			throw new InvalidProposalException(problems);
 
 		Contract contract = null;
+		List<AssertionExampleCheck> exampleChecks = List.of();
 		try
 		{
 			contract = schema.parse(json.writeValueAsString(assembled.proposal()), (requirements, tests) ->
@@ -364,6 +366,8 @@ public final class ProposalCheck
 				assembled.committed(), assembled.workspaceFiles());
 			problems.addAll(unreportedExitStatuses(contract));
 			problems.addAll(referencedFileProblems(contract, project));
+			if (authoring)
+				exampleChecks = assembled.checkExamples(contract);
 			findings.checkRequirements(scopeNode, Findings.SCOPE_CONDITIONS, contract);
 			findings.checkRequirements(conflictsNode, Findings.CONFLICTS, contract);
 		}
@@ -375,7 +379,7 @@ public final class ProposalCheck
 		if (!problems.isEmpty())
 			throw new InvalidProposalException(problems);
 		return new DerivedProposal(contract, List.of(), scopeConditions, conflicts, observedSources, derivation, draft,
-			Map.of());
+			Map.of(), exampleChecks);
 	}
 
 	/**
@@ -874,6 +878,7 @@ public final class ProposalCheck
 		private final Map<Integer, TestFiles> testFiles = new HashMap<>();
 		private final Map<String, List<TestCase>> committed = new HashMap<>();
 		private final Map<String, List<WorkspaceFile>> workspaceFiles = new HashMap<>();
+		private final Map<String, ExampleInputs> exampleInputs = new HashMap<>();
 		private ObjectNode proposal;
 
 		/**
@@ -924,6 +929,46 @@ public final class ProposalCheck
 		Map<String, List<WorkspaceFile>> workspaceFiles()
 		{
 			return workspaceFiles;
+		}
+
+		/**
+		 * Renders each test's authored examples and runs its tools, using the values file's case order.
+		 *
+		 * @param contract the completed contract
+		 * @return the mechanical results
+		 * @throws UncheckedIOException if a source or temporary workspace cannot be read
+		 */
+		List<AssertionExampleCheck> checkExamples(Contract contract)
+		{
+			try
+			{
+				List<AssertionExampleCheck> checked = new ArrayList<>();
+				Set<Path> excluded = new HashSet<>(PromptTestLocations.excluded(contract, target, project));
+				excluded.add(project.relativize(draft));
+				excluded.add(Path.of(".git"));
+				for (PromptTest test : contract.tests())
+				{
+					ExampleInputs input = exampleInputs.get(test.id());
+					if (input == null)
+						continue;
+					List<TestCase> ordered = new ArrayList<>();
+					for (DraftCase position : input.order())
+					{
+						List<TestCase> cases;
+						if (position.committed())
+							cases = test.committedTestCases();
+						else
+							cases = test.testCases();
+						ordered.add(cases.get(position.index()));
+					}
+					checked.addAll(ExampleChecks.check(json, test, input.files(), ordered, project, excluded, problems));
+				}
+				return List.copyOf(checked);
+			}
+			catch (IOException e)
+			{
+				throw new UncheckedIOException(e);
+			}
 		}
 
 		/**
@@ -1053,12 +1098,25 @@ public final class ProposalCheck
 				committedTestCases.addAll(recordedTest.committed());
 			TestFiles filesOfTest = new TestFiles(display(testDirectory), display(scenarioFile),
 				display(testDirectory.resolve(ValuesFile.NAME)), new ArrayList<>(), new ArrayList<>());
-			ArrayNode testCases = testCases(testDirectory, committedTestCases, filesOfTest);
+			List<DraftCase> order = new ArrayList<>();
+			ArrayNode testCases = testCases(testDirectory, committedTestCases, filesOfTest, order);
 			boolean bareOutcomes = authoring && testCases != null && hasOnlyBareOutcomes(testCases, committedTestCases);
 			ArrayNode assertions = assertions(item, location, id, scenario, filesOfTest, requireJudgeReasons,
 				bareOutcomes);
 			if (testCases == null || assertions == null)
 				return null;
+			if (authoring)
+			{
+				Set<String> boundaryClasses = new HashSet<>();
+				for (JsonNode testCase : testCases)
+					boundaryClasses.add(testCase.get(ValuesFile.BOUNDARY_CLASS).asString());
+				List<String> exampleProblems = ExampleChecks.layoutProblems(id, files, boundaryClasses);
+				if (!exampleProblems.isEmpty())
+				{
+					problems.addAll(exampleProblems);
+					return null;
+				}
+			}
 			Optional<List<WorkspaceFile>> readWorkspaceFiles = textWorkspaceFiles(files);
 			if (readWorkspaceFiles.isEmpty())
 				return null;
@@ -1079,19 +1137,19 @@ public final class ProposalCheck
 			ArrayNode citations = test.putArray("regression_scenarios");
 			if (recordedTest != null)
 				citations.add(recordedTest.citation());
-			ObjectNode draftNode = test.putObject("draft");
-			draftNode.put("directory", PortablePaths.text(directory));
-			draftNode.put("scenario", content);
-			if (!files.copiedLinks().isEmpty())
+			PromptTest.Draft storedDraft;
+			try
 			{
-				ArrayNode links = draftNode.putArray(ProposalSchema.COPIED_LINKS);
-				for (Map.Entry<String, String> link : files.copiedLinks().entrySet())
-				{
-					ObjectNode linkNode = links.addObject();
-					linkNode.put("path", link.getKey());
-					linkNode.put("target", link.getValue());
-				}
+				storedDraft = draftWithExamples(directory, content, files);
 			}
+			catch (IllegalArgumentException e)
+			{
+				problems.add(filesOfTest.directory() + ": " + e.getMessage());
+				return null;
+			}
+			ProposalSchema.writeDraft(storedDraft, test.putObject("draft"));
+			if (authoring)
+				exampleInputs.put(id, new ExampleInputs(files, order));
 			ArrayNode variables = test.putArray("variables");
 			for (VariableDeclaration variable : scenario.variables())
 			{
@@ -1120,6 +1178,32 @@ public final class ProposalCheck
 				workspaceFiles.put(id, textWorkspaceFiles);
 			testFiles.put(index, filesOfTest);
 			return test;
+		}
+
+		/**
+		 * Captures the test's draft and the raw bytes of its assertion examples.
+		 *
+		 * @param directory the test's directory relative to the draft
+		 * @param scenario the scenario text
+		 * @param files the source files of the test
+		 * @return the immutable copy used in the confirmed contract
+		 * @throws UncheckedIOException if an example cannot be read
+		 */
+		private static PromptTest.Draft draftWithExamples(Path directory, String scenario, PromptTestFiles files)
+		{
+			Map<String, FileContent> examples = new LinkedHashMap<>();
+			for (Map.Entry<String, Path> example : files.exampleSources().entrySet())
+			{
+				try (InputStream input = Files.newInputStream(example.getValue(), LinkOption.NOFOLLOW_LINKS))
+				{
+					examples.put(example.getKey(), new FileContent(input.readAllBytes()));
+				}
+				catch (IOException e)
+				{
+					throw new UncheckedIOException(e);
+				}
+			}
+			return new PromptTest.Draft(directory, scenario, files.copiedLinks(), examples, files.exampleDirectories());
 		}
 
 		/**
@@ -1242,9 +1326,10 @@ public final class ProposalCheck
 		 * @param committed     the test cases that earlier campaigns committed to it; each that the values file holds
 		 *                      takes the values file's boundary class
 		 * @param files         receives the line of each test case that the result holds
+		 * @param order         receives each draft case's position in its committed or new list
 		 * @return the test cases, or {@code null} if a problem was added
 		 */
-		private ArrayNode testCases(Path testDirectory, List<TestCase> committed, TestFiles files)
+		private ArrayNode testCases(Path testDirectory, List<TestCase> committed, TestFiles files, List<DraftCase> order)
 		{
 			Path valuesFile = testDirectory.resolve(ValuesFile.NAME);
 			if (!Files.isRegularFile(valuesFile, LinkOption.NOFOLLOW_LINKS))
@@ -1280,11 +1365,15 @@ public final class ProposalCheck
 				int index = committedIndex(testCase.testCase(), committed);
 				if (index < 0)
 				{
+					order.add(new DraftCase(testCases.size(), false));
 					testCases.add(testCase.testCase());
 					files.testCases().add(new TestCaseLine(testCase.line(), i + 1));
 				}
 				else
+				{
+					order.add(new DraftCase(index, true));
 					drafts.add(index);
+				}
 				if (!boundaryClass.isEmpty() && !Identifier.SNAKE_CASE.matcher(boundaryClass).matches())
 				{
 					problems.add(location + ": " + ValuesFile.BOUNDARY_CLASS + " must be lowercase words joined by " +
@@ -1570,6 +1659,26 @@ public final class ProposalCheck
 	 * @param number its position in the file, starting at 1
 	 */
 	private record TestCaseLine(int line, int number)
+	{
+	}
+
+	/**
+	 * A case's position in the completed test, recorded in draft order.
+	 *
+	 * @param index the position in the committed or new list
+	 * @param committed whether the case belongs to the committed list
+	 */
+	private record DraftCase(int index, boolean committed)
+	{
+	}
+
+	/**
+	 * The files and cases from which a test's assertion examples are rendered.
+	 *
+	 * @param files the test's files
+	 * @param order the position of each draft case in the completed test
+	 */
+	private record ExampleInputs(PromptTestFiles files, List<DraftCase> order)
 	{
 	}
 }

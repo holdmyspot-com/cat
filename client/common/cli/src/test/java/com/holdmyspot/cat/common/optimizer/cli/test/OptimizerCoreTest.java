@@ -5583,7 +5583,7 @@ public final class OptimizerCoreTest
 
 	/**
 	 * Verifies that a resumed campaign presents the derived sources that the session port listed when the contract
-	 * author finished, as the stored proposal keeps them, instead of listing them again.
+	 * author finished, and the original decisions on its assertion examples, as the stored proposal keeps them.
 	 * <p>
 	 * This test can take one second or longer during a parallel build: the claim concerns a resumed campaign, so it
 	 * starts a campaign through the public command, which forks the project, runs the scripted contract author session
@@ -5600,12 +5600,15 @@ public final class OptimizerCoreTest
 			{
 			}));
 			String listed = "- CLAUDE.md: The harness reads the project instruction file in the project root at startup.";
-			requireThat(proposalText(repository.core().start(Path.of("CLAUDE.md"))), "started").contains(listed);
+			String examples = "- Assertion examples:\n";
+			requireThat(proposalText(repository.core().start(Path.of("CLAUDE.md"))), "started").
+				contains(listed).contains(examples);
 			repository.sessions().addDerivedSources(List.of(new DerivedSource("extra.local.md",
 				"The harness loads the file by convention.")));
 
 			String resumed = proposalText(repository.core().start(Path.of("CLAUDE.md")));
-			requireThat(resumed, "resumed").contains(listed).doesNotContain("extra.local.md: The harness loads");
+			requireThat(resumed, "resumed").contains(listed).contains(examples).
+				doesNotContain("extra.local.md: The harness loads");
 		}
 	}
 

@@ -28,10 +28,11 @@ import java.util.Map;
  * @param draft the draft directory that holds the prompt tests as files
  * @param changes how each prompt test relates to the recorded prompt tests, by prompt test identifier; empty until
  *   the caller compares the draft with the project
+ * @param exampleChecks the mechanical results for the assertion examples, in test and assertion order
  */
 public record DerivedProposal(Contract contract, List<DerivedSource> derivedSources,
 	List<ScopeCondition> scopeConditions, List<Conflict> conflicts, String observedSources, String derivation,
-	Path draft, Map<String, DraftChange> changes)
+	Path draft, Map<String, DraftChange> changes, List<AssertionExampleCheck> exampleChecks)
 {
 	/**
 	 * Creates a derived proposal.
@@ -45,6 +46,7 @@ public record DerivedProposal(Contract contract, List<DerivedSource> derivedSour
 	 * @param derivation the contract author's non-blank output as JSON
 	 * @param draft the draft directory that holds the prompt tests as files
 	 * @param changes how each prompt test relates to the recorded prompt tests, by prompt test identifier
+	 * @param exampleChecks the mechanical results for the assertion examples
 	 * @throws NullPointerException if any of the arguments are null, or a list or map contains null
 	 * @throws IllegalArgumentException if {@code observedSources} or {@code derivation} are blank
 	 */
@@ -59,6 +61,7 @@ public record DerivedProposal(Contract contract, List<DerivedSource> derivedSour
 		requireThat(draft, "draft").isNotNull();
 		requireThat(changes, "changes").isNotNull();
 		changes = Collections.unmodifiableMap(new LinkedHashMap<>(changes));
+		exampleChecks = List.copyOf(exampleChecks);
 	}
 
 	/**
@@ -71,7 +74,7 @@ public record DerivedProposal(Contract contract, List<DerivedSource> derivedSour
 	public DerivedProposal withDerivedSources(List<DerivedSource> sources)
 	{
 		return new DerivedProposal(contract, sources, scopeConditions, conflicts, observedSources, derivation, draft,
-			changes);
+			changes, exampleChecks);
 	}
 
 	/**
@@ -86,6 +89,19 @@ public record DerivedProposal(Contract contract, List<DerivedSource> derivedSour
 	public DerivedProposal withDraft(Path draft, Map<String, DraftChange> changes)
 	{
 		return new DerivedProposal(contract, derivedSources, scopeConditions, conflicts, observedSources, derivation,
-			draft, changes);
+			draft, changes, exampleChecks);
+	}
+
+	/**
+	 * Returns this proposal with the recorded mechanical results for its assertion examples.
+	 *
+	 * @param checks the mechanical results
+	 * @return the proposal
+	 * @throws NullPointerException if the results or an element is null
+	 */
+	public DerivedProposal withExampleChecks(List<AssertionExampleCheck> checks)
+	{
+		return new DerivedProposal(contract, derivedSources, scopeConditions, conflicts, observedSources, derivation,
+			draft, changes, checks);
 	}
 }

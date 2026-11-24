@@ -1,26 +1,17 @@
 package com.holdmyspot.cat.common.optimizer.execution;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.common.optimizer.contract.RecordedTrial;
 import com.holdmyspot.cat.common.optimizer.contract.ToolCall;
-import com.holdmyspot.cat.common.optimizer.contract.TrialRecord;
 import com.holdmyspot.cat.common.optimizer.evidence.EvidenceSection;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
-import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
-import com.holdmyspot.cat.common.optimizer.inventory.InventoryDiff;
-import com.holdmyspot.cat.common.optimizer.inventory.InventoryScanner;
 import com.holdmyspot.cat.common.optimizer.port.SessionPort;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.LinkOption;
-import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 
 /**
  * The record of a completed trial that its built-in tools and its judge decide from: every turn's ordered assistant
@@ -35,10 +26,9 @@ import java.util.Set;
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
-public final class TrialEvidence implements TrialRecord
+public final class TrialEvidence extends RecordedTrial
 {
 	private final SessionResult.Completed trial;
-	private final SessionEvidence activity;
 
 	/**
 	 * Creates the record of a trial.
@@ -50,9 +40,8 @@ public final class TrialEvidence implements TrialRecord
 	public TrialEvidence(SessionResult.Completed trial, SessionEvidence activity)
 	{
 		requireThat(trial, "trial").isNotNull();
-		requireThat(activity, "activity").isNotNull();
+		super(trial.responses(), activity, trial.initialProject(), trial.effects());
 		this.trial = trial;
-		this.activity = activity;
 	}
 
 	/**
@@ -79,7 +68,7 @@ public final class TrialEvidence implements TrialRecord
 	 */
 	public String render() throws IOException
 	{
-		String rendered = EvidenceSection.render(activity, trial.transcript(), trial.effects(), trial.initialProject());
+		String rendered = EvidenceSection.render(activity(), trial.transcript(), trial.effects(), trial.initialProject());
 		if (!trial.endedEarly())
 			return rendered;
 		StringBuilder note = new StringBuilder(rendered).append("\n\nTrial session: ended after turn ").
@@ -89,91 +78,6 @@ public final class TrialEvidence implements TrialRecord
 			append(". Assertion settlement turns:");
 		trial.settledAssertions().forEach((id, turn) -> note.append("\n- ").append(id).append(": turn ").append(turn));
 		return note.toString();
-	}
-
-	@Override
-	public List<List<String>> replies()
-	{
-		return trial.responses();
-	}
-
-	@Override
-	public List<SessionEvidence.Tool> tools()
-	{
-		List<SessionEvidence.Tool> tools = new ArrayList<>();
-		for (SessionEvidence.Entry entry : activity.entries())
-		{
-			if (entry instanceof SessionEvidence.Tool tool)
-				tools.add(tool);
-		}
-		return tools;
-	}
-
-	@Override
-	public List<String> received()
-	{
-		return activity.received();
-	}
-
-	@Override
-	public List<String> changedPaths() throws IOException
-	{
-		FileInventory before = InventoryScanner.scan(trial.initialProject(), Set.of());
-		FileInventory after = InventoryScanner.scan(trial.effects(), Set.of());
-		return InventoryDiff.between(before, after).changes().stream().map(change ->
-			com.holdmyspot.cat.common.PortablePaths.text(change.path())).toList();
-	}
-
-	@Override
-	public boolean exists(String path) throws IOException
-	{
-		requireThat(path, "path").isNotNull();
-		return Files.exists(trial.effects().resolve(path), LinkOption.NOFOLLOW_LINKS);
-	}
-
-	/**
-	 * {@inheritDoc}
-	 * <p>
-	 * A file whose real location lies outside the project copy, such as one reached through a link that the trial
-	 * created, is not a file of the project. Bytes that are not valid UTF-8 are replaced, so that the tool observes
-	 * them instead of failing to read the file.
-	 */
-	@Override
-	public Optional<String> content(String path) throws IOException
-	{
-		requireThat(path, "path").isNotNull();
-		return read(trial.effects(), path);
-	}
-
-	/**
-	 * {@inheritDoc}
-	 * <p>
-	 * A file whose real location lies outside the copy of the project as it was when the trial started is not a file
-	 * of that copy. Bytes that are not valid UTF-8 are replaced.
-	 */
-	@Override
-	public Optional<String> initial(String path) throws IOException
-	{
-		requireThat(path, "path").isNotNull();
-		return read(trial.initialProject(), path);
-	}
-
-	/**
-	 * Reads a regular file of a directory.
-	 *
-	 * @param directory the directory
-	 * @param path      the path relative to the directory
-	 * @return the file's text, or empty if the path is not a regular file whose real location lies in the directory
-	 * @throws IOException if the file cannot be read
-	 */
-	private static Optional<String> read(Path directory, String path) throws IOException
-	{
-		Path file = directory.resolve(path);
-		if (!Files.isRegularFile(file))
-			return Optional.empty();
-		if (!file.toRealPath().startsWith(directory.toRealPath()))
-			return Optional.empty();
-		return Optional.of(new String(Files.readAllBytes(file), UTF_8));
 	}
 
 	/**

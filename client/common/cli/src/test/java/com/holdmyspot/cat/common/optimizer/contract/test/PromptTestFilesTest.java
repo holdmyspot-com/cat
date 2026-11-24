@@ -1,7 +1,6 @@
 package com.holdmyspot.cat.common.optimizer.contract.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-import static java.net.StandardProtocolFamily.UNIX;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
@@ -10,8 +9,6 @@ import com.holdmyspot.cat.common.optimizer.contract.ScenarioFormatException;
 import com.holdmyspot.cat.common.optimizer.contract.ValuesFile;
 import java.io.BufferedWriter;
 import java.io.IOException;
-import java.net.UnixDomainSocketAddress;
-import java.nio.channels.ServerSocketChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -147,35 +144,27 @@ public final class PromptTestFilesTest
 	}
 
 	/**
-	 * Verifies that an example containing a socket entry is refused before its files can be used.
+	 * Verifies that an example containing a named pipe is refused before its files can be used.
 	 *
 	 * @throws IOException             if the fixture cannot be written or read
-	 * @throws ScenarioFormatException if the socket is refused
+	 * @throws InterruptedException    if interrupted while creating the pipe
+	 * @throws ScenarioFormatException if the pipe is refused
 	 */
 	@Test(expectedExceptions = ScenarioFormatException.class, expectedExceptionsMessageRegExp =
-		".*examples/s.*regular file.*")
-	public void refusesSpecialExampleFile() throws IOException, ScenarioFormatException
+		".*examples/pipe.*regular file.*")
+	public void refusesSpecialExampleFile() throws IOException, InterruptedException, ScenarioFormatException
 	{
 		// Requirement: R-L15
 		try (TestJvmScope jvm = new TestJvmScope(); TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = promptTest(jvm.temporaryDirectory(), cleanup);
 			Path examples = Files.createDirectory(directory.resolve("examples"));
-			Path socket = examples.resolve("s");
-			Path current = Path.of("").toAbsolutePath();
-			Path socketAddress = socket;
-			if (current.getRoot().equals(socket.getRoot()))
+			try (Process mkfifo = new ProcessBuilder("mkfifo", examples.resolve("pipe").toString()).
+				directory(directory.toFile()).start())
 			{
-				// A relative address can fit the socket path limit when the test JVM's temporary path is long.
-				Path relative = current.relativize(socket);
-				if (relative.toString().length() < socket.toString().length())
-					socketAddress = relative;
+				requireThat(mkfifo.waitFor(), "mkfifo").isEqualTo(0);
 			}
-			try (ServerSocketChannel server = ServerSocketChannel.open(UNIX))
-			{
-				server.bind(UnixDomainSocketAddress.of(socketAddress));
-				PromptTestFiles.readScenario(directory, directory, directory);
-			}
+			PromptTestFiles.readScenario(directory, directory, directory);
 		}
 	}
 

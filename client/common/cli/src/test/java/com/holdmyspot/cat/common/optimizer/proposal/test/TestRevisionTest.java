@@ -230,6 +230,31 @@ public final class TestRevisionTest
 	}
 
 	/**
+	 * Verifies that a test revision writes new examples without seeing the previous examples.
+	 *
+	 * @throws IOException if a file cannot be read or written
+	 * @throws InvalidProposalException if the confirmed proposal is refused
+	 */
+	@Test
+	public void draftOmitsPreviousExamples() throws IOException, InvalidProposalException
+	{
+		// Requirement: R-L16
+		Examination examined = examination();
+		Path example = Path.of(FORMATTING).resolve("examples/keeps_requested_tone/pass_terse_tone/replies.json");
+		Path previous = examined.confirmed().draft().resolve(example);
+		Files.createDirectories(previous.getParent());
+		Files.writeString(previous, "[[\"Original reply.\"]]", UTF_8);
+		SessionRequest request = protocol.request(ContractToolSessions.PROMPT_SYSTEM, examined);
+		Path project = directories.add(Files.createTempDirectory("test-revision-examples-"));
+		request.files().write(project);
+
+		ContractContext context = ContractContext.read(json, contextFile(project));
+
+		requireThat(Files.exists(project.resolve(context.draft()).resolve(example)), "previousExample").isFalse();
+		requireThat(Files.readString(previous), "retainedExample").contains("Original reply.");
+	}
+
+	/**
 	 * Verifies that the contract author's brief and the test revision's brief state both evidence scopes, the
 	 * {@code actions} fallback for an assertion that needs both or whose scope is unclear, and the duty to split an
 	 * assertion about an action between a built-in tool and a narrow judged assertion.
@@ -482,7 +507,17 @@ public final class TestRevisionTest
 			isEqualTo("Summarize the meeting notes in {{tone}} style.");
 		Path draft = revised.proposal().draft();
 		requireThat(draft, "draft").isNotEqualTo(confirmedDraft);
-		requireThat(files(draft), "files").isEqualTo(files(confirmedDraft));
+		String examples = FORMATTING + "/examples/";
+		Set<String> expectedFiles = new TreeSet<>(files(confirmedDraft));
+		expectedFiles.removeIf(path -> path.startsWith(examples));
+		String assertionExamples = examples + "uses_requested_tone/";
+		expectedFiles.add(assertionExamples + "fail_omits_answer/replies.json");
+		for (String boundary : List.of("neutral_tone", "playful_tone", "somber_tone", "stern_tone", "upbeat_tone",
+			"warm_tone"))
+		{
+			expectedFiles.add(assertionExamples + "pass_" + boundary + "/replies.json");
+		}
+		requireThat(files(draft), "files").isEqualTo(expectedFiles);
 		requireThat(Files.readString(draft.resolve(FORMATTING).resolve("scenario.md"), UTF_8), "revisedScenario").
 			contains("Summarize the meeting notes");
 		requireThat(Files.readString(confirmedDraft.resolve(FORMATTING).resolve("scenario.md"), UTF_8),

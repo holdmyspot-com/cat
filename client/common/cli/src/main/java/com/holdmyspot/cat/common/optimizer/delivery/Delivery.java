@@ -13,6 +13,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.DeliveryRequest;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementCondition;
 import com.holdmyspot.cat.common.optimizer.campaign.Outcome;
 import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFile;
+import com.holdmyspot.cat.common.optimizer.contract.PromptTest.Draft;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestFiles;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestLocations;
 import com.holdmyspot.cat.common.optimizer.contract.ValuesFile;
@@ -349,11 +350,10 @@ public final class Delivery
 	}
 
 	/**
-	 * Returns the files and links that write the prompt tests: each test's values file, its regression scenario and its
-	 * workspace files. A test that the contract author wrote as files in its draft directory is written as the draft
-	 * holds it: its {@value PromptTestFiles#SCENARIO} unchanged, each workspace link as a link at the path that it was
-	 * read from, each link that leads outside {@value PromptTestFiles#WORKSPACE} as that link, and each other workspace
-	 * file at the file that it was read from, which may be the target of such a link.
+	 * Returns each prompt test's values file, regression scenario, workspace files and links, and example files.
+	 * Delivery writes a draft's {@value PromptTestFiles#SCENARIO} and {@value PromptTestFiles#EXAMPLES} files unchanged.
+	 * It writes each workspace link at the path the draft holds it, and each other workspace file at the path the draft
+	 * read it from, which may be the target of a link that leads outside {@value PromptTestFiles#WORKSPACE}.
 	 * <p>
 	 * Other prompt tests may read the file that such a link reaches, so a draft that changes a file that the fork
 	 * records there leaves that file alone. Instead, the link becomes a copy that holds the change, and a link to a
@@ -387,10 +387,11 @@ public final class Delivery
 			Path own = directory.resolve(PromptTestFiles.WORKSPACE);
 			if (test.location().created())
 				createdDirectories.add(directory);
-			if (test.draft().isPresent())
+			Optional<Draft> testDraft = test.draft();
+			if (testDraft.isPresent())
 			{
-				// The draft holds every file of the test where delivery writes it
-				Set<Path> copied = copiedLinksOf(test, selected.fork());
+				Draft draft = testDraft.get();
+				Set<Path> copied = copiedLinksOf(test.workspaceFiles(), draft.copiedLinks().keySet(), selected.fork());
 				for (WorkspaceFile workspaceFile : test.workspaceFiles())
 				{
 					Path path = Path.of(workspaceFile.path());
@@ -404,7 +405,7 @@ public final class Delivery
 					else
 						files.put(file, new FileContent(workspaceFile.content().getBytes(UTF_8)));
 				}
-				for (Entry<String, String> link : test.copiedLinks().entrySet())
+				for (Entry<String, String> link : draft.copiedLinks().entrySet())
 				{
 					Path path = Path.of(link.getKey());
 					if (!copied.contains(path))
@@ -415,7 +416,10 @@ public final class Delivery
 						expandedLinks.add(own.resolve(path));
 					}
 				}
-				files.put(scenarioPath, new FileContent(test.draft().get().getBytes(UTF_8)));
+				Path examples = directory.resolve(PromptTestFiles.EXAMPLES);
+				for (Entry<String, FileContent> example : draft.exampleFiles().entrySet())
+					files.put(examples.resolve(example.getKey()), example.getValue());
+				files.put(scenarioPath, new FileContent(draft.scenario().getBytes(UTF_8)));
 				continue;
 			}
 
@@ -453,14 +457,15 @@ public final class Delivery
 	 * {@value PromptTestFiles#WORKSPACE} to a file, or to a directory holding a file, that the fork records with other
 	 * content than the draft's workspace file.
 	 *
-	 * @param test a prompt test that the contract author wrote as files in its draft directory
+	 * @param workspaceFiles the draft's workspace files
+	 * @param links the draft's copied links by their workspace-relative paths
 	 * @param fork the files recorded at the fork
 	 * @return the links' paths, relative to the test's {@value PromptTestFiles#WORKSPACE} directory
 	 */
-	private static Set<Path> copiedLinksOf(DeliveredTest test, FileInventory fork)
+	private static Set<Path> copiedLinksOf(List<WorkspaceFile> workspaceFiles, Set<String> links, FileInventory fork)
 	{
 		Set<Path> copied = new HashSet<>();
-		for (WorkspaceFile workspaceFile : test.workspaceFiles())
+		for (WorkspaceFile workspaceFile : workspaceFiles)
 		{
 			if (workspaceFile.link() || workspaceFile.source().isEmpty())
 				continue;
@@ -470,7 +475,7 @@ public final class Delivery
 				continue;
 			}
 			Path path = Path.of(workspaceFile.path());
-			for (String link : test.copiedLinks().keySet())
+			for (String link : links)
 			{
 				if (path.startsWith(link))
 					copied.add(Path.of(link));
