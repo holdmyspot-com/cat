@@ -1306,8 +1306,11 @@ public final class OptimizerCore implements Core
 			return report(root, campaign, null, assertionChecksPaused(campaign.header().id()));
 		if (campaign.pending() instanceof PendingDecision.PilotFailure)
 			return report(root, campaign, null, pilotPausedNotice(campaign));
-		if (campaign.pending() instanceof PendingDecision.ContractRevision)
+		if (campaign.pending() instanceof PendingDecision.ContractRevision revision &&
+			(!revision.failure().isEmpty() || authorDraft(campaign).read().isEmpty()))
+		{
 			return report(root, campaign, null, revisionPausedNotice(campaign));
+		}
 		if (campaign.isConfirmed() && !campaign.revisionRequested())
 			return report(root, campaign, null, null);
 		try (CampaignLock _ = lock(header.id()))
@@ -1332,6 +1335,8 @@ public final class OptimizerCore implements Core
 	private CommandResult resumeHeld(Path root, CampaignStore store, Campaign campaign, Instant sliceStart)
 		throws CommandRefusedException, IOException, InterruptedException
 	{
+		if (campaign.pending() instanceof PendingDecision.AssertionCheckFailure)
+			return report(root, campaign, null, assertionChecksPaused(campaign.header().id()));
 		ForkView fork = openFork(root, campaign);
 		verifyEvaluatorConditions(root, campaign, fork);
 		// A build that failed left the trial plugins unrecorded, so start builds them again
@@ -1360,7 +1365,20 @@ public final class OptimizerCore implements Core
 				message);
 		}
 		if (stored.isPresent())
-			return present(root, store, campaign, fork, stored.get(), sliceStart);
+		{
+			DerivedProposal previous = stored.orElseThrow();
+			AuthorDraftFile.Saved saved = authorDraft(campaign).read().orElse(null);
+			if (saved != null && !saved.feedback().isEmpty() &&
+				saved.operation().equals(authorOperation(campaign, previous, "derive", saved.feedback())))
+			{
+				if (campaign.pending() instanceof PendingDecision.ContractRevision)
+					return deriveRevision(root, store, campaign.header().id(), fork, previous, saved.feedback(), sliceStart);
+				return derive(root, store, campaign, fork, previous, saved.feedback(), sliceStart);
+			}
+			if (saved != null && saved.claim().isEmpty() && !campaign.isConfirmed())
+				authorDraft(campaign).delete();
+			return present(root, store, campaign, fork, previous, sliceStart);
+		}
 		return derive(root, store, campaign, fork, null, null, sliceStart);
 	}
 
@@ -2512,7 +2530,7 @@ public final class OptimizerCore implements Core
 		else
 		{
 			Examined examined = examineTests(root, campaign, lock, contractAuthor, fork, restore(contractAuthor, stored),
-				stored.profiles());
+				stored.profiles(), sliceStart);
 			if (examined.notice() != null)
 				return Optional.of(examined.notice());
 			current = examined.current();
@@ -2555,14 +2573,15 @@ public final class OptimizerCore implements Core
 	 * @param fork the campaign's fork
 	 * @param confirmed the confirmed contract
 	 * @param profiles the confirmed contract's profile evidence
+	 * @param sliceStart when the command started
 	 * @return what the sessions decided, or a notice that a session failed or its result is invalid
 	 * @throws CommandRefusedException if the campaign does not accept a test revision
 	 * @throws IOException if the store, the workspace or a session fails
 	 * @throws InterruptedException if the thread is interrupted while it waits for a session
 	 */
 	private Examined examineTests(Path root, Campaign campaign, CampaignLock lock,
-		ContractAuthorProtocol contractAuthor, ForkView fork, DerivedProposal confirmed, ProfileEvidence profiles)
-		throws CommandRefusedException, IOException, InterruptedException
+		ContractAuthorProtocol contractAuthor, ForkView fork, DerivedProposal confirmed, ProfileEvidence profiles,
+		Instant sliceStart) throws CommandRefusedException, IOException, InterruptedException
 	{
 		String id = campaign.header().id();
 		TestRevisionProtocol protocol = new TestRevisionProtocol(scope.json(), schema, contractAuthor);
@@ -2580,14 +2599,18 @@ public final class OptimizerCore implements Core
 			String session = "The test revision of `" + request.test() + "`";
 			SessionPort port = sessions(campaign);
 			CampaignStore store = scope.store();
-			AssertionCheckRun checks = assertionChecks(store, campaign, staged, port);
+			AssertionCheckRun checks = assertionChecks(store, campaign, staged, port, sliceStart);
 			AuthorDraftFile draft = authorDraft(campaign);
 			long salt = current.contract().salt();
 			Sha256 operation = authorOperation(campaign, current, "test revision", request.test());
 			SessionResult result;
 			try
 			{
-				result = author(port, protocol.request(staged, examined, checks), draft, operation, salt);
+				result = author(port, protocol.request(staged, examined, checks), draft, operation, salt, "");
+			}
+			catch (AssertionCheckRun.Deferred e)
+			{
+				return Examined.notice(e.getMessage() + " Run `continue` to resume the assertion checks.");
 			}
 			catch (AssertionCheckRun.Unavailable e)
 			{
@@ -2600,6 +2623,10 @@ public final class OptimizerCore implements Core
 			try
 			{
 				outcome = protocol.result(completed, staged, examined, checks);
+			}
+			catch (AssertionCheckRun.Deferred e)
+			{
+				return Examined.notice(e.getMessage() + " Run `continue` to resume the assertion checks.");
 			}
 			catch (AssertionCheckRun.Unavailable e)
 			{
@@ -2997,6 +3024,8 @@ public final class OptimizerCore implements Core
 		if (campaign.lifecycle() == Lifecycle.ACTIVE && (!campaign.isConfirmed() || campaign.revisionRequested()) &&
 			campaign.pending() == null)
 		{
+			if (authorDraft(campaign).read().isPresent())
+				return report(root, campaign, null, null, true);
 			Map<String, PilotResult> pilots = pilotFile(campaign).read();
 			if (GuardPilot.hasUnfinishedCheckpoint(pilots) && GuardPilot.pauseReason(pilots).isEmpty())
 				return report(root, campaign, null, null, true);
@@ -3080,6 +3109,11 @@ public final class OptimizerCore implements Core
 		String campaign = loaded.header().id();
 		if (loaded.pending() instanceof PendingDecision.AssertionCheckFailure)
 			throw new CommandRefusedException(assertionChecksPaused(campaign));
+		if ((!loaded.isConfirmed() || loaded.revisionRequested()) && authorDraft(loaded).read().isPresent())
+		{
+			throw new CommandRefusedException("Run `start` to finish the proposal's assertion checks before " +
+				"confirming it.");
+		}
 		if (loaded.pending() instanceof PendingDecision.PilotFailure)
 		{
 			throw new CommandRefusedException("Campaign " + campaign + " has no proposal to confirm yet. " +
@@ -3412,6 +3446,7 @@ public final class OptimizerCore implements Core
 		{
 			if (loaded.pending() instanceof PendingDecision.AssertionCheckFailure)
 			{
+				assertionAttempts(loaded).retry();
 				loaded = Transitions.apply(loaded, new CampaignEvent.Choose(Choice.RETRY, 0, 0));
 				store.replaceSnapshot(loaded);
 			}
@@ -3451,6 +3486,7 @@ public final class OptimizerCore implements Core
 					loaded.pending() instanceof PendingDecision.ContractRevision revision)
 				{
 					// The contract author derives the revision again from the feedback that the campaign kept
+					assertionAttempts(loaded).retry();
 					return reviseBody(campaign, revision.feedback(), lock, sliceStart);
 				}
 				PendingDecision.AssertionCheckFailure checkRetry = null;
@@ -3458,6 +3494,7 @@ public final class OptimizerCore implements Core
 					loaded.pending() instanceof PendingDecision.AssertionCheckFailure failed)
 				{
 					refuseUnlaunchable();
+					assertionAttempts(loaded).retry();
 					checkRetry = failed;
 				}
 				boolean retriesPilot = choice == Choice.RETRY && loaded.pending() instanceof PendingDecision.PilotFailure &&
@@ -3475,6 +3512,8 @@ public final class OptimizerCore implements Core
 					return reviseBody(campaign, checkRetry.feedback(), lock, sliceStart);
 				if (checkRetry != null && !chosen.isConfirmed())
 					return resumeHeld(root, scope.store(), chosen, sliceStart);
+				if (checkRetry != null && chosen.awaitsTestRevision())
+					return runHeld(root, campaign, lock, sliceStart);
 				// The retry runs the pilot's remaining trials and presents the proposal. A confirmed campaign's test
 				// revision pilot runs again with its test revision, when the user runs the campaign.
 				if (retriesPilot && !(chosen.isConfirmed() && !chosen.revisionRequested()))
@@ -3686,6 +3725,10 @@ public final class OptimizerCore implements Core
 		{
 			return deriveOrFail(root, store, campaign, fork, previous, feedback, sliceStart);
 		}
+		catch (AssertionCheckRun.Deferred e)
+		{
+			return assertionChecksContinue(root, require(store, campaign.header().id(), true), e.getMessage());
+		}
 		catch (AssertionCheckRun.Unavailable e)
 		{
 			Campaign paused = pauseAssertionChecks(store, campaign, e.getMessage(), feedback);
@@ -3730,6 +3773,10 @@ public final class OptimizerCore implements Core
 			try
 			{
 				return deriveOrFail(root, store, require(store, id, true), fork, previous, feedback, sliceStart);
+			}
+			catch (AssertionCheckRun.Deferred e)
+			{
+				return assertionChecksContinue(root, require(store, id, true), e.getMessage());
 			}
 			catch (AssertionCheckRun.Unavailable e)
 			{
@@ -3806,7 +3853,7 @@ public final class OptimizerCore implements Core
 		if (failedHooks.isPresent())
 			throw new DerivationFailed(DerivationFailure.unrepeatable(failedHooks.get(), ""));
 		SessionPort port = sessions(campaign);
-		AssertionCheckRun checks = assertionChecks(store, campaign, staged, port);
+		AssertionCheckRun checks = assertionChecks(store, campaign, staged, port, sliceStart);
 		AuthorDraftFile draft = authorDraft(campaign);
 		Sha256 operation = authorOperation(campaign, previous, "derive", feedback);
 		SessionRequest request;
@@ -3834,7 +3881,7 @@ public final class OptimizerCore implements Core
 			// The proposal that the user gave feedback on is still stored, so request-changes can regenerate it again
 			invalidRetry = "Run `request-changes` with feedback, or `start`, to retry.";
 		}
-		SessionResult result = author(port, request, draft, operation, salt);
+		SessionResult result = author(port, request, draft, operation, salt, Objects.requireNonNullElse(feedback, ""));
 		SessionResult.Completed completed;
 		switch (result)
 		{
@@ -4892,24 +4939,153 @@ public final class OptimizerCore implements Core
 	 * @param campaign the campaign whose assertion check records are used
 	 * @param project the staged default project
 	 * @param port the campaign's session port
+	 * @param sliceStart when the command started
 	 * @return the check run shared by the first draft and its correction
 	 * @throws IOException if the private judge directory cannot be created
 	 */
-	private AssertionCheckRun assertionChecks(CampaignStore store, Campaign campaign, Path project, SessionPort port)
-		throws IOException
+	private AssertionCheckRun assertionChecks(CampaignStore store, Campaign campaign, Path project, SessionPort port,
+		Instant sliceStart) throws IOException
 	{
 		String id = campaign.header().id();
 		Path directory = heldOutDirectory(id).resolve("assertion_judge");
 		Files.createDirectories(directory);
+		PilotSlice slice = new PilotSlice(scope.clock(), runSettings(), runInterrupts(), sliceStart);
 		JudgedAssertionChecks checks = new JudgedAssertionChecks(scope.json(), new JudgePrompt(scope.json(),
-			directory), store, id, request ->
+			directory), store, id, request -> assertionJudge(port, request, slice));
+		return new AssertionCheckRun(scope.json(), schema, checks, project, directory, campaign.incumbent().snapshot(),
+			assertionAttempts(campaign));
+	}
+
+	/**
+	 * Opens the held-out infrastructure attempt count.
+	 *
+	 * @param campaign the campaign whose check is running
+	 * @return the file that owns its failure count
+	 * @throws IOException if the campaign directory cannot be opened
+	 */
+	private AssertionAttemptFile assertionAttempts(Campaign campaign) throws IOException
+	{
+		return new AssertionAttemptFile(heldOutDirectory(campaign.header().id()), scope.json(), scope.fileReplacer());
+	}
+
+	/**
+	 * Presents a slice that retained its draft and ended before all assertion checks finished.
+	 *
+	 * @param root the project root
+	 * @param campaign the current campaign
+	 * @param reason why the checks stopped
+	 * @return status with the instruction to continue
+	 * @throws IOException if campaign status cannot be read
+	 */
+	private CommandResult assertionChecksContinue(Path root, Campaign campaign, String reason) throws IOException
+	{
+		return report(root, campaign, null, null, true).withNotices(List.of(reason +
+			" Run `start` to continue the proposal's assertion checks."));
+	}
+
+	/**
+	 * Runs the frozen judge once, retrying a provider hold without charging another infrastructure attempt.
+	 *
+	 * @param port the campaign's session port
+	 * @param request the held-out judge request
+	 * @param slice the command's admission and grace settings
+	 * @return a completed or failed infrastructure attempt
+	 * @throws IOException if the shared capacity or interrupt signal cannot be read
+	 * @throws InterruptedException if the judge or the command is interrupted
+	 */
+	private SessionResult assertionJudge(SessionPort port, SessionRequest request, PilotSlice slice)
+		throws IOException, InterruptedException
+	{
+		Instant heldUntil = Instant.MIN;
+		Pause poll = scope.waiting().every(slice.settings().pollInterval());
+		while (true)
+		{
+			checkJudgeSlice(slice, slice.deadline());
+			Instant now = slice.clock().instant();
+			Instant sharedHold = port.sharedHoldUntil(now).orElse(now);
+			Instant until = heldUntil;
+			if (sharedHold.isAfter(until))
+				until = sharedHold;
+			if (now.isBefore(until))
 			{
-				SessionResult result = await(port.start(request));
-				if (result instanceof SessionResult.Interrupted)
-					throw new InterruptedException("The assertion judge was interrupted.");
-				return result;
-			});
-		return new AssertionCheckRun(scope.json(), schema, checks, project, directory, campaign.incumbent().snapshot());
+				if (!until.isBefore(slice.deadline()))
+					throw new AssertionCheckRun.Deferred("The assertion judge is on hold until " + until + ".");
+				poll.pause();
+				continue;
+			}
+
+			SessionResult result = awaitAssertionJudge(port.start(request), slice);
+			switch (result)
+			{
+				case SessionResult.RateLimited limited -> heldUntil = limited.hold().endsAt();
+				case SessionResult.Refused refused ->
+				{
+					if (refused.afterLongestHold())
+						throw new AssertionCheckRun.Deferred("The provider refused the assertion judge after a hold.");
+					heldUntil = refused.hold().endsAt();
+				}
+				case SessionResult.LaunchRefused refused -> throw new AssertionCheckRun.Deferred(refused.reason());
+				case SessionResult.Interrupted _ -> throw new InterruptedException("The assertion judge was interrupted.");
+				case SessionResult.Completed _, SessionResult.Failed _ ->
+				{
+					return result;
+				}
+			}
+		}
+	}
+
+	/**
+	 * Waits for a judge only through the slice's grace period and cancels on an interrupt.
+	 *
+	 * @param handle the running judge
+	 * @param slice the command's slice
+	 * @return the session result
+	 * @throws IOException if the interrupt signal cannot be read
+	 * @throws InterruptedException if the command or the session is interrupted
+	 */
+	private SessionResult awaitAssertionJudge(SessionHandle handle, PilotSlice slice)
+		throws IOException, InterruptedException
+	{
+		try
+		{
+			while (true)
+			{
+				try
+				{
+					return handle.completion().toCompletableFuture().get(slice.settings().pollInterval().toNanos(),
+						TimeUnit.NANOSECONDS);
+				}
+				catch (TimeoutException _)
+				{
+					checkJudgeSlice(slice, slice.graceEnd());
+				}
+			}
+		}
+		catch (ExecutionException e)
+		{
+			return new SessionResult.Failed("The assertion judge session failed: " + e.getCause(), List.of());
+		}
+		catch (IOException | InterruptedException | AssertionCheckRun.Deferred e)
+		{
+			handle.interrupt();
+			throw e;
+		}
+	}
+
+	/**
+	 * Stops assertion checks at a slice boundary or a host interrupt.
+	 *
+	 * @param slice the command's slice
+	 * @param deadline the finish or admission deadline
+	 * @throws IOException if the interrupt signal cannot be read
+	 * @throws InterruptedException if the host interrupted the command
+	 */
+	private static void checkJudgeSlice(PilotSlice slice, Instant deadline) throws IOException, InterruptedException
+	{
+		if (slice.interrupts().isInterruptedAfter(slice.start()))
+			throw new InterruptedException("The host interrupted the assertion checks.");
+		if (!slice.clock().instant().isBefore(deadline))
+			throw new AssertionCheckRun.Deferred("The slice ended before all assertion checks finished.");
 	}
 
 	/**
@@ -4920,12 +5096,13 @@ public final class OptimizerCore implements Core
 	 * @param file the campaign's private author checkpoint
 	 * @param operation the logical derivation or test revision
 	 * @param salt the fixed generator seed of this operation
+	 * @param feedback the user's feedback for a full proposal revision, or empty
 	 * @return the latest author result, including the first reply if a correction ran
 	 * @throws IOException if the checkpoint or session could not be read or written
 	 * @throws InterruptedException if a session or the command is interrupted
 	 */
 	private SessionResult author(SessionPort port, SessionRequest request, AuthorDraftFile file, Sha256 operation,
-		long salt) throws IOException, InterruptedException
+		long salt, String feedback) throws IOException, InterruptedException
 	{
 		Sha256 binding = Sha256.of(scope.json().writeValueAsBytes(List.of(request.source(),
 			request.turns(), request.profile(), request.timeLimit(), request.readOnly())));
@@ -4943,7 +5120,7 @@ public final class OptimizerCore implements Core
 			if (previous != null)
 				return continueAuthor(port, request, file, previous);
 			if (!port.recoversContractAuthor())
-				return localAuthor(port, request, file, operation, salt, binding);
+				return localAuthor(port, request, file, operation, salt, binding, feedback);
 
 			UUID id = UUID.randomUUID();
 			SessionResult initial = await(port.startContractAuthor(authorTurns(request, request.turns(), Optional.empty()),
@@ -4954,7 +5131,7 @@ public final class OptimizerCore implements Core
 			RetainedTrialClaim claim = new RetainedTrialClaim(id, retained.identity().orElseThrow(),
 				retained.completedTurns().orElseThrow());
 			AuthorDraftFile.Saved draft = new AuthorDraftFile.Saved(operation, salt, binding, false, completed,
-				Optional.of(claim));
+				Optional.of(claim), feedback);
 			file.write(draft);
 			return continueAuthor(port, request, file, draft);
 		}
@@ -4989,18 +5166,19 @@ public final class OptimizerCore implements Core
 	 * @param operation the operation key
 	 * @param salt the fixed generator seed
 	 * @param binding the request identity
+	 * @param feedback the user's feedback, or empty
 	 * @return the most recent author result
 	 * @throws IOException if the session or checkpoint fails
 	 * @throws InterruptedException if the command or session is interrupted
 	 */
 	private SessionResult localAuthor(SessionPort port, SessionRequest request, AuthorDraftFile file,
-		Sha256 operation, long salt, Sha256 binding) throws IOException, InterruptedException
+		Sha256 operation, long salt, Sha256 binding, String feedback) throws IOException, InterruptedException
 	{
 		FollowUp validate = completed ->
 		{
 			try
 			{
-				file.write(new AuthorDraftFile.Saved(operation, salt, binding, false, completed, Optional.empty()));
+				file.write(new AuthorDraftFile.Saved(operation, salt, binding, false, completed, Optional.empty(), feedback));
 			}
 			catch (IOException e)
 			{
@@ -5010,7 +5188,7 @@ public final class OptimizerCore implements Core
 		};
 		SessionResult result = await(port.start(authorTurns(request, request.turns(), Optional.of(validate))));
 		if (result instanceof SessionResult.Completed completed)
-			file.write(new AuthorDraftFile.Saved(operation, salt, binding, true, completed, Optional.empty()));
+			file.write(new AuthorDraftFile.Saved(operation, salt, binding, true, completed, Optional.empty(), feedback));
 		return result;
 	}
 
@@ -5036,7 +5214,7 @@ public final class OptimizerCore implements Core
 			if (claim == null)
 			{
 				file.delete();
-				return localAuthor(port, request, file, draft.operation(), draft.salt(), draft.request());
+				return localAuthor(port, request, file, draft.operation(), draft.salt(), draft.request(), draft.feedback());
 			}
 			result = await(port.startContractAuthor(authorTurns(request, List.of(correction.orElseThrow()),
 				Optional.empty()), claim.requestId(), Optional.of(claim)));
@@ -5046,7 +5224,7 @@ public final class OptimizerCore implements Core
 
 		if (result instanceof SessionResult.Completed completed)
 			file.write(new AuthorDraftFile.Saved(draft.operation(), draft.salt(), draft.request(), true, completed,
-				Optional.empty()));
+				Optional.empty(), draft.feedback()));
 		return result;
 	}
 

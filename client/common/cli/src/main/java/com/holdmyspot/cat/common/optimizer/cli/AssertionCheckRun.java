@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.common.optimizer.cli;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.contract.EvidenceScope;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.ProposalSchema;
@@ -40,13 +41,14 @@ import tools.jackson.databind.node.ObjectNode;
  */
 final class AssertionCheckRun implements Function<Assessment, List<String>>
 {
-	private static final int ATTEMPTS = 3;
+	private static final int ATTEMPTS = Campaign.INFRASTRUCTURE_FAILURE_LIMIT;
 	private final JsonMapper json;
 	private final ProposalSchema schema;
 	private final JudgedAssertionChecks checks;
 	private final Path project;
 	private final Path directory;
 	private final Sha256 base;
+	private final AssertionAttemptFile attempts;
 	private final Map<String, TestReport> reports = new LinkedHashMap<>();
 
 	/**
@@ -58,9 +60,10 @@ final class AssertionCheckRun implements Function<Assessment, List<String>>
 	 * @param project the staged default project
 	 * @param directory the private judge directory
 	 * @param base the snapshot of the default project
+	 * @param attempts persists failures across slices
 	 */
 	AssertionCheckRun(JsonMapper json, ProposalSchema schema, JudgedAssertionChecks checks, Path project,
-		Path directory, Sha256 base)
+		Path directory, Sha256 base, AssertionAttemptFile attempts)
 	{
 		this.json = json;
 		this.schema = schema;
@@ -68,6 +71,7 @@ final class AssertionCheckRun implements Function<Assessment, List<String>>
 		this.project = project;
 		this.directory = directory;
 		this.base = base;
+		this.attempts = attempts;
 	}
 
 	/**
@@ -144,11 +148,15 @@ final class AssertionCheckRun implements Function<Assessment, List<String>>
 		}
 
 		Sha256 key = Sha256.of(("review\n" + definition).getBytes(StandardCharsets.UTF_8));
-		for (int attempt = 0; attempt < ATTEMPTS; ++attempt)
+		for (int count = attempts.failures(key); count < ATTEMPTS; ++count)
 		{
 			Optional<List<Finding>> review = checks.review(key, inputs.judge(), test, inputs.requirements(), directory);
 			if (review.isPresent())
+			{
+				attempts.decided(key);
 				return report(test, judgments, review.orElseThrow(), refusals);
+			}
+			attempts.failed(key, count + 1);
 		}
 		throw new Unavailable("The assertion review of prompt test `" + test.id() + "`");
 	}
@@ -168,15 +176,19 @@ final class AssertionCheckRun implements Function<Assessment, List<String>>
 		JudgedExample selected) throws IOException, InterruptedException
 	{
 		Sha256 key = exampleKey(definition, prepared, selected);
-		for (int attempt = 0; attempt < ATTEMPTS; ++attempt)
+		for (int count = attempts.failures(key); count < ATTEMPTS; ++count)
 		{
 			try (TemporaryDirectories temporary = new TemporaryDirectories())
 			{
-				Path scratch = temporary.add(Files.createTempDirectory(directory, "assertion-example-"));
+				Path scratch = temporary.add(Files.createTempDirectory(directory.getParent(), "assertion-example-"));
 				Optional<ExampleResult> result = checks.example(key, inputs.judge(), prepared, selected, project, scratch);
 				if (result.isPresent())
+				{
+					attempts.decided(key);
 					return result.orElseThrow();
+				}
 			}
+			attempts.failed(key, count + 1);
 		}
 		throw new Unavailable("The judge for prompt test `" + prepared.test().id() + "`, assertion `" +
 			prepared.check().assertionId() + "`, example `" + prepared.check().exampleId() + "`");
@@ -243,6 +255,24 @@ final class AssertionCheckRun implements Function<Assessment, List<String>>
 		Interrupted(InterruptedException cause)
 		{
 			super(cause);
+		}
+	}
+
+	/**
+	 * Carries work that remains pending when a slice stops admitting sessions.
+	 */
+	static final class Deferred extends RuntimeException
+	{
+		private static final long serialVersionUID = 1L;
+
+		/**
+		 * Creates a deferred check.
+		 *
+		 * @param reason why the check will run in another slice
+		 */
+		Deferred(String reason)
+		{
+			super(reason);
 		}
 	}
 

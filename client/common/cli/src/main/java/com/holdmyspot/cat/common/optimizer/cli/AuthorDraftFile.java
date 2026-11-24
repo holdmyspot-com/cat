@@ -67,7 +67,7 @@ final class AuthorDraftFile
 				throw new IOException("The author's draft checkpoint does not hold a complete phase.");
 			return Optional.of(new Saved(new Sha256(node.path("operation").asString()), node.path("salt").longValue(),
 				new Sha256(node.path("request").asString()), node.path("final").asBoolean(), completed,
-				claim(node.path("claim"))));
+				claim(node.path("claim")), node.path("feedback").asString("")));
 		}
 		catch (IllegalArgumentException | tools.jackson.core.JacksonException e)
 		{
@@ -107,7 +107,8 @@ final class AuthorDraftFile
 	void write(Saved saved) throws IOException
 	{
 		ObjectNode node = json.createObjectNode().put("version", VERSION).put("operation", saved.operation().hex()).
-			put("salt", saved.salt()).put("request", saved.request().hex()).put("final", saved.finalPhase());
+			put("salt", saved.salt()).put("request", saved.request().hex()).put("final", saved.finalPhase()).
+			put("feedback", saved.feedback());
 		node.set("draft", new PeerTrialProtocol(json).result(saved.result()));
 		saved.claim().ifPresent(claim ->
 		{
@@ -148,9 +149,10 @@ final class AuthorDraftFile
 	 * @param finalPhase whether the result is ready for the final validation without another author turn
 	 * @param result the author output and session evidence
 	 * @param claim the exact broker identity of a suspended initial phase, if present
+	 * @param feedback the user feedback of a full proposal revision, or empty
 	 */
 	record Saved(Sha256 operation, long salt, Sha256 request, boolean finalPhase, SessionResult.Completed result,
-		Optional<RetainedTrialClaim> claim)
+		Optional<RetainedTrialClaim> claim, String feedback)
 	{
 	}
 }

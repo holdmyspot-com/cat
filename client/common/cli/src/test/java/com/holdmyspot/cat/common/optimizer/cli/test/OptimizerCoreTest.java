@@ -2199,6 +2199,48 @@ public final class OptimizerCoreTest
 		}
 	}
 
+
+	/**
+	 * Checks that a stopped slice keeps the draft and the failure count for its undecided example.
+	 *
+	 * @throws Exception if the model-free command or campaign fixture fails
+	 */
+	@Test
+	public void sliceKeepsAssertionCheckAttempts() throws Exception
+	{
+		// Requirement: R-L16
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Path target = Path.of("CLAUDE.md");
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			AtomicInteger judges = new AtomicInteger();
+			repository.sessions().judgeEnd = _ ->
+			{
+				if (judges.getAndIncrement() == 0)
+					repository.sessions().clock.advance(Duration.ofMinutes(9));
+				return new SessionResult.Failed("The judge fixture stopped.", List.of());
+			};
+
+			CommandResult first = repository.core().start(target);
+			String id = first.status().campaignId();
+
+			requireThat(judges.get(), "admittedInSlice").isEqualTo(1);
+			requireThat(first.proposalFile(), "proposalFile").isNull();
+			requireThat(repository.load(id).choices(), "choicesBeforeExhaustion").isEmpty();
+			requireThat(output(repository, List.of("status", id)).get("status").asString(), "status").
+				isEqualTo("running");
+
+			CommandResult second = repository.core().start(target);
+			requireThat(second.status().campaignId(), "sameCampaign").isEqualTo(id);
+			requireThat(judges.get(), "totalAttempts").isEqualTo(3);
+			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).size(), "authors").isEqualTo(1);
+			requireThat(repository.load(id).choices(), "pausedChoices").contains(Choice.RETRY).contains(Choice.STOP);
+			requireThat(repository.sessions().requests(SessionRole.TRIAL), "trials").isEmpty();
+		}
+	}
+
 	/**
 	 * Renders an example query with stable references to its per-attempt evidence paths.
 	 *
@@ -4640,6 +4682,58 @@ public final class OptimizerCoreTest
 			requireThat(Files.readString(repository.directory(id).resolve("held_out/proposal.json")), "stored").
 				contains("Revision number 1 limit.");
 		}
+	}
+
+	/**
+	 * Verifies that revising one prompt test reruns its held-out examples and review and reuses the other tests' checks.
+	 *
+	 * @throws Exception if the model-free commands or campaign fixture fail
+	 */
+	@Test
+	public void reviseRechecksOnlyChangedTest() throws Exception
+	{
+		// Requirement: R-L16
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			String changedTurn = "List exactly three {{kind}}.";
+			Repository repository = repository(scope, count -> derivation(output ->
+			{
+				if (count > 0)
+					((ArrayNode) output.at("/tests/1/turns")).removeAll().add(changedTurn);
+			}));
+			CommandResult started = repository.core().start(Path.of("CLAUDE.md"));
+			String id = started.status().campaignId();
+			Path judgeDirectory = repository.directory(id).resolve("held_out/assertion_judge");
+			List<SessionRequest> initial = assertionCheckRequests(repository, judgeDirectory);
+
+			CommandResult revised = repository.core().requestChanges(id, "Ask for exactly three items in plain_list.");
+
+			requireThat(proposalText(revised), "revisedProposal").contains(changedTurn);
+			requireThat(initial.size(), "initialChecks").isEqualTo(12);
+			requireThat(initial.stream().filter(request -> request.turns().getFirst().startsWith("# Assertion review")).
+				count(), "initialReviews").isEqualTo(3L);
+			List<SessionRequest> all = assertionCheckRequests(repository, judgeDirectory);
+			List<SessionRequest> rerun = all.subList(initial.size(), all.size());
+			requireThat(rerun.size(), "rerunChecks").isEqualTo(3);
+			requireThat(rerun.stream().filter(request -> request.turns().getFirst().startsWith("# Assertion review")).
+				count(), "rerunReviews").isEqualTo(1L);
+			requireThat(rerun.stream().allMatch(request -> request.turns().getFirst().contains("keeps_requested_tone")),
+				"rerunsBelongToPlainList").isTrue();
+			requireThat(all.stream().allMatch(request -> request.part() == Part.HELD_OUT), "checksAreHeldOut").isTrue();
+		}
+	}
+
+	/**
+	 * Selects the assertion example and review requests from an author's operation.
+	 *
+	 * @param repository the model-free campaign and its session script
+	 * @param directory the campaign's directory for assertion checks
+	 * @return the assertion check requests in start order
+	 */
+	private static List<SessionRequest> assertionCheckRequests(Repository repository, Path directory)
+	{
+		return repository.sessions().requests(SessionRole.JUDGE).stream().
+			filter(request -> request.source().startsWith(directory)).toList();
 	}
 
 	/**
