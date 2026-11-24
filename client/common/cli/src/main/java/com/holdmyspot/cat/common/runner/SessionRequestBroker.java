@@ -780,7 +780,7 @@ public final class SessionRequestBroker implements Closeable
 		try
 		{
 			busy = activeLaunches.containsValue(original) || StreamedRequest.senderRuns(site.requests(), original);
-			if (!busy)
+			if (!busy && request.operation() != RetainedTrialRequest.Operation.EXPORT_SUCCESSOR)
 			{
 				try
 				{
@@ -804,7 +804,7 @@ public final class SessionRequestBroker implements Closeable
 	}
 
 	/**
-	 * Inspects or discards the bound slot on the broker's control thread, outside the admission monitor. A guarded
+	 * Settles the operation on the broker's control thread, outside the admission monitor. A guarded
 	 * resume that the broker accepted during inspection makes the observation busy until that worker settles.
 	 *
 	 * @param id        the recovery request's envelope ID
@@ -822,6 +822,7 @@ public final class SessionRequestBroker implements Closeable
 				{
 					case STATUS -> site.slots().inspectTrial(request.requestId());
 					case DISCARD -> site.slots().discardTrial(request.requestId(), request.identity());
+					case EXPORT_SUCCESSOR -> site.slots().exportSuccessor(request, directory);
 				};
 			}
 			catch (IOException e)
@@ -831,7 +832,8 @@ public final class SessionRequestBroker implements Closeable
 			}
 			synchronized (this)
 			{
-				if (activeLaunches.containsValue(request.requestId().toString()))
+				if (request.operation() != RetainedTrialRequest.Operation.EXPORT_SUCCESSOR &&
+					activeLaunches.containsValue(request.requestId().toString()))
 					response = busyTrial(request.requestId());
 				response.write(json, id, directory);
 			}
@@ -1145,6 +1147,10 @@ public final class SessionRequestBroker implements Closeable
 					if (suspension.isPresent())
 					{
 						verifySuspension(slot, directory, suspension.getAsInt());
+						Optional<RetainedTrialClaim> predecessor = request.retainedTrialClaim();
+						if (predecessor.isPresent() &&
+							suspension.getAsInt() == (long) predecessor.get().completedTurns() + 1)
+							RetainedTrialSuccessor.record(json, slot.root(), predecessor.get(), startupGeneration);
 						status = SUSPENDED;
 					}
 					else

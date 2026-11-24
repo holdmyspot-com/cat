@@ -13,6 +13,7 @@ import com.holdmyspot.cat.common.optimizer.proposal.DraftDirectory;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.LaunchRefusedException;
 import com.holdmyspot.cat.common.runner.NestedSessionManager;
+import com.holdmyspot.cat.common.runner.RetainedNestedSessionClient;
 import com.holdmyspot.cat.common.runner.RetainedTrialClaim;
 import com.holdmyspot.cat.common.runner.RetainedTrialUnresumableException;
 import com.holdmyspot.cat.common.runner.TrialPluginInput;
@@ -154,6 +155,35 @@ final class Session implements SessionHandle
 	}
 
 	/**
+	 * Replays a settled author correction through the same event parser used by the live session.
+	 *
+	 * @param client the authenticated broker client
+	 * @param predecessor the checkpoint that ran the correction
+	 * @param successor the corrected checkpoint
+	 * @return the completed conversation and its evidence
+	 * @throws IOException if the evidence cannot be replayed as the observed conversation
+	 */
+	SessionResult.Completed recoverAuthor(RetainedNestedSessionClient client, RetainedTrialClaim predecessor,
+		RetainedTrialClaim successor) throws IOException
+	{
+		try (sink)
+		{
+			client.exportSuccessor(predecessor, successor, harnessDirectory(), sink);
+		}
+		for (Message message = messages.poll(); message != null; message = messages.poll())
+		{
+			if (message instanceof Message.Identified identified)
+				sessionId = identified.sessionId();
+			else if (message instanceof TurnCompleted turn)
+				responses.add(turn.assistantMessages());
+		}
+		String expectedId = successor.identity().session().orElseThrow().sessionId();
+		if (!expectedId.equals(sessionId) || responses.size() != successor.completedTurns() || !isTurnClean())
+			throw new IOException("The recovered author evidence did not replay the completed correction");
+		return completed();
+	}
+
+	/**
 	 * Starts the driver thread.
 	 */
 	void begin()
@@ -290,7 +320,7 @@ final class Session implements SessionHandle
 				throw failure;
 			}
 		}
-		if (outcome == Outcome.TURN_COMPLETED && trackedAuthor() && retained.isEmpty() && !isStopping() &&
+		if (outcome == Outcome.TURN_COMPLETED && trackedAuthor() && !isStopping() &&
 			responses.size() == requestedTurns())
 		{
 			outcome = Outcome.SUSPEND;
@@ -909,7 +939,7 @@ final class Session implements SessionHandle
 		 */
 		TURN_COMPLETED,
 		/**
-		 * The original author phase completed its turns and will suspend at that checkpoint.
+		 * The author phase completed its turns and will suspend at that checkpoint.
 		 */
 		SUSPEND,
 		/**

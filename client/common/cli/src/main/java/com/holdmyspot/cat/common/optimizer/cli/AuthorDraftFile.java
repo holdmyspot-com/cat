@@ -148,7 +148,7 @@ final class AuthorDraftFile
 	 * @param request identifies the author request's first turn and launch configuration
 	 * @param finalPhase whether the result is ready for the final validation without another author turn
 	 * @param result the author output and session evidence
-	 * @param claim the exact broker identity of a suspended initial phase, if present
+	 * @param claim the exact broker identity of the suspended phase, if present
 	 * @param feedback the user feedback of a full proposal revision, or empty
 	 */
 	record Saved(Sha256 operation, long salt, Sha256 request, boolean finalPhase, SessionResult.Completed result,

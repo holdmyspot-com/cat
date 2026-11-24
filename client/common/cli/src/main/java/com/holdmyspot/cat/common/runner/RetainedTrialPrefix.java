@@ -10,6 +10,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.Writer;
 import java.nio.ByteBuffer;
 import java.nio.channels.SeekableByteChannel;
 import java.nio.file.Files;
@@ -28,6 +29,7 @@ import tools.jackson.core.exc.JacksonIOException;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectReader;
+import tools.jackson.databind.SerializationFeature;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -216,6 +218,55 @@ public final class RetainedTrialPrefix
 			throw new IOException("The retained trial prefix cannot supply the claimed completed turns");
 		}
 		return new RetainedTrialPrefix(directory, completedTurns);
+	}
+
+	/**
+	 * Replays this validated prefix in the runner's bridge format in turn order.
+	 *
+	 * @param json the document mapper
+	 * @param sessionId the native identifier authenticated by the broker
+	 * @param output where to deliver the records
+	 * @throws NullPointerException if any argument is null
+	 * @throws IOException if retained evidence cannot be read or its records cannot be written
+	 */
+	void replay(JsonMapper json, String sessionId, Writer output) throws IOException
+	{
+		requireThat(json, "json").isNotNull();
+		requireThat(sessionId, "sessionId").isNotNull();
+		requireThat(output, "output").isNotNull();
+		ObjectNode identity = json.createObjectNode().put("type", "retained_session_id").put("session_id", sessionId);
+		writeRecord(json, output, identity);
+		for (int turn = 1; turn <= completedTurns; ++turn)
+		{
+			writeRecord(json, output, json.createObjectNode().put("type", "retained_turn_start"));
+			try (BufferedReader events = openEvents(turn))
+			{
+				for (String event = events.readLine(); event != null; event = events.readLine())
+					writeRecord(json, output, json.createObjectNode().put("type", "harness_event").put("event", event));
+			}
+			try (InputStream reply = openReply(turn))
+			{
+				writeRecord(json, output, json.readTree(reply));
+			}
+			catch (JacksonException e)
+			{
+				throw new IOException("Cannot replay the retained reply for turn " + turn, e);
+			}
+		}
+	}
+
+	/**
+	 * Forwards an authenticated recovery record as one compact line.
+	 *
+	 * @param json the document mapper
+	 * @param output where to deliver the record
+	 * @param record the record to deliver
+	 * @throws IOException if writing fails
+	 */
+	private static void writeRecord(JsonMapper json, Writer output, JsonNode record) throws IOException
+	{
+		output.write(json.writer().without(SerializationFeature.INDENT_OUTPUT).writeValueAsString(record));
+		output.write('\n');
 	}
 
 	private final Path directory;

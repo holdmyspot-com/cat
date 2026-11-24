@@ -28,7 +28,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.SerializationFeature;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -1159,36 +1158,7 @@ public final class SessionRequestForwarder
 				ResultsCopy.copyTurn(prefix.directory(), harnessResults.resolve(sessionId));
 				turnCopied = true;
 			}
-			writeRecord(json.createObjectNode().put("type", "retained_session_id").put("session_id", sessionId));
-			for (int turn = 1; turn <= prefix.completedTurns(); ++turn)
-			{
-				writeRecord(json.createObjectNode().put("type", "retained_turn_start"));
-				try (BufferedReader events = prefix.openEvents(turn))
-				{
-					for (String event = events.readLine(); event != null; event = events.readLine())
-						writeRecord(json.createObjectNode().put("type", "harness_event").put("event", event));
-				}
-				try (InputStream reply = prefix.openReply(turn))
-				{
-					writeRecord(json.readTree(reply));
-				}
-				catch (JacksonException e)
-				{
-					throw new IOException("Cannot replay the retained reply for turn " + turn, e);
-				}
-			}
-		}
-
-		/**
-		 * Forwards an authenticated recovery record as one compact line.
-		 *
-		 * @param record the record to deliver
-		 * @throws IOException if writing fails
-		 */
-		private void writeRecord(JsonNode record) throws IOException
-		{
-			output.write(json.writer().without(SerializationFeature.INDENT_OUTPUT).writeValueAsString(record));
-			output.write('\n');
+			prefix.replay(json, sessionId, output);
 		}
 
 		@Override

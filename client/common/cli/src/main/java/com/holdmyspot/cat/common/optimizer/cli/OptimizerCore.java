@@ -5134,7 +5134,11 @@ public final class OptimizerCore implements Core
 		try
 		{
 			if (previous != null && previous.finalPhase())
+			{
+				if (previous.claim().isPresent())
+					discardAuthor(port, previous.claim().orElseThrow());
 				return previous.result();
+			}
 			if (previous != null)
 				return continueAuthor(port, request, file, previous);
 			if (!port.recoversContractAuthor())
@@ -5145,9 +5149,9 @@ public final class OptimizerCore implements Core
 				id, Optional.empty()));
 			if (!(initial instanceof SessionResult.Completed completed))
 				return initial;
-			RetainedTrialResponse retained = authorCheckpoint(port, id, request.turns().size());
-			RetainedTrialClaim claim = new RetainedTrialClaim(id, retained.identity().orElseThrow(),
-				retained.completedTurns().orElseThrow());
+			RetainedTrialClaim claim = authorCheckpoint(port, id);
+			if (claim.completedTurns() != request.turns().size())
+				throw new IOException("The broker has no matching initial contract author checkpoint.");
 			AuthorDraftFile.Saved draft = new AuthorDraftFile.Saved(operation, salt, binding, false, completed,
 				Optional.of(claim), feedback);
 			file.write(draft);
@@ -5224,25 +5228,70 @@ public final class OptimizerCore implements Core
 	private SessionResult continueAuthor(SessionPort port, SessionRequest request, AuthorDraftFile file,
 		AuthorDraftFile.Saved draft) throws IOException, InterruptedException
 	{
-		Optional<String> correction = request.followUp().orElseThrow().next(draft.result());
-		SessionResult result = draft.result();
 		RetainedTrialClaim claim = draft.claim().orElse(null);
-		if (correction.isPresent())
+		if (claim != null)
 		{
-			if (claim == null)
+			RetainedTrialClaim current = authorCheckpoint(port, claim.requestId());
+			if (!current.equals(claim))
 			{
-				file.delete();
-				return localAuthor(port, request, file, draft.operation(), draft.salt(), draft.request(), draft.feedback());
+				requireAuthorSuccessor(claim, current);
+				SessionResult.Completed recovered = port.recoverContractAuthor(request, claim, current);
+				return saveAuthorPhase(port, file, draft, recovered, Optional.of(current));
 			}
-			result = await(port.startContractAuthor(authorTurns(request, List.of(correction.orElseThrow()),
-				Optional.empty()), claim.requestId(), Optional.of(claim)));
 		}
-		else if (claim != null)
-			discardAuthor(port, claim);
 
-		if (result instanceof SessionResult.Completed completed)
-			file.write(new AuthorDraftFile.Saved(draft.operation(), draft.salt(), draft.request(), true, completed,
-				Optional.empty(), draft.feedback()));
+		Optional<String> correction = request.followUp().orElseThrow().next(draft.result());
+		if (correction.isEmpty())
+			return saveAuthorPhase(port, file, draft, draft.result(), draft.claim());
+		if (claim == null)
+		{
+			file.delete();
+			return localAuthor(port, request, file, draft.operation(), draft.salt(), draft.request(), draft.feedback());
+		}
+
+		SessionResult result = await(port.startContractAuthor(authorTurns(request, List.of(correction.orElseThrow()),
+			Optional.empty()), claim.requestId(), Optional.of(claim)));
+		if (!(result instanceof SessionResult.Completed completed))
+			return result;
+		RetainedTrialClaim current = authorCheckpoint(port, claim.requestId());
+		requireAuthorSuccessor(claim, current);
+		return saveAuthorPhase(port, file, draft, completed, Optional.of(current));
+	}
+
+	/**
+	 * Confirms that a guarded correction advanced the author by exactly one turn in the same native session.
+	 *
+	 * @param earlier the initial phase's claim
+	 * @param later the corrected phase's claim
+	 * @throws IOException if the broker reported an unrelated checkpoint
+	 */
+	private static void requireAuthorSuccessor(RetainedTrialClaim earlier, RetainedTrialClaim later) throws IOException
+	{
+		if (later.completedTurns() != (long) earlier.completedTurns() + 1 ||
+			!later.identity().session().equals(earlier.identity().session()) ||
+			later.identity().slotGeneration().equals(earlier.identity().slotGeneration()))
+			throw new IOException("The broker has no matching corrected contract author checkpoint.");
+	}
+
+	/**
+	 * Saves the final author result before allowing the broker to remove the native session.
+	 *
+	 * @param port the campaign's session port
+	 * @param file the campaign's author checkpoint
+	 * @param draft the initial phase, which identifies the operation being completed
+	 * @param result the author result ready for final validation
+	 * @param claim the slot to discard, or empty if the author ran without the broker
+	 * @return the saved result
+	 * @throws IOException if saving or releasing the checkpoint fails
+	 */
+	private static SessionResult.Completed saveAuthorPhase(SessionPort port, AuthorDraftFile file,
+		AuthorDraftFile.Saved draft, SessionResult.Completed result, Optional<RetainedTrialClaim> claim)
+		throws IOException
+	{
+		file.write(new AuthorDraftFile.Saved(draft.operation(), draft.salt(), draft.request(), true, result, claim,
+			draft.feedback()));
+		if (claim.isPresent())
+			discardAuthor(port, claim.orElseThrow());
 		return result;
 	}
 
@@ -5266,16 +5315,15 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
-	 * Waits for the broker to finish publishing the original author's suspended session.
+	 * Waits for the broker to settle the current author checkpoint.
 	 *
 	 * @param port the session port that owns the author
 	 * @param id the original request identity
-	 * @param turns the number of completed author turns required by the next phase
 	 * @return the broker's guarded resumption identity
 	 * @throws IOException if no matching checkpoint settles
 	 * @throws InterruptedException if the wait is interrupted
 	 */
-	private RetainedTrialResponse authorCheckpoint(SessionPort port, UUID id, int turns)
+	private RetainedTrialClaim authorCheckpoint(SessionPort port, UUID id)
 		throws IOException, InterruptedException
 	{
 		Instant deadline = scope.clock().instant().plusSeconds(30L);
@@ -5285,8 +5333,8 @@ public final class OptimizerCore implements Core
 			RetainedTrialResponse status = port.retainedTrial(RetainedTrialRequest.status(id));
 			if (!id.equals(status.requestId()))
 				throw new IOException("The broker answered for a different contract author session.");
-			if (status.status() == RetainedTrialResponse.Status.READY && status.completedTurns().orElseThrow() == turns)
-				return status;
+			if (status.status() == RetainedTrialResponse.Status.READY)
+				return new RetainedTrialClaim(id, status.identity().orElseThrow(), status.completedTurns().orElseThrow());
 			if (status.status() != RetainedTrialResponse.Status.BUSY || !scope.clock().instant().isBefore(deadline))
 				throw new IOException("The broker has no matching contract author checkpoint.");
 			poll.pause();

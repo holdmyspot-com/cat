@@ -6,6 +6,8 @@ import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.IOException;
+import java.io.Writer;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
 import tools.jackson.databind.json.JsonMapper;
@@ -104,6 +106,57 @@ public final class RetainedNestedSessionClient
 			if (channel.removesResponses())
 				TemporaryDirectories.deleteRecursively(directory);
 			return response;
+		}
+	}
+
+	/**
+	 * Copies and replays the published evidence of a verified successor without opening a harness session.
+	 *
+	 * @param predecessor the checkpoint from which the correction resumed
+	 * @param successor the settled checkpoint observed by the caller
+	 * @param harnessResults the private results directory for this harness
+	 * @param output where to replay the prefix in bridge format
+	 * @throws NullPointerException if any argument is null
+	 * @throws IOException if the broker cannot prove or export this transition
+	 */
+	public void exportSuccessor(RetainedTrialClaim predecessor, RetainedTrialClaim successor, Path harnessResults,
+		Writer output) throws IOException
+	{
+		requireThat(predecessor, "predecessor").isNotNull();
+		requireThat(successor, "successor").isNotNull();
+		requireThat(harnessResults, "harnessResults").isNotNull();
+		requireThat(output, "output").isNotNull();
+
+		RetainedTrialRequest request = RetainedTrialRequest.exportSuccessor(predecessor);
+		WorktreeRequestClient.Channel opened = router.open().orElseThrow(() ->
+			new IOException("No request server can export the retained author correction"));
+		try (WorktreeRequestClient.Channel channel = opened)
+		{
+			Path requests = channel.requests().toAbsolutePath();
+			String id = request.publish(json, requests);
+			Path directory = requests.getParent().resolve("responses").resolve(id);
+			RetainedTrialResponse response = await(channel, directory, "retained correction export",
+				() -> RetainedTrialResponse.read(json, directory, request));
+			try
+			{
+				if (response.status() != RetainedTrialResponse.Status.READY ||
+					!response.requestId().equals(successor.requestId()) ||
+					!response.identity().equals(Optional.of(successor.identity())) ||
+					response.completedTurns().orElse(-1) != successor.completedTurns())
+					throw new IOException("The broker could not export the observed author correction");
+
+				String sessionId = successor.identity().session().orElseThrow().sessionId();
+				RetainedTrialPrefix prefix = RetainedTrialPrefix.open(directory, successor.completedTurns());
+				Path session = Files.createDirectories(harnessResults.resolve(sessionId));
+				if (!ResultsCopy.copyTurn(prefix.directory(), session).isEmpty())
+					throw new IOException("The recovered author correction could not copy all its project evidence");
+				prefix.replay(json, sessionId, output);
+			}
+			finally
+			{
+				if (channel.removesResponses())
+					TemporaryDirectories.deleteRecursively(directory);
+			}
 		}
 	}
 

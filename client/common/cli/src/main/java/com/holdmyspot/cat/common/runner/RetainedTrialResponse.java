@@ -3,7 +3,9 @@ package com.holdmyspot.cat.common.runner;
 import static com.holdmyspot.cat.common.runner.RetainedTrialRequest.FORMAT_VERSION;
 import static com.holdmyspot.cat.common.runner.RetainedTrialRequest.IDENTITY_FIELD;
 import static com.holdmyspot.cat.common.runner.RetainedTrialRequest.REQUEST_ID_FIELD;
+import static com.holdmyspot.cat.common.runner.RetainedTrialRequest.TURNS_FIELD;
 import static com.holdmyspot.cat.common.runner.RetainedTrialRequest.VERSION_FIELD;
+import static com.holdmyspot.cat.common.runner.RetainedTrialRequest.readTurns;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.runner.RetainedTrialRequest.Operation;
@@ -34,7 +36,6 @@ public record RetainedTrialResponse(UUID requestId, Status status, Optional<Iden
 {
 	private static final String ID_FIELD = "id";
 	private static final String STATUS_FIELD = "status";
-	private static final String TURNS_FIELD = "completed_turns";
 	private static final String REASON_FIELD = "reason";
 	private static final Set<String> FIELDS = Set.of(VERSION_FIELD, ID_FIELD, REQUEST_ID_FIELD, STATUS_FIELD,
 		IDENTITY_FIELD, TURNS_FIELD, REASON_FIELD);
@@ -83,11 +84,19 @@ public record RetainedTrialResponse(UUID requestId, Status status, Optional<Iden
 
 		Status status = Status.parse(value.path(STATUS_FIELD));
 		Optional<Identity> identity = Identity.readOptional(value);
-		if (request.operation() == Operation.STATUS && status == Status.DISCARDED)
-			throw new IOException("The retained trial status response cannot report a discard");
+		if (request.operation() != Operation.DISCARD && status == Status.DISCARDED)
+			throw new IOException("Only a retained trial discard response can report a discard");
 		if (request.operation() == Operation.DISCARD && (status == Status.READY || identity.isPresent()))
 			throw new IOException("The retained trial discard response cannot report an observed slot");
 		OptionalInt completedTurns = readTurns(value);
+		if (request.operation() == Operation.EXPORT_SUCCESSOR && status == Status.READY)
+		{
+			Identity predecessor = request.identity().orElseThrow();
+			if (identity.isEmpty() || !identity.get().session().equals(predecessor.session()) ||
+				identity.get().slotGeneration().equals(predecessor.slotGeneration()) ||
+				completedTurns.orElse(-1) != request.completedTurns().orElseThrow() + 1)
+				throw new IOException("The broker returned a different successor checkpoint");
+		}
 		try
 		{
 			return Optional.of(new RetainedTrialResponse(requestId, status, identity, completedTurns));
@@ -151,23 +160,6 @@ public record RetainedTrialResponse(UUID requestId, Status status, Optional<Iden
 		identity.ifPresent(observed -> value.set(IDENTITY_FIELD, observed.document(json)));
 		completedTurns.ifPresent(turns -> value.put(TURNS_FIELD, turns));
 		SessionRequestCli.write(json, directory.resolve(WorktreeResponse.FILE_NAME), value);
-	}
-
-	/**
-	 * Reads the completed-turn count when the response names one.
-	 *
-	 * @param value the response document
-	 * @return the count or empty when the field is absent
-	 * @throws IOException if the field is present and is not a nonnegative 32-bit integer
-	 */
-	private static OptionalInt readTurns(JsonNode value) throws IOException
-	{
-		if (!value.has(TURNS_FIELD))
-			return OptionalInt.empty();
-		JsonNode count = value.path(TURNS_FIELD);
-		if (!count.isIntegralNumber() || !count.canConvertToInt() || count.intValue() < 0)
-			throw new IOException("The retained trial response requires a nonnegative integer " + TURNS_FIELD);
-		return OptionalInt.of(count.intValue());
 	}
 
 	/**

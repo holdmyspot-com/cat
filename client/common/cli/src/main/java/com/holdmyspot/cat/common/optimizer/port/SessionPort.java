@@ -77,6 +77,21 @@ public interface SessionPort
 	}
 
 	/**
+	 * Reconstructs the author result from the broker's acknowledged correction without opening a harness session.
+	 *
+	 * @param request the original author request
+	 * @param predecessor the initial author checkpoint
+	 * @param successor the observed corrected checkpoint
+	 * @return the complete author result with both phases' evidence
+	 * @throws IOException if the result cannot be recovered
+	 */
+	default SessionResult.Completed recoverContractAuthor(SessionRequest request, RetainedTrialClaim predecessor,
+		RetainedTrialClaim successor) throws IOException
+	{
+		throw new IOException("This session port cannot export a retained author correction");
+	}
+
+	/**
 	 * Indicates whether the port can suspend and continue a contract author through the broker.
 	 *
 	 * @return whether this port supports contract-author recovery

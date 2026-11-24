@@ -1472,6 +1472,7 @@ public final class GuardPilotTest
 								turns = OptionalInt.of(1);
 							yield new RetainedTrialResponse(request.requestId(), status, observed, turns);
 						}
+						case EXPORT_SUCCESSOR -> throw new AssertionError("A pilot cannot export an author correction");
 						case DISCARD ->
 						{
 							requireThat(request.identity(), "discardIdentity").isEqualTo(Optional.of(identity));
@@ -2308,6 +2309,7 @@ public final class GuardPilotTest
 					{
 						case STATUS ->
 							new RetainedTrialResponse(request.requestId(), Status.READY, Optional.of(identity), OptionalInt.of(0));
+						case EXPORT_SUCCESSOR -> throw new AssertionError("A pilot cannot export an author correction");
 						case DISCARD ->
 						{
 							requireThat(request.identity(), "discardIdentity").isEqualTo(Optional.of(identity));

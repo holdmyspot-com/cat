@@ -568,6 +568,51 @@ public final class SessionSlots
 	}
 
 	/**
+	 * Publishes the successor's evidence from an acknowledged guarded suspension. The same slot must still hold
+	 * the observed generation and each of the completed turns while CAT copies the prefix.
+	 *
+	 * @param request the exact predecessor claim
+	 * @param directory the broker's response directory
+	 * @return the successor checkpoint on success, or the reason that no evidence was copied
+	 * @throws IOException if the slot or its evidence cannot be read or copied
+	 */
+	RetainedTrialResponse exportSuccessor(RetainedTrialRequest request, Path directory) throws IOException
+	{
+		UUID id = request.requestId();
+		RetainedTrialResponse current = inspectTrial(id);
+		if (current.status() != Status.READY)
+			return current;
+
+		Identity predecessor = request.identity().orElseThrow();
+		Identity successor = current.identity().orElseThrow();
+		int turns = current.completedTurns().orElseThrow();
+		RetainedTrialResponse unsafe = new RetainedTrialResponse(id, Status.UNSAFE, Optional.empty(),
+			OptionalInt.empty());
+		if (turns != request.completedTurns().orElseThrow() + 1 ||
+			!successor.session().equals(predecessor.session()) ||
+			successor.slotGeneration().equals(predecessor.slotGeneration()))
+			return unsafe;
+
+		Optional<Slot> reserved = acquireRetained(id, successor, turns);
+		if (reserved.isEmpty())
+			return new RetainedTrialResponse(id, Status.BUSY, Optional.empty(), OptionalInt.empty());
+		Slot slot = reserved.get();
+		try
+		{
+			if (!RetainedTrialSuccessor.matches(JSON, slot.root(), request, successor))
+				return unsafe;
+			HarnessSession session = successor.session().orElseThrow();
+			Path nested = slot.root().resolve(session.harness()).resolve(slot.slotId());
+			RetainedTrialPrefix.publish(nested, directory, turns);
+			return current;
+		}
+		finally
+		{
+			retain(slot);
+		}
+	}
+
+	/**
 	 * Inspects or discards a trial while reserving its slot and excluding a concurrent runner startup.
 	 *
 	 * @param request the fenced original request and the recovery operation

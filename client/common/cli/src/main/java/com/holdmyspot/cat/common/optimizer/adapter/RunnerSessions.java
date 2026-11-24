@@ -23,6 +23,7 @@ import com.holdmyspot.cat.common.optimizer.port.PluginBase;
 import com.holdmyspot.cat.common.optimizer.port.SessionHandle;
 import com.holdmyspot.cat.common.optimizer.port.SessionPort;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
+import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.port.UnreachableReference;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
@@ -442,6 +443,22 @@ public abstract class RunnerSessions implements SessionPort
 		if (!recoversContractAuthor())
 			throw new IOException("No broker serves contract-author recovery");
 		return startTracked(request, requestId, claim);
+	}
+
+	@Override
+	public final SessionResult.Completed recoverContractAuthor(SessionRequest request, RetainedTrialClaim predecessor,
+		RetainedTrialClaim successor) throws IOException
+	{
+		requireThat(request, "request").isNotNull();
+		requireThat(predecessor, "predecessor").isNotNull();
+		requireThat(successor, "successor").isNotNull();
+		if (request.role() != SessionRole.CONTRACT_AUTHOR ||
+			!successor.identity().session().orElseThrow().harness().equals(harness))
+			throw new IllegalArgumentException("The retained correction does not match the contract author");
+
+		RetainedNestedSessionClient client = retainedTrials.orElseThrow(() ->
+			new IOException("No broker serves contract-author recovery"));
+		return new Session(this, request, POLL).recoverAuthor(client, predecessor, successor);
 	}
 
 	@Override

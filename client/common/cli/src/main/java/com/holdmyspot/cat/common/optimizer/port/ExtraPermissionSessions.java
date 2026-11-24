@@ -68,6 +68,13 @@ public final class ExtraPermissionSessions implements SessionPort
 	}
 
 	@Override
+	public SessionResult.Completed recoverContractAuthor(SessionRequest request, RetainedTrialClaim predecessor,
+		RetainedTrialClaim successor) throws IOException
+	{
+		return delegate.recoverContractAuthor(request, predecessor, successor);
+	}
+
+	@Override
 	public boolean recoversContractAuthor()
 	{
 		return delegate.recoversContractAuthor();

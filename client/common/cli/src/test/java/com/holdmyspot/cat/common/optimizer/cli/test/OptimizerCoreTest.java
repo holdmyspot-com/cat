@@ -76,6 +76,7 @@ import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
 import com.holdmyspot.cat.common.optimizer.inventory.Limit;
 import com.holdmyspot.cat.common.optimizer.inventory.Overlay;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
+import com.holdmyspot.cat.common.optimizer.port.SessionHandle;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
@@ -104,6 +105,9 @@ import com.holdmyspot.cat.common.optimizer.statistics.DecisionBoundaries;
 import com.holdmyspot.cat.common.optimizer.workspace.ForkView;
 import com.holdmyspot.cat.common.optimizer.workspace.WorktreeRefusedException;
 import com.holdmyspot.cat.common.runner.HarnessCapacity.Hold;
+import com.holdmyspot.cat.common.runner.RetainedTrialClaim;
+import com.holdmyspot.cat.common.runner.RetainedTrialRequest;
+import com.holdmyspot.cat.common.runner.RetainedTrialResponse;
 import com.holdmyspot.cat.common.runner.fakes.test.FakeHarnessCli;
 import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
 import com.holdmyspot.cat.common.secrets.OptimizerCommandScopeSecrets;
@@ -136,8 +140,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
@@ -865,7 +873,7 @@ public final class OptimizerCoreTest
 	 */
 	private static final class SessionScript
 	{
-		private final FakeSessionPort port = new FakeSessionPort();
+		private final FakeSessionPort port;
 		/**
 		 * The turns that the sessions' follow-ups chose, in the order that they were sent.
 		 */
@@ -913,8 +921,21 @@ public final class OptimizerCoreTest
 		 */
 		SessionScript(ManualClock clock, Function<SessionRequest, SessionResult> script)
 		{
+			this(clock, script, new FakeSessionPort());
+		}
+
+		/**
+		 * Creates the script on a specific port.
+		 *
+		 * @param clock the clock to advance
+		 * @param script decides each session's result
+		 * @param port the port to run the script
+		 */
+		SessionScript(ManualClock clock, Function<SessionRequest, SessionResult> script, FakeSessionPort port)
+		{
 			this.clock = clock;
 			this.script = script;
+			this.port = port;
 			port.onStart(session -> session.end(answer(session.request())));
 			port.loading((_, plugins) -> loadedSources(plugins));
 			port.unapprovedHooks(this::unapprovedHooks);
@@ -1312,6 +1333,24 @@ public final class OptimizerCoreTest
 	private static Repository repository(TemporaryDirectories scope, Function<Integer, String> contractAuthor,
 		Set<Path> tracked, SessionResult contractAuthorEnd, boolean notIgnored) throws IOException
 	{
+		return repository(scope, contractAuthor, tracked, contractAuthorEnd, notIgnored, new FakeSessionPort());
+	}
+
+	/**
+	 * Creates a repository and a core whose sessions follow a script on a specific port.
+	 *
+	 * @param scope removes the repository
+	 * @param contractAuthor returns the contract author's final response by session number
+	 * @param tracked the files, relative to the project, that Git tracks
+	 * @param contractAuthorEnd the replacement result for each contract author session, or null to use the script
+	 * @param notIgnored whether the project includes CAT session directories in its working tree
+	 * @param port the port to run the script
+	 * @return the repository
+	 * @throws IOException if the repository cannot be written
+	 */
+	private static Repository repository(TemporaryDirectories scope, Function<Integer, String> contractAuthor,
+		Set<Path> tracked, SessionResult contractAuthorEnd, boolean notIgnored, FakeSessionPort port) throws IOException
+	{
 		Path root = scope.add(Files.createTempDirectory("optimizer-flow")).toRealPath();
 		Path scratch = Files.createDirectory(root.resolve("scratch-outside-git"));
 		Files.createDirectory(root.resolve(".git"));
@@ -1362,7 +1401,7 @@ public final class OptimizerCoreTest
 		TestOptimizerCommandScope<FakeSessionPort> command = new TestOptimizerCommandScope<>(Harness.CLAUDE, root,
 			tracked, clock ->
 		{
-			sessions.set(new SessionScript(clock, script));
+			sessions.set(new SessionScript(clock, script, port));
 			return sessions.get().port();
 		});
 		if (notIgnored)
@@ -3835,6 +3874,155 @@ public final class OptimizerCoreTest
 				contains("`cat-output.json` is not one JSON object");
 			requireThat(Files.exists(repository.directory(result.status().campaignId()).resolve("held_out/proposal.json")),
 				"proposalFileExists").isTrue();
+		}
+	}
+
+	/**
+	 * A broker that finishes the correction before the requester is interrupted while waiting for it.
+	 */
+	private static final class SettledAuthorPort extends FakeSessionPort
+	{
+		private final RetainedTrialResponse.Identity identity = new RetainedTrialResponse.Identity(UUID.randomUUID(),
+			Optional.of(new RetainedTrialResponse.HarnessSession("claude", "contract-author-session")));
+		private RetainedTrialClaim original;
+		private RetainedTrialClaim successor;
+		private SessionResult.Completed first;
+		private SessionResult.Completed settled;
+		private int exports;
+		private int discards;
+
+		@Override
+		public boolean recoversContractAuthor()
+		{
+			return true;
+		}
+
+		@Override
+		public RetainedTrialResponse retainedTrial(RetainedTrialRequest request)
+		{
+			requireThat(request.requestId(), "originalRequest").isEqualTo(original.requestId());
+			if (request.operation() == RetainedTrialRequest.Operation.DISCARD)
+			{
+				requireThat(request.identity(), "discardedIdentity").isEqualTo(Optional.of(successor.identity()));
+				++discards;
+				return new RetainedTrialResponse(request.requestId(), RetainedTrialResponse.Status.DISCARDED,
+					Optional.empty(), OptionalInt.empty());
+			}
+			requireThat(request.operation(), "brokerOperation").isEqualTo(RetainedTrialRequest.Operation.STATUS);
+			RetainedTrialClaim current = original;
+			if (successor != null)
+				current = successor;
+			return new RetainedTrialResponse(request.requestId(), RetainedTrialResponse.Status.READY,
+				Optional.of(current.identity()), OptionalInt.of(current.completedTurns()));
+		}
+
+		@Override
+		public SessionResult.Completed recoverContractAuthor(SessionRequest request, RetainedTrialClaim predecessor,
+			RetainedTrialClaim recovered)
+		{
+			requireThat(request.role(), "role").isEqualTo(SessionRole.CONTRACT_AUTHOR);
+			requireThat(predecessor, "exportPredecessor").isEqualTo(original);
+			requireThat(recovered, "exportSuccessor").isEqualTo(successor);
+			++exports;
+			return settled;
+		}
+
+		@Override
+		public SessionHandle startContractAuthor(SessionRequest request, UUID requestId, Optional<RetainedTrialClaim> claim)
+			throws IOException
+		{
+			if (claim.isEmpty())
+			{
+				requireThat(original, "originalAuthorAlreadyStarted").isNull();
+				original = new RetainedTrialClaim(requestId, identity, 1);
+				SessionHandle initial = start(request);
+				first = (SessionResult.Completed) initial.completion().toCompletableFuture().join();
+				return initial;
+			}
+			requireThat(requestId, "correctionRequest").isEqualTo(original.requestId());
+			requireThat(claim.orElseThrow(), "correctionClaim").isEqualTo(original);
+			requireThat(request.turns().size(), "correctionTurns").isEqualTo(1);
+			requireThat(request.turns().getFirst(), "correction").contains("`cat-output.json` is not one JSON object");
+			if (settled != null)
+				throw new AssertionError("The retry tried to start the correction again after the broker settled it.");
+			SessionResult.Completed corrected = (SessionResult.Completed) start(request).completion().
+				toCompletableFuture().join();
+			settled = new SessionResult.Completed(corrected.transcript(),
+				List.of(first.responses().getFirst(), corrected.responses().getFirst()), corrected.effects(),
+				first.initialProject(), corrected.model(), corrected.reasoning(), corrected.usage(), corrected.windows(),
+				corrected.promptSources(), corrected.toolCalls());
+			successor = new RetainedTrialClaim(requestId,
+				new RetainedTrialResponse.Identity(UUID.randomUUID(), identity.session()), 2);
+			return new SessionHandle()
+			{
+				@Override
+				public CompletionStage<SessionResult> completion()
+				{
+					Thread.currentThread().interrupt();
+					return new CompletableFuture<>();
+				}
+
+				@Override
+				public void interrupt()
+				{
+					// The broker has already finished the correction.
+				}
+			};
+		}
+	}
+
+	/**
+	 * Verifies that retrying start uses the settled correction after the first command lost its result.
+	 *
+	 * @throws IOException if the campaign or draft cannot be read or written
+	 * @throws CommandRefusedException if the campaign cannot start
+	 * @throws InterruptedException if the retry is interrupted
+	 */
+	@Test
+	public void startRecoversSettledAuthorCorrection() throws IOException, CommandRefusedException, InterruptedException
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			SettledAuthorPort port = new SettledAuthorPort();
+			Repository repository = repository(scope, reply ->
+			{
+				if (reply == 0)
+					return "invalid proposal";
+				return derivation(_ ->
+				{
+				});
+			}, Set.of(Path.of("CLAUDE.md")), null, false, port);
+			Path target = Path.of("CLAUDE.md");
+
+			expectThrows(InterruptedException.class, () -> repository.core().start(target));
+
+			requireThat(port.settled.requestedTurns(), "settledTurns").isEqualTo(2);
+			Path campaign;
+			try (Stream<Path> campaigns = Files.list(repository.campaigns()))
+			{
+				List<Path> directories = campaigns.toList();
+				requireThat(directories, "campaigns").size().isEqualTo(1);
+				campaign = directories.getFirst();
+			}
+			Path heldOut = campaign.resolve("held_out");
+			JsonNode draft = JSON.readTree(Files.readAllBytes(heldOut.resolve("author_draft.json")));
+			requireThat(draft.path("final").asBoolean(true), "draftIsFinal").isFalse();
+			requireThat(draft.path("claim").path("request").asString(), "draftOriginalRequest").
+				isEqualTo(port.original.requestId().toString());
+			requireThat(draft.path("claim").path("generation").asString(), "draftSlotGeneration").
+				isEqualTo(port.original.identity().slotGeneration().toString());
+			requireThat(draft.path("claim").path("turns").asInt(), "draftTurns").isEqualTo(1);
+			Path proposal = heldOut.resolve("proposal.json");
+			requireThat(Files.exists(proposal), "proposalBeforeRetry").isFalse();
+
+			CommandResult result = repository.core().start(target);
+
+			requireThat(result.status().campaignId(), "sameCampaign").isEqualTo(campaign.getFileName().toString());
+			requireThat(result.message(), "message").isNull();
+			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).size(), "authorPhases").isEqualTo(2);
+			requireThat(port.exports, "exports").isEqualTo(1);
+			requireThat(port.discards, "discards").isEqualTo(1);
+			requireThat(Files.isRegularFile(proposal), "proposalAfterRetry").isTrue();
 		}
 	}
 

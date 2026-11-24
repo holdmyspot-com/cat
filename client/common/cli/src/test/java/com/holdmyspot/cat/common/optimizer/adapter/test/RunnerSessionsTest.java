@@ -1235,7 +1235,8 @@ public final class RunnerSessionsTest
 			requireThat(bridge.claims, "brokerClaims").isEqualTo(List.of(Optional.empty(), Optional.of(bridge.claim)));
 			requireThat(bridge.commands.size(), "sentCommands").isEqualTo(4);
 			requireThat(bridge.commands.get(2).path("prompt").stringValue(), "correctionPrompt").isEqualTo("correct");
-			requireThat(bridge.commands.getLast().path("type").stringValue(), "lastCommand").isEqualTo("complete");
+			requireThat(bridge.commands.getLast().toString(), "correctionTerminalCommand").
+				isEqualTo("{\"type\":\"suspend\",\"completed_turns\":2}");
 			requireThat(continued, "continued").isInstanceOf(SessionResult.Completed.class);
 			SessionResult.Completed completed = (SessionResult.Completed) continued;
 			requireThat(completed.requestedTurns(), "resumedTurns").isEqualTo(2);
@@ -1402,7 +1403,13 @@ public final class RunnerSessionsTest
 				switch (command.path("type").stringValue(""))
 				{
 					case "turn" -> writeTurn(json, output, reply, usage);
-					case "suspend" -> output.write(acknowledgement);
+					case "suspend" ->
+					{
+						if (resumed)
+							output.write("{\"type\":\"suspended\",\"completed_turns\":2}\n");
+						else
+							output.write(acknowledgement);
+					}
 					default ->
 					{
 					}

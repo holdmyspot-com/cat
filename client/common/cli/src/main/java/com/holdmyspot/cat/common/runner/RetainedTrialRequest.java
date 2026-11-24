@@ -11,6 +11,7 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.UUID;
 import tools.jackson.core.JacksonException;
@@ -20,15 +21,16 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * A request to inspect or discard the retained slot of one original trial launch. The broker uses the authenticated
- * request route to select the requesting session's slots. The discard uses the identity observed by the broker to
- * guard against a change of slot occupancy between status and discard.
+ * A request to inspect or discard a retained slot, or export evidence from its verified successor. The authenticated
+ * request route selects the requesting session's slots. A discard guards against changes since the slot was observed.
  *
  * @param operation the recovery operation
  * @param requestId the original launch's request identifier
- * @param identity  the slot that a status request observed, or empty when none was observed
+ * @param identity the slot that a status request observed, or empty when none was observed
+ * @param completedTurns the predecessor's turn count for an export
  */
-public record RetainedTrialRequest(Operation operation, UUID requestId, Optional<Identity> identity)
+public record RetainedTrialRequest(Operation operation, UUID requestId, Optional<Identity> identity,
+	OptionalInt completedTurns)
 {
 	/**
 	 * The prefix of a retained trial request's archive and response directory.
@@ -39,7 +41,9 @@ public record RetainedTrialRequest(Operation operation, UUID requestId, Optional
 	static final String REQUEST_ID_FIELD = "request_id";
 	static final String IDENTITY_FIELD = "identity";
 	private static final String OPERATION_FIELD = "operation";
-	private static final Set<String> FIELDS = Set.of(VERSION_FIELD, OPERATION_FIELD, REQUEST_ID_FIELD, IDENTITY_FIELD);
+	static final String TURNS_FIELD = "completed_turns";
+	private static final Set<String> FIELDS = Set.of(VERSION_FIELD, OPERATION_FIELD, REQUEST_ID_FIELD, IDENTITY_FIELD,
+		TURNS_FIELD);
 
 	/**
 	 * Creates a request to inspect an original trial launch.
@@ -50,7 +54,7 @@ public record RetainedTrialRequest(Operation operation, UUID requestId, Optional
 	 */
 	public static RetainedTrialRequest status(UUID requestId)
 	{
-		return new RetainedTrialRequest(Operation.STATUS, requestId, Optional.empty());
+		return new RetainedTrialRequest(Operation.STATUS, requestId, Optional.empty(), OptionalInt.empty());
 	}
 
 	/**
@@ -63,7 +67,22 @@ public record RetainedTrialRequest(Operation operation, UUID requestId, Optional
 	 */
 	public static RetainedTrialRequest discard(UUID requestId, Optional<Identity> identity)
 	{
-		return new RetainedTrialRequest(Operation.DISCARD, requestId, identity);
+		return new RetainedTrialRequest(Operation.DISCARD, requestId, identity, OptionalInt.empty());
+	}
+
+	/**
+	 * Requests the evidence from one acknowledged suspension after a guarded resume.
+	 *
+	 * @param predecessor the exact checkpoint from which the launch resumed
+	 * @return the evidence export request
+	 * @throws NullPointerException if {@code predecessor} is null
+	 * @throws IllegalArgumentException if the turn count cannot have a successor
+	 */
+	public static RetainedTrialRequest exportSuccessor(RetainedTrialClaim predecessor)
+	{
+		requireThat(predecessor, "predecessor").isNotNull();
+		return new RetainedTrialRequest(Operation.EXPORT_SUCCESSOR, predecessor.requestId(),
+			Optional.of(predecessor.identity()), OptionalInt.of(predecessor.completedTurns()));
 	}
 
 	/**
@@ -94,7 +113,7 @@ public record RetainedTrialRequest(Operation operation, UUID requestId, Optional
 		Optional<Identity> identity = Identity.readOptional(value);
 		try
 		{
-			return new RetainedTrialRequest(operation, requestId, identity);
+			return new RetainedTrialRequest(operation, requestId, identity, readTurns(value));
 		}
 		catch (IllegalArgumentException e)
 		{
@@ -103,19 +122,29 @@ public record RetainedTrialRequest(Operation operation, UUID requestId, Optional
 	}
 
 	/**
-	 * Checks that a status operation carries no observed identity.
+	 * Checks that the checkpoint fields suit the operation.
 	 *
 	 * @param operation the recovery operation
 	 * @param requestId the original launch's request identifier
-	 * @param identity  the slot that a status request observed, or empty when none was observed
-	 * @throws NullPointerException     if any argument is null
-	 * @throws IllegalArgumentException if a status request carries an identity
+	 * @param identity the slot that a status request observed, or empty when none was observed
+	 * @param completedTurns the predecessor's turn count for an export
+	 * @throws NullPointerException if any argument is null
+	 * @throws IllegalArgumentException if a field contradicts the operation or the turn count cannot have a successor
 	 */
 	public RetainedTrialRequest
 	{
 		requireThat(operation, "operation").isNotNull();
 		requireThat(requestId, "requestId").isNotNull();
 		requireThat(identity, "identity").isNotNull();
+		requireThat(completedTurns, "completedTurns").isNotNull();
+		if (operation == Operation.EXPORT_SUCCESSOR)
+		{
+			if (identity.isEmpty() || identity.get().session().isEmpty() || completedTurns.isEmpty() ||
+				completedTurns.getAsInt() < 0 || completedTurns.getAsInt() == Integer.MAX_VALUE)
+				throw new IllegalArgumentException("A retained trial export requires a session and predecessor turn count");
+		}
+		else if (completedTurns.isPresent())
+			throw new IllegalArgumentException("Only a retained trial export can carry a predecessor turn count");
 		if (operation == Operation.STATUS && identity.isPresent())
 			throw new IllegalArgumentException("A retained trial status request cannot carry a slot identity");
 	}
@@ -139,9 +168,27 @@ public record RetainedTrialRequest(Operation operation, UUID requestId, Optional
 		ObjectNode manifest = json.createObjectNode().put(VERSION_FIELD, FORMAT_VERSION).
 			put(OPERATION_FIELD, operation.name().toLowerCase(Locale.ROOT)).put(REQUEST_ID_FIELD, requestId.toString());
 		identity.ifPresent(value -> manifest.set(IDENTITY_FIELD, value.document(json)));
+		completedTurns.ifPresent(turns -> manifest.put(TURNS_FIELD, turns));
 		RequestArchive.packDocument(json, requests.resolve(id + RequestArchive.EXTENSION), manifest,
 			RequestLimits.IN_NESTED_SESSION);
 		return id;
+	}
+
+	/**
+	 * Reads the optional completed-turn count in a request, response or suspension receipt.
+	 *
+	 * @param value the document
+	 * @return the count, or empty if absent
+	 * @throws IOException if the field is present and is not a nonnegative 32-bit integer
+	 */
+	static OptionalInt readTurns(JsonNode value) throws IOException
+	{
+		if (!value.has(TURNS_FIELD))
+			return OptionalInt.empty();
+		JsonNode count = value.path(TURNS_FIELD);
+		if (!count.isIntegralNumber() || !count.canConvertToInt() || count.intValue() < 0)
+			throw new IOException("The retained trial document requires a nonnegative integer " + TURNS_FIELD);
+		return OptionalInt.of(count.intValue());
 	}
 
 	/**
@@ -236,7 +283,11 @@ public record RetainedTrialRequest(Operation operation, UUID requestId, Optional
 		/**
 		 * Discard the original launch's retained slot.
 		 */
-		DISCARD;
+		DISCARD,
+		/**
+		 * Export a retained checkpoint after one acknowledged continuation from the supplied claim.
+		 */
+		EXPORT_SUCCESSOR;
 
 		/**
 		 * Reads the operation's lowercase wire label.
@@ -255,7 +306,7 @@ public record RetainedTrialRequest(Operation operation, UUID requestId, Optional
 						return candidate;
 				}
 			}
-			throw new IOException("The retained trial request requires operation status or discard");
+			throw new IOException("The retained trial request names an unsupported operation");
 		}
 	}
 }

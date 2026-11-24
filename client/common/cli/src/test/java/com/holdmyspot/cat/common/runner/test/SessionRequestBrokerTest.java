@@ -47,7 +47,9 @@ import com.holdmyspot.cat.common.runner.fakes.test.ScriptedProcess;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.launcher.RunnerArguments;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PipedReader;
 import java.io.PipedWriter;
@@ -1758,7 +1760,7 @@ public final class SessionRequestBrokerTest
 					requireThat(resultsFolder, "resumedSlot").isEqualTo(slot.root());
 					requireOriginalRequest(fixture.json.readTree(resultsFolder.resolve(ORIGINAL_REQUEST_FILE).toFile()),
 						original.toString());
-					return startGuardedBridge(fixture, harness, options, prompts, runnerFailure);
+					return startGuardedBridge(fixture, harness, options, prompts, runnerFailure, "resumed reply");
 				}))
 			{
 				RetainedNestedSessionClient retained = new RetainedNestedSessionClient(
@@ -1818,6 +1820,230 @@ public final class SessionRequestBrokerTest
 				}
 			}
 		}
+	}
+
+	/**
+	 * Recovers both turns after a guarded correction suspends in the original harness session.
+	 *
+	 * @throws IOException if the broker request or retained evidence cannot be read or written
+	 * @throws InterruptedException if the retained slot cannot be reserved
+	 */
+	@Test(timeOut = 30_000)
+	public void exportsGuardedSuspensionSuccessor() throws IOException, InterruptedException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			UUID original = UUID.randomUUID();
+			retainedTrialWithPrefix(fixture, original);
+			// The correction transport exits in this JVM, so the broker's process probe treats its runner as ended.
+			ScriptedLiveness liveness = new ScriptedLiveness();
+			liveness.end();
+			AtomicInteger launches = new AtomicInteger();
+			List<String> prompts = new CopyOnWriteArrayList<>();
+			AtomicReference<Exception> runnerFailure = new AtomicReference<>();
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.nestedSession, fixture.manager,
+				fixture.options, (harness, options, _) ->
+				{
+					if (launches.incrementAndGet() != 1)
+						throw new AssertionError("Exporting retained evidence started a runner");
+					return startGuardedBridge(fixture, harness, options, prompts, runnerFailure, "correction reply");
+				}, RequestLimits.IN_NESTED_SESSION, liveness))
+			{
+				RetainedTrialClaim predecessor = retainedClaim(fixture, broker, original);
+				requireThat(predecessor.completedTurns(), "predecessorTurns").isEqualTo(1);
+				suspendAuthorCorrection(fixture, broker, runnerFailure, predecessor);
+				RetainedTrialClaim settled = retainedClaim(fixture, broker, predecessor.requestId());
+				requireThat(settled.completedTurns(), "settledTurns").isEqualTo(2);
+				String id = requestSuccessorExport(fixture, broker, predecessor);
+				JsonNode response = fixture.await(id);
+				requireThat(response.path("status").asString(), "status").withContext(response, "response").
+					isEqualTo("ready");
+				requireThat(response.path("request_id").asString(), "originalRequest").
+					isEqualTo(predecessor.requestId().toString());
+				requireThat(response.path("completed_turns").asInt(), "successorTurns").isEqualTo(2);
+				JsonNode identity = response.path("identity");
+				UUID generation = UUID.fromString(identity.path("slot_generation").asString());
+				requireThat(generation, "successorGeneration").isEqualTo(settled.identity().slotGeneration()).
+					isNotEqualTo(predecessor.identity().slotGeneration());
+				requireThat(identity.path("harness").asString(), "harness").isEqualTo("claude");
+				requireThat(identity.path("session_id").asString(), "nativeSession").isEqualTo(RESUMED_SESSION);
+
+				RetainedTrialPrefix prefix = RetainedTrialPrefix.open(fixture.responses.resolve(id), 2);
+				requireExportedTurn(fixture.json, prefix, 1, "retained reply", "retained event");
+				requireExportedTurn(fixture.json, prefix, 2, "correction reply", "event for correction reply");
+
+				RetainedNestedSessionClient client = new RetainedNestedSessionClient(
+					() -> Optional.of(new NestedSessionChannel(fixture.requests)), fixture.json, broker::scan);
+				Path recovered = fixture.root.resolve("recovered-results");
+				StringWriter records = new StringWriter();
+				client.exportSuccessor(predecessor, settled, recovered, records);
+				List<String> replay = records.toString().lines().toList();
+				requireThat(replay.size(), "replayedRecords").isEqualTo(7);
+				requireThat(replay.getFirst(), "replayedIdentity").contains(RESUMED_SESSION);
+				requireThat(replay.get(3), "replayedFirstTurn").contains("retained reply");
+				requireThat(replay.getLast(), "replayedCorrection").contains("correction reply");
+				Path recoveredProject = recovered.resolve(RESUMED_SESSION).resolve("project");
+				requireThat(Files.isDirectory(recoveredProject), "recoveredProject").isTrue();
+
+
+				RetainedTrialResponse.Identity stale = new RetainedTrialResponse.Identity(UUID.randomUUID(),
+					predecessor.identity().session());
+				requireUnavailableSuccessor(fixture, broker,
+					new RetainedTrialClaim(predecessor.requestId(), stale, predecessor.completedTurns()), "unsafe");
+				requireUnavailableSuccessor(fixture, broker,
+					new RetainedTrialClaim(predecessor.requestId(), predecessor.identity(), 0), "unsafe");
+				requireUnavailableSuccessor(fixture, broker,
+					new RetainedTrialClaim(UUID.randomUUID(), predecessor.identity(), predecessor.completedTurns()), "absent");
+				requireThat(retainedClaim(fixture, broker, original), "unchangedSuccessor").isEqualTo(settled);
+				requireThat(prompts, "harnessPrompts").isEqualTo(List.of("correct"));
+				requireThat(launches.get(), "runnerLaunches").isEqualTo(1);
+			}
+		}
+	}
+
+	/**
+	 * Does not export an unchanged retained checkpoint when the broker has acknowledged no matching successor.
+	 *
+	 * @throws IOException if the broker request or retained evidence cannot be read or written
+	 * @throws InterruptedException if the retained slot cannot be reserved
+	 */
+	@Test(timeOut = 30_000)
+	public void refusesExportWithoutSuccessor() throws IOException, InterruptedException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			UUID original = UUID.randomUUID();
+			retainedTrialWithPrefix(fixture, original);
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.nestedSession, fixture.manager,
+				fixture.options, (_, _, _) ->
+				{
+					throw new AssertionError("Exporting retained evidence started a runner");
+				}))
+			{
+				RetainedTrialClaim predecessor = retainedClaim(fixture, broker, original);
+				requireUnavailableSuccessor(fixture, broker, predecessor, "unsafe");
+			}
+		}
+	}
+
+	/**
+	 * Runs the author correction in the original slot and waits for the broker's suspension acknowledgement.
+	 *
+	 * @param fixture the requesting session
+	 * @param broker the broker that verifies the suspension
+	 * @param runnerFailure receives any exception on the bridge's thread
+	 * @param predecessor the observed claim for the original author turn
+	 * @throws IOException if the correction cannot be forwarded
+	 */
+	private static void suspendAuthorCorrection(Fixture fixture, SessionRequestBroker broker,
+		AtomicReference<Exception> runnerFailure, RetainedTrialClaim predecessor) throws IOException
+	{
+		Path results = fixture.root.resolve("correction-results");
+		StringWriter output = new StringWriter();
+		SessionRequestForwarder.serveRetainedTrial(SessionRequestForwarder.Route.RUN, predecessor, "test command",
+			"claude", fixture.root, fixture.project,
+			List.of("--resume", RESUMED_SESSION, "--results", results.toString(), "--model", "haiku", "--effort",
+				"low", "--session-transcripts"),
+			new StringReader("{\"type\":\"turn\",\"prompt\":\"correct\"}\n" +
+			"{\"type\":\"suspend\",\"completed_turns\":2}\n"), output, fixture.requests, () ->
+			{
+				if (runnerFailure.get() != null)
+					throw new IOException("The scripted author bridge failed", runnerFailure.get());
+				broker.scan();
+				Thread.yield();
+			});
+		requireThat(output.toString(), "correctionSuspension").contains("\"type\":\"suspended\",\"completed_turns\":2");
+	}
+
+	/**
+	 * Reads the broker-observed claim for a settled checkpoint.
+	 *
+	 * @param fixture the requesting session
+	 * @param broker the broker that reports the retained slot
+	 * @param original the original launch identifier
+	 * @return its current retained checkpoint claim
+	 * @throws IOException if the broker response cannot be read
+	 */
+	private static RetainedTrialClaim retainedClaim(Fixture fixture, SessionRequestBroker broker, UUID original)
+		throws IOException
+	{
+		RetainedNestedSessionClient retained = new RetainedNestedSessionClient(
+			() -> Optional.of(new NestedSessionChannel(fixture.requests)), fixture.json, broker::scan);
+		RetainedTrialResponse status;
+		do
+		{
+			status = retained.request(RetainedTrialRequest.status(original));
+		}
+		while (status.status() == RetainedTrialResponse.Status.BUSY);
+		requireThat(status.status(), "checkpointStatus").isEqualTo(RetainedTrialResponse.Status.READY);
+		return new RetainedTrialClaim(original, status.identity().orElseThrow(), status.completedTurns().orElseThrow());
+	}
+
+	/**
+	 * Publishes an export-only request on the fixture's authenticated route using the wire format under test.
+	 *
+	 * @param fixture the requesting session
+	 * @param broker the broker that receives the request
+	 * @param predecessor the guarded correction's original claim
+	 * @return the export request's envelope identifier
+	 * @throws IOException if the request cannot be written or taken
+	 */
+	private static String requestSuccessorExport(Fixture fixture, SessionRequestBroker broker,
+		RetainedTrialClaim predecessor) throws IOException
+	{
+		RetainedTrialResponse.HarnessSession session = predecessor.identity().session().orElseThrow();
+		ObjectNode manifest = fixture.json.createObjectNode().put("format_version", 1).
+			put("operation", "export_successor").put("request_id", predecessor.requestId().toString()).
+			put("completed_turns", predecessor.completedTurns());
+		manifest.putObject("identity").put("slot_generation", predecessor.identity().slotGeneration().toString()).
+			put("harness", session.harness()).put("session_id", session.sessionId());
+		String id = RetainedTrialRequest.PREFIX + UUID.randomUUID();
+		try (OutputStream bytes = Files.newOutputStream(fixture.requests.resolve(id + ".tar"));
+			TarArchiveOutputStream archive = new TarArchiveOutputStream(bytes))
+		{
+			Fixture.entry(archive, "request.json", fixture.json.writeValueAsBytes(manifest));
+		}
+		broker.scan();
+		return id;
+	}
+
+	/**
+	 * Requires both the original reply and harness events of one exported turn.
+	 *
+	 * @param json the reply mapper
+	 * @param prefix the published successor evidence
+	 * @param turn the one-based turn
+	 * @param reply the reply sent by the scripted process
+	 * @param event the corresponding harness event
+	 * @throws IOException if the broker did not publish the turn evidence
+	 */
+	private static void requireExportedTurn(JsonMapper json, RetainedTrialPrefix prefix, int turn, String reply,
+		String event) throws IOException
+	{
+		try (InputStream input = prefix.openReply(turn); BufferedReader events = prefix.openEvents(turn))
+		{
+			requireThat(json.readTree(input).path("assistant_response").asString(), "reply").isEqualTo(reply);
+			requireThat(events.readLine(), "event").isEqualTo(event);
+		}
+	}
+
+	/**
+	 * Requires a declined recovery response without published evidence.
+	 *
+	 * @param fixture the requesting session
+	 * @param broker the broker that receives the request
+	 * @param claim the predecessor for which no matching verified successor can be exported
+	 * @param expectedStatus the response status
+	 * @throws IOException if the request or response cannot be read or written
+	 */
+	private static void requireUnavailableSuccessor(Fixture fixture, SessionRequestBroker broker,
+		RetainedTrialClaim claim, String expectedStatus) throws IOException
+	{
+		String id = requestSuccessorExport(fixture, broker, claim);
+		JsonNode response = fixture.await(id);
+		requireThat(response.path("status").asString(), "status").withContext(response, "response").
+			isEqualTo(expectedStatus);
+		requireThat(Files.exists(fixture.responses.resolve(id).resolve("retained-prefix")), "exportedPrefix").isFalse();
 	}
 
 	/**
@@ -1925,7 +2151,7 @@ public final class SessionRequestBrokerTest
 			AtomicReference<Exception> runnerFailure = new AtomicReference<>();
 			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.nestedSession, fixture.manager,
 				fixture.options, (harness, options, _) ->
-					startGuardedBridge(fixture, harness, options, prompts, runnerFailure)))
+					startGuardedBridge(fixture, harness, options, prompts, runnerFailure, "resumed reply")))
 			{
 				Path results = fixture.root.resolve("suspended-results");
 				StringWriter output = new StringWriter();
@@ -2010,11 +2236,12 @@ public final class SessionRequestBrokerTest
 	 * @param options the broker's child options
 	 * @param prompts receives the native harness's prompts
 	 * @param failure receives any exception on the bridge's thread
+	 * @param reply the scripted turn's final reply
 	 * @return the transport for the bridge's standard input and exit
 	 * @throws IOException if the child transport cannot be opened
 	 */
 	private static FakeHarnessCli startGuardedBridge(Fixture fixture, String harness, List<String> options,
-		List<String> prompts, AtomicReference<Exception> failure) throws IOException
+		List<String> prompts, AtomicReference<Exception> failure, String reply) throws IOException
 	{
 		List<String> arguments = new ArrayList<>(List.of("--artifact", fixture.root.toString()));
 		arguments.addAll(options);
@@ -2048,7 +2275,7 @@ public final class SessionRequestBrokerTest
 		Thread.startVirtualThread(() ->
 		{
 			AtomicReference<ScriptedProcess> script = new AtomicReference<>();
-			Turn turn = Turn.replies("resumed reply").
+			Turn turn = Turn.replies(reply, "event for " + reply).
 				withCheckpoint(_ -> script.get().reportHarnessSession(RESUMED_SESSION));
 			try (input; messages; ScriptedProcess nativeHarness = new ScriptedProcess(List.of(turn), prompts))
 			{
