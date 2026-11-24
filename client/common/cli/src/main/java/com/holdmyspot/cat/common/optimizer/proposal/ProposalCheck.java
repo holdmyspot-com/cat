@@ -171,20 +171,24 @@ public final class ProposalCheck
 	 *
 	 * @param proposal the parsed proposal, or empty when the draft cannot be assembled or parsed
 	 * @param problems the reasons that prevent acceptance
+	 * @param examples the mechanically valid examples with their selected cases
 	 */
-	public record Assessment(Optional<DerivedProposal> proposal, List<String> problems)
+	public record Assessment(Optional<DerivedProposal> proposal, List<String> problems,
+		List<AssertionChecks.PreparedExample> examples)
 	{
 		/**
 		 * Creates a mechanical assessment.
 		 *
 		 * @param proposal the parsed proposal, if any
 		 * @param problems the reasons that prevent acceptance
-		 * @throws NullPointerException if either argument or a problem is null
+		 * @param examples the mechanically valid examples with their selected cases
+		 * @throws NullPointerException if an argument or a list member is null
 		 */
 		public Assessment
 		{
 			requireThat(proposal, "proposal").isNotNull();
 			problems = List.copyOf(problems);
+			examples = List.copyOf(examples);
 		}
 
 		/**
@@ -411,10 +415,10 @@ public final class ProposalCheck
 		// Read from the raw file so that a missing recorded prompt test is reported even when the schema rejects it
 		problems.addAll(missingRecorded(proposalFile));
 		if (!complete || !violations.isEmpty())
-			return new Assessment(Optional.empty(), problems);
+			return new Assessment(Optional.empty(), problems, List.of());
 
 		Contract contract = null;
-		List<AssertionExampleCheck> exampleChecks = List.of();
+		List<AssertionChecks.PreparedExample> examples = List.of();
 		try
 		{
 			contract = schema.parse(json.writeValueAsString(assembled.proposal()), (requirements, tests) ->
@@ -424,7 +428,7 @@ public final class ProposalCheck
 			problems.addAll(unreportedExitStatuses(contract));
 			problems.addAll(referencedFileProblems(contract, project));
 			if (authoring)
-				exampleChecks = assembled.checkExamples(contract);
+				examples = assembled.checkExamples(contract);
 			findings.checkRequirements(scopeNode, Findings.SCOPE_CONDITIONS, contract);
 			findings.checkRequirements(conflictsNode, Findings.CONFLICTS, contract);
 		}
@@ -434,10 +438,11 @@ public final class ProposalCheck
 				problems.add(assembled.locate(problem));
 		}
 		if (contract == null)
-			return new Assessment(Optional.empty(), problems);
+			return new Assessment(Optional.empty(), problems, List.of());
+		List<AssertionExampleCheck> exampleChecks = examples.stream().map(AssertionChecks.PreparedExample::check).toList();
 		DerivedProposal proposal = new DerivedProposal(contract, List.of(), scopeConditions, conflicts, observedSources,
 			derivation, draft, Map.of(), exampleChecks);
-		return new Assessment(Optional.of(proposal), problems);
+		return new Assessment(Optional.of(proposal), problems, examples);
 	}
 
 	/**
@@ -1007,11 +1012,11 @@ public final class ProposalCheck
 		 * @return the mechanical results
 		 * @throws UncheckedIOException if a source or temporary workspace cannot be read
 		 */
-		List<AssertionExampleCheck> checkExamples(Contract contract)
+		List<AssertionChecks.PreparedExample> checkExamples(Contract contract)
 		{
 			try
 			{
-				List<AssertionExampleCheck> checked = new ArrayList<>();
+				List<AssertionChecks.PreparedExample> checked = new ArrayList<>();
 				Set<Path> excluded = new HashSet<>(PromptTestLocations.excluded(contract, target, project));
 				excluded.add(project.relativize(draft));
 				excluded.add(Path.of(".git"));
@@ -1031,7 +1036,7 @@ public final class ProposalCheck
 						ordered.add(cases.get(position.index()));
 					}
 					int before = problems.size();
-					List<AssertionExampleCheck> checks = ExampleChecks.check(json, test, input.files(), ordered,
+					List<AssertionChecks.PreparedExample> checks = ExampleChecks.check(json, test, input.files(), ordered,
 						project, excluded, problems);
 					if (problems.size() == before)
 						checked.addAll(checks);

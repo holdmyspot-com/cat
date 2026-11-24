@@ -9,11 +9,13 @@ import com.holdmyspot.cat.common.optimizer.contract.MappedAssertion;
 import com.holdmyspot.cat.common.optimizer.contract.OnToolFailure;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestFiles;
+import com.holdmyspot.cat.common.optimizer.contract.RecordedTrial;
 import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TestWorkspaces;
 import com.holdmyspot.cat.common.optimizer.contract.TrialRecord;
 import com.holdmyspot.cat.common.optimizer.contract.UndecidableToolException;
 import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
+import com.holdmyspot.cat.common.optimizer.proposal.AssertionChecks.PreparedExample;
 import com.holdmyspot.cat.common.optimizer.workspace.FileTree;
 
 import java.io.IOException;
@@ -97,12 +99,12 @@ final class ExampleChecks
 	 * @param problems receives contradictions and malformed examples
 	 * @return the mechanical results of the valid examples
 	 */
-	static List<AssertionExampleCheck> check(JsonMapper json, PromptTest test, PromptTestFiles files,
+	static List<PreparedExample> check(JsonMapper json, PromptTest test, PromptTestFiles files,
 		List<TestCase> orderedCases, Path project, Set<Path> excluded, List<String> problems)
 	{
 		PromptTest.Draft draft = test.draft().orElseThrow();
 		Map<String, Set<String>> examples = exampleIds(draft.exampleDirectories());
-		List<AssertionExampleCheck> checks = new ArrayList<>();
+		List<PreparedExample> checks = new ArrayList<>();
 		for (MappedAssertion mapped : test.assertions())
 		{
 			Assertion assertion = mapped.assertion();
@@ -122,13 +124,18 @@ final class ExampleChecks
 					boolean stageBase = tool != null && !tool.examinesOnlyReplies();
 					TrialRecord record = render(json, test, files, selected, project, excluded, id, assertion.id(),
 						stageBase, scratch);
-					if (tool == null)
+					String toolName = null;
+					boolean passed = false;
+					if (tool != null)
 					{
-						checks.add(new AssertionExampleCheck(test.id(), assertion.id(), id, null, false));
-						continue;
+						toolName = tool.name();
+						passed = tool.decide(record, PromptTest.textByName(selected)).passed();
 					}
-					boolean passed = tool.decide(record, PromptTest.textByName(selected)).passed();
-					checks.add(new AssertionExampleCheck(test.id(), assertion.id(), id, tool.name(), passed));
+					AssertionExampleCheck check = new AssertionExampleCheck(test.id(), assertion.id(), id, toolName, passed);
+					checks.add(new PreparedExample(check, test, selected, orderedCases.indexOf(selected) + 1,
+						files, excluded));
+					if (tool == null)
+						continue;
 					if (!passing && passed)
 						problems.add(name + ": " + tool.name() + " passed a failing example.");
 					if (passing && tool.examinesOnlyReplies() && !passed)
@@ -159,7 +166,7 @@ final class ExampleChecks
 	 * @return the normalized example evidence
 	 * @throws IOException if example evidence cannot be materialized or read
 	 */
-	private static TrialRecord render(JsonMapper json, PromptTest test, PromptTestFiles files, TestCase selected,
+	static RecordedTrial render(JsonMapper json, PromptTest test, PromptTestFiles files, TestCase selected,
 		Path project, Set<Path> excluded, String exampleId, String assertionId, boolean stageBase, Path scratch)
 		throws IOException
 	{

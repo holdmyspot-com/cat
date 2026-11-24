@@ -9,13 +9,19 @@ import com.holdmyspot.cat.common.optimizer.contract.JudgedAssertion;
 import com.holdmyspot.cat.common.optimizer.contract.MappedAssertion;
 import com.holdmyspot.cat.common.optimizer.contract.OnToolFailure;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
+import com.holdmyspot.cat.common.optimizer.contract.PromptTestFiles;
+import com.holdmyspot.cat.common.optimizer.contract.RecordedTrial;
 import com.holdmyspot.cat.common.optimizer.contract.Requirement;
 import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.execution.AssertionVerdict;
 
+import java.io.IOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Selects authored examples for the frozen judge and interprets its decisions against the examples' labels.
@@ -24,6 +30,58 @@ import java.util.Optional;
  */
 public final class AssertionChecks
 {
+	/**
+	 * An example from a mechanically valid test bound to the case that filled it.
+	 *
+	 * @param check the result of its mechanical check
+	 * @param test the test that owns the example
+	 * @param testCase the selected case
+	 * @param casePosition the one-based position in the authored values file
+	 * @param files the test's source files, used to stage its workspace
+	 * @param excluded paths relative to the project that trials do not receive
+	 */
+	public record PreparedExample(AssertionExampleCheck check, PromptTest test, TestCase testCase, int casePosition,
+		PromptTestFiles files, Set<Path> excluded)
+	{
+		/**
+		 * Creates a prepared example.
+		 *
+		 * @param check the result of its mechanical check
+		 * @param test the test that owns the example
+		 * @param testCase the selected case
+		 * @param casePosition the one-based position in the authored values file
+		 * @param files the test's source files, used to stage its workspace
+		 * @param excluded paths relative to the project that trials do not receive
+		 * @throws NullPointerException if a required argument or exclusion is null
+		 * @throws IllegalArgumentException if the position is not positive
+		 */
+		public PreparedExample
+		{
+			requireThat(check, "check").isNotNull();
+			requireThat(test, "test").isNotNull();
+			requireThat(testCase, "testCase").isNotNull();
+			requireThat(casePosition, "casePosition").isPositive();
+			requireThat(files, "files").isNotNull();
+			excluded = Set.copyOf(excluded);
+		}
+
+		/**
+		 * Renders this example into a private directory for a judge to read.
+		 *
+		 * @param json the operation mapper
+		 * @param project the staged base project
+		 * @param stageBase whether the evidence scope needs the default trial project
+		 * @param scratch the private directory of this check
+		 * @return the filled replies, project snapshots and normalized activity
+		 * @throws IOException if the files cannot be materialized or read
+		 */
+		public RecordedTrial render(JsonMapper json, Path project, boolean stageBase, Path scratch) throws IOException
+		{
+			return ExampleChecks.render(json, test, files, testCase, project, excluded, check.exampleId(),
+				check.assertionId(), stageBase, scratch);
+		}
+	}
+
 	/**
 	 * Returns the examples that the frozen judge needs to decide.
 	 *

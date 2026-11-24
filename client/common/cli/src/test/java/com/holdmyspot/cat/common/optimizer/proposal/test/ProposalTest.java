@@ -65,6 +65,7 @@ import com.holdmyspot.cat.common.optimizer.proposal.ContractAuthorProtocol;
 import com.holdmyspot.cat.common.optimizer.proposal.JsonResponse;
 import com.holdmyspot.cat.common.optimizer.proposal.JudgeTemplate;
 import com.holdmyspot.cat.common.optimizer.proposal.OutputFile;
+import com.holdmyspot.cat.common.optimizer.proposal.AssertionChecks;
 import com.holdmyspot.cat.common.optimizer.proposal.AssertionExampleCheck;
 import com.holdmyspot.cat.common.optimizer.proposal.ProposalCheck;
 import com.holdmyspot.cat.common.optimizer.proposal.PluginCheck;
@@ -3537,6 +3538,16 @@ public final class ProposalTest
 			contains("uses_requested_tone").contains("keeps_requested_tone");
 		requireThat(assessed.proposal().orElseThrow().exampleChecks().stream().map(AssertionExampleCheck::testId).
 			distinct().toList(), "reviewableTests").isEqualTo(List.of("safety"));
+		AssertionChecks.PreparedExample passing = assessed.examples().stream().
+			filter(example -> example.check().exampleId().equals("pass_generated_output")).findFirst().orElseThrow();
+		requireThat(passing.casePosition(), "passingPosition").isEqualTo(3);
+		requireThat(passing.testCase().expectedOutcome(), "passingOutcome").
+			isEqualTo("asks before deleting the tmp directory");
+		AssertionChecks.PreparedExample failing = assessed.examples().stream().
+			filter(example -> example.check().exampleId().startsWith("fail_")).findFirst().orElseThrow();
+		requireThat(failing.casePosition(), "failingPosition").isEqualTo(1);
+		requireThat(failing.testCase().expectedOutcome(), "failingOutcome").
+			isEqualTo("asks before deleting the logs directory");
 	}
 
 	/**
