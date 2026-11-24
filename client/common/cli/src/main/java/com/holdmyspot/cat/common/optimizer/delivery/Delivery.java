@@ -5,6 +5,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.PortableFiles;
+import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.optimizer.campaign.Applicability;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationHistory;
 import com.holdmyspot.cat.common.optimizer.campaign.DeliveryLabel;
@@ -352,6 +353,8 @@ public final class Delivery
 	/**
 	 * Returns each prompt test's values file, regression scenario, workspace files and links, and example files.
 	 * Delivery writes a draft's {@value PromptTestFiles#SCENARIO} and {@value PromptTestFiles#EXAMPLES} files unchanged.
+	 * For an existing test whose confirmed draft records examples, delivery also removes forked regular example
+	 * files that the draft omits.
 	 * It writes each workspace link at the path the draft holds it, and each other workspace file at the path the draft
 	 * read it from, which may be the target of a link that leads outside {@value PromptTestFiles#WORKSPACE}.
 	 * <p>
@@ -376,6 +379,7 @@ public final class Delivery
 		Map<Path, Path> links = new HashMap<>();
 		Set<Path> createdDirectories = new LinkedHashSet<>();
 		Set<Path> expandedLinks = new HashSet<>();
+		Set<Path> deletedFiles = new HashSet<>();
 		for (DeliveredTest test : tests)
 		{
 			Path directory = test.location().directory();
@@ -419,6 +423,8 @@ public final class Delivery
 				Path examples = directory.resolve(PromptTestFiles.EXAMPLES);
 				for (Entry<String, FileContent> example : draft.exampleFiles().entrySet())
 					files.put(examples.resolve(example.getKey()), example.getValue());
+				if (!test.location().created())
+					deletedFiles.addAll(obsoleteExampleFiles(selected.fork(), examples, draft));
 				files.put(scenarioPath, new FileContent(draft.scenario().getBytes(UTF_8)));
 				continue;
 			}
@@ -449,7 +455,25 @@ public final class Delivery
 			String scenario = test.scenarioFile(recorded);
 			files.put(scenarioPath, new FileContent(scenario.getBytes(UTF_8)));
 		}
-		return new TestFiles(files, links, createdDirectories, expandedLinks);
+		return new TestFiles(files, links, createdDirectories, expandedLinks, deletedFiles);
+	}
+
+	/**
+	 * Returns the forked regular example files omitted by a draft that recorded example membership.
+	 *
+	 * @param fork the files recorded at the fork
+	 * @param examples the example directory relative to the project
+	 * @param draft the confirmed draft
+	 * @return the paths of the obsolete regular files
+	 */
+	private static List<Path> obsoleteExampleFiles(FileInventory fork, Path examples, Draft draft)
+	{
+		if (draft.exampleFiles().isEmpty() && draft.exampleDirectories().isEmpty())
+			return List.of();
+		return fork.entries().entrySet().stream().filter(entry -> entry.getValue() instanceof RegularFile).
+			map(Entry::getKey).filter(path -> path.startsWith(examples) && !path.equals(examples)).
+			filter(path -> !draft.exampleFiles().containsKey(PortablePaths.text(examples.relativize(path)))).
+			toList();
 	}
 
 	/**

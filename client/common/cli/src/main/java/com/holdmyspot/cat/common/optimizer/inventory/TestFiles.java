@@ -17,9 +17,10 @@ import java.util.Set;
  *                           exist yet
  * @param expandedLinks      the symbolic links, relative to the base worktree, that the delivery replaces with a
  *                           directory that holds the files below them
+ * @param deletedFiles       the paths relative to the base worktree of forked regular example files to delete
  */
 public record TestFiles(Map<Path, FileContent> files, Map<Path, Path> links, Set<Path> createdDirectories,
-	Set<Path> expandedLinks)
+	Set<Path> expandedLinks, Set<Path> deletedFiles)
 {
 	/**
 	 * No test files.
@@ -36,10 +37,12 @@ public record TestFiles(Map<Path, FileContent> files, Map<Path, Path> links, Set
 	 *                           not exist yet
 	 * @param expandedLinks      the symbolic links, relative to the base worktree, that the delivery replaces with a
 	 *                           directory that holds the files below them
+	 * @param deletedFiles       the paths relative to the base worktree of forked regular example files to delete
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if a path or link target is absolute, a link lies at the path of a file, a
 	 *                                  created directory holds none of the files and links, or an expanded link lies
-	 *                                  at the path of a file or link or holds none of the files
+	 *                                  at the path of a file or link or holds none of the files, or a deletion path
+	 *                                  is empty, unnormalized or outside the worktree
 	 */
 	public TestFiles
 	{
@@ -47,6 +50,12 @@ public record TestFiles(Map<Path, FileContent> files, Map<Path, Path> links, Set
 		links = Map.copyOf(links);
 		createdDirectories = Set.copyOf(createdDirectories);
 		expandedLinks = Set.copyOf(expandedLinks);
+		deletedFiles = Set.copyOf(deletedFiles);
+		for (Path path : deletedFiles)
+		{
+			FileInventory.requireInventoryPath(path, "deletedFiles");
+			requireThat(path.isAbsolute(), "deletedFiles.isAbsolute(path)").withContext(path, "path").isFalse();
+		}
 		for (Path path : files.keySet())
 			requireThat(path.isAbsolute(), "files.isAbsolute(path)").withContext(path, "path").isFalse();
 		for (Map.Entry<Path, Path> link : links.entrySet())
@@ -78,6 +87,22 @@ public record TestFiles(Map<Path, FileContent> files, Map<Path, Path> links, Set
 					files.keySet());
 			}
 		}
+	}
+
+	/**
+	 * Creates test files that delete no files.
+	 *
+	 * @param files              the content of each file by its path relative to the base worktree
+	 * @param links              each symbolic link target by the link's path relative to the base worktree
+	 * @param createdDirectories the directories the delivery creates
+	 * @param expandedLinks      the symbolic links the delivery replaces with directories
+	 * @throws NullPointerException     if any argument is null
+	 * @throws IllegalArgumentException if the canonical constructor rejects the arguments
+	 */
+	public TestFiles(Map<Path, FileContent> files, Map<Path, Path> links, Set<Path> createdDirectories,
+		Set<Path> expandedLinks)
+	{
+		this(files, links, createdDirectories, expandedLinks, Set.of());
 	}
 
 	/**

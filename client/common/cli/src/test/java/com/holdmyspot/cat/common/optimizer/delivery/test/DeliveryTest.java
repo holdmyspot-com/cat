@@ -43,6 +43,7 @@ import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult.Delivered;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult.UnownedChange;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult;
 import com.holdmyspot.cat.common.optimizer.inventory.DeliveryChange.Create;
+import com.holdmyspot.cat.common.optimizer.inventory.DeliveryChange.Delete;
 import com.holdmyspot.cat.common.optimizer.inventory.DeliveryChange.Edit;
 import com.holdmyspot.cat.common.optimizer.inventory.DeliveryChange;
 import com.holdmyspot.cat.common.optimizer.inventory.DeliveryConflict;
@@ -1050,7 +1051,8 @@ public final class DeliveryTest
 	 * A prompt test that the contract author wrote as files in its draft directory is delivered as the draft holds it:
 	 * at its directory there, with the draft's {@value PromptTestFiles#SCENARIO} and example files unchanged and each
 	 * workspace fixture at its file in the draft, even a new one that a link reaches in a shared directory. A recorded
-	 * test's directory is edited, and any other directory is created.
+	 * test's directory is edited, and any other directory is created. Delivery deletes an omitted regular example
+	 * file from the fork and preserves a base-only example, a link, and a file outside the example tree.
 	 *
 	 * @throws IOException             if the fixture or delivery fails
 	 * @throws ScenarioFormatException if a delivered values file cannot be read back
@@ -1059,6 +1061,7 @@ public final class DeliveryTest
 	public void deliversPromptTestsFromTheDraft() throws IOException, ScenarioFormatException
 	{
 		// Requirement: R-C26
+		// Requirement: R-L15
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			String editedScenario = RECORDED_SCENARIO.replace("Read `{{file}}`.", "Read `{{file}}` twice.");
@@ -1067,6 +1070,10 @@ public final class DeliveryTest
 			String evidencePath = "read/fail_missing_notes/project/notes.bin";
 			Path editedReplies = EDITED_SCENARIO.resolveSibling(PromptTestFiles.EXAMPLES).resolve(repliesPath);
 			Path createdEvidence = TESTS.resolve("release_dates").resolve(PromptTestFiles.EXAMPLES).resolve(evidencePath);
+			Path obsoleteExample = editedReplies.resolveSibling("activity.json");
+			Path baseOnlyExample = editedReplies.resolveSibling("base-only.txt");
+			Path exampleLink = editedReplies.resolveSibling("legacy-link");
+			Path otherTestFile = EDITED_SCENARIO.resolveSibling("notes.txt");
 			String recordedReplies = "[[\"The agent read the file.\"]]\n";
 			String revisedReplies = "[[\"The agent read {{file}} twice.\"]]\n";
 			byte[] evidence = {0, -1, 10};
@@ -1095,14 +1102,28 @@ public final class DeliveryTest
 
 			Fixture fixture = Fixture.create(template, cleanup).
 				recordFile(EDITED_SCENARIO, RECORDED_SCENARIO.getBytes(UTF_8)).
-				recordFile(editedReplies, recordedReplies.getBytes(UTF_8));
+				recordFile(editedReplies, recordedReplies.getBytes(UTF_8)).
+				recordFile(obsoleteExample, "[]\n".getBytes(UTF_8)).
+				recordFile(otherTestFile, "Keep these notes.\n".getBytes(UTF_8)).
+				recordLink(exampleLink, editedReplies.getFileName().toString());
 			Overlay candidate = fixture.candidate();
+			Files.writeString(fixture.resolve(baseOnlyExample), "Added after the fork.\n", UTF_8);
 			DeliveryResult result = fixture.delivery(fixture.store(), candidate, NO_HOOK,
 				Map.of(EDITED_SCENARIO, content(RECORDED_SCENARIO), editedReplies, content(recordedReplies))).
 				deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources(),
 					RECORD, tests);
 
 			Delivered delivered = requireDelivered(result);
+			requireThat(Files.notExists(fixture.resolve(obsoleteExample)), "obsoleteExampleRemoved").isTrue();
+			requireThat(delivered.changes().stream().filter(Delete.class::isInstance).
+				map(DeliveryChange::target).toList(), "deletedFiles").contains(obsoleteExample);
+			requireThat(patchedPaths(delivered), "patchedPaths").contains(obsoleteExample);
+			requireThat(delivered.baseOnlyChanges(), "baseOnlyChanges").contains(baseOnlyExample).
+				doesNotContain(obsoleteExample);
+			requireThat(read(fixture.resolve(baseOnlyExample)), "baseOnlyExample").isEqualTo("Added after the fork.\n");
+			requireThat(Files.readSymbolicLink(fixture.resolve(exampleLink)), "exampleLink").
+				isEqualTo(editedReplies.getFileName());
+			requireThat(read(fixture.resolve(otherTestFile)), "otherTestFile").isEqualTo("Keep these notes.\n");
 			requireThat(patchedPaths(delivered), "patchedPaths").contains(editedReplies).contains(createdEvidence);
 			requireThat(read(fixture.resolve(EDITED_SCENARIO)), "editedScenario").isEqualTo(editedScenario);
 			requireThat(read(fixture.resolve(TESTS.resolve("release_dates").resolve(PromptTestFiles.SCENARIO))),
@@ -1122,23 +1143,43 @@ public final class DeliveryTest
 	}
 
 	/**
-	 * Edits to an example in both the confirmed draft and the base stop delivery before it writes any file or journal.
+	 * Returns combinations that conflict on an example that the draft updates or removes.
 	 *
+	 * @return whether the draft removes the file and whether the competing edit is in the base
+	 */
+	@DataProvider(name = "conflictingExampleEdits")
+	public static Object[][] conflictingExampleEdits()
+	{
+		return new Object[][]
+			{
+				{false, true},
+				{true, true},
+				{true, false}
+			};
+	}
+
+	/**
+	 * A competing edit to a file whose draft edits or removes it stops delivery before any file or journal is written.
+	 *
+	 * @param removeExample whether the draft omits the example
+	 * @param editBase      whether the competing edit is in the base or the candidate
 	 * @throws IOException if the fixture or delivery fails
 	 */
-	@Test
-	public void exampleConflictStopsBeforeAnyWrite() throws IOException
+	@Test(dataProvider = "conflictingExampleEdits")
+	public void exampleConflictStopsBeforeAnyWrite(boolean removeExample, boolean editBase) throws IOException
 	{
+		// Requirement: R-L15
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			String repliesPath = "read/pass_same_day/replies.json";
 			Path repliesFile = EDITED_SCENARIO.resolveSibling(PromptTestFiles.EXAMPLES).resolve(repliesPath);
-			String recordedReplies = "[[\"The agent read the file.\"]]\n";
-			String userReplies = "[[\"The agent skimmed the file.\"]]\n";
 			String revisedReplies = "[[\"The agent read {{file}} twice.\"]]\n";
 			String editedScenario = RECORDED_SCENARIO.replace("Read `{{file}}`.", "Read `{{file}}` twice.");
+			String confirmedPath = repliesPath;
+			if (removeExample)
+				confirmedPath = "read/pass_crosses_midnight/replies.json";
 			PromptTest.Draft draft = new PromptTest.Draft(EDITED_SCENARIO.getParent(), editedScenario, Map.of(),
-				Map.of(repliesPath, content(revisedReplies)), Set.of());
+				Map.of(confirmedPath, content(revisedReplies)), Set.of());
 			Contract fixtureContract = ContractFixtures.contract();
 			List<PromptTest> promptTests = new ArrayList<>(fixtureContract.tests());
 			promptTests.set(0, withDraft(promptTests.getFirst(), List.of(PortablePaths.text(EDITED_SCENARIO)), List.of(),
@@ -1147,11 +1188,16 @@ public final class DeliveryTest
 				fixtureContract.judge(), fixtureContract.limitations(), fixtureContract.minimumPassRate(),
 				fixtureContract.salt());
 			DeliveredTest test = DeliveredTest.of(contract, AddedTestCases.NONE, Path.of("rules/main.md")).getFirst();
+			String recordedReplies = "[[\"The agent read the file.\"]]\n";
 			Fixture fixture = Fixture.create(template, cleanup).
 				recordFile(EDITED_SCENARIO, RECORDED_SCENARIO.getBytes(UTF_8)).
 				recordFile(repliesFile, recordedReplies.getBytes(UTF_8));
 			Overlay candidate = fixture.candidate();
-			Files.writeString(fixture.resolve(repliesFile), userReplies, UTF_8);
+			String userReplies = "[[\"The agent skimmed the file.\"]]\n";
+			if (editBase)
+				Files.writeString(fixture.resolve(repliesFile), userReplies, UTF_8);
+			else
+				candidate = candidate.write(repliesFile, content(userReplies), fixture.recordedPermissions(repliesFile));
 			CampaignStore store = fixture.store();
 			List<DeliveryChange> writes = new ArrayList<>();
 
@@ -1164,7 +1210,10 @@ public final class DeliveryTest
 				new DeliveryConflict(DeliveryConflict.Kind.BOTH_CHANGED, repliesFile, repliesFile))));
 			requireThat(writes, "writes").isEmpty();
 			requireThat(store.loadJournal(CAMPAIGN), "journal").isEmpty();
-			requireThat(read(fixture.resolve(repliesFile)), "replies").isEqualTo(userReplies);
+			String expectedReplies = recordedReplies;
+			if (editBase)
+				expectedReplies = userReplies;
+			requireThat(read(fixture.resolve(repliesFile)), "replies").isEqualTo(expectedReplies);
 			requireThat(read(fixture.resolve(EDITED_SCENARIO)), "scenario").isEqualTo(RECORDED_SCENARIO);
 		}
 	}
@@ -1173,7 +1222,8 @@ public final class DeliveryTest
 	 * A prompt test that the contract author wrote as files in its draft directory keeps the links of its
 	 * {@value PromptTestFiles#WORKSPACE} directory: a link to another entry of the directory and a link to a shared
 	 * file are delivered as links with their targets, and a file that the draft holds where the recorded test has a
-	 * link replaces the link without changing the link's target.
+	 * link replaces the link without changing the link's target. An older draft has no example membership and
+	 * leaves the recorded example alone.
 	 *
 	 * @throws IOException if the fixture or delivery fails
 	 */
@@ -1185,9 +1235,12 @@ public final class DeliveryTest
 			Path sharedGuide = TESTS.resolve("shared/docs/guide.md");
 			Path editedWorkspace = EDITED_SCENARIO.resolveSibling(PromptTestFiles.WORKSPACE);
 			Path createdWorkspace = TESTS.resolve("release_dates").resolve(PromptTestFiles.WORKSPACE);
+			Path legacyExample = EDITED_SCENARIO.resolveSibling(PromptTestFiles.EXAMPLES).
+				resolve("read/pass_same_day/replies.json");
 			Fixture fixture = Fixture.create(template, cleanup).
 				recordFile(sharedGuide, "Guide\n".getBytes(UTF_8)).
 				recordLink(editedWorkspace.resolve("notes.md"), "../../shared/docs/guide.md").
+				recordFile(legacyExample, "[]\n".getBytes(UTF_8)).
 				recordFile(EDITED_SCENARIO, RECORDED_SCENARIO.getBytes(UTF_8));
 			String editedScenario = RECORDED_SCENARIO.replace("Read `{{file}}`.", "Read `{{file}}` twice.");
 			String createdScenario = RECORDED_SCENARIO.replace("# Release notes", "# Release dates");
@@ -1230,6 +1283,7 @@ public final class DeliveryTest
 				isEqualTo("Guide\n");
 			requireThat(Files.notExists(fixture.resolve(createdWorkspace.resolveSibling(PromptTestFiles.EXAMPLES))),
 				"examplesAbsent").isTrue();
+			requireThat(read(fixture.resolve(legacyExample)), "legacyExample").isEqualTo("[]\n");
 		}
 	}
 

@@ -44,9 +44,9 @@ import java.util.TreeSet;
  * Changes made outside the candidate to other paths, including read-only external participants, survive delivery
  * and are reported.
  * <p>
- * A plan may also write test files and links, which are planned against the fork baseline like the candidate's own
- * files and applied after them. A test file whose content the fork already records, or a test link that the fork
- * already records with the same target, is left alone. A test link, or a test file where the fork records a link,
+ * A plan may delete test files and write test files and links. These changes are planned against the fork baseline
+ * and applied after the candidate's changes. A test file with the same content as the fork, or a test link with the
+ * same target, is left alone. A test link, or a test file where the fork records a link,
  * replaces the path itself rather than what it points to. A link that the tests expand is replaced with a directory
  * that holds the test files below it.
  * <p>
@@ -119,7 +119,9 @@ public final class DeliveryPlan
 	 * replaces the path: it conflicts if its directory does not resolve to itself, the current state changed what the
 	 * fork recorded there, or the current structure collides with it. A link that the tests expand conflicts in the
 	 * same way, and also if the fork records no link at its path; the test files below it are created in the new
-	 * directory. A directory that the plan creates conflicts with anything already at or inside it.
+	 * directory. A directory that the plan creates conflicts with anything already at or inside it. A test file
+	 * deletion conflicts if the fork records no regular file, if the current state changed that file or its path,
+	 * or if another part of the delivery targets the same file.
 	 *
 	 * @param candidate the candidate, whose fork is the baseline
 	 * @param current a fresh scan of the base worktree and of the same external paths as the fork
@@ -162,10 +164,23 @@ public final class DeliveryPlan
 		}
 
 		SortedSet<Path> expandedLinks = new TreeSet<>(tests.expandedLinks());
+		SortedSet<Path> deletedFiles = new TreeSet<>(tests.deletedFiles());
 
 		List<DeliveryConflict> conflicts = new ArrayList<>();
 		for (Path target : overlay.keySet())
 			conflicts.addAll(conflictsOf(target, fork, current));
+		for (Path target : deletedFiles)
+		{
+			if (overlay.containsKey(target) || tests.files().containsKey(target) || tests.links().containsKey(target) ||
+				expandedLinks.contains(target))
+			{
+				conflicts.add(new DeliveryConflict(Kind.BOTH_CHANGED, target, target));
+			}
+			else if (!(fork.entry(target).orElse(null) instanceof RegularFile))
+				conflicts.add(new DeliveryConflict(Kind.STRUCTURAL_COLLISION, target, target));
+			else
+				conflicts.addAll(conflictsOf(target, fork, current));
+		}
 		for (Path link : expandedLinks)
 		{
 			if (overlay.containsKey(link))
@@ -201,8 +216,11 @@ public final class DeliveryPlan
 		}
 		for (Path target : additions.keySet())
 		{
-			if (testFiles.containsKey(target) || testLinks.containsKey(target) || expandedLinks.contains(target))
+			if (testFiles.containsKey(target) || testLinks.containsKey(target) || expandedLinks.contains(target) ||
+				deletedFiles.contains(target))
+			{
 				conflicts.add(new DeliveryConflict(Kind.BOTH_CHANGED, target, target));
+			}
 			else
 				conflicts.addAll(additionConflictsOf(target, overlay, current));
 		}
@@ -211,6 +229,8 @@ public final class DeliveryPlan
 		if (conflicts.isEmpty())
 		{
 			changes = changesOf(overlay, fork);
+			for (Path target : deletedFiles)
+				changes.add(new Delete(changes.size(), target, recordedFile(target, fork)));
 			for (Path link : expandedLinks)
 			{
 				SymbolicLink before = (SymbolicLink) fork.entry(link).orElseThrow();
@@ -230,7 +250,7 @@ public final class DeliveryPlan
 		for (Path path : paths)
 		{
 			if (!overlay.containsKey(path) && !testFiles.containsKey(path) && !testLinks.containsKey(path) &&
-				!expandedLinks.contains(path) && !additions.containsKey(path) &&
+				!expandedLinks.contains(path) && !deletedFiles.contains(path) && !additions.containsKey(path) &&
 				!Objects.equals(fork.entry(path), current.entry(path)))
 			{
 				baseOnlyChanges.add(path);
