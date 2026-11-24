@@ -36,10 +36,10 @@
 	installer again with the entry command from the `update` skill and then ask you to uninstall. Run nothing else.
 2. Before you run anything, ask the user whether to also delete CAT's plugin data, and state that the default is to
 	keep it. Say that the plugin data holds CAT's installation settings and its downloaded releases, which a later
-	installation reuses. Say that uninstalling removes this harness's whole CAT installation: its plugin and
-	registration, including the installer and the Java runtime in each version folder of the plugin that CAT kept, and
-	the permission entries that let you run the installer, but not the other harness's CAT installation, and not the
-	user's own files or rules. End your turn with the question, and continue only when the user answers. Skip the
+	installation reuses. Say that uninstall removes this harness's CAT plugin files and attempts to remove its
+	registration and installer permission entries. Its report explains any manual cleanup. It removes any
+	harness-specific CAT credential file from the user's home. It affects neither the other harness's CAT installation
+	nor the user's other files or rules. End your turn with the question, and continue only when the user answers. Skip the
 	question when the user's request already says whether to delete the data. Treat any answer other than an
 	explicit yes to deleting the data, including no answer to that part, as keeping it.
 3. Run one command: `<launcher> uninstall --harness <h> --json` to keep CAT's plugin data, or
@@ -47,13 +47,12 @@
 	The harness may ask the user to approve this command before it runs; that approval is separate from the user's
 	answer in step 2. When the user declines it, stop and report that nothing was removed.
 4. Because the command ends with `--json`, the launcher prints one line of JSON. Act on its `result` field:
-	- `uninstalled`: tell the user that CAT is removed from this harness and that sessions they start from now on run
-		without it. Say whether CAT's plugin data was kept or deleted. Also tell them that installing CAT again is a new
-		installation, which needs the one manual entry command again, and that you cannot run it for them. Run nothing
-		further with the launcher: it no longer exists. When the result's `unregistered` field is false, the harness
-		program that CAT recorded when it was installed no longer existed, so CAT could not remove its registration
-		and the harness may still list the plugin and its marketplace. Tell the user to remove those entries with the
-		harness's own commands once the harness program works again: for `claude`, `claude plugin uninstall cat@cat`
+	- `uninstalled`: relay the result's `message`, including any credential file it says it deleted and what it says
+		may remain, why, and how to finish cleanup. Say whether existing plugin data was kept or deleted, using the
+		report and the data choice in step 2. Also tell the user that installing CAT again is a new installation, which
+		needs the one manual entry command again. Run nothing further with the launcher. When the result's
+		`unregistered` field is false and its message gives no commands, tell the user to remove the registration with
+		the harness's own commands once its program works again: for `claude`, `claude plugin uninstall cat@cat`
 		and then `claude plugin marketplace remove cat`; for `codex`, `codex plugin remove cat@cat` and then
 		`codex plugin marketplace remove cat`. Run them yourself only when the user asks.
 	- `uninstall_incomplete`: the removal stopped at a step and kept its progress. Run the same command once more; it

@@ -7,7 +7,9 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.ExclusiveFileLock;
 import com.holdmyspot.cat.common.Waiting;
+import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installer.activation.HarnessCommand;
+import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
 import com.holdmyspot.cat.common.installer.engine.UpdateResult.Result;
 import com.holdmyspot.cat.common.installer.trust.TrustPolicy;
@@ -71,10 +73,9 @@ public final class Uninstaller
 	 */
 	private static final String JOURNAL = "state/uninstall.json";
 	private static final JsonMapper MAPPER = JsonMapper.builder().build();
-	private final Path data;
-	private final TrustPolicy policy;
+	private final Installation installation;
 	private final PluginActivation activation;
-	private final HarnessSession session;
+	private final HarnessIntegration integration;
 	private final Path running;
 	/**
 	 * The uninstalling user's home folder, whose files that hold a secret for the harness's CAT sessions alone the
@@ -118,25 +119,63 @@ public final class Uninstaller
 	public Uninstaller(Path data, TrustPolicy policy, PluginActivation activation, HarnessSession session,
 		Path running, Path userHome, Clock clock, Waiting waiting)
 	{
+		this(new Installation(data, policy.harnesses().get(activation.harness()), null, policy, session), activation,
+			session.integration(), running, userHome, clock, waiting);
+	}
+
+	/**
+	 * Creates an uninstaller for an installed version folder whose policy is missing. It removes the plugin and
+	 * applicable user secrets, and reports how to finish unregistering the plugin and cleaning up settings.
+	 *
+	 * @param layout the installation located from the running version folder
+	 * @param activation the harness's activation provider
+	 * @param integration the harness's integration provider
+	 * @param running the running version folder
+	 * @param userHome the uninstalling user's absolute home folder, or null when the environment names none
+	 * @param clock operation time source
+	 * @param waiting creates pauses between lock attempts
+	 * @throws NullPointerException if any argument other than {@code userHome} is null
+	 * @throws IllegalArgumentException if {@code userHome} is relative
+	 */
+	public Uninstaller(HarnessInstallation layout, PluginActivation activation, HarnessIntegration integration,
+		Path running, Path userHome, Clock clock, Waiting waiting)
+	{
+		this(new Installation(layout.dataDirectory(), layout.home(), layout.policy(), null, null), activation,
+			integration, running, userHome, clock, waiting);
+	}
+
+	/**
+	 * Configures the common removal steps and their paths.
+	 *
+	 * @param installation the authority for the removal steps
+	 * @param activation the harness's activation provider
+	 * @param integration the harness's integration provider
+	 * @param running the running version folder
+	 * @param userHome the uninstalling user's absolute home folder, or null when the environment names none
+	 * @param clock operation time source
+	 * @param waiting creates pauses between lock attempts
+	 */
+	private Uninstaller(Installation installation, PluginActivation activation, HarnessIntegration integration,
+		Path running, Path userHome, Clock clock, Waiting waiting)
+	{
+		Path data = installation.data();
 		requireThat(data, "data").isNotNull();
-		requireThat(policy, "policy").isNotNull();
 		requireThat(activation, "activation").isNotNull();
-		requireThat(session, "session").isNotNull();
+		requireThat(integration, "integration").isNotNull();
 		requireThat(running, "running").isNotNull();
 		if (userHome != null)
 			requireThat(userHome, "userHome").isAbsolute();
 		requireThat(clock, "clock").isNotNull();
 		requireThat(waiting, "waiting").isNotNull();
-		this.data = data.toAbsolutePath().normalize();
-		this.policy = policy;
+		this.installation = installation;
 		this.activation = activation;
-		this.session = session;
+		this.integration = integration;
 		this.running = running;
 		this.userHome = userHome;
 		this.clock = clock;
 		this.waiting = waiting;
-		this.state = InstallerState.of(this.data, activation.harness());
-		this.journal = this.data.resolve(JOURNAL);
+		this.state = InstallerState.of(data, activation.harness());
+		this.journal = data.toAbsolutePath().normalize().resolve(JOURNAL);
 	}
 
 	/**
@@ -145,7 +184,8 @@ public final class Uninstaller
 	 * every other step still runs. When the environment named no home folder for the user, the step that removes the
 	 * user's secret files adds the integration's sentences about the files that it could not look for to the outcome's
 	 * message instead. The harness is asked to keep CAT's plugin data unless {@code deleteData} is true; then the plugin
-	 * data is deleted once every step completed.
+	 * data is deleted once every step completed. Without a policy, unregistration and settings cleanup are skipped,
+	 * and the result explains how to finish them. Plugin data created for that uninstall's lock is then removed.
 	 * <p>
 	 * A folder of plugin files that holds the running installer's version folder is not deleted while the installer
 	 * runs; the outcome's {@link UpdateResult#exitDeletions() exit deletions} name it instead.
@@ -156,7 +196,7 @@ public final class Uninstaller
 	 */
 	public UninstallResult uninstall(boolean deleteData)
 	{
-		Path recorded = policy.harnesses().get(activation.harness());
+		Path recorded = installation.home();
 		if (recorded == null)
 		{
 			return failure(Result.REFUSED, "CAT's install has not recorded this harness, so there is nothing to " +
@@ -167,10 +207,13 @@ public final class Uninstaller
 		removedSecrets.clear();
 		String step = STEPS.getFirst();
 		boolean unregistered;
+		boolean withoutPolicy = installation.missingPolicy() != null;
+		boolean removeData;
 		Path home;
 		try
 		{
 			home = LinkSafeDeletion.resolveRoot(recorded);
+			boolean recreateData = withoutPolicy && Files.notExists(installation.data(), NOFOLLOW_LINKS);
 			Optional<ExclusiveFileLock> acquired = OperationLock.acquire(state, clock, OperationLock.WAIT, waiting);
 			if (acquired.isEmpty())
 				return failure(Result.LOCKED, "Another CAT operation holds the harness lock.", List.of());
@@ -178,10 +221,25 @@ public final class Uninstaller
 			{
 				if (!lock.isValid())
 					return failure(Result.LOCKED, "The harness lock is no longer valid.", List.of());
-				Progress progress = readProgress(journal).orElseGet(() -> new Progress(new ArrayList<>()));
+				if (withoutPolicy && !Files.notExists(installation.missingPolicy(), NOFOLLOW_LINKS))
+				{
+					return failure(Result.REFUSED, "The installer could not confirm that " +
+						installation.missingPolicy() + " is missing. Run the same uninstall command again.",
+						List.of(installation.missingPolicy()));
+				}
+				Progress progress = readProgress(journal).orElseGet(() -> new Progress(new ArrayList<>(), recreateData));
+				removeData = deleteData || (withoutPolicy && progress.recreatedData());
+				if (recreateData)
+					writeProgress(progress);
+				if (withoutPolicy)
+					retained.addAll(integration.describeUninstallWithoutPolicy(home, !removeData));
+				if (withoutPolicy && progress.completed().contains(PLUGIN))
+					collectDeferredDeletions(home);
 				boolean programExists = programExists();
 				for (String next : STEPS)
 				{
+					if (withoutPolicy && next.equals(PERMISSIONS))
+						continue;
 					if (progress.completed().contains(next) || (next.equals(UNREGISTER) && !programExists))
 						continue;
 					step = next;
@@ -190,7 +248,7 @@ public final class Uninstaller
 					writeProgress(progress);
 				}
 				unregistered = progress.completed().contains(UNREGISTER);
-				if (!deleteData)
+				if (!removeData)
 					Files.deleteIfExists(journal);
 			}
 		}
@@ -214,7 +272,7 @@ public final class Uninstaller
 			Thread.currentThread().interrupt();
 			return failure(Result.LOCKED, "Interrupted while waiting for the harness lock.", List.of());
 		}
-		if (deleteData)
+		if (removeData)
 		{
 			// The harness lock is in the plugin data, so the data is deleted once the lock is released
 			Path directory = activation.dataDirectory(home);
@@ -229,8 +287,10 @@ public final class Uninstaller
 					"the same uninstall command again.", List.of(directory));
 			}
 		}
-		return uninstalled(activation.harness(), policy.keys().stream().map(TrustedKey::id).toList(), unregistered,
-			retained, removedSecrets, exitDeletions);
+		if (withoutPolicy && removeData && !deleteData)
+			retained.add("CAT removed the temporary plugin data directory created for the uninstall lock.");
+		return uninstalled(activation.harness(), keyIds(), unregistered, withoutPolicy, retained, removedSecrets,
+			exitDeletions);
 	}
 
 	/**
@@ -251,16 +311,17 @@ public final class Uninstaller
 	 * @param harness       the installation's harness
 	 * @param keyIds        the identifiers of the policy's keys
 	 * @param unregistered  true if the plugin was unregistered through the harness program
+	 * @param withoutPolicy true if the policy was missing and the report already explains the skipped steps
 	 * @param retained      the sentences that tell the user what the uninstall may have left in place
 	 * @param secrets       the files of the user's home folder that held a secret and that the uninstall removed
 	 * @param exitDeletions the folders to delete once the installer no longer needs its own files
 	 * @return the outcome, whose message names each removed secret file and whose paths are those files
 	 */
 	private static UninstallResult uninstalled(String harness, List<String> keyIds, boolean unregistered,
-		List<String> retained, List<Path> secrets, List<Path> exitDeletions)
+		boolean withoutPolicy, List<String> retained, List<Path> secrets, List<Path> exitDeletions)
 	{
 		StringJoiner message = new StringJoiner(" ");
-		if (unregistered)
+		if (unregistered || withoutPolicy)
 			message.add("CAT was removed from this harness.");
 		else
 		{
@@ -281,7 +342,9 @@ public final class Uninstaller
 	 */
 	private boolean programExists()
 	{
-		Optional<HarnessCommand> command = policy.command(activation.harness());
+		if (installation.policy() == null)
+			return false;
+		Optional<HarnessCommand> command = installation.policy().command(activation.harness());
 		if (command.isEmpty())
 			return false;
 		Path program = Path.of(command.get().command().getFirst());
@@ -298,6 +361,7 @@ public final class Uninstaller
 	 */
 	private void run(String step, Path home, boolean deleteData) throws IOException
 	{
+		HarnessSession session = installation.session();
 		switch (step)
 		{
 			case PERMISSIONS ->
@@ -305,20 +369,20 @@ public final class Uninstaller
 				Map<String, List<String>> recorded = PermissionRecord.read(state.permissions());
 				if (!recorded.isEmpty())
 				{
-					session.integration().removePermissions(home, recorded, session.replacer());
-					retained.addAll(session.integration().describeRetained(home, recorded));
+					integration.removePermissions(home, recorded, session.replacer());
+					retained.addAll(integration.describeRetained(home, recorded));
 				}
 				Files.deleteIfExists(state.permissions());
 				Files.deleteIfExists(state.pendingPermissions());
 			}
-			case UNREGISTER -> session.integration().unregister(home, session.cli(), !deleteData);
+			case UNREGISTER -> integration.unregister(home, session.cli(), !deleteData);
 			case PLUGIN -> deletePlugin(home);
 			case SECRETS ->
 			{
 				if (userHome == null)
-					retained.addAll(session.integration().describeUnsearchedUserSecrets());
+					retained.addAll(integration.describeUnsearchedUserSecrets());
 				else
-					removedSecrets.addAll(session.integration().removeUserSecrets(userHome));
+					removedSecrets.addAll(integration.removeUserSecrets(userHome));
 			}
 			default -> throw new AssertionError(step);
 		}
@@ -356,6 +420,22 @@ public final class Uninstaller
 			}
 			else
 				LinkSafeDeletion.delete(path, home, waiting);
+		}
+	}
+
+	/**
+	 * Recovers the running version folder's deferred deletion after a prior invocation completed the plugin step.
+	 *
+	 * @param home the harness home
+	 * @throws IOException if the plugin paths cannot be inspected
+	 */
+	private void collectDeferredDeletions(Path home) throws IOException
+	{
+		Path runningFolder = real(running);
+		for (Path path : activation.removalPaths(home))
+		{
+			if (runningFolder.startsWith(path) && Files.exists(path, NOFOLLOW_LINKS))
+				exitDeletions.add(path);
 		}
 	}
 
@@ -407,7 +487,7 @@ public final class Uninstaller
 				throw new IOException("The uninstall progress names an unknown step: " + journal);
 			completed.add(step.stringValue());
 		}
-		return Optional.of(new Progress(completed));
+		return Optional.of(new Progress(completed, root.path("recreated_data").asBoolean(false)));
 	}
 
 	/**
@@ -420,6 +500,8 @@ public final class Uninstaller
 	{
 		ObjectNode root = MAPPER.createObjectNode();
 		root.put("format", 1);
+		if (progress.recreatedData())
+			root.put("recreated_data", true);
 		progress.completed().forEach(root.putArray("completed")::add);
 		// Unregistering without keeping the data deletes the installer's state with the rest of the plugin data
 		StateFiles.createDirectories(journal.getParent());
@@ -450,15 +532,42 @@ public final class Uninstaller
 	private UpdateResult result(Result outcome, String message, List<Path> paths)
 	{
 		return new UpdateResult(outcome, activation.harness(), Optional.empty(), Optional.empty(), message, paths,
-			true, policy.keys().stream().map(TrustedKey::id).toList());
+			true, keyIds());
+	}
+
+	/**
+	 * Returns the key identifiers from the installer policy, or an empty list if it was missing.
+	 *
+	 * @return the key identifiers
+	 */
+	private List<String> keyIds()
+	{
+		if (installation.policy() == null)
+			return List.of();
+		return installation.policy().keys().stream().map(TrustedKey::id).toList();
 	}
 
 	/**
 	 * An uninstall's progress.
 	 *
 	 * @param completed the completed steps, in order
+	 * @param recreatedData true if the plugin data directory was created for this uninstall's lock
 	 */
-	private record Progress(List<String> completed)
+	private record Progress(List<String> completed, boolean recreatedData)
+	{
+	}
+
+	/**
+	 * The location and authority for the removal steps.
+	 *
+	 * @param data the plugin data directory
+	 * @param home the harness home, or null when a policy does not name the harness
+	 * @param missingPolicy the expected policy file when the version folder identifies the installation, or null when
+	 *                      the policy identifies it
+	 * @param policy the validated policy, or null when it was missing
+	 * @param session the session for registration and settings cleanup, or null when the policy was missing
+	 */
+	private record Installation(Path data, Path home, Path missingPolicy, TrustPolicy policy, HarnessSession session)
 	{
 	}
 }

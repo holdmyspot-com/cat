@@ -502,6 +502,18 @@ public final class Integration implements HarnessIntegration
 			command.run(cli);
 	}
 
+	@Override
+	public List<String> describeUninstallWithoutPolicy(Path home, boolean keepData)
+	{
+		List<String> commands = PluginCommand.unregistration(keepData).stream().
+			map(command -> programName() + " " + String.join(" ", command.arguments())).toList();
+		return List.of("CAT skipped plugin and marketplace unregistration because policy.json is missing and CAT " +
+			"has no record of the Claude Code program. Set CLAUDE_CONFIG_DIR to " + home + " and run " +
+			commands.getFirst() + ", then " + commands.getLast() + ".",
+			"CAT skipped settings cleanup because it could not verify which entries it added. In " +
+				home.resolve(SETTINGS) + ", remove only the permissions and sandbox entries that CAT added.");
+	}
+
 	/**
 	 * Removes the user's CAT Claude credential file, {@code .cat/claude/.credentials.json} in {@code userHome}, and the
 	 * {@code .cat/claude} folder when that leaves it empty, as {@link ClaudeCredentialFile#remove} does.

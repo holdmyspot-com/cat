@@ -386,6 +386,23 @@ public final class CodexIntegration implements HarnessIntegration
 			command.run(cli);
 	}
 
+	@Override
+	public List<String> describeUninstallWithoutPolicy(Path home, boolean keepData)
+	{
+		CodexInstallation layout = new CodexInstallation(home);
+		List<String> commands = CodexPluginCommand.unregistration().stream().
+			map(command -> programName() + " " + String.join(" ", command.arguments())).toList();
+		return List.of("CAT skipped plugin and marketplace unregistration because policy.json is missing and CAT " +
+			"has no record of the Codex program. Set CODEX_HOME to " + home + " and run " + commands.getFirst() +
+			", then " + commands.getLast() + ".",
+			"CAT skipped settings cleanup because it could not verify which entries it added. Review " +
+				layout.configuration() + " for CAT's lock and read-only path grants, permission profiles and hook " +
+				"trust entries. Restore the previous default_permissions if it selects a CAT profile. Remove only " +
+				"entries that CAT added, including its rules in " + home.resolve("rules").resolve(RULES_FILE) + ".",
+			"CAT custom agents may remain in " + layout.agents() + " if their ownership record was lost. " +
+				"Remove any remaining files you recognize as unmodified CAT agents.");
+	}
+
 	/**
 	 * Removes nothing: the user saves no secret for CAT's Codex sessions alone in the home folder. CAT's Claude
 	 * credential file serves Claude sessions, which only the Claude Code plugin starts, so its uninstall removes it.

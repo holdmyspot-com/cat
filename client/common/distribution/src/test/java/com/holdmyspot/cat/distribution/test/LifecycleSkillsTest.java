@@ -158,9 +158,9 @@ public final class LifecycleSkillsTest
 				contains("needs the one manual entry command again").
 				contains("`uninstall_incomplete`: the removal stopped at a step and kept its progress. Run the same " +
 					"command once more").
-				contains("When the result's `unregistered` field is false").
+				contains("relay the result's `message`").contains("`unregistered` field is false").
 				contains("`claude plugin uninstall cat@cat`").contains("`codex plugin remove cat@cat`").
-				contains("not the other harness's CAT installation").
+				contains("neither the other harness's CAT installation").
 				contains("may ask the user to approve this command").doesNotContain("cat-updater.cmd").
 				doesNotContain("install/").doesNotContain("uninstall-").doesNotContain("-Uninstall").
 				doesNotContain("-DeleteData").doesNotContain("cat.sh").doesNotContain("XDG_CONFIG_HOME").

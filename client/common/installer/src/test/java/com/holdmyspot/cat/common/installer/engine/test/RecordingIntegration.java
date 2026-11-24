@@ -658,6 +658,12 @@ public final class RecordingIntegration implements HarnessIntegration
 	}
 
 	@Override
+	public List<String> describeUninstallWithoutPolicy(Path home, boolean keepData)
+	{
+		return List.of();
+	}
+
+	@Override
 	public boolean runsInstead(PluginVersion candidate, PluginVersion active)
 	{
 		return greatestName && candidate.toString().compareTo(active.toString()) > 0;

@@ -6,16 +6,20 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
 import com.holdmyspot.cat.common.installer.activation.HarnessCli;
 import com.holdmyspot.cat.common.installer.activation.HarnessCommand;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
+import com.holdmyspot.cat.common.installer.cli.internal.DetachedProcessStarter;
 import com.holdmyspot.cat.common.installer.cli.internal.HarnessCliFactory;
 import com.holdmyspot.cat.common.installer.cli.internal.Invocation;
 import com.holdmyspot.cat.common.installer.cli.internal.ProcessHarnessCli;
+import com.holdmyspot.cat.common.installer.cli.internal.ProcessTerminal;
 import com.holdmyspot.cat.common.installer.cli.internal.Terminal;
 import com.holdmyspot.cat.common.installer.fakes.test.ExitedProgram;
 import com.holdmyspot.cat.common.installer.fakes.test.HarnessProgram;
@@ -119,6 +123,107 @@ public final class InstallerActivationTest
 	public Object[][] harnesses()
 	{
 		return new Object[][]{{"claude"}, {"codex"}};
+	}
+
+	/**
+	 * Supplies lost policy states and uninstall data choices for each harness.
+	 *
+	 * @return cases with missing data, existing data to keep, and existing data to delete
+	 */
+	@DataProvider
+	public Object[][] missingPolicies()
+	{
+		return new Object[][]{
+			{"claude", false, false}, {"claude", true, false}, {"claude", true, true},
+			{"codex", false, false}, {"codex", true, false}, {"codex", true, true}};
+	}
+
+	/**
+	 * Uninstall without a policy removes the plugin and applicable credentials and reports how to finish registration
+	 * and settings cleanup. It preserves existing data by default and removes data created solely for its lock.
+	 *
+	 * @param harness the packaged harness to exercise
+	 * @param hasData true if plugin data exists without a policy
+	 * @param deleteData true if the user asks to delete plugin data
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test(dataProvider = "missingPolicies")
+	public void uninstallWithoutPolicy(String harness, boolean hasData, boolean deleteData) throws IOException
+	{
+		// Requirement: R-I18
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("uninstall-no-policy-").toRealPath());
+			Path userHome = Files.createDirectory(root.resolve("user"));
+			HarnessIntegration integration = provider(HarnessIntegration.class, harness);
+			HarnessInstallation installation = integration.installation(root.resolve("harness"));
+			Path image = Files.createDirectories(installation.versionFolder(FIRST));
+			Path data = installation.dataDirectory();
+			if (hasData)
+				Files.writeString(Files.createDirectories(data).resolve("user-data"), "keep");
+			boolean claude = harness.equals("claude");
+			Path settings;
+			String originalSettings;
+			if (claude)
+			{
+				settings = installation.home().resolve("settings.json");
+				originalSettings = "{}\n";
+			}
+			else
+			{
+				settings = installation.home().resolve("config.toml");
+				originalSettings = "# user configuration\n";
+			}
+			Files.writeString(settings, originalSettings);
+			Path credential = Files.writeString(Files.createDirectories(userHome.resolve(".cat/claude")).
+				resolve(".credentials.json"), "{\"format_version\": 1, \"token\": \"sk-ant-oat01-fixture\"}");
+			List<String> arguments = new ArrayList<>(List.of("uninstall", "--harness", harness));
+			if (deleteData)
+				arguments.add("--delete-data");
+			arguments.add("--json");
+			ByteArrayOutputStream output = new ByteArrayOutputStream();
+			ByteArrayOutputStream diagnostics = new ByteArrayOutputStream();
+			Platform platform = Platform.LINUX_X64;
+			Waiting waiting = _ -> () ->
+			{
+			};
+			int status;
+			try (PrintStream stdout = new PrintStream(output, false, UTF_8);
+				PrintStream stderr = new PrintStream(diagnostics, false, UTF_8))
+			{
+				status = new Invocation(image, platform, Map.of("HOME", userHome.toString()), userHome,
+					List.of(provider(PluginActivation.class, harness)), List.of(integration), ProcessHarnessCli::new,
+					Clock.systemUTC(), waiting, FileReplacer.retrying(waiting),
+					new ProcessTerminal(platform), new DetachedProcessStarter(), stdout, stderr).
+					run(arguments.toArray(String[]::new));
+			}
+
+			String printed = output.toString(UTF_8);
+			requireThat(status, "status").withContext(printed, "output").isEqualTo(0);
+			JsonNode result = MAPPER.readTree(printed);
+			requireThat(result.path("result").asString(), "result").isEqualTo("uninstalled");
+			requireThat(result.path("unregistered").isBoolean(), "unregisteredReported").isTrue();
+			requireThat(result.path("unregistered").asBoolean(), "unregistered").isFalse();
+			String message = result.path("message").asString();
+			requireThat(message, "message").contains("policy.json").contains(settings.toString()).
+				contains(harness + " plugin marketplace remove cat");
+			boolean keepData = hasData && !deleteData;
+			if (claude)
+			{
+				String uninstall = "claude plugin uninstall cat@cat";
+				if (keepData)
+					uninstall = "claude plugin uninstall --keep-data cat@cat";
+				requireThat(message, "message").contains(uninstall).contains("Deleted " + credential);
+			}
+			else
+				requireThat(message, "message").contains("codex plugin remove cat@cat");
+			requireThat(Files.readString(settings), "settings").isEqualTo(originalSettings);
+			requireThat(Files.exists(credential), "credentialLeft").isEqualTo(!claude);
+			requireThat(Files.exists(image), "versionFolderLeft").isFalse();
+			requireThat(Files.exists(data), "dataFolderLeft").isEqualTo(keepData);
+			if (keepData)
+				requireThat(Files.readString(data.resolve("user-data")), "data").isEqualTo("keep");
+		}
 	}
 
 	/**

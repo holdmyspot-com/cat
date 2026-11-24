@@ -314,6 +314,8 @@ public final class Invocation
 		String own = locations.harness();
 		if (!arguments.harness().isEmpty() && !arguments.harness().equals(own))
 			return print(otherHarness(own, arguments.harness()), arguments, locations);
+		if (arguments.operation() == Operation.UNINSTALL && Files.notExists(locations.policy(), NOFOLLOW_LINKS))
+			return uninstallWithoutPolicy(arguments, locations);
 		Managed managed = manage(own, locations.policy(), arguments.operation() == Operation.STATUS);
 		if (managed.refusal() != null)
 			return print(managed.refusal(), arguments, locations);
@@ -356,6 +358,33 @@ public final class Invocation
 			return print(homeRefusal.get(), arguments, locations);
 		HarnessSession session = managed.session();
 		UninstallResult result = new Uninstaller(locations.data(), managed.policy(), managed.activation(), session,
+			locations.image(), userHome, clock, waiting).uninstall(arguments.deleteData());
+		return printUninstall(result, arguments, locations);
+	}
+
+	/**
+	 * Removes the installation identified by the running version folder when its policy is missing.
+	 *
+	 * @param arguments the validated uninstall operation
+	 * @param locations the installation identified by the running version folder
+	 * @return the reported uninstall outcome's exit status
+	 */
+	private int uninstallWithoutPolicy(Arguments arguments, Locations locations)
+	{
+		String own = locations.harness();
+		Optional<PluginActivation> activation = activations.stream().filter(provider -> provider.harness().equals(own)).
+			findFirst();
+		if (activation.isEmpty())
+		{
+			return print(failure(Result.REFUSED, own, "This installer has no plugin provider for " + own +
+				".", List.of()), arguments, locations);
+		}
+		Optional<UpdateResult> homeRefusal = readUninstallHome(own);
+		if (homeRefusal.isPresent())
+			return print(homeRefusal.get(), arguments, locations);
+		HarnessIntegration integration = integrations.stream().filter(provider -> provider.harness().equals(own)).
+			findFirst().orElseThrow();
+		UninstallResult result = new Uninstaller(locations.installation(), activation.get(), integration,
 			locations.image(), userHome, clock, waiting).uninstall(arguments.deleteData());
 		return printUninstall(result, arguments, locations);
 	}

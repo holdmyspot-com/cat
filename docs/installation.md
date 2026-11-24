@@ -168,8 +168,9 @@ installation:
 
 It never deletes unrelated settings, your own files, or your rules in `~/.cat/rules`. CAT's plugin data stays in
 `plugins/data/cat-cat/` in the harness home unless you delete it. A file or folder that the uninstall would delete
-and that is already gone does not stop it, except `policy.json` in the plugin data: when it is gone, the uninstall
-refuses and names the CAT entry command to run first. If the uninstall stops, run it again. When the
+and that is already gone does not stop it. If CAT's `policy.json` is missing, the installer removes the plugin files
+and any applicable CAT credential file from your home. The report tells you how to remove the plugin registration
+and any settings entries CAT added. If the uninstall stops, run it again. When the
 harness program that the install recorded is gone, the harness may still list the plugin, and the installer tells you
 the commands that remove it. To install CAT again, repeat [step 1](#1-install); it reuses the plugin data that you kept.
 

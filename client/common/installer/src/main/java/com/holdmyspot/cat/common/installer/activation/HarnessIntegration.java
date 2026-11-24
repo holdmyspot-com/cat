@@ -157,6 +157,16 @@ public interface HarnessIntegration
 	void unregister(Path home, HarnessCli cli, boolean keepData) throws IOException;
 
 	/**
+	 * Explains which registration and settings changes may remain when uninstall runs without an installer policy,
+	 * and how the user can remove them.
+	 *
+	 * @param home the absolute harness home identified by the installed version folder
+	 * @param keepData true if the manual registration commands should preserve plugin data
+	 * @return the reasons for the skipped steps and the manual cleanup instructions
+	 */
+	List<String> describeUninstallWithoutPolicy(Path home, boolean keepData);
+
+	/**
 	 * Removes the files in the user's home folder that hold a secret that the user saved for this harness's CAT sessions
 	 * alone, because nothing uses the secret once CAT is uninstalled. Uninstall calls it whether or not it deletes CAT's
 	 * plugin data, when the environment names the user's home folder; otherwise it calls
