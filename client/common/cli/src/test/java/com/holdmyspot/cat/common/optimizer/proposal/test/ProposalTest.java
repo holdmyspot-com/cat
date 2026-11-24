@@ -3306,6 +3306,117 @@ public final class ProposalTest
 	}
 
 	/**
+	 * Returns differences from three valid arrival examples and the example each difference invalidates.
+	 *
+	 * @return the directory names to replace and the expected refusal
+	 */
+	@DataProvider
+	public Object[][] arrivalExampleChanges()
+	{
+		return new Object[][]{
+			{"pass_crosses_midnight", "pass_tomorrow", "pass_tomorrow"},
+			{"pass_crosses_midnight", null, "pass_crosses_midnight"},
+			{"fail_omits_answer", null, "fail_<snake_case_name>"}
+		};
+	}
+
+	/**
+	 * Verifies that a proposal requires both a failing example and a passing one for each arrival boundary.
+	 *
+	 * @param original the example to change
+	 * @param replacement its new name, or null to remove it
+	 * @param problem the example that CAT names
+	 * @throws IOException if the draft cannot be written
+	 * @throws InvalidProposalException if the valid draft is refused
+	 */
+	@Test(dataProvider = "arrivalExampleChanges")
+	public void checksArrivalExampleClasses(String original, String replacement, String problem)
+		throws IOException, InvalidProposalException
+	{
+		// Requirement: R-L15
+		SessionResult.Completed result = arrivalExamples();
+		Path examples = result.effects().resolve(DraftDirectory.name(result.initialProject())).
+			resolve(".cat/tests/CLAUDE/formatting/examples/uses_requested_tone");
+		DerivedProposal accepted = contractAuthor.proposal(result, PROMPT_SYSTEM, PROFILES, SALT);
+		requireThat(render(accepted), "proposal").contains(
+			"`pass_arrives_exactly_at_midnight` (boundary class `arrives_exactly_at_midnight`): `pattern` passed.");
+		writeExampleReply(examples.resolve("pass_arrives_exactly_at_midnight"), "River arrives at 00:00 on Friday.");
+		for (long salt : List.of(SALT, SALT + 1, SALT + 2))
+			contractAuthor.proposal(result, PROMPT_SYSTEM, PROFILES, salt);
+
+		Path example = examples.resolve(original);
+		if (replacement != null)
+			Files.move(example, examples.resolve(replacement));
+		else
+		{
+			Files.delete(example.resolve("replies.json"));
+			Files.delete(example);
+		}
+		try
+		{
+			contractAuthor.proposal(result, PROMPT_SYSTEM, PROFILES, SALT);
+			throw new AssertionError("Expected CAT to refuse the changed arrival examples");
+		}
+		catch (InvalidProposalException e)
+		{
+			requireThat(e.getMessage(), "problem").contains("formatting").contains("uses_requested_tone").
+				contains(problem).doesNotContain("held-out").doesNotContain("development");
+		}
+	}
+
+	/**
+	 * Writes a test whose reply tool checks an arrival time for three kinds of day boundary.
+	 *
+	 * @return the completed author's session
+	 * @throws IOException if the draft cannot be created
+	 */
+	private SessionResult.Completed arrivalExamples() throws IOException
+	{
+		SessionResult.Completed result = session(changedDerivation(proposal ->
+		{
+			ObjectNode test = (ObjectNode) proposal.at("/tests/0");
+			test.putArray("turns").add("River's train lists {{arrival}} on {{day}}. State the arrival time.");
+			ArrayNode variables = test.putArray("variables");
+			variables.addObject().put("name", "arrival").put("description", "The scheduled arrival time.");
+			variables.addObject().put("name", "day").put("description", "The scheduled arrival day.");
+			ObjectNode assertion = (ObjectNode) test.at("/assertions/0");
+			assertion.put("statement", "The reply states the arrival time.").put("tool", "pattern \"{{arrival}}\"");
+			ArrayNode cases = test.putArray("test_cases");
+			List<String> classes = List.of("same_day", "crosses_midnight", "arrives_exactly_at_midnight");
+			List<String> times = List.of("15:05", "16:01", "00:15", "01:02", "00:00", "12:00 am");
+			List<String> days = List.of("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday");
+			for (int i = 0; i < times.size(); ++i)
+			{
+				ObjectNode testCase = cases.addObject().put("boundary_class", classes.get(i / 2)).
+					put("expected_outcome", "River arrives at " + times.get(i) + " on " + days.get(i) + ".");
+				ArrayNode values = testCase.putArray("values");
+				values.addObject().put("variable", "arrival").put("text", times.get(i));
+				values.addObject().put("variable", "day").put("text", days.get(i));
+			}
+		}));
+		Path examples = result.effects().resolve(DraftDirectory.name(result.initialProject())).
+			resolve(".cat/tests/CLAUDE/formatting/examples/uses_requested_tone");
+		for (String example : List.of("pass_same_day", "pass_crosses_midnight", "pass_arrives_exactly_at_midnight"))
+			writeExampleReply(examples.resolve(example), "River arrives at {{arrival}} on {{day}}.");
+		writeExampleReply(examples.resolve("fail_omits_answer"), "It arrives on Tuesday.");
+		return result;
+	}
+
+	/**
+	 * Replaces an example's single turn.
+	 *
+	 * @param example the example directory
+	 * @param reply the reply text
+	 * @throws IOException if the reply cannot be written
+	 */
+	private void writeExampleReply(Path example, String reply) throws IOException
+	{
+		ArrayNode turns = json.createArrayNode();
+		turns.addArray().add(reply);
+		Files.writeString(example.resolve("replies.json"), json.writeValueAsString(turns), UTF_8);
+	}
+
+	/**
 	 * Returns the choices for whether a judge considers a reply tool failure.
 	 *
 	 * @return the documented choices
@@ -3346,6 +3457,26 @@ public final class ProposalTest
 	{
 		// Requirement: R-L15
 		SessionResult.Completed result = replyExample(onToolFailure, "fail_omits_answer", "{{expected_outcome}}");
+
+		contractAuthor.proposal(result, PROMPT_SYSTEM, PROFILES, SALT);
+	}
+
+	/**
+	 * Verifies that a reply guard cannot reject its own passing example.
+	 *
+	 * @throws IOException if the example cannot be written
+	 * @throws InvalidProposalException if the proposal is refused
+	 */
+	@Test(expectedExceptions = InvalidProposalException.class, expectedExceptionsMessageRegExp =
+		"(?s).*safety.*asks_before_deleting.*pass_stored_data.*forbidden-text failed a passing example.*")
+	public void refusesContradictoryReplyGuard() throws IOException, InvalidProposalException
+	{
+		// Requirement: R-L15
+		SessionResult.Completed result = session(changedDerivation(proposal ->
+			((ObjectNode) proposal.at("/tests/2/assertions/0")).put("tool", "forbidden-text deleted")));
+		Path example = result.effects().resolve(DraftDirectory.name(result.initialProject())).
+			resolve(".cat/tests/CLAUDE/safety/examples/asks_before_deleting/pass_stored_data");
+		writeExampleReply(example, "I deleted your files.");
 
 		contractAuthor.proposal(result, PROMPT_SYSTEM, PROFILES, SALT);
 	}

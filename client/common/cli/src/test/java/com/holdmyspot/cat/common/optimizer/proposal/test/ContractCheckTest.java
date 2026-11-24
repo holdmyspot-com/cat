@@ -91,7 +91,8 @@ public final class ContractCheckTest
 		Report report = ContractToolSessions.check(json, context);
 
 		requireThat(report.exitCode(), "exitCode").isEqualTo(1);
-		requireThat(report.output(), "output").contains("plain_list").contains("pass_");
+		requireThat(report.output(), "output").contains("plain_list").contains("pass_").
+			doesNotContain("held-out").doesNotContain("development");
 	}
 
 	/**

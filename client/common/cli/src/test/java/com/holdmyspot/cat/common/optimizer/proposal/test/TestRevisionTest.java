@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.TestRevisionRequest;
 import com.holdmyspot.cat.common.optimizer.contract.InvalidProposalException;
 import com.holdmyspot.cat.common.optimizer.contract.ProposalSchema;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
+import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.proposal.ContractAuthorProtocol;
 import com.holdmyspot.cat.common.optimizer.proposal.ContractContext;
@@ -518,6 +519,13 @@ public final class TestRevisionTest
 			expectedFiles.add(assertionExamples + "pass_" + boundary + "/replies.json");
 		}
 		requireThat(files(draft), "files").isEqualTo(expectedFiles);
+		String retainedExample = "uses_requested_tone/pass_neutral_tone/replies.json";
+		Path revisedExample = draft.resolve(FORMATTING).resolve("examples").resolve(retainedExample);
+		requireThat(revised.proposal().contract().findTest("formatting").orElseThrow().draft().orElseThrow().
+			exampleFiles().get(retainedExample).hash(), "exampleDigest").
+			isEqualTo(Sha256.of(Files.readAllBytes(revisedExample)));
+		requireThat(Files.exists(confirmedDraft.resolve(FORMATTING).
+			resolve("examples/uses_requested_tone/pass_formal_tone/replies.json")), "originalExample").isTrue();
 		requireThat(Files.readString(draft.resolve(FORMATTING).resolve("scenario.md"), UTF_8), "revisedScenario").
 			contains("Summarize the meeting notes");
 		requireThat(Files.readString(confirmedDraft.resolve(FORMATTING).resolve("scenario.md"), UTF_8),

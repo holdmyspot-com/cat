@@ -82,13 +82,14 @@ public final class DraftDirectoryTest
 	 * Verifies that seeding copies each recorded prompt test of the target into the draft directory at its test path:
 	 * its scenario, values file and {@code workspace/} directory with its links, and the shared files that the links
 	 * reach, while a scenario in an earlier format becomes the {@code scenario.md} of a directory named after it, and
-	 * nothing else is copied.
+	 * a recorded test without an examples directory still seeds successfully.
 	 *
 	 * @throws IOException if a file cannot be read or written
 	 */
 	@Test
 	public void seedsRecordedTestsAtTheirPaths() throws IOException
 	{
+		// Requirement: R-L15
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
 			Path project = project(scope);
