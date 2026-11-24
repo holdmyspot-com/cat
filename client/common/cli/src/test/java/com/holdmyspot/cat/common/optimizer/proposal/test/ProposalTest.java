@@ -15,6 +15,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.Header;
 import com.holdmyspot.cat.common.optimizer.campaign.Lifecycle;
 import com.holdmyspot.cat.common.optimizer.campaign.Outcome;
 import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
+import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
 import com.holdmyspot.cat.common.optimizer.campaign.test.Builder;
 import com.holdmyspot.cat.common.optimizer.contract.Assertion;
 import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
@@ -43,6 +44,8 @@ import com.holdmyspot.cat.common.optimizer.contract.ValueGenerator;
 import com.holdmyspot.cat.common.optimizer.contract.ValueGenerators;
 import com.holdmyspot.cat.common.optimizer.contract.VariableDeclaration;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
+import com.holdmyspot.cat.common.optimizer.execution.AssertionReview.Finding;
+import com.holdmyspot.cat.common.optimizer.execution.AssertionReview.Kind;
 import com.holdmyspot.cat.common.optimizer.execution.GuardPilot;
 import com.holdmyspot.cat.common.optimizer.execution.PilotResult;
 import com.holdmyspot.cat.common.optimizer.execution.PilotTrial;
@@ -58,6 +61,8 @@ import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.proposal.Conflict;
 import com.holdmyspot.cat.common.optimizer.proposal.DerivedProposal;
+import com.holdmyspot.cat.common.optimizer.proposal.DerivedProposal.ExampleJudgment;
+import com.holdmyspot.cat.common.optimizer.proposal.DerivedProposal.TestReport;
 import com.holdmyspot.cat.common.optimizer.proposal.DraftChange;
 import com.holdmyspot.cat.common.optimizer.proposal.DraftDirectory;
 import com.holdmyspot.cat.common.optimizer.proposal.HookReport;
@@ -3327,6 +3332,42 @@ public final class ProposalTest
 			contains("- Assertion examples:\n").
 			contains("`keeps_requested_tone` / `pass_item_kind` (boundary class `item_kind`): `pattern` passed.").
 			contains("`keeps_requested_tone` / `fail_omits_answer` (first test case): `pattern` failed.");
+	}
+
+	/**
+	 * Replacing one test's report retains the other test's review warning and shows the new judge decision after its
+	 * mechanical result.
+	 *
+	 * @throws IOException if the fixture cannot be read
+	 * @throws InvalidProposalException if the proposal is refused
+	 */
+	@Test
+	public void replacesOneJudgedReport() throws IOException, InvalidProposalException
+	{
+		// Requirement: R-L16, R-L19, R-L20
+		SessionResult.Completed result = replyExample("judge", "pass_item_kind", "{{expected_outcome}}");
+		DerivedProposal proposal = contractAuthor.proposal(result, PROMPT_SYSTEM, PROFILES, SALT);
+		String assertionId = "keeps_requested_tone";
+		String exampleId = "fail_omits_answer";
+		TestReport unchanged = new TestReport(List.of(new ExampleJudgment("uses_requested_tone", "pass_casual_tone",
+			Verdict.PASS, "The summary uses a casual tone.")), List.of(new Finding("uses_requested_tone",
+			Kind.ACTIONS_DEPENDS_ONLY_ON_REPLIES, "The summary text is enough to check tone.", null)));
+		TestReport previous = new TestReport(List.of(new ExampleJudgment(assertionId, exampleId, Verdict.FAIL,
+			"The old reply gave no answer.")), List.of());
+		TestReport current = new TestReport(List.of(new ExampleJudgment(assertionId, exampleId, Verdict.FAIL,
+			"The new reply also gives no answer.")), List.of());
+		DerivedProposal reported = proposal.withJudgedReports(Map.of("formatting", unchanged, "plain_list", previous));
+
+		DerivedProposal revised = reported.withJudgedReport("plain_list", current);
+
+		requireThat(reported.judgedReports().get("plain_list"), "oldReport").isEqualTo(previous);
+		requireThat(revised.judgedReports(), "revisedReports").
+			isEqualTo(Map.of("formatting", unchanged, "plain_list", current));
+		requireThat(render(revised), "proposal").contains("The summary text is enough to check tone.").
+			contains("Judge passed. The summary uses a casual tone.").
+			contains("`pattern` failed. Judge failed. The new reply also gives no answer.").
+			contains("`pass_item_kind` (boundary class `item_kind`): `pattern` passed.").
+			doesNotContain("The old reply gave no answer.");
 	}
 
 	/**

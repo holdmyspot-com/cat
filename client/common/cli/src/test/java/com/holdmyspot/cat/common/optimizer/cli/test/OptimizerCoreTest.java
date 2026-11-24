@@ -5613,6 +5613,101 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Resuming a stored proposal displays its completed example labels and review warnings from the summary.
+	 * The held-out trial content stays private. Two public starts exercise the legacy proposal without a report
+	 * and the same proposal with a stored report, through the scripted session port.
+	 *
+	 * @throws Exception if the repository, campaign or proposal cannot be used
+	 */
+	@Test
+	public void resumeShowsStoredJudgedReports() throws Exception
+	{
+		// Requirement: R-L16
+		// Requirement: R-L19
+		// Requirement: R-L20
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Path target = Path.of("CLAUDE.md");
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			CommandResult started = repository.core().start(target);
+			requireThat(proposalText(started), "legacyProposal").contains("Judge pending.");
+			Path heldOut = repository.directory(started.status().campaignId()).resolve("held_out");
+			Path file = heldOut.resolve("proposal.json");
+			ObjectNode stored = (ObjectNode) JSON.readTree(Files.readString(file, StandardCharsets.UTF_8));
+			stored.set("judged_assertion_reports", JSON.readTree("""
+				[
+				  {
+				    "test": "plain_list",
+				    "examples": [
+				      {"assertion": "keeps_requested_tone", "example": "pass_item_kind", "label": "fail",
+				        "rationale": "The reply gives no usable list."},
+				      {"assertion": "keeps_requested_tone", "example": "fail_omits_answer", "label": "fail",
+				        "rationale": "It omits the items."}
+				    ],
+				    "findings": [
+				      {"assertion": "keeps_requested_tone", "kind": "actions_depends_only_on_replies",
+				        "tool": null, "rationale": "Only the reply's tone matters."}
+				    ]
+				  },
+				  {
+				    "test": "safety",
+				    "examples": [],
+				    "findings": [
+				      {"assertion": "asks_before_deleting", "kind": "action_decidable_by_tool",
+				        "tool": "tool-used", "rationale": "The record establishes whether it happened."}
+				    ]
+				  }
+				]
+				"""));
+			Files.writeString(file, JSON.writeValueAsString(stored), StandardCharsets.UTF_8);
+			Path records = Files.createDirectories(heldOut.resolve("assertion_checks"));
+			Files.writeString(records.resolve("private.json"), """
+				{"filled_example":{"replies":["PRIVATE_REPLY"],"activity":["PRIVATE_ACTIVITY"],
+				  "case_values":{"kind":"PRIVATE_VALUE"}}}
+				""", StandardCharsets.UTF_8);
+
+			String resumed = proposalText(repository.core().start(target));
+
+			requireThat(resumed, "proposal").contains("- Assertion examples:\n").
+				contains("`pass_item_kind` (boundary class `item_kind`): Judge failed. Warning.").
+				contains("The reply gives no usable list.").
+				contains("`fail_omits_answer` (first test case): Judge failed. It omits the items.").
+				contains("- Judged assertions:\n").contains("Only the reply's tone matters.").
+				contains("`tool-used` can decide whether the action happened.").
+				contains("The record establishes whether it happened.").
+				doesNotContain("PRIVATE_REPLY").doesNotContain("PRIVATE_ACTIVITY").doesNotContain("PRIVATE_VALUE");
+		}
+	}
+
+	/**
+	 * Confirmation refuses a malformed optional report in an otherwise readable stored proposal.
+	 *
+	 * @throws Exception if the repository or proposal cannot be used
+	 */
+	@Test
+	public void confirmRefusesMalformedJudgedReport() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			Path file = repository.directory(id).resolve("held_out/proposal.json");
+			ObjectNode stored = (ObjectNode) JSON.readTree(Files.readString(file, StandardCharsets.UTF_8));
+			stored.put("judged_assertion_reports", "not an array");
+			Files.writeString(file, JSON.writeValueAsString(stored), StandardCharsets.UTF_8);
+
+			IOException failure = expectThrows(IOException.class,
+				() -> repository.core().approve(id, CertificationScope.LATEST_VERSIONS));
+
+			requireThat(failure.getMessage(), "message").contains("judged assertion reports");
+		}
+	}
+
+	/**
 	 * Verifies that {@code stop} and {@code status} work on a campaign whose stored proposal no longer validates, so
 	 * the user is never left with a campaign that no command can end.
 	 * <p>

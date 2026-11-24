@@ -8,6 +8,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.CellCounts;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationProcedure;
 import com.holdmyspot.cat.common.optimizer.campaign.Development;
 import com.holdmyspot.cat.common.optimizer.campaign.CommitGate;
+import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
 import com.holdmyspot.cat.common.optimizer.contract.Assertion;
 import com.holdmyspot.cat.common.optimizer.contract.Cell;
 import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
@@ -29,9 +30,12 @@ import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.contract.ValuesFile;
 import com.holdmyspot.cat.common.optimizer.contract.VariableDeclaration;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveredTest;
+import com.holdmyspot.cat.common.optimizer.execution.AssertionReview.Finding;
 import com.holdmyspot.cat.common.optimizer.execution.PilotResult;
 import com.holdmyspot.cat.common.optimizer.inventory.Authority;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
+import com.holdmyspot.cat.common.optimizer.proposal.DerivedProposal.ExampleJudgment;
+import com.holdmyspot.cat.common.optimizer.proposal.DerivedProposal.TestReport;
 import com.holdmyspot.cat.common.optimizer.report.CertificationStatus;
 import com.holdmyspot.cat.common.optimizer.report.EnumNames;
 import com.holdmyspot.cat.common.optimizer.report.RemainingWork;
@@ -398,8 +402,9 @@ public final class Markdown
 	{
 		text.append("\n### Test `").append(test.id()).append("`\n\n").
 			append("- Risk rank: ").append(test.riskRank().position()).append(" (1 is the riskiest)\n");
-		requirements(test);
-		assertionExamples(test);
+		TestReport report = derived.judgedReports().getOrDefault(test.id(), TestReport.EMPTY);
+		requirements(test, report.findings());
+		assertionExamples(test, report.examples());
 		if (!test.absentTriggers().isEmpty())
 		{
 			text.append("- Leaves these triggers absent, so the obligated action must not occur: ").
@@ -434,11 +439,12 @@ public final class Markdown
 	}
 
 	/**
-	 * Lists the mechanical result for each of the test's assertion examples.
+	 * Lists the mechanical results and judge decisions for the test's assertion examples.
 	 *
 	 * @param test the prompt test
+	 * @param judgments the example decisions returned by the judge
 	 */
-	private void assertionExamples(PromptTest test)
+	private void assertionExamples(PromptTest test, List<ExampleJudgment> judgments)
 	{
 		List<AssertionExampleCheck> checks = derived.exampleChecks().stream().
 			filter(check -> check.testId().equals(test.id())).toList();
@@ -453,25 +459,55 @@ public final class Markdown
 			else
 				text.append("first test case");
 			text.append("): ");
-			if (check.tool() == null)
-				text.append("Judge pending.\n");
-			else
+			if (check.tool() != null)
 			{
 				text.append('`').append(check.tool()).append('`');
 				if (check.passed())
 					text.append(" passed.");
 				else
-				{
 					text.append(" failed.");
-					if (test.assertions().stream().anyMatch(mapped -> mapped.assertion().id().equals(check.assertionId()) &&
+				if (check.passed() || test.assertions().stream().noneMatch(mapped ->
+					mapped.assertion().id().equals(check.assertionId()) &&
 						mapped.assertion().onToolFailure() == OnToolFailure.JUDGE))
-					{
-						text.append(" Judge pending.");
-					}
+				{
+					text.append('\n');
+					continue;
 				}
-				text.append('\n');
+				text.append(' ');
 			}
+			ExampleJudgment judgment = judgments.stream().filter(candidate ->
+				candidate.assertionId().equals(check.assertionId()) && candidate.exampleId().equals(check.exampleId())).
+				findFirst().orElse(null);
+			exampleJudgment(judgment);
 		}
+	}
+
+	/**
+	 * Ends an example's line with the judge's label and rationale, or indicates that its decision is pending.
+	 *
+	 * @param judgment the judge decision, or {@code null} if pending
+	 */
+	private void exampleJudgment(ExampleJudgment judgment)
+	{
+		if (judgment == null)
+		{
+			text.append("Judge pending.\n");
+			return;
+		}
+		boolean passingExample = judgment.exampleId().startsWith("pass_");
+		if (judgment.label() == Verdict.PASS)
+		{
+			text.append("Judge passed. ");
+			if (!passingExample)
+				text.append("Refusal. ");
+		}
+		else
+		{
+			text.append("Judge failed. ");
+			if (passingExample)
+				text.append("Warning. ");
+		}
+		text.append(judgment.rationale()).append('\n');
 	}
 
 	/**
@@ -658,8 +694,9 @@ public final class Markdown
 	 * what decides it, the built-in tool, the judge or both, then the assertion that CAT adds.
 	 *
 	 * @param test the prompt test
+	 * @param findings the findings about its judged assertions
 	 */
-	private void requirements(PromptTest test)
+	private void requirements(PromptTest test, List<Finding> findings)
 	{
 		text.append("- Requirements: ").
 			append(test.requirementIds().stream().map(id -> "`" + id + "`").collect(Collectors.joining(", "))).
@@ -696,6 +733,8 @@ public final class Markdown
 				else
 					text.append(assertion.judgeReason());
 				text.append('\n');
+				findings.stream().filter(finding -> finding.assertionId().equals(assertion.id()) &&
+					!finding.kind().refuses()).forEach(this::reviewWarning);
 				any = true;
 			}
 		}
@@ -713,6 +752,21 @@ public final class Markdown
 		}
 		if (!any)
 			text.append("  - None.\n");
+	}
+
+	/**
+	 * Lists a review warning under its assertion.
+	 *
+	 * @param finding a finding that allows the proposal to proceed
+	 */
+	private void reviewWarning(Finding finding)
+	{
+		text.append("    - Warning. ");
+		if (finding.tool() == null)
+			text.append("This assertion depends only on replies. ");
+		else
+			text.append('`').append(finding.tool()).append("` can decide whether the action happened. ");
+		text.append(finding.rationale()).append('\n');
 	}
 
 	/**

@@ -5,11 +5,17 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
+import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
 import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
+import com.holdmyspot.cat.common.optimizer.execution.AssertionReview.Finding;
+import com.holdmyspot.cat.common.optimizer.execution.AssertionReview.Kind;
 import com.holdmyspot.cat.common.optimizer.proposal.AssertionExampleCheck;
 import com.holdmyspot.cat.common.optimizer.proposal.DerivedProposal;
+import com.holdmyspot.cat.common.optimizer.proposal.DerivedProposal.ExampleJudgment;
+import com.holdmyspot.cat.common.optimizer.proposal.DerivedProposal.TestReport;
 import com.holdmyspot.cat.common.optimizer.proposal.DraftDirectory;
 import com.holdmyspot.cat.common.optimizer.proposal.ProfileEvidence;
+import com.holdmyspot.cat.common.optimizer.report.EnumNames;
 import com.holdmyspot.cat.common.optimizer.store.FileCampaignStore;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.core.JacksonException;
@@ -23,9 +29,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.TreeMap;
 
 /**
  * Persists the contract author's latest proposal in the campaign's {@code held_out} directory so that
@@ -53,6 +61,7 @@ final class ProposalFile
 	 * whose prompt tests its stored draft directory holds.
 	 */
 	private static final int FORMAT_VERSION = 19;
+	private static final String JUDGED_REPORTS = "judged_assertion_reports";
 	/**
 	 * The name of the file that holds the contract that a test revision corrected, while the revision's guard pilot
 	 * has not ended.
@@ -76,10 +85,11 @@ final class ProposalFile
 	 * @param evaluators the staged loader and runtime evidence of the selected evaluators
 	 * @param salt the salt that CAT drew for the proposal
 	 * @param exampleChecks the decisions from mechanically checking the assertion examples
+	 * @param judgedReports the judged assertion summaries by test identifier
 	 */
 	record Stored(String derivation, Path draft, String observedSources, List<DerivedSource> derivedSources,
 		ProfileEvidence profiles, Map<Harness, EvaluatorMetadata> evaluators, long salt,
-		List<AssertionExampleCheck> exampleChecks)
+		List<AssertionExampleCheck> exampleChecks, Map<String, TestReport> judgedReports)
 	{
 		/**
 		 * Creates a stored proposal.
@@ -92,7 +102,8 @@ final class ProposalFile
 		 * @param evaluators the staged loader and runtime evidence of the selected evaluators
 		 * @param salt the salt that CAT drew for the proposal
 		 * @param exampleChecks the decisions from mechanically checking the assertion examples
-		 * @throws NullPointerException if any of the arguments are null, or {@code derivedSources} contains null
+		 * @param judgedReports the judged assertion summaries by test identifier
+		 * @throws NullPointerException if an argument, list element, or map key or value is null
 		 */
 		Stored
 		{
@@ -101,6 +112,7 @@ final class ProposalFile
 			requireThat(observedSources, "observedSources").isNotNull();
 			derivedSources = List.copyOf(derivedSources);
 			exampleChecks = List.copyOf(exampleChecks);
+			judgedReports = Map.copyOf(judgedReports);
 			requireThat(profiles, "profiles").isNotNull();
 			evaluators = Map.copyOf(evaluators);
 			requireThat(evaluators.keySet(), "evaluators").isEqualTo(profiles.byEvaluator().keySet());
@@ -116,7 +128,7 @@ final class ProposalFile
 		}
 
 		/**
-		 * Returns the stored proposal after a validation of its output, with the derived sources that CAT listed.
+		 * Returns the validated proposal with the derived sources and assertion evidence summaries that CAT stored.
 		 *
 		 * @param validated the proposal that validating {@link #derivation()} returned
 		 * @return the proposal
@@ -124,7 +136,8 @@ final class ProposalFile
 		 */
 		DerivedProposal restore(DerivedProposal validated)
 		{
-			return validated.withDerivedSources(derivedSources).withExampleChecks(exampleChecks);
+			return validated.withDerivedSources(derivedSources).withExampleChecks(exampleChecks).
+				withJudgedReports(judgedReports);
 		}
 	}
 
@@ -216,6 +229,7 @@ final class ProposalFile
 					put("example", check.exampleId()).put("tool", check.tool()).put("passed", check.passed());
 			}
 		}
+		writeJudgedReports(root, derived.judgedReports());
 		profiles.write(root);
 		if (!evaluators.isEmpty())
 		{
@@ -230,6 +244,35 @@ final class ProposalFile
 		// The stored proposal names the new draft directory only now, so the previous one stayed whole until then
 		if (prunes)
 			DraftDirectory.keepOnly(heldOut, draft);
+	}
+
+	/**
+	 * Writes the proposal's judged assertion summaries if present.
+	 *
+	 * @param root the proposal document
+	 * @param reports the judged reports by test identifier
+	 */
+	private static void writeJudgedReports(ObjectNode root, Map<String, TestReport> reports)
+	{
+		if (reports.isEmpty())
+			return;
+		ArrayNode stored = root.putArray(JUDGED_REPORTS);
+		for (Map.Entry<String, TestReport> entry : new TreeMap<>(reports).entrySet())
+		{
+			ObjectNode report = stored.addObject().put("test", entry.getKey());
+			ArrayNode examples = report.putArray("examples");
+			for (ExampleJudgment example : entry.getValue().examples())
+			{
+				examples.addObject().put("assertion", example.assertionId()).put("example", example.exampleId()).
+					put("label", EnumNames.lowerCase(example.label())).put("rationale", example.rationale());
+			}
+			ArrayNode findings = report.putArray("findings");
+			for (Finding finding : entry.getValue().findings())
+			{
+				findings.addObject().put("assertion", finding.assertionId()).put("kind", EnumNames.lowerCase(finding.kind())).
+					put("tool", finding.tool()).put("rationale", finding.rationale());
+			}
+		}
 	}
 
 	/**
@@ -279,12 +322,12 @@ final class ProposalFile
 				derivedSources.add(new DerivedSource(node.path("path").asString(), node.path("rule").asString()));
 			return Optional.of(new Stored(derivation, draft, root.get("observed_sources").asString(), derivedSources,
 				ProfileEvidence.read(root), readEvaluators(root.path("evaluators")), root.get("salt").asLong(),
-				readExampleChecks(root.path("example_checks"))));
+				readExampleChecks(root.path("example_checks")), readJudgedReports(root.path(JUDGED_REPORTS))));
 		}
 		catch (IllegalArgumentException | JacksonException e)
 		{
-			throw new IOException(file + " holds invalid derived sources, evaluator evidence or example checks: " +
-				e.getMessage(), e);
+			throw new IOException(file + " holds invalid derived sources, evaluator evidence, example checks or judged " +
+				"assertion reports: " + e.getMessage(), e);
 		}
 	}
 
@@ -314,6 +357,81 @@ final class ProposalFile
 				example.get("example").asString(), tool.stringValue(), example.get("passed").booleanValue()));
 		}
 		return result;
+	}
+
+	/**
+	 * Reads an optional array of judged assertion summaries. Earlier proposals have no summaries.
+	 *
+	 * @param node the stored reports, if present
+	 * @return the reports by test identifier
+	 * @throws IllegalArgumentException if the stored reports are malformed or a test appears twice
+	 */
+	private static Map<String, TestReport> readJudgedReports(JsonNode node)
+	{
+		if (node.isMissingNode())
+			return Map.of();
+		if (!node.isArray())
+			throw new IllegalArgumentException("Expected an array of judged assertion reports.");
+		Map<String, TestReport> reports = new HashMap<>();
+		for (JsonNode report : node)
+		{
+			if (!report.isObject() || report.size() != 3 || !report.path("test").isString() ||
+				!report.path("examples").isArray() || !report.path("findings").isArray())
+			{
+				throw new IllegalArgumentException("Invalid judged assertion report.");
+			}
+			String testId = report.get("test").asString();
+			requireThat(testId, "testId").isNotBlank();
+			List<ExampleJudgment> examples = new ArrayList<>();
+			for (JsonNode example : report.get("examples"))
+				examples.add(readJudgedExample(example));
+			List<Finding> findings = new ArrayList<>();
+			for (JsonNode finding : report.get("findings"))
+				findings.add(readAssertionFinding(finding));
+			if (reports.putIfAbsent(testId, new TestReport(examples, findings)) != null)
+				throw new IllegalArgumentException("Repeated judged assertion report for " + testId);
+		}
+		return reports;
+	}
+
+	/**
+	 * Reads a stored example label and rationale.
+	 *
+	 * @param example the example summary
+	 * @return the judged example summary
+	 * @throws IllegalArgumentException if the summary is malformed
+	 */
+	private static ExampleJudgment readJudgedExample(JsonNode example)
+	{
+		if (!example.isObject() || example.size() != 4 || !example.path("assertion").isString() ||
+			!example.path("example").isString() || !example.path("label").isString() ||
+			!example.path("rationale").isString())
+		{
+			throw new IllegalArgumentException("Invalid judged example.");
+		}
+		return new ExampleJudgment(example.get("assertion").asString(), example.get("example").asString(),
+			EnumNames.parse(example.get("label").asString(), Verdict.class), example.get("rationale").asString());
+	}
+
+	/**
+	 * Reads a stored assertion review finding.
+	 *
+	 * @param finding the finding summary
+	 * @return the reviewer's finding
+	 * @throws IllegalArgumentException if the finding is malformed
+	 */
+	private static Finding readAssertionFinding(JsonNode finding)
+	{
+		JsonNode tool = finding.path("tool");
+		if (!finding.isObject() || finding.size() != 4 || !finding.path("assertion").isString() ||
+			!finding.path("kind").isString() || !(tool.isNull() || tool.isString()) ||
+			!finding.path("rationale").isString())
+		{
+			throw new IllegalArgumentException("Invalid assertion review finding.");
+		}
+		return new Finding(finding.get("assertion").asString(),
+			EnumNames.parse(finding.get("kind").asString(), Kind.class), finding.get("rationale").asString(),
+			tool.stringValue());
 	}
 
 	/**
