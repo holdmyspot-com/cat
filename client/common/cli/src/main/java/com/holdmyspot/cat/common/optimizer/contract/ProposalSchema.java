@@ -367,6 +367,121 @@ public final class ProposalSchema
 	}
 
 	/**
+	 * The judge, requirements and completed tests whose model data can be read independently of contract acceptance.
+	 *
+	 * @param judge the judge that the proposal would freeze
+	 * @param requirements the proposal's requirements, by identifier
+	 * @param tests the tests that could be read, in proposal order
+	 */
+	public record DraftFacts(JudgeProfile judge, Map<String, Requirement> requirements, List<PromptTest> tests)
+	{
+		/**
+		 * Copies the requirements and tests of a draft.
+		 *
+		 * @param judge the judge that the proposal would freeze
+		 * @param requirements the proposal's requirements, by identifier
+		 * @param tests the tests that could be read, in proposal order
+		 * @throws NullPointerException if an argument or element is null
+		 */
+		public DraftFacts
+		{
+			requireThat(judge, "judge").isNotNull();
+			requirements = Map.copyOf(requirements);
+			tests = List.copyOf(tests);
+		}
+	}
+
+	/**
+	 * Reads judge inputs from the completed test items of a draft that failed full validation. Null test items
+	 * retain the positions of tests that could not be assembled. The resulting facts cannot confirm a contract.
+	 *
+	 * @param draft the draft with its independently assembled tests
+	 * @param seeds the source of seeds for generator calls that state none
+	 * @param committed the recorded cases, by test identifier
+	 * @param recorded the recorded workspace files, by test identifier
+	 * @param problems receives any newly discovered problem of a completed test, with its JSON path
+	 * @return the readable draft facts, or empty if the judge or requirements cannot be read
+	 * @throws NullPointerException if an argument is null
+	 */
+	public Optional<DraftFacts> draftFacts(ObjectNode draft, RandomGenerator seeds, Map<String, List<TestCase>> committed,
+		Map<String, List<WorkspaceFile>> recorded, List<String> problems)
+	{
+		requireThat(draft, "draft").isNotNull();
+		requireThat(seeds, "seeds").isNotNull();
+		requireThat(committed, "committed").isNotNull();
+		requireThat(recorded, "recorded").isNotNull();
+		requireThat(problems, "problems").isNotNull();
+		List<String> violations = derivation.violations(draft);
+		if (violations.stream().anyMatch(violation -> violation.startsWith("$.requirements") ||
+			violation.startsWith("$.judge")))
+		{
+			return Optional.empty();
+		}
+		List<String> modelProblems = new ArrayList<>();
+		Builder builder = new Builder(modelProblems, seeds, committed, recorded);
+		List<Requirement> requirements = builder.requirements(draft.get("requirements"));
+		JudgeProfile judge = builder.judge(draft.get("judge"));
+		if (!modelProblems.isEmpty())
+			return Optional.empty();
+		Map<String, Requirement> byId = new HashMap<>();
+		for (Requirement requirement : requirements)
+		{
+			if (byId.putIfAbsent(requirement.id(), requirement) != null)
+				return Optional.empty();
+		}
+		JsonNode items = draft.path("tests");
+		if (!items.isArray())
+			return Optional.empty();
+		builder.takeStatedSeeds(draft);
+		List<PromptTest> tests = new ArrayList<>();
+		for (int i = 0; i < items.size(); ++i)
+		{
+			JsonNode item = items.get(i);
+			if (item.isNull())
+				continue;
+			String location = "$.tests[" + i + "]";
+			List<String> invalid = violations.stream().filter(violation -> violation.startsWith(location)).toList();
+			if (!invalid.isEmpty())
+			{
+				problems.addAll(invalid);
+				continue;
+			}
+			PromptTest test = builder.test(item, location);
+			if (test != null && validReferences(test, location, byId, problems))
+				tests.add(test);
+		}
+		problems.addAll(modelProblems);
+		return Optional.of(new DraftFacts(judge, byId, tests));
+	}
+
+	/**
+	 * Checks that the requirements named by a recovered prompt test are available.
+	 *
+	 * @param test the recovered prompt test
+	 * @param location the location of the prompt test
+	 * @param requirements the known requirements, by identifier
+	 * @param problems receives any unmet reference
+	 * @return whether the test's references are valid
+	 */
+	private static boolean validReferences(PromptTest test, String location, Map<String, Requirement> requirements,
+		List<String> problems)
+	{
+		int before = problems.size();
+		for (String id : test.requirementIds())
+		{
+			if (!requirements.containsKey(id))
+				problems.add(location + ": The test '" + test.id() + "' checks an unlisted requirement '" + id + "'");
+		}
+		for (String id : test.absentTriggers())
+		{
+			Requirement requirement = requirements.get(id);
+			if (requirement == null || requirement.trigger() == null)
+				problems.add(location + ": The test '" + test.id() + "' names an absent trigger that does not exist: " + id);
+		}
+		return problems.size() == before;
+	}
+
+	/**
 	 * Validates a proposal and converts it to a contract.
 	 *
 	 * @param proposal the JSON text
@@ -492,6 +607,35 @@ public final class ProposalSchema
 		}
 		writeDependents(dependents, root);
 		writeReferencedFiles(contract, root);
+		return json.writeValueAsString(root);
+	}
+
+	/**
+	 * Writes the definition used to identify a prompt test's judged assertion checks, even before contract acceptance.
+	 *
+	 * @param test the test whose checks the definition identifies
+	 * @param requirements the proposal requirements, by identifier
+	 * @param judge the judge that decides the checks
+	 * @return the test, the requirements it checks in its declared order, and the judge, as JSON
+	 * @throws NullPointerException if an argument is null
+	 * @throws IllegalArgumentException if a requirement that the test checks is missing
+	 */
+	public String judgedCheckDefinition(PromptTest test, Map<String, Requirement> requirements, JudgeProfile judge)
+	{
+		requireThat(test, "test").isNotNull();
+		requireThat(requirements, "requirements").isNotNull();
+		requireThat(judge, "judge").isNotNull();
+		ObjectNode root = json.createObjectNode();
+		write(test, root.putObject("test"));
+		ArrayNode checked = root.putArray("requirements");
+		for (String id : test.requirementIds())
+		{
+			Requirement requirement = requirements.get(id);
+			if (requirement == null)
+				throw new IllegalArgumentException("The test '" + test.id() + "' checks the missing requirement '" + id + "'");
+			write(requirement, checked.addObject());
+		}
+		write(judge, root.putObject("judge"));
 		return json.writeValueAsString(root);
 	}
 
@@ -892,14 +1036,9 @@ public final class ProposalSchema
 			if (seeds != null)
 				takeStatedSeeds(root);
 			int problemsBefore = problems.size();
-			List<Requirement> requirements = list(root.get("requirements"), "$.requirements", (node, location) ->
-				attempt(location, () -> new Requirement(text(node, "id"), text(node, "description"),
-					text(node, "source"), optionalText(node, "trigger"), strings(node.get("behaviors")))));
+			List<Requirement> requirements = requirements(root.get("requirements"));
 			List<PromptTest> tests = list(root.get("tests"), "$.tests", this::test);
-			JsonNode judgeNode = root.get("judge");
-			JudgeProfile judge = attempt("$.judge", () -> new JudgeProfile(sessionProfile(judgeNode),
-				text(judgeNode, "prompt"), text(judgeNode, "rubric"), text(judgeNode, "decision_rule"),
-				judgeNode.get("result_schema").toString(), optionalText(judgeNode, "response_prompt")));
+			JudgeProfile judge = judge(root.get("judge"));
 			List<Dependent> dependents = List.of();
 			JsonNode dependentsNode = root.get(DEPENDENTS);
 			if (dependentsNode != null && !dependentsNode.isNull())
@@ -938,6 +1077,32 @@ public final class ProposalSchema
 		}
 
 		/**
+		 * Reads the requirements of the draft.
+		 *
+		 * @param nodes the requirements array
+		 * @return the successfully read requirements
+		 */
+		private List<Requirement> requirements(JsonNode nodes)
+		{
+			return list(nodes, "$.requirements", (node, location) -> attempt(location, () ->
+				new Requirement(text(node, "id"), text(node, "description"), text(node, "source"),
+					optionalText(node, "trigger"), strings(node.get("behaviors")))));
+		}
+
+		/**
+		 * Reads the judge that the draft would freeze.
+		 *
+		 * @param node the judge object
+		 * @return the judge, or null if a problem was added
+		 */
+		private JudgeProfile judge(JsonNode node)
+		{
+			return attempt("$.judge", () -> new JudgeProfile(sessionProfile(node), text(node, "prompt"),
+				text(node, "rubric"), text(node, "decision_rule"), node.get("result_schema").toString(),
+				optionalText(node, "response_prompt")));
+		}
+
+		/**
 		 * Adds to the taken seeds each seed that a generator call of the proposal states, so that no call that
 		 * receives a new seed receives one of them.
 		 *
@@ -945,11 +1110,11 @@ public final class ProposalSchema
 		 */
 		private void takeStatedSeeds(JsonNode root)
 		{
-			for (JsonNode test : root.get("tests"))
+			for (JsonNode test : root.path("tests"))
 			{
-				for (JsonNode testCase : test.get("test_cases"))
+				for (JsonNode testCase : test.path("test_cases"))
 				{
-					for (JsonNode value : testCase.get("values"))
+					for (JsonNode value : testCase.path("values"))
 					{
 						JsonNode seed = value.path("call").path("seed");
 						if (seed.isIntegralNumber() && seed.canConvertToLong())

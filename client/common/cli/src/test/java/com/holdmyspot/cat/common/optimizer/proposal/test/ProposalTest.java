@@ -3632,6 +3632,79 @@ public final class ProposalTest
 	}
 
 	/**
+	 * Verifies that a missing scenario does not prevent checking the examples of other tests.
+	 *
+	 * @throws IOException if the authored draft cannot be read or written
+	 */
+	@Test
+	public void checksExamplesWithoutSiblingScenario() throws IOException
+	{
+		// Requirement: R-L16
+		SessionResult.Completed result = session(fixture("derivation.json"));
+		Path draft = result.effects().resolve(DraftDirectory.name(result.initialProject()));
+		Files.delete(draft.resolve(".cat/tests/CLAUDE/formatting/scenario.md"));
+
+		ProposalCheck.Assessment assessed = inspectExamples(result, true);
+
+		requireThat(assessed.proposal().isEmpty(), "refused").isTrue();
+		requireThat(String.join("\n", assessed.problems()), "problems").
+			contains("formatting/scenario.md").contains("file is missing");
+		requireThat(assessed.examples().stream().map(example -> example.check().testId()).distinct().toList(),
+			"reviewableTests").isEqualTo(List.of("plain_list", "safety"));
+
+		ProposalCheck.JudgeInputs inputs = assessed.judgeInputs().orElseThrow();
+		requireThat(inputs.tests().stream().map(PromptTest::id).toList(), "eligible").
+			isEqualTo(List.of("plain_list", "safety"));
+		requireThat(inputs.judge().profile(), "judge").isEqualTo(judge.profile("rules", "decision").profile());
+		for (PromptTest test : inputs.tests())
+			requireThat(inputs.requirements().keySet().containsAll(test.requirementIds()), "requirements").isTrue();
+	}
+
+	/**
+	 * Verifies that an assertion needing unreported exit statuses excludes its test's examples from judged checks.
+	 *
+	 * @throws IOException if the authored draft cannot be read
+	 */
+	@Test
+	public void excludesExamplesForUnreportableTool() throws IOException
+	{
+		// Requirement: R-L16
+		String output = changedDerivation(proposal -> ((ArrayNode) proposal.at("/tests/0/assertions")).
+			addObject().put("id", "runs_true").put("kind", "guard").put("tool", "exit-status ^true$ 0").
+			put("on_tool_failure", "fail").put("statement", "The command true succeeds.").put("requirement_id", "r1"));
+
+		ProposalCheck.Assessment assessed = inspectExamples(session(output), false);
+
+		requireThat(String.join("\n", assessed.problems()), "problems").
+			contains("test 'formatting', assertion 'runs_true'").contains("cannot be decided");
+		requireThat(assessed.examples().stream().map(example -> example.check().testId()).distinct().toList(),
+			"reviewableTests").isEqualTo(List.of("plain_list", "safety"));
+
+		ProposalCheck.JudgeInputs inputs = assessed.judgeInputs().orElseThrow();
+		requireThat(inputs.tests().stream().map(PromptTest::id).toList(), "eligible").
+			isEqualTo(List.of("plain_list", "safety"));
+	}
+
+	/**
+	 * Inspects the proposal and draft that a contract author session returned.
+	 *
+	 * @param result the completed session
+	 * @param reportsExitStatus whether the harness reports exit status
+	 * @return the mechanical assessment
+	 * @throws IOException if the authored draft cannot be read
+	 */
+	private ProposalCheck.Assessment inspectExamples(SessionResult.Completed result, boolean reportsExitStatus)
+		throws IOException
+	{
+		Path project = result.effects();
+		Path draft = project.resolve(DraftDirectory.name(result.initialProject()));
+		ObjectNode output = (ObjectNode) json.readTree(Files.readString(
+			project.resolve(OutputFile.name(result.initialProject())), UTF_8));
+		ProposalCheck check = new ProposalCheck(json, schema, judge, Path.of("CLAUDE.md"), reportsExitStatus, List.of());
+		return check.inspect(output, project, draft, OBSERVED, PROFILES, SALT, Map.of());
+	}
+
+	/**
 	 * Creates a proposal with one replaced example of a reply tool.
 	 *
 	 * @param onToolFailure the choice for a tool failure

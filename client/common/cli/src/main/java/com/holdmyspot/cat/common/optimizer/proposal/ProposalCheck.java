@@ -14,6 +14,7 @@ import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.ExpectedBehavior;
 import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFile;
 import com.holdmyspot.cat.common.optimizer.contract.InvalidProposalException;
+import com.holdmyspot.cat.common.optimizer.contract.JudgeProfile;
 import com.holdmyspot.cat.common.optimizer.contract.MappedAssertion;
 import com.holdmyspot.cat.common.optimizer.contract.OnToolFailure;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
@@ -166,15 +167,15 @@ public final class ProposalCheck
 	}
 
 	/**
-	 * The mechanical validation of a draft. A proposal whose contract structure can be parsed can retain the
-	 * mechanically valid tests' example checks even when another test has example problems.
+	 * The mechanical validation of a draft, with judge inputs for tests that passed their own checks.
 	 *
 	 * @param proposal the parsed proposal, or empty when the draft cannot be assembled or parsed
 	 * @param problems the reasons that prevent acceptance
 	 * @param examples the mechanically valid examples with their selected cases
+	 * @param judgeInputs the inputs for judging eligible tests independently of accepting the proposal
 	 */
 	public record Assessment(Optional<DerivedProposal> proposal, List<String> problems,
-		List<AssertionChecks.PreparedExample> examples)
+		List<AssertionChecks.PreparedExample> examples, Optional<JudgeInputs> judgeInputs)
 	{
 		/**
 		 * Creates a mechanical assessment.
@@ -182,6 +183,7 @@ public final class ProposalCheck
 		 * @param proposal the parsed proposal, if any
 		 * @param problems the reasons that prevent acceptance
 		 * @param examples the mechanically valid examples with their selected cases
+		 * @param judgeInputs the inputs for judging eligible tests
 		 * @throws NullPointerException if an argument or a list member is null
 		 */
 		public Assessment
@@ -189,6 +191,21 @@ public final class ProposalCheck
 			requireThat(proposal, "proposal").isNotNull();
 			problems = List.copyOf(problems);
 			examples = List.copyOf(examples);
+			requireThat(judgeInputs, "judgeInputs").isNotNull();
+		}
+
+		/**
+		 * Creates an assessment that has no separate judge inputs.
+		 *
+		 * @param proposal the parsed proposal, if any
+		 * @param problems the reasons that prevent acceptance
+		 * @param examples the mechanically valid examples with their selected cases
+		 * @throws NullPointerException if an argument or a list member is null
+		 */
+		public Assessment(Optional<DerivedProposal> proposal, List<String> problems,
+			List<AssertionChecks.PreparedExample> examples)
+		{
+			this(proposal, problems, examples, Optional.empty());
 		}
 
 		/**
@@ -202,6 +219,31 @@ public final class ProposalCheck
 			if (!problems.isEmpty())
 				throw new InvalidProposalException(problems);
 			return proposal.orElseThrow();
+		}
+	}
+
+	/**
+	 * The frozen judge and authored tests that the mechanical checks permit the judge to review.
+	 *
+	 * @param judge the judge that the proposal would freeze
+	 * @param requirements the proposal's requirements, by identifier
+	 * @param tests the mechanically eligible tests, in proposal order
+	 */
+	public record JudgeInputs(JudgeProfile judge, Map<String, Requirement> requirements, List<PromptTest> tests)
+	{
+		/**
+		 * Copies the requirements and tests used for judged checks.
+		 *
+		 * @param judge the judge that the proposal would freeze
+		 * @param requirements the proposal's requirements, by identifier
+		 * @param tests the mechanically eligible tests, in proposal order
+		 * @throws NullPointerException if an argument or a collection entry is null
+		 */
+		public JudgeInputs
+		{
+			requireThat(judge, "judge").isNotNull();
+			requirements = Map.copyOf(requirements);
+			tests = List.copyOf(tests);
 		}
 	}
 
@@ -415,34 +457,43 @@ public final class ProposalCheck
 		// Read from the raw file so that a missing recorded prompt test is reported even when the schema rejects it
 		problems.addAll(missingRecorded(proposalFile));
 		if (!complete || !violations.isEmpty())
-			return new Assessment(Optional.empty(), problems, List.of());
+			return assembled.recoverAssessment(salt, true);
 
-		Contract contract = null;
-		List<AssertionChecks.PreparedExample> examples = List.of();
+		Contract contract;
 		try
 		{
 			contract = schema.parse(json.writeValueAsString(assembled.proposal()), (requirements, tests) ->
 					trialProfiles(profiles, ranking, restriction, described, requirements, tests),
 				salt, new SplittableRandom(salt),
 				assembled.committed(), assembled.workspaceFiles());
-			problems.addAll(unreportedExitStatuses(contract));
-			problems.addAll(referencedFileProblems(contract, project));
-			if (authoring)
-				examples = assembled.checkExamples(contract);
-			findings.checkRequirements(scopeNode, Findings.SCOPE_CONDITIONS, contract);
-			findings.checkRequirements(conflictsNode, Findings.CONFLICTS, contract);
 		}
 		catch (InvalidProposalException e)
 		{
 			for (String problem : e.problems())
 				problems.add(assembled.locate(problem));
+			return assembled.recoverAssessment(salt, false);
 		}
-		if (contract == null)
-			return new Assessment(Optional.empty(), problems, List.of());
-		List<AssertionExampleCheck> exampleChecks = examples.stream().map(AssertionChecks.PreparedExample::check).toList();
+
+		Set<String> refused = refusedExitStatusTests(contract.tests(), problems);
+		problems.addAll(referencedFileProblems(contract, project));
+		CheckedExamples checked = new CheckedExamples(List.of(), List.of());
+		if (authoring)
+			checked = assembled.checkExamples(contract.tests(), refused, false);
+		findings.checkRequirements(scopeNode, Findings.SCOPE_CONDITIONS, contract);
+		findings.checkRequirements(conflictsNode, Findings.CONFLICTS, contract);
+		List<AssertionExampleCheck> exampleChecks = checked.examples().stream().
+			map(AssertionChecks.PreparedExample::check).toList();
 		DerivedProposal proposal = new DerivedProposal(contract, List.of(), scopeConditions, conflicts, observedSources,
 			derivation, draft, Map.of(), exampleChecks);
-		return new Assessment(Optional.of(proposal), problems, examples);
+		Optional<JudgeInputs> inputs = Optional.empty();
+		if (!checked.tests().isEmpty())
+		{
+			Map<String, Requirement> requirements = new HashMap<>();
+			for (Requirement requirement : contract.requirements())
+				requirements.put(requirement.id(), requirement);
+			inputs = Optional.of(new JudgeInputs(contract.judge(), requirements, checked.tests()));
+		}
+		return new Assessment(Optional.of(proposal), problems, checked.examples(), inputs);
 	}
 
 	/**
@@ -662,28 +713,30 @@ public final class ProposalCheck
 	 * Returns a problem for each assertion whose built-in tool needs exit statuses when the harness does not report
 	 * them.
 	 *
-	 * @param contract the proposed contract
-	 * @return the problems, empty if the harness reports exit statuses or no check needs them
+	 * @param tests the proposed prompt tests
+	 * @param problems receives a problem for each unsupported assertion
+	 * @return the identifiers of tests whose tools need unreported exit statuses
 	 */
-	private List<String> unreportedExitStatuses(Contract contract)
+	private Set<String> refusedExitStatusTests(List<PromptTest> tests, List<String> problems)
 	{
-		List<String> problems = new ArrayList<>();
+		Set<String> refused = new HashSet<>();
 		if (reportsExitStatus)
-			return problems;
-		for (PromptTest test : contract.tests())
+			return refused;
+		for (PromptTest test : tests)
 		{
 			for (MappedAssertion mapped : test.assertions())
 			{
 				Assertion assertion = mapped.assertion();
 				if (assertion.builtInTool().map(BuiltInTool::needsExitStatus).orElse(false))
 				{
+					refused.add(test.id());
 					problems.add("test '" + test.id() + "', assertion '" + assertion.id() + "': this harness does " +
 						"not report the exit status of commands, so `tool: " + assertion.tool() + "` cannot be " +
 						"decided. Use another built-in tool or let the judge decide the assertion.");
 				}
 			}
 		}
-		return problems;
+		return refused;
 	}
 
 	/**
@@ -1006,21 +1059,80 @@ public final class ProposalCheck
 		}
 
 		/**
+		 * Assesses the completed test items while keeping the draft refused.
+		 *
+		 * @param salt the salt used to seed any unstated generator calls
+		 * @param reportRecoveryProblems whether full contract parsing did not run and test diagnostics are new
+		 * @return the refusal, with inputs for any eligible test that can still be judged
+		 */
+		Assessment recoverAssessment(long salt, boolean reportRecoveryProblems)
+		{
+			if (!authoring || proposal == null || exampleInputs.isEmpty())
+				return new Assessment(Optional.empty(), problems, List.of());
+			List<String> recoveredProblems = new ArrayList<>();
+			Optional<ProposalSchema.DraftFacts> facts = schema.draftFacts(proposal, new SplittableRandom(salt), committed,
+				workspaceFiles, recoveredProblems);
+			if (reportRecoveryProblems)
+			{
+				for (String problem : recoveredProblems)
+					problems.add(locate(problem));
+			}
+			if (facts.isEmpty())
+				return new Assessment(Optional.empty(), problems, List.of());
+			ProposalSchema.DraftFacts available = facts.get();
+			Set<String> refused = refusedExitStatusTests(available.tests(), problems);
+			CheckedExamples checked = checkExamples(available.tests(), refused, true);
+			Optional<JudgeInputs> judgeInputs = Optional.empty();
+			if (!checked.tests().isEmpty())
+				judgeInputs = Optional.of(new JudgeInputs(available.judge(), available.requirements(), checked.tests()));
+			return new Assessment(Optional.empty(), problems, checked.examples(), judgeInputs);
+		}
+
+		/**
+		 * Adds project locations that a refused test might have named before its assembly failed.
+		 *
+		 * @param excluded receives the recorded test paths
+		 * @throws IOException if a recorded test cannot be read
+		 */
+		private void excludeRecordedTests(Set<Path> excluded) throws IOException
+		{
+			for (RecordedTest test : recorded.values())
+			{
+				Path citation = Path.of(test.citation()).normalize();
+				if (citation.isAbsolute())
+					continue;
+				Path parent = citation.getParent();
+				if (parent == null || !citation.getFileName().toString().equals(PromptTestFiles.SCENARIO))
+				{
+					excluded.add(citation);
+					continue;
+				}
+				excluded.add(parent);
+				excluded.addAll(linkedTargets(project, project, parent));
+			}
+		}
+
+		/**
 		 * Renders each test's authored examples and runs its tools, using the values file's case order.
 		 *
-		 * @param contract the completed contract
-		 * @return the mechanical results
+		 * @param tests the prompt tests that could be read
+		 * @param refused the identifiers of tests that have refused tools
+		 * @param partial whether the available tests lack some project locations from the full draft
+		 * @return the mechanical results and their eligible tests
 		 * @throws UncheckedIOException if a source or temporary workspace cannot be read
 		 */
-		List<AssertionChecks.PreparedExample> checkExamples(Contract contract)
+		CheckedExamples checkExamples(List<PromptTest> tests, Set<String> refused, boolean partial)
 		{
 			try
 			{
 				List<AssertionChecks.PreparedExample> checked = new ArrayList<>();
-				Set<Path> excluded = new HashSet<>(PromptTestLocations.excluded(contract, target, project));
+				List<PromptTest> eligible = new ArrayList<>();
+				Set<Path> excluded = new HashSet<>(PromptTestLocations.excludedForTests(tests, target, project));
+				if (partial)
+					excludeRecordedTests(excluded);
 				excluded.add(project.relativize(draft));
 				excluded.add(Path.of(".git"));
-				for (PromptTest test : contract.tests())
+				for (PromptTest test : tests)
 				{
 					ExampleInputs input = exampleInputs.get(test.id());
 					if (input == null)
@@ -1038,10 +1150,13 @@ public final class ProposalCheck
 					int before = problems.size();
 					List<AssertionChecks.PreparedExample> checks = ExampleChecks.check(json, test, input.files(), ordered,
 						project, excluded, problems);
-					if (problems.size() == before)
+					if (problems.size() == before && !refused.contains(test.id()))
+					{
 						checked.addAll(checks);
+						eligible.add(test);
+					}
 				}
-				return List.copyOf(checked);
+				return new CheckedExamples(checked, eligible);
 			}
 			catch (IOException e)
 			{
@@ -1062,21 +1177,17 @@ public final class ProposalCheck
 			if (!(proposalFile.get("tests") instanceof ArrayNode items))
 				return false;
 			int problemsBefore = problems.size();
-			ObjectNode completed = proposalFile.deepCopy();
-			ArrayNode tests = completed.putArray("tests");
+			proposal = proposalFile.deepCopy();
+			ArrayNode tests = proposal.putArray("tests");
 			Set<String> ids = new HashSet<>();
 			for (int i = 0; i < items.size(); ++i)
 			{
 				if (invalid.contains(i))
-					continue;
-				ObjectNode test = test((ObjectNode) items.get(i), i, ids);
-				if (test != null)
-					tests.add(test);
+					tests.addNull();
+				else
+					tests.add(test((ObjectNode) items.get(i), i, ids));
 			}
-			if (problems.size() > problemsBefore)
-				return false;
-			proposal = completed;
-			return true;
+			return problems.size() == problemsBefore;
 		}
 
 		/**
@@ -1744,6 +1855,16 @@ public final class ProposalCheck
 	 * @param committed whether the case belongs to the committed list
 	 */
 	private record DraftCase(int index, boolean committed)
+	{
+	}
+
+	/**
+	 * The checked examples and their eligible test owners, including eligible tests with no examples.
+	 *
+	 * @param examples the examples of eligible tests
+	 * @param tests the eligible tests, in proposal order
+	 */
+	private record CheckedExamples(List<AssertionChecks.PreparedExample> examples, List<PromptTest> tests)
 	{
 	}
 

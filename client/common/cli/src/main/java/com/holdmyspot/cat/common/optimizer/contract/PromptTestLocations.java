@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -171,16 +172,28 @@ public final class PromptTestLocations
 	public static Map<String, Location> of(Contract contract, Path target)
 	{
 		requireThat(contract, "contract").isNotNull();
+		return of(contract.tests(), target);
+	}
+
+	/**
+	 * Returns the project location of each available test.
+	 *
+	 * @param tests the prompt tests
+	 * @param target the campaign target, relative to the project
+	 * @return each test's location, by identifier
+	 */
+	private static Map<String, Location> of(List<PromptTest> tests, Path target)
+	{
 		Path scenarioDirectory = scenarioDirectory(target);
 		Map<String, Integer> citers = new HashMap<>();
-		for (PromptTest test : contract.tests())
+		for (PromptTest test : tests)
 		{
 			for (String citation : test.regressionScenarios())
 				citers.merge(citation, 1, Integer::sum);
 		}
 
 		Map<String, Location> locations = new LinkedHashMap<>();
-		for (PromptTest test : contract.tests())
+		for (PromptTest test : tests)
 		{
 			Location location = new Location(scenarioDirectory.resolve(test.id()), true);
 			if (test.regressionScenarios().size() == 1)
@@ -218,13 +231,31 @@ public final class PromptTestLocations
 	 */
 	public static Set<Path> excluded(Contract contract, Path target, Path project) throws IOException
 	{
+		requireThat(contract, "contract").isNotNull();
+		return excludedForTests(contract.tests(), target, project);
+	}
+
+	/**
+	 * Returns the staging exclusions derived from the available prompt tests.
+	 *
+	 * @param tests the prompt tests
+	 * @param target the campaign target, relative to the project
+	 * @param project the project directory, which holds cited prompt tests
+	 * @return the excluded paths, relative to the project
+	 * @throws NullPointerException if any argument or test is null
+	 * @throws IllegalArgumentException if the target is absolute
+	 * @throws IOException if a cited prompt test cannot be read
+	 */
+	public static Set<Path> excludedForTests(List<PromptTest> tests, Path target, Path project) throws IOException
+	{
+		requireThat(tests, "tests").isNotNull();
 		requireThat(project, "project").isNotNull();
 		Set<Path> excluded = new LinkedHashSet<>();
-		for (Location location : of(contract, target).values())
+		for (Location location : of(tests, target).values())
 			excluded.add(location.directory());
 		excluded.add(PromptConfiguration.location(target));
 		excluded.add(certificationHistory(target));
-		for (PromptTest test : contract.tests())
+		for (PromptTest test : tests)
 		{
 			for (WorkspaceFile workspaceFile : test.workspaceFiles())
 			{

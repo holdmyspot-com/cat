@@ -19,6 +19,7 @@ import com.holdmyspot.cat.common.optimizer.contract.MappedAssertion;
 import com.holdmyspot.cat.common.optimizer.contract.OnToolFailure;
 import com.holdmyspot.cat.common.optimizer.contract.ProposalSchema;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
+import com.holdmyspot.cat.common.optimizer.contract.Requirement;
 import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TestValue;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
@@ -30,6 +31,7 @@ import java.math.BigDecimal;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -591,6 +593,34 @@ public final class ProposalSchemaTest
 		Contract reread = schema().parse(schema().toJson(original));
 
 		requireThat(reread, "reread").isEqualTo(original);
+	}
+
+	/**
+	 * Verifies that a judged check definition depends only on the test, its own requirements and the frozen judge.
+	 */
+	@Test
+	public void judgedDefinitionIgnoresUnrelatedRules()
+	{
+		// Requirement: R-L16
+		Contract contract = ContractFixtures.contract();
+		PromptTest test = contract.tests().getFirst();
+		Map<String, Requirement> requirements = new HashMap<>();
+		for (Requirement requirement : contract.requirements())
+			requirements.put(requirement.id(), requirement);
+		String definition = schema().judgedCheckDefinition(test, requirements, contract.judge());
+
+		Requirement unrelated = new Requirement("later", "Record an unrelated action.", "rules/later.md", null,
+			List.of("omitted"));
+		requirements.put(unrelated.id(), unrelated);
+		requireThat(schema().judgedCheckDefinition(test, requirements, contract.judge()), "unrelated").
+			isEqualTo(definition);
+
+		String checkedId = test.requirementIds().getFirst();
+		Requirement checked = requirements.get(checkedId);
+		requirements.put(checkedId, new Requirement(checkedId, "Follow an edited rule.", checked.source(),
+			checked.trigger(), checked.behaviors()));
+		requireThat(schema().judgedCheckDefinition(test, requirements, contract.judge()), "changed").
+			isNotEqualTo(definition);
 	}
 
 	/**
