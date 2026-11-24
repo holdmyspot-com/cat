@@ -349,11 +349,12 @@ public final class ProposalCheck
 		problems.addAll(violations);
 		// The files of a prompt test whose item satisfies the schema are read even when another part of the proposal
 		// file breaks it, so that every problem is reported at once
-		DraftAssembly assembled = new DraftAssembly(project, draft, authoring, fixed, problems).
-			assemble(proposalFile, invalidTests(violations));
+		DraftAssembly assembled = new DraftAssembly(project, draft, authoring, fixed, problems);
+		boolean complete = assembled.assemble(proposalFile, invalidTests(violations));
+		problems.addAll(assembled.exampleLayoutProblems());
 		// Read from the raw file so that a missing recorded prompt test is reported even when the schema rejects it
 		problems.addAll(missingRecorded(proposalFile));
-		if (assembled == null || !violations.isEmpty())
+		if (!complete || !violations.isEmpty())
 			throw new InvalidProposalException(problems);
 
 		Contract contract = null;
@@ -879,6 +880,7 @@ public final class ProposalCheck
 		private final Map<String, List<TestCase>> committed = new HashMap<>();
 		private final Map<String, List<WorkspaceFile>> workspaceFiles = new HashMap<>();
 		private final Map<String, ExampleInputs> exampleInputs = new HashMap<>();
+		private final List<String> exampleLayoutProblems = new ArrayList<>();
 		private ObjectNode proposal;
 
 		/**
@@ -908,6 +910,16 @@ public final class ProposalCheck
 		ObjectNode proposal()
 		{
 			return proposal;
+		}
+
+		/**
+		 * Returns the example layout problems without mixing them with errors assembling the contract.
+		 *
+		 * @return the example layout problems
+		 */
+		List<String> exampleLayoutProblems()
+		{
+			return exampleLayoutProblems;
 		}
 
 		/**
@@ -977,12 +989,12 @@ public final class ProposalCheck
 		 * @param proposalFile a proposal file
 		 * @param invalid      the indexes of the items of {@code tests} that break the proposal file's schema, which
 		 *                     are left out
-		 * @return this reader, or {@code null} if a problem was added or {@code tests} is not an array
+		 * @return whether the files describe a complete proposal, even if some examples are invalid
 		 */
-		DraftAssembly assemble(ObjectNode proposalFile, Set<Integer> invalid)
+		boolean assemble(ObjectNode proposalFile, Set<Integer> invalid)
 		{
 			if (!(proposalFile.get("tests") instanceof ArrayNode items))
-				return null;
+				return false;
 			int problemsBefore = problems.size();
 			ObjectNode completed = proposalFile.deepCopy();
 			ArrayNode tests = completed.putArray("tests");
@@ -996,9 +1008,9 @@ public final class ProposalCheck
 					tests.add(test);
 			}
 			if (problems.size() > problemsBefore)
-				return null;
+				return false;
 			proposal = completed;
-			return this;
+			return true;
 		}
 
 		/**
@@ -1105,17 +1117,14 @@ public final class ProposalCheck
 				bareOutcomes);
 			if (testCases == null || assertions == null)
 				return null;
+			List<String> exampleProblems = List.of();
 			if (authoring)
 			{
 				Set<String> boundaryClasses = new HashSet<>();
 				for (JsonNode testCase : testCases)
 					boundaryClasses.add(testCase.get(ValuesFile.BOUNDARY_CLASS).asString());
-				List<String> exampleProblems = ExampleChecks.layoutProblems(id, files, boundaryClasses);
-				if (!exampleProblems.isEmpty())
-				{
-					problems.addAll(exampleProblems);
-					return null;
-				}
+				exampleProblems = ExampleChecks.layoutProblems(id, files, boundaryClasses);
+				exampleLayoutProblems.addAll(exampleProblems);
 			}
 			Optional<List<WorkspaceFile>> readWorkspaceFiles = textWorkspaceFiles(files);
 			if (readWorkspaceFiles.isEmpty())
@@ -1148,7 +1157,7 @@ public final class ProposalCheck
 				return null;
 			}
 			ProposalSchema.writeDraft(storedDraft, test.putObject("draft"));
-			if (authoring)
+			if (authoring && exampleProblems.isEmpty())
 				exampleInputs.put(id, new ExampleInputs(files, order));
 			ArrayNode variables = test.putArray("variables");
 			for (VariableDeclaration variable : scenario.variables())

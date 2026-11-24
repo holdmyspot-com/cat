@@ -3482,6 +3482,34 @@ public final class ProposalTest
 	}
 
 	/**
+	 * Verifies that a missing example in one test does not hide a tool contradiction in another test.
+	 *
+	 * @throws IOException if the draft cannot be written
+	 * @throws InvalidProposalException if an unexpected validation problem occurs
+	 */
+	@Test
+	public void reportsProblemsInBothExampleSets() throws IOException, InvalidProposalException
+	{
+		// Requirement: R-L15
+		SessionResult.Completed result = replyExample("fail", "pass_item_kind", "A list with no items.");
+		Path draft = result.effects().resolve(DraftDirectory.name(result.initialProject()));
+		Path missing = draft.resolve(".cat/tests/CLAUDE/formatting/examples/uses_requested_tone/pass_casual_tone");
+		Files.delete(missing.resolve("replies.json"));
+		Files.delete(missing);
+
+		try
+		{
+			contractAuthor.proposal(result, PROMPT_SYSTEM, PROFILES, SALT);
+			throw new AssertionError("Expected the proposal to report both example problems");
+		}
+		catch (InvalidProposalException e)
+		{
+			requireThat(e.getMessage(), "problems").contains("uses_requested_tone").contains("pass_casual_tone").
+				contains("keeps_requested_tone").contains("pass_item_kind").contains("failed a passing example");
+		}
+	}
+
+	/**
 	 * Creates a proposal with one replaced example of a reply tool.
 	 *
 	 * @param onToolFailure the choice for a tool failure
