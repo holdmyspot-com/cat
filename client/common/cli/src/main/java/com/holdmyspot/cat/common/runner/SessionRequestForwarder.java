@@ -454,9 +454,10 @@ public final class SessionRequestForwarder
 		Optional<String> incomplete = copyResults(response, launch.resultsFolder().resolve(harness), project);
 		if (route == Route.SERVER)
 			TemporaryDirectories.deleteRecursively(responses(requests, id));
-		if (incomplete.isPresent() && status.equals("completed"))
+		boolean succeeded = status.equals("completed") || status.equals(SessionRequestBroker.SUSPENDED);
+		if (incomplete.isPresent() && succeeded)
 			throw new IOException(incomplete.get());
-		if (!kept && status.equals("completed"))
+		if (!kept && succeeded)
 			throw new IOException("The runner made no results copy of the requested session");
 		if (status.equals("refused"))
 		{
@@ -466,7 +467,7 @@ public final class SessionRequestForwarder
 		}
 		if (retained.isPresent() && status.equals(SessionRequestBroker.UNRESUMABLE))
 			throw new RetainedTrialUnresumableException(reason);
-		if (!status.equals("completed"))
+		if (!succeeded)
 			throw new IOException("The requested session ended with status " + status + ": " + reason);
 	}
 

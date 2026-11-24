@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.runner.RequestArchive.LaunchRequest;
 import com.holdmyspot.cat.common.runner.launcher.RunnerArguments;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
+import java.io.BufferedReader;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -64,6 +65,11 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  */
 public final class SessionRequestBroker implements Closeable
 {
+	/**
+	 * The response status for a session that reached a ready checkpoint and released its runner.
+	 */
+	static final String SUSPENDED = "suspended";
+
 	/**
 	 * The maximum bytes the broker reads from a requested runner's stderr.
 	 */
@@ -1117,8 +1123,9 @@ public final class SessionRequestBroker implements Closeable
 			}
 			try (OutputStream input = process.getOutputStream())
 			{
+				OptionalInt suspension = OptionalInt.empty();
 				if (request.streamed())
-					feed(id, process, input);
+					suspension = feed(id, process, input);
 				else
 				{
 					for (String prompt : request.prompts())
@@ -1135,7 +1142,13 @@ public final class SessionRequestBroker implements Closeable
 				String reason = "Requested runner exited with status " + exit;
 				if (exit == 0)
 				{
-					status = "completed";
+					if (suspension.isPresent())
+					{
+						verifySuspension(slot, directory, suspension.getAsInt());
+						status = SUSPENDED;
+					}
+					else
+						status = "completed";
 					reason = "";
 				}
 				else if (exit == HarnessCapacityWaitExpiredException.EXIT_STATUS)
@@ -1249,23 +1262,23 @@ public final class SessionRequestBroker implements Closeable
 	}
 
 	/**
-	 * Writes each record of a streamed request to its child as the broker takes it, until the {@code complete} record,
-	 * the child's exit, or the child's stop.
+	 * Writes each record of a streamed request to its child until the stream ends or the child stops.
 	 *
 	 * @param id      the request identifier
 	 * @param process the child
 	 * @param input   the child's standard input
+	 * @return the count in the suspension record, if one was sent to the child
 	 * @throws IOException          if a record cannot be written
 	 * @throws InterruptedException if the thread is interrupted while it waits for a record
 	 */
-	private void feed(String id, Process process, OutputStream input) throws IOException, InterruptedException
+	private OptionalInt feed(String id, Process process, OutputStream input) throws IOException, InterruptedException
 	{
 		BlockingQueue<Optional<String>> records;
 		synchronized (this)
 		{
 			Streamed stream = streams.get(id);
 			if (stream == null)
-				return;
+				return OptionalInt.empty();
 			records = stream.records;
 		}
 		process.onExit().thenRun(() -> records.add(Optional.empty()));
@@ -1273,12 +1286,54 @@ public final class SessionRequestBroker implements Closeable
 		{
 			Optional<String> record = records.take();
 			if (record.isEmpty())
-				return;
+				return OptionalInt.empty();
 			input.write((record.get() + "\n").getBytes(StandardCharsets.UTF_8));
 			input.flush();
-			if (StreamedRequest.isComplete(json, record.get()))
+			if (StreamedRequest.endsStream(json, record.get()))
+			{
+				JsonNode message = json.readTree(record.get());
+				if (message.path("type").asString().equals("suspend"))
+					return OptionalInt.of(message.path("completed_turns").intValue());
+				return OptionalInt.empty();
+			}
+		}
+	}
+
+	/**
+	 * Checks that the runner's private transcript acknowledges the exact suspension and that the slot is still
+	 * retained.
+	 *
+	 * @param slot the slot the broker reserved for the runner
+	 * @param directory the broker's private response directory
+	 * @param expected the completed turn count sent to the runner
+	 * @throws IOException if the runner did not publish the matching terminal record or retain the session
+	 */
+	private void verifySuspension(SessionSlots.Slot slot, Path directory, int expected) throws IOException
+	{
+		Path transcript = directory.resolve("transcript.jsonl");
+		if (!SessionSlots.isRetained(slot) || !Files.isRegularFile(transcript, LinkOption.NOFOLLOW_LINKS))
+			throw new IOException("Requested runner did not retain its suspended session");
+		String last;
+		try (BufferedReader lines = Files.newBufferedReader(transcript, StandardCharsets.UTF_8))
+		{
+			last = lines.readLine();
+			for (String line = lines.readLine(); line != null; line = lines.readLine())
+				last = line;
+		}
+		if (last == null)
+			throw new IOException("Requested runner did not acknowledge the requested suspension");
+		try
+		{
+			JsonNode record = json.readTree(last);
+			JsonNode turns = record.path("completed_turns");
+			if (record.path("type").asString("").equals(SUSPENDED) && turns.isInt() && turns.intValue() == expected)
 				return;
 		}
+		catch (JacksonException e)
+		{
+			throw new IOException("Requested runner wrote a malformed suspension acknowledgement", e);
+		}
+		throw new IOException("Requested runner did not acknowledge the requested suspension");
 	}
 
 	/**
@@ -1331,7 +1386,8 @@ public final class SessionRequestBroker implements Closeable
 			if (stopped || cancelled.contains(id))
 				return;
 			String childSlotId = copyChildEvidence(id, directory);
-			if (status.equals("completed") && !Files.isRegularFile(directory.resolve("receipt.json")))
+			boolean succeeded = status.equals("completed") || status.equals(SUSPENDED);
+			if (succeeded && !Files.isRegularFile(directory.resolve("receipt.json")))
 				throw new IOException("Requested runner completed without a retained-evidence receipt");
 			String outcome = status;
 			String diagnostic = reason;
@@ -1352,10 +1408,10 @@ public final class SessionRequestBroker implements Closeable
 						diagnostic = incomplete.get();
 					else
 						diagnostic += "\n" + incomplete.get();
-					if (outcome.equals("completed"))
+				if (succeeded)
 						outcome = "failed";
 				}
-				else if (outcome.equals("completed"))
+			else if (succeeded)
 				{
 					NestedSessionReceipt.read(json, directory.resolve("receipt.json"), results.resolve("project"));
 					if (request.resultProjectLinks().isPresent())
@@ -1679,7 +1735,7 @@ public final class SessionRequestBroker implements Closeable
 		 */
 		private int next = 1;
 		/**
-		 * Indicates whether the broker took the {@code complete} record.
+		 * Indicates whether the broker took the terminal record.
 		 */
 		private boolean complete;
 
@@ -1708,7 +1764,7 @@ public final class SessionRequestBroker implements Closeable
 				if (record.isEmpty())
 					return;
 				next += 1;
-				complete = StreamedRequest.isComplete(json, record.get());
+				complete = StreamedRequest.endsStream(json, record.get());
 				records.add(record);
 			}
 		}

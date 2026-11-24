@@ -46,7 +46,7 @@ final class StreamedRequest
 	/**
 	 * The record types that a streamed request may send.
 	 */
-	private static final Set<String> TYPES = Set.of("turn", "interrupt", "complete");
+	private static final Set<String> TYPES = Set.of("turn", "interrupt", "complete", "suspend");
 
 	/**
 	 * Returns the name of the lock that a request's sender holds while it runs.
@@ -174,13 +174,20 @@ final class StreamedRequest
 		}
 		String type = record.path("type").asString("");
 		if (!record.isObject() || !TYPES.contains(type))
-			throw new IOException("A streamed record must be a turn, an interrupt or complete");
+			throw new IOException("A streamed record must be a turn, an interrupt, complete or suspend");
 		if (type.equals("turn"))
 		{
 			JsonNode prompt = record.path("prompt");
 			if (record.size() != 2 || !prompt.isString())
 				throw new IOException("A streamed turn holds only its prompt");
 			return json.createObjectNode().put("type", type).put("prompt", prompt.asString()).toString();
+		}
+		if (type.equals("suspend"))
+		{
+			JsonNode turns = record.path("completed_turns");
+			if (record.size() != 2 || !turns.isInt() || turns.intValue() < 1)
+				throw new IOException("A streamed suspension must name a positive completed-turn count");
+			return json.createObjectNode().put("type", type).put("completed_turns", turns.intValue()).toString();
 		}
 		if (record.size() != 1)
 			throw new IOException("A streamed " + type + " record holds only its type");
@@ -192,11 +199,12 @@ final class StreamedRequest
 	 *
 	 * @param json   the record mapper
 	 * @param record a record that {@link #take} returned
-	 * @return {@code true} if it is the {@code complete} record
+	 * @return {@code true} if it is a {@code complete} or {@code suspend} record
 	 */
-	static boolean isComplete(JsonMapper json, String record)
+	static boolean endsStream(JsonMapper json, String record)
 	{
-		return json.readTree(record).path("type").asString("").equals("complete");
+		String type = json.readTree(record).path("type").asString("");
+		return type.equals("complete") || type.equals("suspend");
 	}
 
 	/**

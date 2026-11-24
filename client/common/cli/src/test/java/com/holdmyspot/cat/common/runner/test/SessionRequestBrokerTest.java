@@ -238,12 +238,12 @@ public final class SessionRequestBrokerTest
 			"api_key"))
 		{
 			Map<String, List<String>> started = new ConcurrentHashMap<>();
-			AtomicReference<FakeHarnessCli> child = new AtomicReference<>();
 			AuthenticationEvidence evidence = new AuthenticationEvidence(Path.of("/source/home"),
 				List.of("apiKeyHelper"), HostLogin.API_KEY);
 			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.nestedSession, fixture.manager,
 				fixture.options, (harness, options, directory) ->
 				{
+					AtomicReference<FakeHarnessCli> child = new AtomicReference<>();
 					started.put(harness, options);
 					if (harness.equals("codex"))
 					{
@@ -1858,6 +1858,45 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
+	 * Verifies that the streamed broker delivers an explicit suspension to the runner and relays its acknowledgement.
+	 *
+	 * @throws IOException if a streamed runner cannot be started or its results cannot be read
+	 */
+	@Test(timeOut = 30_000)
+	public void forwardsStreamedSuspension() throws IOException
+	{
+		// Requirement: R-L16
+		try (Fixture fixture = new Fixture())
+		{
+			List<String> prompts = new CopyOnWriteArrayList<>();
+			AtomicReference<Exception> runnerFailure = new AtomicReference<>();
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.nestedSession, fixture.manager,
+				fixture.options, (harness, options, _) ->
+					startGuardedBridge(fixture, harness, options, prompts, runnerFailure)))
+			{
+				Path results = fixture.root.resolve("suspended-results");
+				StringWriter output = new StringWriter();
+
+				SessionRequestForwarder.serve(SessionRequestForwarder.Route.RUN, UUID.randomUUID(), "test command",
+					"claude", fixture.root, List.of("--project", fixture.project.toString(), "--results",
+						results.toString(), "--model", "haiku", "--effort", "low", "--session-transcripts"),
+					new StringReader("{\"type\":\"turn\",\"prompt\":\"derive\"}\n" +
+						"{\"type\":\"suspend\",\"completed_turns\":1}\n"), output, fixture.requests, () ->
+					{
+						if (runnerFailure.get() != null)
+							throw new IOException("The suspended bridge failed", runnerFailure.get());
+						broker.scan();
+						Thread.yield();
+					});
+
+				requireThat(prompts, "harnessPrompts").isEqualTo(List.of("derive"));
+				requireThat(output.toString(), "output").contains("\"type\":\"suspended\",\"completed_turns\":1").
+					doesNotContain("\"type\":\"completed\"");
+			}
+		}
+	}
+
+	/**
 	 * Writes the one-turn evidence left by an ended runner, then gives up the slot.
 	 *
 	 * @param fixture the requesting session that owns the slots
@@ -1962,8 +2001,18 @@ public final class SessionRequestBrokerTest
 				NestedSessionManager manager = NestedSessionManager.openResultsFolder(fixture.fileLocks,
 					parsed.resultsFolder(), Clock.systemUTC(), Yielding.fileReplacer(), parsed.slotId(),
 					HarnessRunnerOptions.startupPermit(args).orElseThrow()).withFixedSlotId(parsed.slotId());
-				HarnessRunnerBridge.serve(() -> new LiveNestedSession(manager.resume(harness, parsed.resumeSlot()),
-					nativeHarness, new TestHarnessRunnerScope()), manager, parsed, fixture.json, Yielding.fileReplacer(),
+				HarnessRunnerBridge.serve(() ->
+				{
+					NestedSession nested;
+					if (parsed.resumeSlot() == null)
+					{
+						nested = manager.create(harness);
+						Files.createDirectories(nested.directory().resolve("initial-project"));
+					}
+					else
+						nested = manager.resume(harness, parsed.resumeSlot());
+					return new LiveNestedSession(nested, nativeHarness, new TestHarnessRunnerScope());
+				}, manager, parsed, fixture.json, Yielding.fileReplacer(),
 					input, new StringWriter());
 			}
 			catch (IOException | RuntimeException e)
