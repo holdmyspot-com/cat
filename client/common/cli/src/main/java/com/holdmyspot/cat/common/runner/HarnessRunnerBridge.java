@@ -109,7 +109,7 @@ public final class HarnessRunnerBridge
 	public static NestedSession serve(NestedSessionStarter starter, NestedSessionManager manager, Reader input,
 		Writer output) throws IOException
 	{
-		return serve(starter, manager, input, output, null, null);
+		return serve(starter, manager, input, output, null, null).session();
 	}
 
 	/**
@@ -121,11 +121,11 @@ public final class HarnessRunnerBridge
 	 * @param output the bridge output
 	 * @param options the runner options, null when the caller does not serve the session as a runner
 	 * @param requestedStarter starts child runners, null only when no request broker starts
-	 * @return the completed parent nested session
+	 * @return the parent nested session and whether its runner suspended
 	 * @throws IOException if the bridge or a request broker fails,
 	 *                     or the session changed a read-only copy of the target of a project link outside it
 	 */
-	private static NestedSession serve(NestedSessionStarter starter, NestedSessionManager manager, Reader input,
+	private static ServedSession serve(NestedSessionStarter starter, NestedSessionManager manager, Reader input,
 		Writer output, HarnessRunnerOptions options, RequestedSessionStarter requestedStarter) throws IOException
 	{
 		requireThat(starter, "starter").isNotNull();
@@ -140,7 +140,7 @@ public final class HarnessRunnerBridge
 			String status = "failed";
 			try
 			{
-				NestedSession nestedSession = serve(starter, manager, input, conversation.childWriter(output), options,
+				ServedSession nestedSession = serve(starter, manager, input, conversation.childWriter(output), options,
 					requestedStarter, conversation);
 				status = "completed";
 				return nestedSession;
@@ -163,16 +163,17 @@ public final class HarnessRunnerBridge
 	 * @param options the runner options, null when the caller does not serve the session as a runner
 	 * @param requestedStarter starts child runners, null only when no request broker starts
 	 * @param conversation the conversation whose messages are the bridge's records, or null to read {@code input}
-	 * @return the completed parent nested session
+	 * @return the parent nested session and whether its runner suspended
 	 * @throws IOException if the bridge or a request broker fails,
 	 *                     or the session changed a read-only copy of the target of a project link outside it
 	 */
-	private static NestedSession serve(NestedSessionStarter starter, NestedSessionManager manager, Reader input,
+	private static ServedSession serve(NestedSessionStarter starter, NestedSessionManager manager, Reader input,
 		Writer output, HarnessRunnerOptions options, RequestedSessionStarter requestedStarter,
 		Conversation conversation) throws IOException
 	{
 		NestedSession nestedSession = null;
 		boolean completed = false;
+		String suspension = null;
 		int turnNumber = 0;
 		FutureTask<Void> activeTurn = null;
 		// The thread of the last turn that started, which may still write the nested session after the turn is stopped
@@ -392,6 +393,30 @@ public final class HarnessRunnerBridge
 								completed = true;
 								break;
 							}
+							else if (type.equals("suspend"))
+							{
+								if (!tracksTurnCheckpoints || options == null || options.slotId() == null ||
+									options.turnCopy() == null || !options.sessionTranscripts() ||
+									conversation != null || !manager.claimedStartup(nestedSession))
+								{
+									throw new IOException("Suspending a session requires a managed slot with retained " +
+										"turn evidence");
+								}
+								awaitActiveTurn(activeTurn);
+								JsonNode expected = request.path("completed_turns");
+								if (request.size() != 2 || !expected.isInt() || turnNumber < 1 ||
+									expected.intValue() != turnNumber || failedTurn.get() != null ||
+									!harnessSessionRecorded.get() ||
+									!RetainedTrialPrefix.validates(nestedSession.directory(), turnNumber))
+								{
+									throw new IOException("The session has no ready checkpoint for the requested turn count");
+								}
+								ObjectNode response = event(session.scope(), "suspended").put("completed_turns", turnNumber);
+								suspension = session.scope().json().writer().without(SerializationFeature.INDENT_OUTPUT).
+									writeValueAsString(response);
+								completed = true;
+								break;
+							}
 							else
 								throw new IOException("Unsupported bridge message type: " + type);
 							line = lines.readLine();
@@ -422,9 +447,15 @@ public final class HarnessRunnerBridge
 				Optional<String> changes = manager.changedLinkCopies(nestedSession);
 				if (changes.isPresent())
 					throw new IOException(changes.get());
-				manager.markCompleted(nestedSession);
+				if (suspension == null)
+					manager.markCompleted(nestedSession);
 			}
-			return nestedSession;
+			if (suspension != null)
+			{
+				output.write(suspension + "\n");
+				output.flush();
+			}
+		return new ServedSession(nestedSession, suspension != null);
 		}
 		catch (IOException e)
 		{
@@ -750,7 +781,8 @@ public final class HarnessRunnerBridge
 	}
 
 	/**
-	 * Serves a managed bridge from one record source, then writes its retained-evidence receipt.
+	 * Serves a managed bridge from one record source, then writes its retained-evidence receipt. A suspended
+	 * session keeps the runtime files needed to continue its harness session.
 	 *
 	 * @param starter          starts the parent session
 	 * @param manager          the lifecycle manager
@@ -769,14 +801,15 @@ public final class HarnessRunnerBridge
 		RequestedSessionStarter requestedStarter) throws IOException
 	{
 		if (options.output() == null)
-			return serve(starter, manager, input, output, options, requestedStarter);
-		NestedSession nestedSession;
+			return serve(starter, manager, input, output, options, requestedStarter).session();
+		ServedSession served;
 		Path parent = options.output().toAbsolutePath().getParent();
 		Files.createDirectories(parent);
 		try (Writer transcript = Files.newBufferedWriter(options.output(), StandardCharsets.UTF_8))
 		{
-			nestedSession = serve(starter, manager, input, transcript, options, requestedStarter);
+			served = serve(starter, manager, input, transcript, options, requestedStarter);
 		}
+		NestedSession nestedSession = served.session();
 		if (options.receipt() != null)
 		{
 			List<Path> sessionTranscripts = List.of();
@@ -784,9 +817,20 @@ public final class HarnessRunnerBridge
 				sessionTranscripts = sessionTranscripts(nestedSession);
 			NestedSessionReceipt.write(json, replacer, options.receipt(), nestedSession, options.output(),
 				sessionTranscripts);
-			manager.pruneRuntime(nestedSession);
+			if (!served.suspended())
+				manager.pruneRuntime(nestedSession);
 		}
 		return nestedSession;
+	}
+
+	/**
+	 * The outcome of serving one nested session's input stream.
+	 *
+	 * @param session the parent nested session
+	 * @param suspended whether the runner retained a ready checkpoint for continuation
+	 */
+	private record ServedSession(NestedSession session, boolean suspended)
+	{
 	}
 
 	/**

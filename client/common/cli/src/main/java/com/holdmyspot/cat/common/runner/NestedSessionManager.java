@@ -204,6 +204,7 @@ public final class NestedSessionManager
 	 * The startup lock shared by this manager's fixed-slot copies until one publishes its runner identity.
 	 */
 	private StartupLease startupLease;
+	private NestedSession claimedStartup;
 
 	/**
 	 * Holds the stable slot lock from permit validation until the runner identity is durable.
@@ -636,6 +637,18 @@ public final class NestedSessionManager
 			throw e;
 		}
 		closeStartupLease();
+		claimedStartup = nestedSession;
+	}
+
+	/**
+	 * Returns whether this manager published the runner identity for the session under a broker's startup permit.
+	 *
+	 * @param nestedSession the session whose startup to check
+	 * @return whether the broker-managed startup completed
+	 */
+	boolean claimedStartup(NestedSession nestedSession)
+	{
+		return nestedSession.equals(claimedStartup);
 	}
 
 	/**

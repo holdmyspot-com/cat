@@ -145,6 +145,43 @@ public final class HarnessRunnerBridgeTest
 	}
 
 	/**
+	 * Verifies that selecting a fixed slot without a broker startup permit cannot suspend it.
+	 *
+	 * @throws IOException if the fixture fails
+	 */
+	@Test
+	public void refusesSuspensionWithoutBrokerStartup() throws IOException
+	{
+		// Requirement: R-L16
+		JsonMapper json = JsonMapper.builder().build();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			ScriptedProcess process = new ScriptedProcess(List.of(Turn.replies("proposed", "proposal event")),
+				new ArrayList<>());
+			StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"derive\"}\n" +
+				"{\"type\":\"suspend\",\"completed_turns\":1}\n"))
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-results-"));
+			NestedSessionManager manager = new NestedSessionManager(new FileLocks(), root, Clock.systemUTC(),
+				Yielding.fileReplacer()).withFixedSlotId("s-1");
+			NestedSession nested = manager.create("harness");
+			Files.createDirectories(nested.directory().resolve("project"));
+			Files.createDirectories(nested.directory().resolve("initial-project"));
+			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
+				"effort-a", null, null, true, false, 1, List.of(), List.of(), null, List.of(), 0,
+				null, 0, null, null, null, true, null, null, null, root.resolve("turn-copy"), false, "s-1", null);
+			StringWriter output = new StringWriter();
+
+			IOException failure = expectThrows(IOException.class, () -> HarnessRunnerBridge.serve(
+				() -> new LiveNestedSession(nested, process, new TestHarnessRunnerScope()), manager, options, json,
+				Yielding.fileReplacer(), input, output));
+
+			requireThat(process.isAlive(), "alive").isFalse();
+			requireThat(failure.getMessage(), "message").contains("requires a managed slot");
+			requireThat(output.toString(), "output").doesNotContain("\"type\":\"suspended\"");
+		}
+	}
+
+	/**
 	 * Verifies a provider failure before turn output is written leaves the managed checkpoint in progress.
 	 *
 	 * @throws IOException if the bridge or checkpoint read fails

@@ -1783,6 +1783,81 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
+	 * Verifies that a bridge started with a broker permit settles its completed-turn checkpoint and closes the native
+	 * process when asked to suspend.
+	 *
+	 * @throws IOException if the broker or bridge fixture fails
+	 */
+	@Test(timeOut = 30_000)
+	public void suspendsAtCompletedCheckpoint() throws IOException
+	{
+		// Requirement: R-L16
+		try (Fixture fixture = new Fixture();
+			SessionRequestBroker broker = new SessionRequestBroker(fixture.nestedSession, fixture.manager,
+				fixture.options, (harness, options, _) -> suspendBridge(fixture, harness, options)))
+		{
+			fixture.request("suspend");
+			broker.scan();
+			JsonNode response = fixture.await("suspend");
+			requireThat(response.path("status").asString(), "status").withContext(response, "response").
+				isEqualTo("completed");
+		}
+	}
+
+	/**
+	 * Uses the broker's real startup permit to exercise suspension with a scripted native process.
+	 *
+	 * @param fixture the requesting session
+	 * @param harness the selected harness
+	 * @param options the broker's child options
+	 * @return the fixture transport after the bridge has settled the checkpoint
+	 * @throws IOException if the bridge or checkpoint fails
+	 */
+	private static FakeHarnessCli suspendBridge(Fixture fixture, String harness, List<String> options)
+		throws IOException
+	{
+		List<String> arguments = new ArrayList<>(List.of("--artifact", fixture.root.toString(), "--turn-copy",
+			fixture.root.resolve("turn-copy").toString()));
+		arguments.addAll(options);
+		String[] args = arguments.toArray(String[]::new);
+		HarnessRunnerOptions parsed = HarnessRunnerOptions.parse(args, harness, HarnessTemporaryRoot.of(fixture.root));
+		NestedSessionManager manager = NestedSessionManager.openResultsFolder(fixture.fileLocks,
+			parsed.resultsFolder(), Clock.systemUTC(), Yielding.fileReplacer(), parsed.slotId(),
+			HarnessRunnerOptions.startupPermit(args).orElseThrow()).withFixedSlotId(parsed.slotId());
+		try (ScriptedProcess process = new ScriptedProcess(List.of(Turn.replies("proposed", "proposal event")),
+			new ArrayList<>());
+			StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"derive\"}\n" +
+				"{\"type\":\"suspend\",\"completed_turns\":1}\n"))
+		{
+			process.reportHarnessSession(RESUMED_SESSION);
+			NestedSession nested = manager.create(harness);
+			Files.createDirectories(nested.directory().resolve("initial-project"));
+			StringWriter output = new StringWriter();
+			HarnessRunnerBridge.serve(() -> new LiveNestedSession(nested, process, new TestHarnessRunnerScope()),
+				manager, parsed, fixture.json, Yielding.fileReplacer(), input, output);
+
+			requireThat(process.isAlive(), "alive").isFalse();
+			String transcript = Files.readString(parsed.output());
+			requireThat(transcript, "transcript").contains("\"type\":\"turn_completed\"").
+				contains("\"type\":\"suspended\",\"completed_turns\":1").doesNotContain("\"type\":\"completed\"");
+			JsonNode manifest = fixture.json.readTree(Files.readString(nested.directory().resolve("session.json")));
+			requireThat(manifest.path("phase").asString(), "phase").isEqualTo("idle");
+			JsonNode checkpoint = fixture.json.readTree(Files.readString(nested.directory().resolve("turn-checkpoint.json")));
+			requireThat(checkpoint.path("turn_number").asInt(), "turnNumber").isEqualTo(1);
+			requireThat(checkpoint.path("state").asString(), "state").isEqualTo("ready");
+			// The bridge used its scripted input. The fixture transport acknowledges the broker's ordinary end.
+			AtomicReference<FakeHarnessCli> transport = new AtomicReference<>();
+			FakeHarnessCli child = new FakeHarnessCli(exitOnCompleteRecord(fixture.json, transport));
+			transport.set(child);
+			return child;
+		}
+		finally
+		{
+			manager.closeStartupLease();
+		}
+	}
+
+	/**
 	 * Writes the one-turn evidence left by an ended runner, then gives up the slot.
 	 *
 	 * @param fixture the requesting session that owns the slots
