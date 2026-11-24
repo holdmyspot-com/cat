@@ -349,9 +349,13 @@ public final class Invocation
 				return print(status, object, arguments, locations);
 			}
 		}
+		// Uninstall removes the user's own files that hold a secret for the harness's CAT sessions alone
+		Optional<UpdateResult> homeRefusal = readUserHome(own);
+		if (homeRefusal.isPresent())
+			return print(homeRefusal.get(), arguments, locations);
 		HarnessSession session = managed.session();
 		UninstallResult result = new Uninstaller(locations.data(), managed.policy(), managed.activation(), session,
-			locations.image(), clock, waiting).uninstall(arguments.deleteData());
+			locations.image(), userHome, clock, waiting).uninstall(arguments.deleteData());
 		return printUninstall(result, arguments, locations);
 	}
 

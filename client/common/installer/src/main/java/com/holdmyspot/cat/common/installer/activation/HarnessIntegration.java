@@ -157,6 +157,20 @@ public interface HarnessIntegration
 	void unregister(Path home, HarnessCli cli, boolean keepData) throws IOException;
 
 	/**
+	 * Removes the files in the user's home folder that hold a secret that the user saved for this harness's CAT sessions
+	 * alone, because nothing uses the secret once CAT is uninstalled. Uninstall calls it whether or not it deletes CAT's
+	 * plugin data. A file under a home folder other than {@code userHome} stays.
+	 *
+	 * @param userHome the uninstalling user's absolute home folder
+	 * @return the files that this call removed; empty when the home folder held none
+	 * @throws NullPointerException     if {@code userHome} is null
+	 * @throws IllegalArgumentException if {@code userHome} is relative
+	 * @throws IOException              if a file cannot be removed, or the path to it is a symbolic link or an entry of
+	 *                                  the wrong kind; the message names the path
+	 */
+	List<Path> removeUserSecrets(Path userHome) throws IOException;
+
+	/**
 	 * Adds the entries that let an agent run the installer's routine operations without a permission prompt or sandbox,
 	 * and that let the harness's sessions run the request server beside the installer outside the sandbox without a
 	 * prompt, so that it can start the sessions that they request inside that harness's own sandbox. Idempotent.

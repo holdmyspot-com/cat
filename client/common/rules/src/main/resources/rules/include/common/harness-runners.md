@@ -193,7 +193,10 @@ folder to bill, such as one whose `.claude/settings.json` holds only an `apiKeyH
 yourself. When the launcher refuses a launch because the source home's credential sends its requests to a gateway, and
 names `--gateway-login-class`, ask the user which kind of login the gateway bills, then launch again with it. Report any
 other refusal of the source home to the user, such as one that holds no Claude credential or a secret file that other
-users may read, and do not read, copy or change the source home's files yourself.
+users may read, with the fix that the refusal names, and do not read, copy or change the source home's files yourself.
+When that fix is the `claude-credential set` command that the refusal names, give the user the command exactly as the
+refusal prints it, to run in their own terminal, and neither run it nor ask the user for the token: the token must not
+pass through your session.
 
 Pass `--session-transcripts` only when your task needs the session's own transcript. The runner then
 copies every transcript of the session, subagents' included, into `artifacts/session-transcripts` in its session

@@ -7,12 +7,17 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.AclEntry;
+import java.nio.file.attribute.AclEntryFlag;
+import java.nio.file.attribute.AclEntryPermission;
 import java.nio.file.attribute.AclEntryType;
 import java.nio.file.attribute.AclFileAttributeView;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileAttribute;
 import java.nio.file.attribute.PosixFileAttributes;
 import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -22,10 +27,11 @@ import java.util.Set;
 import java.util.StringJoiner;
 
 /**
- * Decides whether a file that holds a secret keeps it from every operating-system user but its owner. Such a file must
- * be a regular file that is not a symbolic link, and deny group and other access: on Linux and macOS its mode grants
- * group and other nothing, and on Windows its access list grants access to no one but its owner, {@code SYSTEM} and the
- * Administrators group. The decision uses only the file's metadata; it never opens the file.
+ * Decides whether a file that holds a secret keeps it from every operating-system user but its owner, and gives a new
+ * file or folder for a secret that access as it is created. Such a file must be a regular file that is not a symbolic
+ * link, and deny group and other access: on Linux and macOS its mode grants group and other nothing, and on Windows its
+ * access list grants access to no one but its owner, {@code SYSTEM} and the Administrators group. The decision uses
+ * only the file's metadata; it never opens the file.
  */
 public final class SecretFile
 {
@@ -47,6 +53,16 @@ public final class SecretFile
 	 * that holds a secret may grant access to: the operating system itself and the local administrators.
 	 */
 	private static final Set<String> WINDOWS_TRUSTED = Set.of("system", "administrators");
+	/**
+	 * The mode of a new file that holds a secret on a file system with POSIX permissions: its owner alone may read and
+	 * write it.
+	 */
+	private static final Set<PosixFilePermission> OWNER_FILE_MODE = PosixFilePermissions.fromString("rw-------");
+	/**
+	 * The mode of a new folder that holds secrets on a file system with POSIX permissions: its owner alone may list,
+	 * enter and change it.
+	 */
+	private static final Set<PosixFilePermission> OWNER_FOLDER_MODE = PosixFilePermissions.fromString("rwx------");
 
 	/**
 	 * The metadata of a file that the decision uses.
@@ -129,6 +145,78 @@ public final class SecretFile
 			return aclProblem(file, attributes.owner(), attributes.grantees());
 		return Optional.of("The file system of " + file + " reports neither POSIX permissions nor an access list, so " +
 			"CAT cannot tell who may read it. Move it to a file system that reports them.");
+	}
+
+	/**
+	 * Returns the access that a new file that holds a secret gets as it is created, so that it is never readable by
+	 * another user: on a file system with POSIX permissions, mode {@code 0600}; on one with access lists, an access list
+	 * that grants the owner of the folder that holds it, alone.
+	 *
+	 * @param folder the existing folder that will hold the file
+	 * @return the attribute to pass to the call that creates the file
+	 * @throws NullPointerException if {@code folder} is null
+	 * @throws IOException          if the file system reports neither POSIX permissions nor access lists, or the
+	 *                              folder's owner cannot be read
+	 */
+	public static FileAttribute<?> ownerOnlyFile(Path folder) throws IOException
+	{
+		return ownerOnly(folder, OWNER_FILE_MODE, Set.of());
+	}
+
+	/**
+	 * Returns the access that a new folder that holds secrets gets as it is created, so that no other user may list or
+	 * enter it: on a file system with POSIX permissions, mode {@code 0700}; on one with access lists, an access list that
+	 * grants the owner of its parent folder, alone, and that the folder's new files and folders inherit.
+	 *
+	 * @param parent the existing folder that will hold the new folder
+	 * @return the attribute to pass to the call that creates the folder
+	 * @throws NullPointerException if {@code parent} is null
+	 * @throws IOException          if the file system reports neither POSIX permissions nor access lists, or the
+	 *                              parent's owner cannot be read
+	 */
+	public static FileAttribute<?> ownerOnlyFolder(Path parent) throws IOException
+	{
+		return ownerOnly(parent, OWNER_FOLDER_MODE, EnumSet.of(AclEntryFlag.FILE_INHERIT,
+			AclEntryFlag.DIRECTORY_INHERIT));
+	}
+
+	/**
+	 * Returns the access that a new file or folder that holds a secret gets as it is created.
+	 *
+	 * @param parent   the existing folder that will hold it, whose owner the access list names
+	 * @param mode     the mode on a file system with POSIX permissions
+	 * @param aclFlags the inheritance of the access list's entry on a file system with access lists
+	 * @return the attribute
+	 * @throws IOException if the file system reports neither, or the parent's owner cannot be read
+	 */
+	private static FileAttribute<?> ownerOnly(Path parent, Set<PosixFilePermission> mode, Set<AclEntryFlag> aclFlags)
+		throws IOException
+	{
+		requireThat(parent, "parent").isNotNull();
+		Set<String> views = parent.getFileSystem().supportedFileAttributeViews();
+		if (views.contains("posix"))
+			return PosixFilePermissions.asFileAttribute(mode);
+		if (views.contains("acl"))
+		{
+			AclEntry owner = AclEntry.newBuilder().setType(AclEntryType.ALLOW).setPrincipal(Files.getOwner(parent)).
+				setPermissions(EnumSet.allOf(AclEntryPermission.class)).setFlags(aclFlags).build();
+			return new FileAttribute<List<AclEntry>>()
+			{
+				@Override
+				public String name()
+				{
+					return "acl:acl";
+				}
+
+				@Override
+				public List<AclEntry> value()
+				{
+					return List.of(owner);
+				}
+			};
+		}
+		throw new IOException("The file system of " + parent + " reports neither POSIX permissions nor an access " +
+			"list, so CAT cannot create a file there that its owner alone may read.");
 	}
 
 	/**

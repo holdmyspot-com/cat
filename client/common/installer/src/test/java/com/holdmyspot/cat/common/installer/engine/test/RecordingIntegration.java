@@ -130,6 +130,11 @@ public final class RecordingIntegration implements HarnessIntegration
 	 */
 	private boolean deletesData;
 	/**
+	 * The files, relative to the user's home folder, that hold a secret for the harness's CAT sessions alone, which
+	 * {@code removeUserSecrets} deletes when they exist.
+	 */
+	private final List<String> userSecrets = new ArrayList<>();
+	/**
 	 * Whether the harness runs the plugin from the version folder with the greatest name, as Codex does, instead of
 	 * the version that it registered.
 	 */
@@ -323,6 +328,19 @@ public final class RecordingIntegration implements HarnessIntegration
 	public RecordingIntegration deletingData()
 	{
 		this.deletesData = true;
+		return this;
+	}
+
+	/**
+	 * Makes a file of the user's home folder one that holds a secret for the harness's CAT sessions alone, which
+	 * {@code removeUserSecrets} deletes when it exists.
+	 *
+	 * @param file the file, relative to the user's home folder
+	 * @return this integration
+	 */
+	public RecordingIntegration holdingUserSecret(String file)
+	{
+		userSecrets.add(file);
 		return this;
 	}
 
@@ -609,6 +627,20 @@ public final class RecordingIntegration implements HarnessIntegration
 		keptData.add(keepData);
 		if (!keepData && deletesData)
 			LinkSafeDeletion.delete(layout(harness, home).dataDirectory(), home, NO_WAIT);
+	}
+
+	@Override
+	public List<Path> removeUserSecrets(Path userHome) throws IOException
+	{
+		record("removeUserSecrets", userHome);
+		List<Path> deleted = new ArrayList<>();
+		for (String secret : userSecrets)
+		{
+			Path file = userHome.resolve(secret);
+			if (Files.deleteIfExists(file))
+				deleted.add(file);
+		}
+		return deleted;
 	}
 
 	@Override

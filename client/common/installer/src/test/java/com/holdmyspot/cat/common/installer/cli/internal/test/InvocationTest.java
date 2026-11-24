@@ -596,7 +596,7 @@ public final class InvocationTest
 			requireThat(again.result().path("result").stringValue(), "result").isEqualTo("uninstalled");
 			requireThat(again.result().path("unregistered").booleanValue(), "unregistered").isTrue();
 			requireThat(integration.calls().subList(calls, integration.calls().size()), "calls").
-				isEqualTo(List.of("unregister"));
+				isEqualTo(List.of("unregister", "removeUserSecrets"));
 		}
 	}
 

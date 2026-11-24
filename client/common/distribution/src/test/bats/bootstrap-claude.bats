@@ -2,7 +2,8 @@
 
 # Tests how the release's entry script cat.sh runs the installer's install for Claude Code, from detecting a Claude Code
 # shell to choosing Claude Code's configuration directory as the harness home, what the generated Claude plugin
-# launchers and hooks report, and that each command of the hooks' manifest starts its hook.
+# launchers and hooks report, that the generated claude-credential launcher saves a token from standard input without
+# printing it, and that each command of the hooks' manifest starts its hook.
 
 load bootstrap-helpers
 
@@ -38,6 +39,22 @@ load bootstrap-helpers
 	[ "${output}" = "harness=claude
 version=${expected_version}
 platform=${expected_platform}" ]
+}
+
+@test "generated Claude claude-credential launcher saves a token from standard input into an owner-only file without printing it" {
+	home="${TEST_ROOT}/credential home"
+	mkdir -p "${home}"
+	token="sk-ant-oat01-fixture"
+
+	# The command refuses to run in a nested session, so the session that runs the tests must not make it one
+	run env -u CAT_NESTED_SESSION -u CAT_SESSION_REQUESTS sh -c 'printf "%s\n" "$1" | "$2" set --home "$3" --json' \
+		sh "${token}" "${GENERATED_RUNTIME_DIRECTORY}/claude/bin/claude-credential" "${home}"
+
+	[ "${status}" -eq 0 ]
+	[ "$(printf '%s\n' "${output}" | wc -l | tr -d ' ')" -eq 1 ]
+	[[ "${output}" == '{"result":"saved",'* ]]
+	[[ "${output}" != *"${token}"* ]]
+	[[ "$(ls -l "${home}/.cat/claude/.credentials.json")" == "-rw-------"* ]]
 }
 
 @test "generated Claude SessionStart launcher injects the packaged routing and the project's rules" {

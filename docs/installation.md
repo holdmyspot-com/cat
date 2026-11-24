@@ -158,7 +158,11 @@ installation:
 
 - the entries that the install added (in Codex also the profile and hook trust it recorded);
 - the plugin's registration;
-- the plugin files, with every version folder, and the Codex custom agents that CAT owns.
+- the plugin files, with every version folder, and the Codex custom agents that CAT owns;
+- in Claude Code, the token that you saved with `claude-credential set` in `~/.cat/claude/.credentials.json`, whether or
+  not you delete the plugin data, because it is a long-lived secret that nothing uses without CAT. The report names the
+  file. A token that you saved for another home folder with `--home <dir>` stays; remove it with
+  `claude-credential remove --home <dir>` before you uninstall.
 
 It never deletes unrelated settings, your own files, or your rules in `~/.cat/rules`. CAT's plugin data stays in
 `plugins/data/cat-cat/` in the harness home unless you delete it. If the uninstall stops, run it again. When the
@@ -221,6 +225,44 @@ but the session that starts them needs a credential and a working sandbox:
   the details.
 - A Codex session that a runner starts reaches its model, so Codex's sandbox needs network access on. On Linux,
   `codex-runner` also needs bubblewrap (`bwrap`) on your `PATH`.
+
+### Save a Claude token for sessions
+
+When your Claude settings name no credential, such as with a subscription and no gateway, save a token in CAT's
+credential file with the Claude Code plugin's `claude-credential` command. Run it in your own terminal: it refuses to
+run inside a session that a runner started. Find it as the installer in step 3, then run `claude setup-token` and save
+the token that it prints, or save an Anthropic API key:
+
+```bash
+credential="$(ls -d "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cat-marketplace/plugins/cat/*/bin/claude-credential | head -n 1)"
+claude setup-token
+"$credential" set
+```
+
+On Windows, in PowerShell:
+
+```powershell
+$harnessHome = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { "$HOME\.claude" }
+$credential = (Get-ChildItem "$harnessHome\plugins\cat-marketplace\plugins\cat\*\bin\claude-credential.cmd" | Select-Object -First 1).FullName
+claude setup-token
+& $credential set
+```
+
+Each form acts on `.cat/claude/.credentials.json` in your home folder, which `CLAUDE_CONFIG_DIR` does not move:
+
+- `"$credential" set` asks for the token without showing what you paste, saves it in a file that only you can read,
+  replacing an earlier token, and prints its class: `subscription` for a `claude setup-token` token (it starts with
+  `sk-ant-oat`) or `api_key` for an API key (it starts with `sk-ant-api`). It refuses any other token. It never takes
+  the token as an argument; from a script, pass it on standard input instead, as in `"$credential" set < token.txt`.
+- `"$credential" status` reports whether a launch can use the file: `usable` with its class, `absent`, or `unusable`
+  with what to fix, such as the permissions to clear. It changes nothing.
+- `"$credential" remove` deletes the file, and `.cat/claude` when that leaves it empty.
+
+Add `--home <dir>` to act on `<dir>/.cat/claude/.credentials.json` instead, the file that a launch with `--home <dir>`
+reads; when a runner refuses a launch for want of a credential, its message gives this command with the folder to use.
+Add `--json` as the last argument to get the result as one line of JSON. The command exits with 0 when `set` saved the
+token, `status` found a usable file or `remove` left no file; with 2 when it refused before changing anything, or when
+`status` found no usable file; and with 1 when a read or write failed, which leaves the earlier file unchanged.
 
 ### Claude Code sandbox requirements
 

@@ -387,6 +387,19 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
+	 * Removes nothing: the user saves no secret for CAT's Codex sessions alone in the home folder. CAT's Claude
+	 * credential file serves Claude sessions, which only the Claude Code plugin starts, so its uninstall removes it.
+	 *
+	 * @return an empty list
+	 */
+	@Override
+	public List<Path> removeUserSecrets(Path userHome)
+	{
+		requireThat(userHome, "userHome").isAbsolute();
+		return List.of();
+	}
+
+	/**
 	 * Writes {@code rules/cat-installer.rules} unless it already holds exactly the rules for {@code installer}, deletes
 	 * a {@code rules/cat-updater.rules} file whose content is exactly what CAT wrote there before its installer was
 	 * called the installer, and records in {@code config.toml} the hash that Codex computes for each hook of the plugin

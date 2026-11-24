@@ -3,6 +3,8 @@ package com.holdmyspot.cat.claude.installer;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.claude.credential.ClaudeCredentialFile;
+import com.holdmyspot.cat.claude.credential.CredentialRefusedException;
 import com.holdmyspot.cat.claude.layout.ClaudeInstallation;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
@@ -498,6 +500,28 @@ public final class Integration implements HarnessIntegration
 		requireThat(cli, "cli").isNotNull();
 		for (PluginCommand command : PluginCommand.unregistration(keepData))
 			command.run(cli);
+	}
+
+	/**
+	 * Removes the user's CAT Claude credential file, {@code .cat/claude/.credentials.json} in {@code userHome}, and the
+	 * {@code .cat/claude} folder when that leaves it empty, as {@link ClaudeCredentialFile#remove} does.
+	 *
+	 * @return the removed file, or an empty list if the home folder held none
+	 */
+	@Override
+	public List<Path> removeUserSecrets(Path userHome) throws IOException
+	{
+		requireThat(userHome, "userHome").isAbsolute();
+		try
+		{
+			if (ClaudeCredentialFile.remove(userHome))
+				return List.of(ClaudeCredentialFile.path(userHome));
+			return List.of();
+		}
+		catch (CredentialRefusedException e)
+		{
+			throw new IOException(e.getMessage(), e);
+		}
 	}
 
 	/**

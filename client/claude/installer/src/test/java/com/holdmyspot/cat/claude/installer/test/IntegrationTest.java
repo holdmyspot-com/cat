@@ -478,6 +478,50 @@ public final class IntegrationTest
 	}
 
 	/**
+	 * Uninstall's removal of the user's secrets deletes CAT's Claude credential file of the user's home folder and the
+	 * {@code .cat/claude} folder that this leaves empty, keeps the user's other CAT files, such as {@code .cat/rules},
+	 * and names the removed file.
+	 *
+	 * @throws IOException if the fixture home cannot be written or read
+	 */
+	@Test
+	public void removesClaudeCredentialFile() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path userHome = cleanup.add(testDirectory()).toRealPath();
+			Path credential = Files.writeString(Files.createDirectories(userHome.resolve(".cat/claude")).
+				resolve(".credentials.json"), """
+				{"format_version": 1, "token": "sk-ant-oat01-fixture"}
+				""");
+			Path rule = Files.writeString(Files.createDirectories(userHome.resolve(".cat/rules")).resolve("rule.md"),
+				"rule");
+
+			List<Path> removed = new Integration(Platform.current()).removeUserSecrets(userHome);
+
+			requireThat(removed, "removed").isEqualTo(List.of(credential));
+			requireThat(Files.exists(credential.getParent(), LinkOption.NOFOLLOW_LINKS), "claudeFolder").isFalse();
+			requireThat(rule, "rule").isRegularFile();
+		}
+	}
+
+	/**
+	 * Uninstall's removal of the user's secrets removes nothing from a home folder without CAT's Claude credential file.
+	 *
+	 * @throws IOException if the fixture home cannot be created
+	 */
+	@Test
+	public void removesNothingWithoutCredentialFile() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path userHome = cleanup.add(testDirectory()).toRealPath();
+
+			requireThat(new Integration(Platform.current()).removeUserSecrets(userHome), "removed").isEmpty();
+		}
+	}
+
+	/**
 	 * Unregistration uninstalls CAT and then removes its marketplace, treating Claude Code's not-found answers as
 	 * success.
 	 *

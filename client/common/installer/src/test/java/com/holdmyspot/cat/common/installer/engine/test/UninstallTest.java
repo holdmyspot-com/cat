@@ -37,7 +37,7 @@ public final class UninstallTest
 	/**
 	 * Uninstall's steps in order.
 	 */
-	private static final List<String> STEPS = List.of("permissions", "unregister", "plugin");
+	private static final List<String> STEPS = List.of("permissions", "unregister", "plugin", "secrets");
 
 	/**
 	 * Creates the test.
@@ -66,7 +66,8 @@ public final class UninstallTest
 			requireThat(result.outcome().result(), "result").withContext(result.outcome().message(), "message").
 				isEqualTo(Result.UNINSTALLED);
 			requireThat(result.unregistered(), "unregistered").isTrue();
-			requireThat(integration.calls(), "calls").isEqualTo(List.of("removePermissions", "unregister"));
+			requireThat(integration.calls(), "calls").isEqualTo(List.of("removePermissions", "unregister",
+				"removeUserSecrets"));
 			requireThat(integration.removed(), "removed").isEqualTo(List.of(Map.of("settings.json",
 				List.of("entry"))));
 			requireThat(integration.keptData(), "keptData").isEqualTo(List.of(true));
@@ -127,6 +128,47 @@ public final class UninstallTest
 	}
 
 	/**
+	 * Returns whether an uninstall deletes CAT's plugin data.
+	 *
+	 * @return {@code false} and {@code true}
+	 */
+	@DataProvider
+	public static Object[][] dataDeletion()
+	{
+		return new Object[][]{{false}, {true}};
+	}
+
+	/**
+	 * Uninstall removes the uninstalling user's file that holds a secret for the harness's CAT sessions alone, whether
+	 * or not it deletes CAT's plugin data, names the removed file in its outcome, and leaves the user's other CAT files
+	 * alone.
+	 *
+	 * @param deleteData {@code true} to delete CAT's plugin data
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test(dataProvider = "dataDeletion")
+	public void removesUserSecrets(boolean deleteData) throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("uninstall-secrets-")));
+			Path secret = Files.writeString(Files.createDirectories(fixture.user.resolve(".cat/harness-a")).
+				resolve("secret"), "fixture secret");
+			RecordingIntegration integration = new RecordingIntegration().holdingUserSecret(".cat/harness-a/secret");
+
+			UpdateResult result = fixture.uninstaller(integration).uninstall(deleteData).outcome();
+
+			requireThat(result.result(), "result").withContext(result.message(), "message").
+				isEqualTo(Result.UNINSTALLED);
+			requireThat(Files.exists(secret, NOFOLLOW_LINKS), "secret").isFalse();
+			requireThat(result.message(), "message").contains(secret.toString());
+			requireThat(result.paths(), "paths").isEqualTo(List.of(secret));
+			requireThat(fixture.user.resolve(".cat/rules/rule.md"), "rules").isRegularFile();
+		}
+	}
+
+	/**
 	 * The folder of removed files that holds the running installer's version folder stays while the installer runs,
 	 * and the outcome names it for deletion once the installer no longer needs its own files; every other folder is
 	 * deleted.
@@ -171,7 +213,7 @@ public final class UninstallTest
 
 			requireThat(result.outcome().result(), "result").isEqualTo(Result.UNINSTALLED);
 			requireThat(result.unregistered(), "unregistered").isFalse();
-			requireThat(integration.calls(), "calls").isEqualTo(List.of("removePermissions"));
+			requireThat(integration.calls(), "calls").isEqualTo(List.of("removePermissions", "removeUserSecrets"));
 			requireThat(Files.exists(fixture.marketplace, NOFOLLOW_LINKS), "marketplace").isFalse();
 			requireThat(Files.exists(fixture.data, NOFOLLOW_LINKS), "data").isFalse();
 		}
@@ -200,7 +242,8 @@ public final class UninstallTest
 			RecordingIntegration integration = new RecordingIntegration();
 
 			UninstallResult result = new Uninstaller(fixture.data, trust, new RegisteredProvider(),
-				integration.session(), fixture.running, Clock.systemUTC(), interval -> () -> {}).uninstall(true);
+				integration.session(), fixture.running, fixture.user, Clock.systemUTC(), interval -> () -> {}).
+				uninstall(true);
 
 			requireThat(result.outcome().message(), "message").isEqualTo("CAT was removed from this harness.");
 			requireThat(result.outcome().result(), "result").isEqualTo(Result.UNINSTALLED);
@@ -238,7 +281,7 @@ public final class UninstallTest
 
 			requireThat(retried.result(), "retried").isEqualTo(Result.UNINSTALLED);
 			requireThat(integration.calls(), "calls").isEqualTo(List.of("removePermissions", "unregister",
-				"unregister"));
+				"unregister", "removeUserSecrets"));
 		}
 	}
 
@@ -263,7 +306,7 @@ public final class UninstallTest
 
 			requireThat(result.result(), "result").isEqualTo(Result.UNINSTALLED);
 			requireThat(integration.calls(), "calls").isEqualTo(List.of("removePermissions", "unregister",
-				"unregister"));
+				"removeUserSecrets", "unregister", "removeUserSecrets"));
 			requireThat(Files.exists(fixture.marketplace, NOFOLLOW_LINKS), "marketplace").isFalse();
 			requireThat(Files.exists(fixture.data.resolve("state/uninstall.json"), NOFOLLOW_LINKS), "journal").
 				isFalse();
@@ -302,7 +345,7 @@ public final class UninstallTest
 			requireThat(engine.install("v1.1", request).result(), "installed").
 				isEqualTo(Result.INSTALLED);
 			Uninstaller uninstaller = new Uninstaller(data, trust, new RegisteredProvider(), integration.session(),
-				root.resolve("download/plugin"), Clock.systemUTC(), interval -> () -> {});
+				root.resolve("download/plugin"), root.resolve("user"), Clock.systemUTC(), interval -> () -> {});
 			requireThat(uninstaller.uninstall(false).outcome().result(), "stopped").
 				isEqualTo(Result.UNINSTALL_INCOMPLETE);
 			integration.maintain(Map.of("settings.json", List.of("entry")));
@@ -316,7 +359,7 @@ public final class UninstallTest
 			requireThat(result.result(), "result").withContext(result.message(), "message").
 				isEqualTo(Result.UNINSTALLED);
 			requireThat(integration.calls().subList(before, integration.calls().size()), "calls").
-				isEqualTo(List.of("removePermissions", "unregister"));
+				isEqualTo(List.of("removePermissions", "unregister", "removeUserSecrets"));
 			requireThat(Files.exists(RecordingIntegration.registeredVersion(home), NOFOLLOW_LINKS), "plugin").isFalse();
 		}
 	}
@@ -388,8 +431,12 @@ public final class UninstallTest
 				expectedCalls.add("removePermissions");
 			if (!done.contains("unregister"))
 				expectedCalls.add("unregister");
+			if (!done.contains("secrets"))
+				expectedCalls.add("removeUserSecrets");
 			requireThat(integration.calls(), "calls").isEqualTo(expectedCalls);
-			requireThat(Files.exists(fixture.marketplace, NOFOLLOW_LINKS), "marketplace").isFalse();
+			// The recorded progress, not the fixture's files, says whether an earlier uninstall deleted the plugin
+			if (!done.contains("plugin"))
+				requireThat(Files.exists(fixture.marketplace, NOFOLLOW_LINKS), "marketplace").isFalse();
 		}
 	}
 
@@ -455,7 +502,7 @@ public final class UninstallTest
 		 */
 		private Uninstaller uninstaller(RecordingIntegration integration)
 		{
-			return new Uninstaller(data, trust, new RegisteredProvider(), integration.session(), running,
+			return new Uninstaller(data, trust, new RegisteredProvider(), integration.session(), running, user,
 				Clock.systemUTC(), interval -> () -> {});
 		}
 	}

@@ -4,6 +4,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
+import com.holdmyspot.cat.claude.credential.ClaudeCredentialFile;
+import com.holdmyspot.cat.claude.credential.CredentialRefusedException;
 import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
@@ -21,12 +23,6 @@ import java.nio.channels.SeekableByteChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.nio.file.attribute.AclEntry;
-import java.nio.file.attribute.AclEntryPermission;
-import java.nio.file.attribute.AclEntryType;
-import java.nio.file.attribute.FileAttribute;
-import java.nio.file.attribute.PosixFilePermission;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
@@ -251,7 +247,15 @@ public final class ClaudeAuthentication
 		String helperLifetime = null;
 		if (helper != null)
 			helperLifetime = text(env.path(HELPER_LIFETIME));
-		Optional<ClaudeCredentialFile> credential = ClaudeCredentialFile.read(json, source.directory());
+		Optional<ClaudeCredentialFile> credential;
+		try
+		{
+			credential = ClaudeCredentialFile.read(json, source.directory());
+		}
+		catch (CredentialRefusedException e)
+		{
+			throw new SessionRefusedException("CAT does not start the session: " + e.getMessage(), e);
+		}
 		if (tokens.isEmpty() && helper == null && credential.isEmpty())
 		{
 			// The refusal gives both fixes without looking for a /login login, which the runner never reads
@@ -604,7 +608,7 @@ public final class ClaudeAuthentication
 		if (token == null)
 			return;
 		try (SeekableByteChannel channel = Files.newByteChannel(file, EnumSet.of(StandardOpenOption.CREATE_NEW,
-			StandardOpenOption.WRITE), ownerOnly(claudeFolder)))
+			StandardOpenOption.WRITE), SecretFile.ownerOnlyFile(claudeFolder)))
 		{
 			ByteBuffer bytes = ByteBuffer.wrap(token.getBytes(UTF_8));
 			while (bytes.hasRemaining())
@@ -622,45 +626,6 @@ public final class ClaudeAuthentication
 			}
 			throw e;
 		}
-	}
-
-	/**
-	 * Returns the access that a new key file gets as it is created: on a file system with POSIX permissions, reading and
-	 * writing by its owner alone; on one with access lists, an access list that grants its owner alone.
-	 *
-	 * @param claudeFolder the session's Claude folder, whose owner owns the file
-	 * @return the file attribute
-	 * @throws IOException if the file system reports neither, or the folder's owner cannot be read
-	 */
-	private static FileAttribute<?> ownerOnly(Path claudeFolder) throws IOException
-	{
-		Set<String> views = claudeFolder.getFileSystem().supportedFileAttributeViews();
-		if (views.contains("posix"))
-		{
-			return PosixFilePermissions.asFileAttribute(EnumSet.of(PosixFilePermission.OWNER_READ,
-				PosixFilePermission.OWNER_WRITE));
-		}
-		if (views.contains("acl"))
-		{
-			AclEntry owner = AclEntry.newBuilder().setType(AclEntryType.ALLOW).
-				setPrincipal(Files.getOwner(claudeFolder)).setPermissions(EnumSet.allOf(AclEntryPermission.class)).build();
-			return new FileAttribute<List<AclEntry>>()
-			{
-				@Override
-				public String name()
-				{
-					return "acl:acl";
-				}
-
-				@Override
-				public List<AclEntry> value()
-				{
-					return List.of(owner);
-				}
-			};
-		}
-		throw new IOException("The file system of " + claudeFolder + " reports neither POSIX permissions nor an " +
-			"access list, so CAT cannot create the session's key file readable by its owner alone.");
 	}
 
 	/**

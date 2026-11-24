@@ -664,6 +664,8 @@ public final class DistributionMain
 				"com.holdmyspot.cat.claude.runner.CodexArtifact"),
 			new Launcher("codex-runner", "com.holdmyspot.cat.claude.cli",
 				"com.holdmyspot.cat.claude.runner.CodexRunnerRelay"),
+			new Launcher("claude-credential", "com.holdmyspot.cat.claude.cli",
+				"com.holdmyspot.cat.claude.ClaudeCredentialCli"),
 			new Launcher("get-history", "com.holdmyspot.cat.claude.cli",
 				"com.holdmyspot.cat.claude.ClaudeGetHistory"),
 			new Launcher("session-start", "com.holdmyspot.cat.claude.cli",

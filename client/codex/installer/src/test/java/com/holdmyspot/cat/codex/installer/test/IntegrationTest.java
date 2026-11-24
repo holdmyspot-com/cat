@@ -71,6 +71,30 @@ public final class IntegrationTest
 	}
 
 	/**
+	 * Codex's uninstall leaves CAT's Claude credential file of the user's home folder, which serves Claude sessions,
+	 * and removes nothing else of the home folder as a secret either.
+	 *
+	 * @throws IOException if the fixture home cannot be written or read
+	 */
+	@Test
+	public void leavesClaudeCredentialFile() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path userHome = cleanup.add(Files.createTempDirectory(testRoot(), "codex-uninstall-")).toRealPath();
+			Path credential = Files.writeString(Files.createDirectories(userHome.resolve(".cat/claude")).
+				resolve(".credentials.json"), """
+				{"format_version": 1, "token": "sk-ant-oat01-fixture"}
+				""");
+
+			List<Path> removed = provider().removeUserSecrets(userHome);
+
+			requireThat(removed, "removed").isEmpty();
+			requireThat(credential, "credential").isRegularFile();
+		}
+	}
+
+	/**
 	 * Codex runs the version folder with the greatest name, so a version folder whose name is greater than the
 	 * registered version's would run instead of it, and one whose name is smaller would not.
 	 */

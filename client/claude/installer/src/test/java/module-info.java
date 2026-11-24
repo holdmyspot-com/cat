@@ -16,5 +16,6 @@ module com.holdmyspot.cat.claude.installer.test
 	provides com.holdmyspot.cat.common.installer.fakes.test.HarnessProgram.Factory with
 		com.holdmyspot.cat.claude.installer.test.ClaudeProgramFactory;
 
+	exports com.holdmyspot.cat.claude.credential.test to org.testng;
 	exports com.holdmyspot.cat.claude.installer.test to org.testng;
 }

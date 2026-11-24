@@ -1,6 +1,7 @@
 /**
- * Plans activation of authenticated CAT releases in Claude Code's directory marketplace, and registers CAT and the
- * installer's agent permissions with Claude Code.
+ * Plans activation of authenticated CAT releases in Claude Code's directory marketplace, registers CAT and the
+ * installer's agent permissions with Claude Code, and reads, saves and removes CAT's Claude credential file, which the
+ * runner, the {@code claude-credential} command and uninstall share.
  */
 module com.holdmyspot.cat.claude.installer
 {
@@ -11,6 +12,8 @@ module com.holdmyspot.cat.claude.installer
 	requires tools.jackson.core;
 	requires tools.jackson.databind;
 
+	exports com.holdmyspot.cat.claude.credential to com.holdmyspot.cat.claude.installer.test,
+		com.holdmyspot.cat.claude.cli, com.holdmyspot.cat.claude.cli.test;
 	exports com.holdmyspot.cat.claude.installer to com.holdmyspot.cat.claude.installer.test,
 		com.holdmyspot.cat.claude.cli, com.holdmyspot.cat.claude.cli.test;
 

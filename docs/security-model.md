@@ -247,12 +247,15 @@ Linux and macOS, uninstall deletes the folder that holds its version folder afte
 Windows, install and uninstall start Windows PowerShell, which waits for the installer to exit and then deletes that
 folder, retrying for up to 60 seconds.
 
-An uninstall removes, in three steps that it records in `state/uninstall.json`: the permission entries that the install
+An uninstall removes, in four steps that it records in `state/uninstall.json`: the permission entries that the install
 added for this harness (in Codex also the profile selection, the profile and the hook hashes in `config.toml`); the
-plugin's registration in the harness; and the plugin files, with all version folders and every copy of the plugin that
+plugin's registration in the harness; the plugin files, with all version folders and every copy of the plugin that
 the harness keeps (in Codex `plugins/cache/cat`), and the Codex custom agents that CAT owns, recorded in its ownership
-manifest and still unchanged. It never deletes unrelated settings, agents that CAT does not own, or your own files,
-including `~/.cat/rules`. When the harness program that the first install recorded no longer exists, uninstall cannot
+manifest and still unchanged; and, in Claude Code, your CAT credential file `~/.cat/claude/.credentials.json`, with
+`~/.cat/claude` when that leaves it empty, whether or not you delete the plugin data, because the long-lived token in it
+has no use without CAT. Its result names the deleted file. A credential file that you saved under another home folder
+with `--home` stays until `claude-credential remove --home <dir>` removes it. It never deletes unrelated settings,
+agents that CAT does not own, or your own files, including `~/.cat/rules`. When the harness program that the first install recorded no longer exists, uninstall cannot
 unregister the plugin: it removes everything else and reports `uninstalled` with `"unregistered": false`.
 
 ## Runners' isolation
@@ -277,6 +280,17 @@ receives in Claude Code's own order, which is the order of this list:
 - CAT's credential file, `.cat/claude/.credentials.json` in the source home, which holds an Anthropic API key or a
   token that `claude setup-token` printed, saved with `claude-credential set`. It takes the place where Claude Code
   ranks a `/login` login, last. `CLAUDE_CONFIG_DIR` does not move it.
+
+`claude-credential`, a launcher of the Claude Code plugin, saves, reports and removes CAT's credential file. `set` reads
+the token from a prompt that does not show what you paste, or from standard input, never from an argument, which
+process listings and shell history would show, and refuses a token that starts with neither `sk-ant-api` nor
+`sk-ant-oat`. It writes a new file, readable by you alone (mode `0600`, in a `.cat/claude` folder of mode `0700`, or an
+access list of you alone on Windows), and renames it over the earlier file, so that a launch that reads the file
+meanwhile reads the earlier token or the new one. It refuses a `.cat/claude` or `.credentials.json` that is a symbolic
+link or an entry of the wrong kind. No report or message of the command holds the token. It refuses to run in a
+nested session, so that a session cannot choose the credential that its parent's later launches bill. The sessions
+that runners start cannot read the file, but your own Claude Code sessions, which CAT's installer does not restrict,
+can, as they can read a token in your own `~/.claude/settings.json`.
 
 A chosen token reaches the session's Claude Code only through a key file, `cat-api-key` in the session's own `.claude`
 folder, readable by you alone, which the session's `apiKeyHelper` prints. The runner writes it before the session's
