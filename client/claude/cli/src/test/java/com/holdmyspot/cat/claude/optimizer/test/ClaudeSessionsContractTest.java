@@ -382,7 +382,7 @@ public final class ClaudeSessionsContractTest
 				cleanup.add(root);
 				RecordedClaude claude = new RecordedClaude(List.of());
 				Path home = SourceHomes.create(root, "home");
-				SourceHomes.storedLogin(home);
+				SourceHomes.catCredential(home, SourceHomes.SETUP_TOKEN);
 				ClaudeSessions port = ClaudeSessionsSecrets.getClaudeSessionsAccess().newClaudeSessions(
 					new RunnerSessions.Settings(jvm, root, root.resolve("results"), List::of, false,
 						Map.of(Platform.current().homeVariable(), home.toString()), root, HarnessCapacity.unlimited(),
@@ -991,7 +991,8 @@ public final class ClaudeSessionsContractTest
 		@Override
 		public Set<HostLogin> acceptableLogins()
 		{
-			// The only check that asks for the login gives the port a source home whose only credential is a stored login
+			// The only check that asks for the login gives the port a source home whose only credential is a setup token in
+			// CAT's credential file
 			return Set.of(HostLogin.SUBSCRIPTION);
 		}
 

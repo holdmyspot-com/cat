@@ -80,8 +80,9 @@ import tools.jackson.databind.json.JsonMapper;
 public final class ClaudeRunner
 {
 	/**
-	 * The variable with which a caller asks Claude Code to remove credentials from its commands' environment, which the
-	 * session's environment sets only from the source home's authentication.
+	 * The variable with which a caller asks Claude Code to remove credentials and other settings from its commands'
+	 * environment. No session sets it: it would also take Git, SSH, cloud and tool settings from every command, and the
+	 * session's Claude process holds no token for it to remove.
 	 */
 	private static final String SCRUB_VARIABLE = "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB";
 	/**
@@ -297,6 +298,8 @@ public final class ClaudeRunner
 			manager.markHarnessStarting(nestedSession);
 			try
 			{
+				// Written last, so that the token rests in the slot only while the Claude process can need it
+				authentication.writeKeyFile(isolatedConfiguration);
 				child.start(command, worktree, isolatedEnvironment, executables);
 				if (sandboxed(role))
 				{
@@ -307,19 +310,18 @@ public final class ClaudeRunner
 					process = new ClaudeProcess(scope, child.process(), projectDirectory, transcripts);
 				manager.recordHarnessProcess(nestedSession, process.pid(), process.processStart());
 				identityRecorded = true;
-				if (watch == null)
-				{
-					LiveNestedSession session = new LiveNestedSession(nestedSession, process, scope, lock, catPlugin);
-					child.release();
-					return session;
-				}
-				LiveNestedSession session = new LiveNestedSession(nestedSession, watch.guard(process), scope, lock, catPlugin);
+				HarnessProcess session = process;
+				if (watch != null)
+					session = watch.guard(process);
+				LiveNestedSession live = new LiveNestedSession(nestedSession, removingKeyFile(session, isolatedConfiguration),
+					scope, lock, catPlugin);
 				child.release();
-				return session;
+				return live;
 			}
 			catch (IOException | RuntimeException e)
 			{
 				cleanupLaunchFailure(child, process, manager, nestedSession, identityRecorded, e);
+				deleteKeyFile(isolatedConfiguration, e);
 				throw e;
 			}
 		}
@@ -336,6 +338,138 @@ public final class ClaudeRunner
 			if (!resumes)
 				manager.fail(nestedSession, e.getMessage());
 			throw e;
+		}
+	}
+
+	/**
+	 * Returns a session's harness process whose close also deletes the session's key file, once the session's Claude
+	 * process has exited and before the caller retains or empties the session's slot, so that the token rests in the
+	 * slot only while the Claude process runs.
+	 *
+	 * @param session      the session's harness process
+	 * @param claudeFolder the session's Claude folder, which holds its key file
+	 * @return the harness process
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public static HarnessProcess removingKeyFile(HarnessProcess session, Path claudeFolder)
+	{
+		requireThat(session, "session").isNotNull();
+		requireThat(claudeFolder, "claudeFolder").isNotNull();
+		return new KeyFileRemoval(session, claudeFolder);
+	}
+
+	/**
+	 * Deletes a session's key file after its launch failed.
+	 *
+	 * @param claudeFolder the session's Claude folder
+	 * @param primary      the launch failure, which receives a failure to delete the file
+	 */
+	private static void deleteKeyFile(Path claudeFolder, Throwable primary)
+	{
+		try
+		{
+			Files.deleteIfExists(ClaudeAuthentication.keyFile(claudeFolder));
+		}
+		catch (IOException e)
+		{
+			primary.addSuppressed(e);
+		}
+	}
+
+	/**
+	 * A session's harness process whose close also deletes the session's key file.
+	 */
+	private static final class KeyFileRemoval implements HarnessProcess
+	{
+		private final HarnessProcess session;
+		private final Path keyFile;
+
+		/**
+		 * Creates a harness process.
+		 *
+		 * @param session      the session's harness process
+		 * @param claudeFolder the session's Claude folder
+		 */
+		private KeyFileRemoval(HarnessProcess session, Path claudeFolder)
+		{
+			this.session = session;
+			this.keyFile = ClaudeAuthentication.keyFile(claudeFolder);
+		}
+
+		@Override
+		public void prepareTurn()
+		{
+			session.prepareTurn();
+		}
+
+		@Override
+		public HarnessProcessResult sendTurn(String request) throws IOException
+		{
+			return session.sendTurn(request);
+		}
+
+		@Override
+		public HarnessProcessResult sendTurn(String request, HarnessEventListener listener) throws IOException
+		{
+			return session.sendTurn(request, listener);
+		}
+
+		@Override
+		public HarnessProcessResult sendTurn(String request, HarnessEventListener listener, TurnMode mode)
+			throws IOException
+		{
+			return session.sendTurn(request, listener, mode);
+		}
+
+		@Override
+		public void steer(String request) throws IOException
+		{
+			session.steer(request);
+		}
+
+		@Override
+		public void interrupt() throws IOException
+		{
+			session.interrupt();
+		}
+
+		@Override
+		public Optional<Path> sessionTranscript()
+		{
+			return session.sessionTranscript();
+		}
+
+		@Override
+		public Optional<String> harnessSessionId()
+		{
+			return session.harnessSessionId();
+		}
+
+		@Override
+		public boolean isAlive()
+		{
+			return session.isAlive();
+		}
+
+		/**
+		 * Closes the session's harness process, which ends its Claude process, then deletes the key file, even if the
+		 * close failed.
+		 *
+		 * @throws IOException if the close fails or the file cannot be deleted
+		 */
+		@Override
+		public void close() throws IOException
+		{
+			try
+			{
+				session.close();
+			}
+			catch (IOException | RuntimeException e)
+			{
+				deleteKeyFile(keyFile.getParent(), e);
+				throw e;
+			}
+			Files.deleteIfExists(keyFile);
 		}
 	}
 
@@ -509,14 +643,13 @@ public final class ClaudeRunner
 	 * <p>
 	 * The session's credential comes only from the source home: the environment holds none of the caller's values of
 	 * {@link ClaudeAuthentication#CREDENTIAL_VARIABLES}, from its environment or its Claude settings, and none of its
-	 * {@code CLAUDE_CODE_SUBPROCESS_ENV_SCRUB} or {@code CAT_HOST_LOGIN}. The source home's {@code .claude} folder is the
-	 * session's login store, so that the session's Claude Code reads and refreshes that folder's stored login in place,
-	 * while the session's own settings stay the nested session's. When the source puts a token into the environment, the
-	 * environment also asks Claude Code to keep every credential, and its configuration directory's variable, from the
-	 * commands and hooks that it starts; CAT's hooks then find Claude's configuration directory through the home
-	 * directory, as {@code .claude} in it. Claude Code keeps the project's {@code .git/worktrees} read-only in its
-	 * sandbox whether or not that is asked, so the session's commands register no worktree; the prompt optimizer's
-	 * registration operations run outside the sandbox.
+	 * {@code CLAUDE_CODE_SUBPROCESS_ENV_SCRUB} or {@code CAT_HOST_LOGIN}. It names no login store, so the session's
+	 * Claude Code keeps any login that {@code /login} stores in the session's own {@code .claude} folder and never reads,
+	 * refreshes or replaces the user's. The environment holds no token: a token that the source home selects reaches
+	 * Claude Code only through the session's key file, so the commands and hooks that Claude Code starts inherit no
+	 * credential, and no request to remove credentials from them. Claude Code keeps the project's
+	 * {@code .git/worktrees} read-only in its sandbox whether or not that is asked, so the session's commands register no
+	 * worktree; the prompt optimizer's registration operations run outside the sandbox.
 	 *
 	 * @param scope          services shared for the runner process lifetime
 	 * @param environment    the caller's environment
@@ -608,7 +741,8 @@ public final class ClaudeRunner
 	 * <p>
 	 * A login or configuration file that does not exist when the session starts is left out, because Claude's sandbox
 	 * creates an empty file at a missing denied path, which would change the user's harness configuration; the
-	 * session's own settings file, which the runner writes before the session starts, is always included.
+	 * session's own settings file and its key file, which the runner writes before the session starts, are always
+	 * included.
 	 *
 	 * @param manager          the nested-session manager
 	 * @param nestedSession    the session's nested session
@@ -683,6 +817,7 @@ public final class ClaudeRunner
 				result.add(file);
 		}
 		result.add(home.resolve(".claude").resolve("settings.json"));
+		result.add(ClaudeAuthentication.keyFile(home.resolve(".claude")));
 		return List.copyOf(result);
 	}
 

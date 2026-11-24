@@ -25,8 +25,10 @@ import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
 import com.holdmyspot.cat.common.runner.NestedSession;
 import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
+import com.holdmyspot.cat.common.runner.ProcessHandleLiveness;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestBroker;
+import com.holdmyspot.cat.common.runner.SessionSlots;
 import com.holdmyspot.cat.common.runner.SetupCommands;
 import com.holdmyspot.cat.common.runner.fakes.test.FakeHarnessCli;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
@@ -38,8 +40,12 @@ import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -69,6 +75,10 @@ public final class ClaudeRunnerTest
 	 */
 	private static final List<String> CREDENTIAL_VARIABLES = List.of("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
 		"ANTHROPIC_BASE_URL", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_SECURESTORAGE_CONFIG_DIR");
+	/**
+	 * The token of the CAT credential file of a source whose settings also name a credential.
+	 */
+	private static final String FILE_TOKEN = SourceHomes.SETUP_TOKEN + "-file";
 	/**
 	 * The Claude Code variables that decide whether and how a session starts subagents.
 	 */
@@ -808,7 +818,7 @@ public final class ClaudeRunnerTest
 				directory.resolve("initial-project"), other.directory(), evidence.directory().resolve("project"),
 				evidence.directory().resolve("home"), evidence.directory().resolve("session.json"),
 				evidence.directory().resolve(".lock"), workspaces, directory.resolve("home/.claude/settings.json"),
-				directory.resolve("home/.claude/.credentials.json")));
+				directory.resolve("home/.claude/cat-api-key"), directory.resolve("home/.claude/.credentials.json")));
 		}
 	}
 
@@ -854,7 +864,7 @@ public final class ClaudeRunnerTest
 				directory.resolve(".lock"), directory.resolve("initial-project"),
 				evidence.directory().resolve("project"), evidence.directory().resolve("home"),
 				evidence.directory().resolve("session.json"), evidence.directory().resolve(".lock"),
-				directory.resolve("home/.claude/settings.json")));
+				directory.resolve("home/.claude/settings.json"), directory.resolve("home/.claude/cat-api-key")));
 		}
 	}
 
@@ -1300,7 +1310,7 @@ public final class ClaudeRunnerTest
 			environment.put("PATH", "");
 			environment.put(Platform.current().homeVariable(), runnerHome.toString());
 			environment.put("CLAUDE_CODE_SUBAGENT_MODEL", "haiku");
-			// The source puts no token in the environment, so Claude Code is not asked to scrub its commands' environment
+			// No session asks Claude Code to scrub its commands' environment, so the runner's own request stays out
 			environment.put("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB", "1");
 			ObjectNode settingsEnv = JSON.createObjectNode();
 			for (String variable : CREDENTIAL_VARIABLES)
@@ -1311,7 +1321,7 @@ public final class ClaudeRunnerTest
 			Path runnerSettings = Files.writeString(runnerHome.resolve(".claude/settings.json"),
 				JSON.writeValueAsString(JSON.createObjectNode().set("env", settingsEnv)));
 			ClaudeAuthentication authentication = ClaudeAuthentication.read(JSON, named(source, null), environment,
-				Platform.current());
+				Platform.current(), SourceHomes.PLUGIN);
 
 			Map<String, String> result = ClaudeRunner.processEnvironment(scope, environment,
 				HarnessDependencyCaches.NONE, runnerSettings, root.resolve("session-home"), null, authentication);
@@ -1321,23 +1331,23 @@ public final class ClaudeRunnerTest
 				requireThat(result.values(), "values").doesNotContain("runner-" + variable).
 					doesNotContain("settings-" + variable);
 			}
-			requireThat(result.get("CLAUDE_SECURESTORAGE_CONFIG_DIR"), "loginStore").
-				isEqualTo(source.resolve(".claude").toString());
+			requireThat(result.keySet(), "variables").doesNotContain("CLAUDE_SECURESTORAGE_CONFIG_DIR");
 			requireThat(result.get("CLAUDE_CODE_SUBAGENT_MODEL"), "subagentModel").isEqualTo("haiku");
 			requireThat(result.keySet(), "variables").doesNotContain("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB");
 		}
 	}
 
 	/**
-	 * Verifies that a token in the source's settings reaches the session's Claude process, which then asks Claude Code
-	 * to keep it from every command and hook, and that the process states the token's class of login.
+	 * Verifies that a token in the source's settings never reaches the session's Claude process, which therefore holds
+	 * no token variable, no request to scrub its commands' environment and no fixture token as any variable's value,
+	 * and that the process states the token's class of login.
 	 *
 	 * @param variable the token's variable
 	 * @param expected the class that {@code CAT_HOST_LOGIN} states
 	 * @throws IOException if the fixture or the environment cannot be built
 	 */
 	@Test(dataProvider = "sourceTokens")
-	public void passesSourceTokenWithScrub(String variable, String expected) throws IOException
+	public void keepsSourceTokenOutOfEnvironment(String variable, String expected) throws IOException
 	{
 		// Requirement: R-I14
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
@@ -1351,11 +1361,8 @@ public final class ClaudeRunnerTest
 
 			Map<String, String> result = sessionEnvironment(scope, root, source, null);
 
-			requireThat(result.get(variable), variable).isEqualTo(SourceHomes.SECRET);
-			requireThat(result.get("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"), "scrub").isEqualTo("1");
+			requireNoToken(result);
 			requireThat(result.get("CAT_HOST_LOGIN"), "hostLogin").isEqualTo(expected);
-			requireThat(result.get("CLAUDE_SECURESTORAGE_CONFIG_DIR"), "loginStore").
-				isEqualTo(source.resolve(".claude").toString());
 		}
 	}
 
@@ -1375,8 +1382,43 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
-	 * Verifies that a gateway's token and base URL in the source's settings both reach the session's Claude process,
-	 * with the scrub, and that the process states the class of login that the launch declares.
+	 * Verifies that a source whose selected credential is a {@code claude setup-token} token keeps the class
+	 * {@code subscription} when a stored login lies beside it, and takes the declared class when the source also names
+	 * a base URL, while the token stays out of the session's Claude process.
+	 *
+	 * @throws IOException if the fixture or the environment cannot be built
+	 */
+	@Test
+	public void setupTokenKeepsSubscription() throws IOException
+	{
+		// Requirement: R-I14
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-source-setup-token-")).toRealPath();
+			Path source = SourceHomes.create(root, "source");
+			SourceHomes.storedLogin(source);
+			SourceHomes.settings(source, """
+				{"env": {"CLAUDE_CODE_OAUTH_TOKEN": "%s"}}
+				""".formatted(SourceHomes.SETUP_TOKEN));
+			Path gateway = SourceHomes.create(root, "gateway");
+			SourceHomes.settings(gateway, """
+				{"env": {"CLAUDE_CODE_OAUTH_TOKEN": "%s", "ANTHROPIC_BASE_URL": "https://gateway.example"}}
+				""".formatted(SourceHomes.SETUP_TOKEN));
+
+			Map<String, String> alone = sessionEnvironment(scope, root, source, null);
+			Map<String, String> behindGateway = sessionEnvironment(scope, root, gateway, "api_key");
+
+			requireNoToken(alone);
+			requireThat(alone.get("CAT_HOST_LOGIN"), "aloneHostLogin").isEqualTo("subscription");
+			requireNoToken(behindGateway);
+			requireThat(behindGateway.get("CAT_HOST_LOGIN"), "gatewayHostLogin").isEqualTo("api_key");
+		}
+	}
+
+	/**
+	 * Verifies that a gateway's base URL in the source's settings reaches the session's Claude process while its token
+	 * does not, and that the process states the class of login that the launch declares.
 	 *
 	 * @param declared the declared class
 	 * @throws IOException if the fixture or the environment cannot be built
@@ -1396,9 +1438,8 @@ public final class ClaudeRunnerTest
 
 			Map<String, String> result = sessionEnvironment(scope, root, source, declared);
 
-			requireThat(result.get("ANTHROPIC_AUTH_TOKEN"), "token").isEqualTo(SourceHomes.SECRET);
+			requireNoToken(result);
 			requireThat(result.get("ANTHROPIC_BASE_URL"), "baseUrl").isEqualTo("https://gateway.example");
-			requireThat(result.get("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"), "scrub").isEqualTo("1");
 			requireThat(result.get("CAT_HOST_LOGIN"), "hostLogin").isEqualTo(declared);
 		}
 	}
@@ -1412,6 +1453,23 @@ public final class ClaudeRunnerTest
 	public static Object[][] loginClasses()
 	{
 		return new Object[][]{{"subscription"}, {"api_key"}};
+	}
+
+	/**
+	 * Requires that the environment of a session's Claude process holds no token variable, no request to scrub its
+	 * commands' environment and no fixture token as any variable's value.
+	 *
+	 * @param environment the environment
+	 */
+	private static void requireNoToken(Map<String, String> environment)
+	{
+		requireThat(environment.keySet(), "variables").doesNotContainAny(List.of("ANTHROPIC_API_KEY",
+			"ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"));
+		for (Map.Entry<String, String> entry : environment.entrySet())
+		{
+			requireThat(entry.getValue(), entry.getKey()).doesNotContain(SourceHomes.SECRET).
+				doesNotContain(SourceHomes.SETUP_TOKEN);
+		}
 	}
 
 	/**
@@ -1441,35 +1499,261 @@ public final class ClaudeRunnerTest
 				requireThat(result.keySet(), "variables").doesNotContain(variable);
 			}
 			requireThat(result.get("CAT_HOST_LOGIN"), "hostLogin").isEqualTo("api_key");
-			requireThat(result.get("CLAUDE_SECURESTORAGE_CONFIG_DIR"), "loginStore").
-				isEqualTo(source.resolve(".claude").toString());
+			requireThat(result.keySet(), "variables").doesNotContain("CLAUDE_SECURESTORAGE_CONFIG_DIR");
 		}
 	}
 
 	/**
-	 * Verifies that a source whose only credential is the stored login gives the class {@code subscription} and that
-	 * the session shares the source's login store rather than receiving a copy of the login in its home.
+	 * Verifies that a source whose settings name no credential delivers the token of CAT's credential file through the
+	 * session's key file, with the class that the token's prefix gives, or the declared class when the source names a
+	 * base URL, and that the evidence names the file by its path in the source home.
 	 *
+	 * @param token      the file's token
+	 * @param gateway    {@code true} if the source's settings name a base URL
+	 * @param declared   the class that the launch declares, or {@code null} for none
+	 * @param loginClass the class that {@code CAT_HOST_LOGIN} states
 	 * @throws IOException if the fixture or the environment cannot be built
 	 */
-	@Test
-	public void storedLoginIsSharedNotCopied() throws IOException
+	@Test(dataProvider = "catCredentials")
+	public void deliversCatCredentialFile(String token, boolean gateway, String declared, String loginClass)
+		throws IOException
 	{
 		// Requirement: R-I14
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-source-login-")).toRealPath();
+			Path root = cleanup.add(Files.createTempDirectory("cat-credential-file-")).toRealPath();
 			Path source = SourceHomes.create(root, "source");
-			SourceHomes.storedLogin(source);
+			SourceHomes.catCredential(source, token);
+			List<String> parts = new ArrayList<>();
+			if (gateway)
+			{
+				SourceHomes.settings(source, """
+					{"env": {"ANTHROPIC_BASE_URL": "https://gateway.example"}}
+					""");
+				parts.add("ANTHROPIC_BASE_URL");
+			}
+			parts.add(".cat/claude/.credentials.json");
+			ClaudeAuthentication authentication = ClaudeAuthentication.read(JSON, named(source, declared), Map.of(),
+				Platform.current(), SourceHomes.PLUGIN);
+			Path claudeFolder = Files.createDirectories(root.resolve("session-home/.claude"));
 
-			Map<String, String> result = sessionEnvironment(scope, root, source, null);
+			Map<String, String> result = sessionEnvironment(scope, root, source, declared);
+			authentication.writeKeyFile(claudeFolder);
 
-			requireThat(result.get("CAT_HOST_LOGIN"), "hostLogin").isEqualTo("subscription");
-			requireThat(result.get("CLAUDE_SECURESTORAGE_CONFIG_DIR"), "loginStore").
-				isEqualTo(source.resolve(".claude").toString());
-			requireThat(Files.exists(root.resolve("session-home/.claude/.credentials.json")), "copied").isFalse();
+			requireNoToken(result);
+			requireThat(result.get("CAT_HOST_LOGIN"), "hostLogin").isEqualTo(loginClass);
+			requireThat(Files.readString(ClaudeAuthentication.keyFile(claudeFolder)), "keyFile").isEqualTo(token);
+			requireThat(authentication.evidence().parts(), "parts").isEqualTo(parts);
+			requireThat(AuthenticationOptions.classValue(authentication.evidence().loginClass()), "loginClass").
+				isEqualTo(loginClass);
 		}
+	}
+
+	/**
+	 * Returns the tokens of CAT's credential file, each with whether the source names a base URL, the class that the
+	 * launch declares and the class that the session states.
+	 *
+	 * @return the cases
+	 */
+	@DataProvider
+	public static Object[][] catCredentials()
+	{
+		return new Object[][]
+		{
+			{SourceHomes.SECRET, false, null, "api_key"},
+			{SourceHomes.SETUP_TOKEN, false, null, "subscription"},
+			{SourceHomes.SETUP_TOKEN, true, "api_key", "api_key"}
+		};
+	}
+
+	/**
+	 * Verifies that a credential that the source's settings name outranks CAT's credential file, which Claude Code's
+	 * order ranks last, in the stored login's place: the session receives that credential, and the file's token reaches
+	 * no key file.
+	 *
+	 * @param settings  the source's {@code settings.json}
+	 * @param delivered the token that the key file holds, or {@code null} if the source helper is selected
+	 * @param part      the name of the part that the session receives
+	 * @throws IOException if the fixture cannot be built
+	 */
+	@Test(dataProvider = "credentialsBesideCatFile")
+	public void settingsCredentialOutranksCatFile(String settings, String delivered, String part) throws IOException
+	{
+		// Requirement: R-I14
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-credential-rank-")).toRealPath();
+			Path source = SourceHomes.create(root, "source");
+			SourceHomes.secret(source.resolve("key"));
+			SourceHomes.catCredential(source, FILE_TOKEN);
+			SourceHomes.settings(source, settings);
+			ClaudeAuthentication authentication = ClaudeAuthentication.read(JSON, named(source, "subscription"), Map.of(),
+				Platform.current(), SourceHomes.PLUGIN);
+			Path claudeFolder = Files.createDirectories(root.resolve("session-home/.claude"));
+
+			authentication.writeKeyFile(claudeFolder);
+
+			Path keyFile = ClaudeAuthentication.keyFile(claudeFolder);
+			if (delivered == null)
+				requireThat(Files.exists(keyFile, LinkOption.NOFOLLOW_LINKS), "keyFileExists").isFalse();
+			else
+				requireThat(Files.readString(keyFile), "keyFile").isEqualTo(delivered);
+			requireThat(authentication.evidence().parts(), "parts").contains(part).
+				doesNotContain(".cat/claude/.credentials.json");
+		}
+	}
+
+	/**
+	 * Returns sources whose settings name a credential beside CAT's credential file, each with the token that the key
+	 * file then holds, or {@code null} for the source helper, and the name of the delivered part.
+	 *
+	 * @return the sources
+	 */
+	@DataProvider
+	public static Object[][] credentialsBesideCatFile()
+	{
+		return new Object[][]
+		{
+			{"""
+				{"apiKeyHelper": "cat ~/key"}
+				""", null, "apiKeyHelper"},
+			{"""
+				{"env": {"ANTHROPIC_AUTH_TOKEN": "%s", "ANTHROPIC_BASE_URL": "https://gateway.example"}}
+				""".formatted(SourceHomes.SECRET), SourceHomes.SECRET, "ANTHROPIC_AUTH_TOKEN"},
+			{"""
+				{"env": {"ANTHROPIC_API_KEY": "%s"}}
+				""".formatted(SourceHomes.SECRET), SourceHomes.SECRET, "ANTHROPIC_API_KEY"},
+			{"""
+				{"env": {"CLAUDE_CODE_OAUTH_TOKEN": "%s"}}
+				""".formatted(SourceHomes.SETUP_TOKEN), SourceHomes.SETUP_TOKEN, "CLAUDE_CODE_OAUTH_TOKEN"}
+		};
+	}
+
+	/**
+	 * Verifies that without {@code --home} the runner reads CAT's credential file in its own home folder, even when the
+	 * runner's {@code CLAUDE_CONFIG_DIR} names another Claude folder, because that variable says only where Claude Code
+	 * keeps its configuration.
+	 *
+	 * @throws IOException if the fixture cannot be built
+	 */
+	@Test
+	public void readsCatCredentialFileOfRunnerHome() throws IOException
+	{
+		// Requirement: R-I14
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-credential-home-")).toRealPath();
+			Path runnerHome = SourceHomes.create(root, "runner");
+			Path file = SourceHomes.catCredential(runnerHome, SourceHomes.SECRET);
+			Path configured = Files.createDirectories(root.resolve("configured"));
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(),
+				runnerHome.toString(), "CLAUDE_CONFIG_DIR", configured.toString());
+
+			ClaudeAuthentication authentication = ClaudeAuthentication.read(JSON, AuthenticationOptions.DEFAULT,
+				environment, Platform.current(), SourceHomes.PLUGIN);
+
+			requireThat(authentication.evidence().parts(), "parts").isEqualTo(List.of(".cat/claude/.credentials.json"));
+			requireThat(authentication.secretFiles(), "secretFiles").contains(file);
+		}
+	}
+
+	/**
+	 * Verifies that a session shares no {@code /login} login: for a source home that holds a stored login and CAT's
+	 * credential file, under a runner environment that sets {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} empty or to a
+	 * folder, the session's Claude process gets no {@code CLAUDE_SECURESTORAGE_CONFIG_DIR}, its
+	 * {@code CLAUDE_CONFIG_DIR} is the session's own Claude folder, and that folder holds no {@code .credentials.json}
+	 * when the Claude process would start. A login that the session's Claude Code stores, simulated here by writing
+	 * {@code .credentials.json} into the folder that its {@code CLAUDE_CONFIG_DIR} names as {@code /login} would, leaves
+	 * the source's login byte for byte and time for time unchanged, and the session's settings written again for a
+	 * resume still deliver the key file.
+	 *
+	 * @param loginStore the runner's {@code CLAUDE_SECURESTORAGE_CONFIG_DIR}, relative to the test's folder, or an empty
+	 *                   string
+	 * @throws IOException if the fixture or the settings cannot be built
+	 */
+	@Test(dataProvider = "runnerLoginStores")
+	public void sharesNoLogin(String loginStore) throws IOException
+	{
+		// Requirement: R-I14
+		try (TestJvmScope jvm = new TestJvmScope();
+			HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-no-shared-login-")).
+				toRealPath();
+			Path source = SourceHomes.create(root, "source");
+			Path sourceLogin = SourceHomes.storedLogin(source);
+			SourceHomes.catCredential(source, SourceHomes.SETUP_TOKEN);
+			byte[] loginBytes = Files.readAllBytes(sourceLogin);
+			FileTime loginTime = Files.getLastModifiedTime(sourceLogin);
+			String storeValue = loginStore;
+			if (!loginStore.isEmpty())
+				storeValue = Files.createDirectories(root.resolve(loginStore)).toString();
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(),
+				SourceHomes.create(root, "runner").toString(), "CLAUDE_SECURESTORAGE_CONFIG_DIR", storeValue);
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("results"),
+				Clock.systemUTC(), Yielding.fileReplacer());
+			NestedSession nestedSession = manager.create("claude");
+			Path project = Files.createDirectories(nestedSession.directory().resolve("project/.git")).getParent();
+			Path home = nestedSession.directory().resolve("home");
+			Path claudeFolder = home.resolve(".claude");
+			ClaudeAuthentication authentication = ClaudeAuthentication.read(JSON, named(source, null), environment,
+				Platform.current(), SourceHomes.PLUGIN);
+
+			Map<String, String> result = ClaudeRunner.processEnvironment(scope, environment, HarnessDependencyCaches.NONE,
+				root.resolve("missing-settings.json"), home, null, authentication);
+			writeSettings(scope, root, nestedSession, project, authentication);
+			authentication.writeKeyFile(claudeFolder);
+
+			requireThat(result.keySet(), "variables").doesNotContain("CLAUDE_SECURESTORAGE_CONFIG_DIR");
+			requireThat(result.get("CLAUDE_CONFIG_DIR"), "configurationFolder").isEqualTo(claudeFolder.toString());
+			requireThat(Files.exists(claudeFolder.resolve(".credentials.json"), LinkOption.NOFOLLOW_LINKS),
+				"sessionLoginExists").isFalse();
+
+			// The session's Claude Code stores a /login login in the folder that its CLAUDE_CONFIG_DIR names
+			Files.writeString(Path.of(result.get("CLAUDE_CONFIG_DIR")).resolve(".credentials.json"), "{}");
+
+			requireThat(Files.readAllBytes(sourceLogin), "sourceLogin").isEqualTo(loginBytes);
+			requireThat(Files.getLastModifiedTime(sourceLogin), "sourceLoginTime").isEqualTo(loginTime);
+			writeSettings(scope, root, nestedSession, project, ClaudeAuthentication.read(JSON, named(source, null),
+				environment, Platform.current(), SourceHomes.PLUGIN));
+			String helper = JSON.readTree(Files.readString(claudeFolder.resolve("settings.json"))).path("apiKeyHelper").
+				asString("");
+			requireThat(helper, "resumedHelper").isEqualTo("cat '" + ClaudeAuthentication.keyFile(claudeFolder) + "'");
+		}
+	}
+
+	/**
+	 * Returns the runner's values of {@code CLAUDE_SECURESTORAGE_CONFIG_DIR}: empty, and a folder relative to the test's
+	 * folder.
+	 *
+	 * @return the values
+	 */
+	@DataProvider
+	public static Object[][] runnerLoginStores()
+	{
+		return new Object[][]{{""}, {"runner-login-store"}};
+	}
+
+	/**
+	 * Writes a nested session's settings for a source home's authentication.
+	 *
+	 * @param scope          the runner's scope
+	 * @param root           the test's folder
+	 * @param nestedSession  the nested session
+	 * @param project        the nested session's project
+	 * @param authentication the source home's authentication
+	 * @throws IOException if the settings cannot be written
+	 */
+	private static void writeSettings(HarnessRunnerScope scope, Path root, NestedSession nestedSession, Path project,
+		ClaudeAuthentication authentication) throws IOException
+	{
+		ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"),
+			nestedSession.directory().resolve("home/.claude/settings.json"), nestedSession.directory().resolve("claude"),
+			nestedSession.directory().resolve("home"), List.of(), nestedSession.directory(), List.of(), List.of(), "",
+			null, project, nestedSession.directory(), null, ExtraPermissions.NONE, "api.anthropic.com", "", true,
+			List.of(), authentication);
 	}
 
 	/**
@@ -1496,7 +1780,7 @@ public final class ClaudeRunnerTest
 				{"env": {"ANTHROPIC_AUTH_TOKEN": "%s", "ANTHROPIC_BASE_URL": "https://Gateway.Example:8443/v1"}}
 				""".formatted(SourceHomes.SECRET));
 			ChildNeedsReport gatewayNeeds = ClaudeRunner.childNeeds(scope, environment, ClaudeAuthentication.read(JSON,
-				named(gateway, "api_key"), environment, Platform.current()));
+				named(gateway, "api_key"), environment, Platform.current(), SourceHomes.PLUGIN));
 			requireThat(gatewayNeeds.hosts(), "gatewayHosts").isEqualTo(Set.of("gateway.example"));
 			requireThat(gatewayNeeds.logins(), "gatewayLogins").contains(gatewaySettings);
 
@@ -1505,7 +1789,7 @@ public final class ClaudeRunnerTest
 				{"apiKeyHelper": "printf key"}
 				""");
 			ChildNeedsReport helperNeeds = ClaudeRunner.childNeeds(scope, environment, ClaudeAuthentication.read(JSON,
-				named(helper, null), environment, Platform.current()));
+				named(helper, null), environment, Platform.current(), SourceHomes.PLUGIN));
 			requireThat(helperNeeds.hosts(), "helperHosts").isEqualTo(Set.of("api.anthropic.com"));
 		}
 	}
@@ -1544,7 +1828,7 @@ public final class ClaudeRunnerTest
 			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(),
 				SourceHomes.create(root, "runner").toString());
 			ClaudeAuthentication authentication = ClaudeAuthentication.read(JSON, named(source, null), environment,
-				Platform.current());
+				Platform.current(), SourceHomes.PLUGIN);
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("results"),
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("claude");
@@ -1583,7 +1867,8 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
-	 * Verifies that each source file that holds a secret is denied to the session's commands and file tools, through
+	 * Verifies that each source file that holds a secret, CAT's credential file included, and the source's stored login
+	 * are denied to the session's commands and file tools, through
 	 * {@code sandbox.filesystem.denyRead} and a {@code Read} rule in {@code permissions.deny}, and stays in the denied
 	 * reads that the session's runner passes to every session that the session requests.
 	 *
@@ -1602,13 +1887,14 @@ public final class ClaudeRunnerTest
 			Path source = SourceHomes.create(root, "source");
 			Path key = SourceHomes.secret(source.resolve("key"));
 			Path login = SourceHomes.storedLogin(source);
+			Path catCredential = SourceHomes.catCredential(source, SourceHomes.SETUP_TOKEN);
 			Path sourceSettings = SourceHomes.settings(source, """
 				{"apiKeyHelper": "cat ~/key", "env": {"CLAUDE_CODE_OAUTH_TOKEN": "%s"}}
 				""".formatted(SourceHomes.SECRET));
 			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(),
 				SourceHomes.create(root, "runner").toString());
 			ClaudeAuthentication authentication = ClaudeAuthentication.read(JSON, named(source, null), environment,
-				Platform.current());
+				Platform.current(), SourceHomes.PLUGIN);
 			HarnessRunnerOptions options = authentication.withDeniedReads(ClaudeRunnerCli.options(new String[]{
 				"--artifact", root.resolve("artifact").toString(), "--results", root.resolve("results").toString(),
 				"--model", "haiku", "--effort", "low"}, HarnessTemporaryRoot.withoutSession("no session")));
@@ -1626,7 +1912,8 @@ public final class ClaudeRunnerTest
 				nestedSession.directory(), deniedReads, List.of(), "", null, project, nestedSession.directory(), null,
 				ExtraPermissions.NONE, "api.anthropic.com", "", true, List.of(), authentication);
 
-			List<Path> secrets = List.of(key, login, sourceSettings);
+			// The source's stored login holds the user's own login, which the runner never reads but denies
+			List<Path> secrets = List.of(key, catCredential, sourceSettings, login);
 			requireThat(options.deniedReads(), "requestedSessionDenials").containsAll(secrets);
 			JsonNode settings = JSON.readTree(Files.readString(settingsFile));
 			List<String> denyRead = new ArrayList<>();
@@ -1645,9 +1932,9 @@ public final class ClaudeRunnerTest
 
 	/**
 	 * Verifies that the files that the runner writes into a nested session's folder before its harness starts, other
-	 * than the session's own settings, which hold the wrapped key helper, hold no secret of the source home, and that
-	 * neither does the command that {@code session.json} records, while {@code session.json} records the source home,
-	 * the names of the copied parts and the class of login.
+	 * than the session's own settings, hold no secret of the source home, and that neither does the command that
+	 * {@code session.json} records, while {@code session.json} records the source home, the name of the one part that
+	 * the session receives among the several that the source holds, and the class of login.
 	 *
 	 * @throws IOException if the fixture, the settings or the records cannot be read or written
 	 */
@@ -1670,7 +1957,7 @@ public final class ClaudeRunnerTest
 			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(),
 				SourceHomes.create(root, "runner").toString());
 			ClaudeAuthentication authentication = ClaudeAuthentication.read(JSON, named(source, null), environment,
-				Platform.current());
+				Platform.current(), SourceHomes.PLUGIN);
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("results"),
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("claude");
@@ -1692,8 +1979,8 @@ public final class ClaudeRunnerTest
 			List<String> parts = new ArrayList<>();
 			for (JsonNode part : recorded.path("parts"))
 				parts.add(part.asString());
-			requireThat(parts, "parts").containsAll(List.of("ANTHROPIC_API_KEY", "apiKeyHelper",
-				"CLAUDE_CODE_OAUTH_TOKEN", ".credentials.json"));
+			// Claude Code's order selects the API key, so it is the one part that the session receives
+			requireThat(parts, "parts").isEqualTo(List.of("ANTHROPIC_API_KEY"));
 			requireThat(recorded.path("login_class").asString(""), "loginClass").isEqualTo("api_key");
 			try (Stream<Path> files = Files.walk(nestedSession.directory()))
 			{
@@ -1702,6 +1989,268 @@ public final class ClaudeRunnerTest
 			}
 			requireThat(manifest.path("harness_command").asString(""), "command").doesNotContain(SourceHomes.SECRET);
 		}
+	}
+
+	/**
+	 * Verifies that the runner chooses the one credential that fills the session's {@code apiKeyHelper} by Claude
+	 * Code's order: a selected token reaches Claude Code only through the session's key file, {@code cat-api-key} in its
+	 * {@code .claude} folder, which holds exactly the token's bytes, is readable by its owner alone, and which a POSIX
+	 * {@code sh} that runs the session's helper prints; a selected source helper is copied, wrapped, and no key file is
+	 * written. The key file is denied to the session's commands and file tools and to every session that the session
+	 * requests, and neither the session's command, its settings nor {@code session.json} holds the token.
+	 *
+	 * @param settings    the source's {@code settings.json}
+	 * @param storedLogin {@code true} if the source also holds a stored login
+	 * @param delivered   the token that the key file holds, or {@code null} if the source helper is selected
+	 * @throws IOException          if the fixture, the settings or the helper's output cannot be read or written
+	 * @throws InterruptedException if the test is interrupted while the shell runs
+	 */
+	@Test(dataProvider = "rankedCredentials")
+	public void deliversCredentialByClaudeCodeOrder(String settings, boolean storedLogin, String delivered)
+		throws IOException, InterruptedException
+	{
+		// Requirement: R-I14
+		try (TestJvmScope jvm = new TestJvmScope();
+			HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-key-file-")).toRealPath();
+			Path source = SourceHomes.create(root, "source");
+			SourceHomes.secret(source.resolve("key"));
+			if (storedLogin)
+				SourceHomes.storedLogin(source);
+			SourceHomes.settings(source, settings);
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(),
+				SourceHomes.create(root, "runner").toString());
+			ClaudeAuthentication authentication = ClaudeAuthentication.read(JSON, named(source, null), environment,
+				Platform.current(), SourceHomes.PLUGIN);
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("results"),
+				Clock.systemUTC(), Yielding.fileReplacer());
+			NestedSession nestedSession = manager.create("claude");
+			manager.snapshotProject(nestedSession);
+			Path project = Files.createDirectories(nestedSession.directory().resolve("project/.git")).getParent();
+			Path claudeFolder = nestedSession.directory().resolve("home/.claude");
+			Path catPlugin = Files.createDirectories(claudeFolder.resolve("plugins/cat-marketplace/plugins/cat"));
+			Path settingsFile = claudeFolder.resolve("settings.json");
+			List<Path> deniedReads = ClaudeRunner.sessionDeniedReads(manager, nestedSession, List.of(), List.of(),
+				environment);
+			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), settingsFile,
+				nestedSession.directory().resolve("claude"), nestedSession.directory().resolve("home"), List.of(),
+				nestedSession.directory(), deniedReads, List.of(), "", null, project, nestedSession.directory(), null,
+				ExtraPermissions.NONE, "api.anthropic.com", "", true, List.of(), authentication);
+
+			authentication.writeKeyFile(claudeFolder);
+
+			Path keyFile = ClaudeAuthentication.keyFile(claudeFolder);
+			JsonNode sessionSettings = JSON.readTree(Files.readString(settingsFile));
+			String helper = sessionSettings.path("apiKeyHelper").asString("");
+			if (delivered == null)
+			{
+				requireThat(helper, "helper").contains("cat ~/key").contains(source.toString());
+				requireThat(Files.exists(keyFile, LinkOption.NOFOLLOW_LINKS), "keyFileExists").isFalse();
+				return;
+			}
+			requireThat(helper, "helper").isEqualTo("cat '" + keyFile + "'");
+			requireThat(Files.readString(keyFile), "keyFile").isEqualTo(delivered);
+			requireThat(Files.getPosixFilePermissions(keyFile), "mode").
+				isEqualTo(PosixFilePermissions.fromString("rw-------"));
+			ProcessBuilder shell = new ProcessBuilder("sh", "-c", helper).redirectErrorStream(true);
+			try (Process process = shell.start())
+			{
+				String printed = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+				requireThat(process.waitFor(), "status").isZero();
+				requireThat(printed, "printed").isEqualTo(delivered);
+			}
+			List<String> denyRead = new ArrayList<>();
+			for (JsonNode path : sessionSettings.path("sandbox").path("filesystem").path("denyRead"))
+				denyRead.add(path.asString());
+			List<String> denyRules = new ArrayList<>();
+			for (JsonNode rule : sessionSettings.path("permissions").path("deny"))
+				denyRules.add(rule.asString());
+			requireThat(denyRead, "denyRead").contains(keyFile.toString());
+			requireThat(denyRules, "denyRules").contains("Read(/" + ClaudeConnectionSettings.rulePath(keyFile) + ")");
+			boolean deniedToRequested = false;
+			for (Path denial : SessionRequestBroker.resultsDenials(root.resolve("results"), catPlugin))
+				deniedToRequested |= keyFile.startsWith(denial);
+			requireThat(deniedToRequested, "deniedToRequestedSessions").isTrue();
+
+			List<String> command = ClaudeRunner.command("claude", "haiku", "low", "", List.of(),
+				claudeFolder.resolve("projects"), List.of());
+			manager.initialize(nestedSession, root.resolve("artifact"), project, "claude_stream_json", command,
+				authentication.evidence());
+			for (String element : command)
+				requireThat(element, "element").doesNotContain(delivered);
+			try (Stream<Path> files = Files.walk(nestedSession.directory()))
+			{
+				for (Path file : files.filter(Files::isRegularFile).filter(file -> !file.equals(keyFile)).toList())
+					requireThat(Files.readString(file), file.toString()).doesNotContain(delivered);
+			}
+		}
+	}
+
+	/**
+	 * Returns sources that hold several credentials, each with the token that Claude Code's order selects among them,
+	 * or {@code null} when it selects the source helper.
+	 *
+	 * @return the sources
+	 */
+	@DataProvider
+	public static Object[][] rankedCredentials()
+	{
+		String bearer = SourceHomes.SECRET + "-bearer";
+		return new Object[][]
+		{
+			// The bearer token outranks the API key and the helper
+			{"""
+				{"apiKeyHelper": "cat ~/key", "env": {"ANTHROPIC_AUTH_TOKEN": "%s", "ANTHROPIC_API_KEY": "%s-key"}}
+				""".formatted(bearer, SourceHomes.SECRET), false, bearer},
+			// The API key outranks the helper
+			{"""
+				{"apiKeyHelper": "cat ~/key", "env": {"ANTHROPIC_API_KEY": "%s-key"}}
+				""".formatted(SourceHomes.SECRET), false, SourceHomes.SECRET + "-key"},
+			// The helper outranks the setup token
+			{"""
+				{"apiKeyHelper": "cat ~/key", "env": {"CLAUDE_CODE_OAUTH_TOKEN": "%s"}}
+				""".formatted(SourceHomes.SETUP_TOKEN), false, null},
+			// The setup token outranks the stored login
+			{"""
+				{"env": {"CLAUDE_CODE_OAUTH_TOKEN": "%s"}}
+				""".formatted(SourceHomes.SETUP_TOKEN), true, SourceHomes.SETUP_TOKEN}
+		};
+	}
+
+	/**
+	 * Verifies that the key file exists while the session's Claude process runs and is gone once the session is
+	 * closed, whether the process exited by itself or the close stopped it. The stand-in for Claude Code is an
+	 * in-process {@link FakeHarnessCli}, which neither reads nor writes the key file.
+	 *
+	 * @param stopped {@code true} if the close must stop a process that keeps running, {@code false} if the process
+	 *                exits by itself first
+	 * @throws IOException if the fixture or the session fails
+	 */
+	@Test(dataProvider = "processEnds", timeOut = 10_000)
+	// The test closes the session itself, because the close is the step whose effect it checks
+	@SuppressWarnings("PMD.CloseResource")
+	public void removesKeyFileWhenClaudeEnds(boolean stopped) throws IOException
+	{
+		// Requirement: R-I14
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-key-file-lifetime-")).toRealPath();
+			Path claudeFolder = Files.createDirectories(root.resolve("session/home/.claude"));
+			ClaudeAuthentication authentication = apiKeySource(root, "source", SourceHomes.SECRET);
+			authentication.writeKeyFile(claudeFolder);
+			Path keyFile = ClaudeAuthentication.keyFile(claudeFolder);
+			FakeHarnessCli claude = new FakeHarnessCli(_ ->
+			{
+			});
+			if (stopped)
+				claude.keepRunningWhenInputCloses();
+			HarnessProcess session = ClaudeRunner.removingKeyFile(new ClaudeProcess(scope, claude, null, null,
+				Duration.ofMillis(50)), claudeFolder);
+			requireThat(Files.readString(keyFile), "whileRunning").isEqualTo(SourceHomes.SECRET);
+			if (!stopped)
+				claude.exit();
+
+			session.close();
+
+			requireThat(claude.isAlive(), "claudeAlive").isFalse();
+			requireThat(Files.exists(keyFile, LinkOption.NOFOLLOW_LINKS), "keyFileExists").isFalse();
+		}
+	}
+
+	/**
+	 * Returns whether a session's Claude process is stopped by the close rather than exiting by itself.
+	 *
+	 * @return the choices
+	 */
+	@DataProvider
+	public static Object[][] processEnds()
+	{
+		return new Object[][]{{false}, {true}};
+	}
+
+	/**
+	 * Verifies that a resume writes the key file again from the resuming launch's source home over a file that an
+	 * earlier launch left, owner-only, and that a resume whose source selects its helper removes such a file.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void resumeWritesResumingSourceToken() throws IOException
+	{
+		// Requirement: R-I14
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-key-file-resume-")).toRealPath();
+			Path claudeFolder = Files.createDirectories(root.resolve("session/home/.claude"));
+			Path keyFile = ClaudeAuthentication.keyFile(claudeFolder);
+			apiKeySource(root, "first", SourceHomes.SECRET).writeKeyFile(claudeFolder);
+			Path second = SourceHomes.create(root, "second");
+			SourceHomes.settings(second, """
+				{"env": {"CLAUDE_CODE_OAUTH_TOKEN": "%s"}}
+				""".formatted(SourceHomes.SETUP_TOKEN));
+
+			ClaudeAuthentication.read(JSON, named(second, null), Map.of(), Platform.current(), SourceHomes.PLUGIN).
+				writeKeyFile(claudeFolder);
+
+			requireThat(Files.readString(keyFile), "resumed").isEqualTo(SourceHomes.SETUP_TOKEN);
+			requireThat(Files.getPosixFilePermissions(keyFile), "mode").
+				isEqualTo(PosixFilePermissions.fromString("rw-------"));
+
+			SourceHomes.keyHelper(root).writeKeyFile(claudeFolder);
+
+			requireThat(Files.exists(keyFile, LinkOption.NOFOLLOW_LINKS), "keyFileExists").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that emptying a slot deletes a key file that a stopped runner left in the slot's nested session.
+	 *
+	 * @throws IOException          if the fixture or the slot cannot be written
+	 * @throws InterruptedException if the test is interrupted while it takes the slot
+	 */
+	@Test
+	public void emptyingSlotDeletesLeftKeyFile() throws IOException, InterruptedException
+	{
+		// Requirement: R-I14
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-key-file-slot-")).
+				toRealPath();
+			SessionSlots slots = new SessionSlots(root.resolve("slots"), 1, new ProcessHandleLiveness(), jvm.fileLocks());
+			SessionSlots.Slot slot = slots.acquire(false);
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), slot.root(), Clock.systemUTC(),
+				Yielding.fileReplacer());
+			NestedSession nestedSession = manager.create("claude");
+			Path claudeFolder = Files.createDirectories(nestedSession.directory().resolve("home/.claude"));
+			apiKeySource(root, "source", SourceHomes.SECRET).writeKeyFile(claudeFolder);
+
+			slots.release(slot);
+
+			requireThat(Files.exists(ClaudeAuthentication.keyFile(claudeFolder), LinkOption.NOFOLLOW_LINKS),
+				"keyFileExists").isFalse();
+		}
+	}
+
+	/**
+	 * Returns the authentication of a source home whose settings hold only an API key.
+	 *
+	 * @param root  the folder that receives the source home
+	 * @param name  the source home's name
+	 * @param token the API key
+	 * @return the authentication
+	 * @throws IOException if the source home cannot be written or read
+	 */
+	private static ClaudeAuthentication apiKeySource(Path root, String name, String token) throws IOException
+	{
+		Path source = SourceHomes.create(root, name);
+		SourceHomes.settings(source, """
+			{"env": {"ANTHROPIC_API_KEY": "%s"}}
+			""".formatted(token));
+		return ClaudeAuthentication.read(JSON, named(source, null), Map.of(), Platform.current(), SourceHomes.PLUGIN);
 	}
 
 	/**
@@ -1721,7 +2270,7 @@ public final class ClaudeRunnerTest
 		Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(),
 			SourceHomes.create(root, "runner").toString());
 		ClaudeAuthentication authentication = ClaudeAuthentication.read(JSON, named(source, declared), environment,
-			Platform.current());
+			Platform.current(), SourceHomes.PLUGIN);
 		return ClaudeRunner.processEnvironment(scope, environment, HarnessDependencyCaches.NONE,
 			root.resolve("missing-settings.json"), root.resolve("session-home"), null, authentication);
 	}

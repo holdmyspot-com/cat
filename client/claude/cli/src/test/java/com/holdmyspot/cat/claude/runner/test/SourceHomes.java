@@ -23,6 +23,16 @@ public final class SourceHomes
 	 * file for a leaked secret looks for this text.
 	 */
 	public static final String SECRET = "sk-ant-api03-fixture";
+	/**
+	 * The text of the fixture token that {@code claude setup-token} would print. A test that scans for a leaked secret
+	 * looks for this text too.
+	 */
+	public static final String SETUP_TOKEN = "sk-ant-oat01-fixture";
+	/**
+	 * The folder of the Claude Code plugin that holds the runner, for a test whose subject is not a refusal that names
+	 * the plugin's launchers.
+	 */
+	public static final Path PLUGIN = Path.of("/plugins/cat/1.0").toAbsolutePath();
 
 	/**
 	 * Prevents construction.
@@ -75,6 +85,37 @@ public final class SourceHomes
 	}
 
 	/**
+	 * Writes CAT's Claude credential file of a home, {@code .cat/claude/.credentials.json}, readable by its owner alone,
+	 * holding a token in the file's format.
+	 *
+	 * @param home  the home folder
+	 * @param token the token
+	 * @return the file
+	 * @throws IOException if the file cannot be written
+	 */
+	public static Path catCredential(Path home, String token) throws IOException
+	{
+		return catCredentialFile(home, """
+			{"format_version": 1, "token": "%s"}
+			""".formatted(token));
+	}
+
+	/**
+	 * Writes CAT's Claude credential file of a home, {@code .cat/claude/.credentials.json}, readable by its owner alone,
+	 * with the given content.
+	 *
+	 * @param home    the home folder
+	 * @param content the file's content
+	 * @return the file
+	 * @throws IOException if the file cannot be written
+	 */
+	public static Path catCredentialFile(Path home, String content) throws IOException
+	{
+		Path folder = Files.createDirectories(home.resolve(".cat/claude"));
+		return ownerOnly(Files.writeString(folder.resolve(".credentials.json"), content));
+	}
+
+	/**
 	 * Writes a file that holds the fixture secret, readable by its owner alone, such as the key file that an
 	 * {@code apiKeyHelper} prints.
 	 *
@@ -103,7 +144,7 @@ public final class SourceHomes
 			{"apiKeyHelper": "printf key"}
 			""");
 		return ClaudeAuthentication.read(JsonMapper.builder().build(), new AuthenticationOptions(Optional.of(home),
-			Optional.empty(), false), Map.of(), Platform.current());
+			Optional.empty(), false), Map.of(), Platform.current(), PLUGIN);
 	}
 
 	/**

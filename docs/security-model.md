@@ -267,19 +267,28 @@ A Codex session gets a copy of your Codex login.
 A Claude session uses the credential of a source home. The source home is the folder that a launch names with
 `--home <dir>`, an absolute path, or else your home folder. Its Claude folder is `<dir>/.claude` with `--home`, and
 otherwise the folder that `CLAUDE_CONFIG_DIR` names when the environment that starts the runner sets it, or else
-`.claude` in your home folder. The session takes only these parts of that folder, and Claude Code chooses among them
-in its own order:
+`.claude` in your home folder. The session takes only these credentials, and the runner chooses the one that it
+receives in Claude Code's own order, which is the order of this list:
 
+- the `ANTHROPIC_AUTH_TOKEN` entry of the `env` setting of that folder's `settings.json`;
+- its `ANTHROPIC_API_KEY` entry;
 - the `apiKeyHelper` setting of `settings.json`, which the session runs with the source home as its home folder;
-- the `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY` and `CLAUDE_CODE_OAUTH_TOKEN` entries of the
-  `env` setting of `settings.json`, which go into the environment of the session's Claude Code process and into no
-  file. When a token is among them, the runner has Claude Code keep the tokens from the commands and hooks that the
-  session runs;
-- the stored login, `.credentials.json`, which `/login` writes. The session does not copy it: its Claude Code reads
-  and refreshes it in place. A copy would stop working as soon as your own Claude Code, or another session, refreshed
-  the login, which can happen in the middle of a turn. On macOS, Claude Code keeps a `/login` login in the Keychain
-  instead of that file, and the runner does not find it there: a source home whose only credential is such a login
-  is refused.
+- the `CLAUDE_CODE_OAUTH_TOKEN` entry of `env`, a token that `claude setup-token` printed;
+- CAT's credential file, `.cat/claude/.credentials.json` in the source home, which holds an Anthropic API key or a
+  token that `claude setup-token` printed, saved with `claude-credential set`. It takes the place where Claude Code
+  ranks a `/login` login, last. `CLAUDE_CONFIG_DIR` does not move it.
+
+A chosen token reaches the session's Claude Code only through a key file, `cat-api-key` in the session's own `.claude`
+folder, readable by you alone, which the session's `apiKeyHelper` prints. The runner writes it before the session's
+Claude Code starts and deletes it once Claude Code has exited. No token goes into the environment of the session's
+Claude Code, so the commands and hooks that it runs inherit none. The `ANTHROPIC_BASE_URL` entry of `env`, which holds
+no secret, goes into that environment.
+
+A session never uses a login that `/login` stores, in `.credentials.json` or the macOS Keychain: the runner neither
+shares, copies nor reads it, and the session's Claude Code keeps its own login store, the session's new and empty
+`.claude` folder. Sessions therefore never refresh, write or replace your login. A source home whose only Claude
+credential is such a login is refused: run `claude setup-token` and save the token that it prints, or save an
+Anthropic API key, with `claude-credential set --home <source home>`, as the refusal says.
 
 No hook, permission, plugin, MCP server or other setting of the source home reaches the session. The session takes
 none of `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `CLAUDE_CODE_OAUTH_TOKEN` and
@@ -292,19 +301,22 @@ When the source home's `env` sets `ANTHROPIC_BASE_URL`, the session sends its re
 tell from the gateway which kind of login it bills. The launch then names it with
 `--gateway-login-class subscription` or `--gateway-login-class api_key`, and CAT records that class for the session.
 
-Each source file that holds a secret must be a regular file, not a symbolic link, whose mode grants its group and
-other users nothing, such as after `chmod go= <file>`. These files are the stored login, a `settings.json` whose `env`
+Each source file that holds a secret must be a regular file, not a symbolic link, whose mode grants its group and other
+users nothing, such as after `chmod go= <file>`. These files are CAT's credential file, a `settings.json` whose `env`
 holds a token, and a file that the `apiKeyHelper` command names by an absolute path or a `~/` path. The session that
 starts the runner must also be allowed to read each file that the runner reads in the source home, so that a launch
 never uses a credential that its requester could not read. The commands and file tools of the session, and of every
-session that it requests, cannot read the files that hold a secret.
+session that it requests, cannot read the files that hold a secret, the session's key file, or the source folder's
+`.credentials.json`, which holds your own `/login` login.
 
-Before it starts the session, and with status 2, `claude-runner` refuses a source home whose Claude folder holds none
-of the parts above, a relative or missing `--home`, a gateway without `--gateway-login-class`, a source `env` that
-selects another provider or profile (`CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX`, `CLAUDE_CODE_USE_FOUNDRY`
-or `ANTHROPIC_PROFILE`), and a secret file that fails the checks above. Its message names the file, the option or
-the setting, and never quotes a secret. The session's `session.json`, its receipt and each response record the source
-home, the names of the parts that the session took and the login class, never their values.
+Before it starts the session, and with status 2, `claude-runner` refuses a source home that holds none of the
+credentials above, a `/login` login alone included, a CAT credential file that is not `{"format_version": 1, "token":
+"<token>"}` with a token that starts with `sk-ant-api` or `sk-ant-oat`, a relative or missing `--home`, a gateway
+without `--gateway-login-class`, a source `env` that selects another provider or profile (`CLAUDE_CODE_USE_BEDROCK`,
+`CLAUDE_CODE_USE_VERTEX`, `CLAUDE_CODE_USE_FOUNDRY` or `ANTHROPIC_PROFILE`), and a secret file that fails the checks
+above. Its message names the file, the option or the setting, and never quotes a secret. The session's `session.json`,
+its receipt and each response record the source home, the names of the parts that the session received and the login
+class, never their values.
 
 ### The request server
 

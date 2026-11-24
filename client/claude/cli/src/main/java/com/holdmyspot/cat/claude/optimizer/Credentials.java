@@ -52,9 +52,10 @@ public final class Credentials
 	 * @param environment the environment that the runner passes to its sessions. Only its variable names are read,
 	 *   except for {@code CAT_HOST_LOGIN}, whose value is a class, and {@code CLAUDE_SECURESTORAGE_CONFIG_DIR}, whose
 	 *   value is a directory; neither is a credential. A non-empty value of the latter names the login store, whose
-	 *   {@code .credentials.json} is read before the configuration directory's, because that is where a nested session
-	 *   keeps the user's login. A login store without a subscription login leaves the classification to the configuration
-	 *   directory. A relative value names a directory relative to the process's working directory.
+	 *   {@code .credentials.json} is read before the configuration directory's, because that is where the user's own
+	 *   Claude Code keeps its login when the variable is set. A login store without a subscription login leaves the
+	 *   classification to the configuration directory. A relative value names a directory relative to the process's
+	 *   working directory.
 	 * @param json the JSON mapper
 	 * @return the class that {@code CAT_HOST_LOGIN} states, if its value is {@code subscription}, {@code api_key} or
 	 *   {@code unknown}; any other value is ignored. Otherwise an API key if the environment has

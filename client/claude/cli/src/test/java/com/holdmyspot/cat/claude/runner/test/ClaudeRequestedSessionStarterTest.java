@@ -86,9 +86,9 @@ public final class ClaudeRequestedSessionStarterTest extends RequestedSessionSta
 	/**
 	 * Verifies that a requested session, and a session that a requested session requests in turn, take their credential
 	 * from the source home of the user whose session runs the request server: the runner of each receives the user's
-	 * home folder and {@code CLAUDE_CONFIG_DIR}, never a nested session's own, so a launch that names no source home
-	 * finds the user's Claude folder there, shares its stored login through {@code CLAUDE_SECURESTORAGE_CONFIG_DIR}, and
-	 * states its class in {@code CAT_HOST_LOGIN}, whatever the runner's own values of those variables say.
+	 * home folder, never a nested session's own, so a launch that names no source home reads CAT's credential file
+	 * there, writes its token into the session's key file, gives the session no {@code CLAUDE_SECURESTORAGE_CONFIG_DIR},
+	 * and states the token's class in {@code CAT_HOST_LOGIN}, whatever the runner's own values of those variables say.
 	 *
 	 * @throws IOException if the starter or an environment fails
 	 */
@@ -105,7 +105,9 @@ public final class ClaudeRequestedSessionStarterTest extends RequestedSessionSta
 			Path userHome = Files.createDirectory(root.resolve("user"));
 			Path userConfiguration = Files.createDirectory(root.resolve("claude-config"));
 			SourceHomes.ownerOnly(Files.writeString(userConfiguration.resolve(".credentials.json"), "{}"));
+			SourceHomes.catCredential(userHome, SourceHomes.SETUP_TOKEN);
 			Path sessionHome = Files.createDirectory(root.resolve("session-home"));
+			Path claudeFolder = Files.createDirectory(sessionHome.resolve(".claude"));
 			Path directory = Files.createDirectory(root.resolve("requested"));
 			Map<String, String> userEnvironment = new HashMap<>(Map.of("PATH", "", Platform.current().homeVariable(),
 				userHome.toString(), "CLAUDE_CONFIG_DIR", userConfiguration.toString(), "CLAUDECODE", "1",
@@ -126,13 +128,15 @@ public final class ClaudeRequestedSessionStarterTest extends RequestedSessionSta
 					for (Map<String, String> environment : List.of(requestedRunner, nestedRunner))
 					{
 						ClaudeAuthentication authentication = ClaudeAuthentication.read(JsonMapper.builder().build(),
-							AuthenticationOptions.DEFAULT, environment, Platform.current());
+							AuthenticationOptions.DEFAULT, environment, Platform.current(), SourceHomes.PLUGIN);
 						Map<String, String> session = ClaudeRunner.processEnvironment(runner, environment,
 							HarnessDependencyCaches.NONE, root.resolve("missing-settings.json"), sessionHome, null,
 							authentication);
-						requireThat(session.get("CLAUDE_SECURESTORAGE_CONFIG_DIR"), "loginStore").
-							isEqualTo(userConfiguration.toString());
+						authentication.writeKeyFile(claudeFolder);
+						requireThat(session.keySet(), "variables").doesNotContain("CLAUDE_SECURESTORAGE_CONFIG_DIR");
 						requireThat(session.get("CAT_HOST_LOGIN"), "hostLogin").isEqualTo("subscription");
+						requireThat(Files.readString(ClaudeAuthentication.keyFile(claudeFolder)), "keyFile").
+							isEqualTo(SourceHomes.SETUP_TOKEN);
 					}
 				}
 			}

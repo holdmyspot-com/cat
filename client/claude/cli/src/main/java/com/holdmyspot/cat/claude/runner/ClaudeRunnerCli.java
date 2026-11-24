@@ -138,7 +138,7 @@ public final class ClaudeRunnerCli
 			{
 				status = HarnessRunnerOptions.refusingInvalidArguments(() -> reportChildNeeds(scope, environment,
 					Path.of(needsArgs[1]), AuthenticationOptions.parseAlone(Arrays.copyOfRange(needsArgs, 2, needsArgs.length)),
-					errors()), errors());
+					PluginDirectory.of(ClaudeRunnerCli.class), errors()), errors());
 			}
 			if (status != 0)
 				System.exit(status);
@@ -159,6 +159,7 @@ public final class ClaudeRunnerCli
 	 * @param environment    the caller's environment
 	 * @param file           the file to write
 	 * @param authentication the launch's choice of source home and gateway login class
+	 * @param plugin         the folder of the Claude Code plugin that holds the runner
 	 * @param errors         receives the reason, as one line, when the needs cannot be determined
 	 * @return {@code 0} if the needs were written, or {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} if they
 	 *   cannot be determined or the source home refuses the launch, in which case no file is written
@@ -166,8 +167,9 @@ public final class ClaudeRunnerCli
 	 * @throws IOException          if the file cannot be written
 	 */
 	public static int reportChildNeeds(HarnessRunnerScope scope, Map<String, String> environment, Path file,
-		AuthenticationOptions authentication, PrintWriter errors) throws IOException
+		AuthenticationOptions authentication, Path plugin, PrintWriter errors) throws IOException
 	{
+		requireThat(plugin, "plugin").isNotNull();
 		requireThat(scope, "scope").isNotNull();
 		requireThat(environment, "environment").isNotNull();
 		requireThat(file, "file").isNotNull();
@@ -177,7 +179,7 @@ public final class ClaudeRunnerCli
 		try
 		{
 			needs = ClaudeRunner.childNeeds(scope, environment, ClaudeAuthentication.read(scope.json(), authentication,
-				environment, Platform.current()));
+				environment, Platform.current(), plugin));
 		}
 		catch (IOException e)
 		{
@@ -432,9 +434,13 @@ public final class ClaudeRunnerCli
 			process.waiting()))
 		{
 			// The source home decides before anything else, so that a refused launch reads no nested session
+			Path plugin = HarnessRunnerOptions.artifactOption(args);
+			if (plugin == null)
+				throw new InvalidArgumentsException("Missing --artifact");
+			plugin = plugin.toAbsolutePath();
 			AuthenticationOptions authenticationOptions = AuthenticationOptions.parse(args);
 			ClaudeAuthentication authentication = ClaudeAuthentication.read(scope.json(), authenticationOptions,
-				environment, Platform.current());
+				environment, Platform.current(), plugin);
 			// A runner that continues a nested session's harness session takes the options that the nested session's start
 			// fixed from the nested session
 			args = NestedSessionLaunch.resumedArguments(scope.json(), HARNESS_ID, args);

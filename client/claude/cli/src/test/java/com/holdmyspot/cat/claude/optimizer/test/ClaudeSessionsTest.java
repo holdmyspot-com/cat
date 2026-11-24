@@ -811,8 +811,8 @@ public final class ClaudeSessionsTest
 	}
 
 	/**
-	 * Verifies that the port classifies a source home whose only credential is the stored login as a subscription,
-	 * without starting a session.
+	 * Verifies that the port classifies a source home whose only credential is a {@code claude setup-token} token in
+	 * CAT's credential file as a subscription, without starting a session.
 	 *
 	 * @throws IOException if a credential fixture cannot be created
 	 */
@@ -826,7 +826,7 @@ public final class ClaudeSessionsTest
 			{
 				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
 				Path home = SourceHomes.create(root, "home");
-				SourceHomes.storedLogin(home);
+				SourceHomes.catCredential(home, SourceHomes.SETUP_TOKEN);
 				HostLogin login = loginPort(jvm, root, Map.of(Platform.current().homeVariable(), home.toString())).
 					hostLogin();
 				requireThat(login, "login").isEqualTo(HostLogin.SUBSCRIPTION);

@@ -40,23 +40,23 @@ public final class ClaudeAuthenticationTest
 	}
 
 	/**
-	 * Verifies that a source home whose stored login, {@code .credentials.json}, its group may read is refused, naming
-	 * the file and the permission to clear, without quoting the file.
+	 * Verifies that a source home whose CAT credential file, {@code .cat/claude/.credentials.json}, its group may read is
+	 * refused, naming the file and the permission to clear, without quoting the file.
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
 	@Test
-	public void checksStoredLogin() throws IOException
+	public void checksCatCredentialFile() throws IOException
 	{
 		// Requirement: R-I14
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("source-secrets-")).toRealPath();
 			Path source = SourceHomes.create(root, "source");
-			Path login = SourceHomes.storedLogin(source);
-			Files.setPosixFilePermissions(login, PosixFilePermissions.fromString(GROUP_READABLE));
+			Path file = SourceHomes.catCredential(source, SourceHomes.SECRET);
+			Files.setPosixFilePermissions(file, PosixFilePermissions.fromString(GROUP_READABLE));
 
-			requireRefusal(source, login);
+			requireRefusal(source, file);
 		}
 	}
 
@@ -121,7 +121,7 @@ public final class ClaudeAuthenticationTest
 				""");
 			Files.setPosixFilePermissions(helperSettings, PosixFilePermissions.fromString("rw-r--r--"));
 			ClaudeAuthentication authentication = ClaudeAuthentication.read(JSON, named(helperSource),
-				environment(root), Platform.current());
+				environment(root), Platform.current(), SourceHomes.PLUGIN);
 			requireThat(authentication.secretFiles(), "secretFiles").isEqualTo(List.of(
 				helperSource.resolve("key")));
 		}
@@ -137,7 +137,8 @@ public final class ClaudeAuthenticationTest
 	private static void requireRefusal(Path source, Path file) throws IOException
 	{
 		SessionRefusedException refusal = expectThrows(SessionRefusedException.class, () ->
-			ClaudeAuthentication.read(JSON, named(source), environment(source.getParent()), Platform.current()));
+			ClaudeAuthentication.read(JSON, named(source), environment(source.getParent()), Platform.current(),
+				SourceHomes.PLUGIN));
 		requireThat(refusal.getMessage(), "message").contains(file.toString()).contains("group read").
 			doesNotContain(SourceHomes.SECRET);
 	}

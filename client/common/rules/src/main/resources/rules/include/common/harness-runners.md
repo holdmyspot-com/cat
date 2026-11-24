@@ -185,15 +185,15 @@ nothing needs it.
 
 Every Claude Code session that the launch starts, and every one that its sessions request, uses the credential of a
 source home: the `apiKeyHelper` and the credential entries of `env` in the `settings.json` of the home folder's
-`.claude` folder, and that folder's stored login. Without `--home`, the source home is your own home folder, and its
-Claude folder is the one that `CLAUDE_CONFIG_DIR` names when it is set. Pass `--home <dir>`, with an absolute path,
-only when your task or the user names another home folder to bill, such as one whose `.claude/settings.json` holds
-only an `apiKeyHelper`. Pass `--gateway-login-class <subscription|api_key>` only with the kind of login that your task
-or the user says the gateway bills; never choose it yourself. When the launcher refuses a launch because the source
-home's credential sends its requests to a gateway, and names `--gateway-login-class`, ask the user which kind of login
-the gateway bills, then launch again with it. Report any other refusal of the source home to the user, such as one
-that holds no Claude credential or a secret file that other users may read, and do not read, copy or change the source
-home's files yourself.
+`.claude` folder, and CAT's credential file `.cat/claude/.credentials.json` in the home folder; never a `/login` login.
+Without `--home`, the source home is your own home folder, and its Claude folder is the one that `CLAUDE_CONFIG_DIR`
+names when it is set. Pass `--home <dir>`, with an absolute path, only when your task or the user names another home
+folder to bill, such as one whose `.claude/settings.json` holds only an `apiKeyHelper`. Pass `--gateway-login-class
+<subscription|api_key>` only with the kind of login that your task or the user says the gateway bills; never choose it
+yourself. When the launcher refuses a launch because the source home's credential sends its requests to a gateway, and
+names `--gateway-login-class`, ask the user which kind of login the gateway bills, then launch again with it. Report any
+other refusal of the source home to the user, such as one that holds no Claude credential or a secret file that other
+users may read, and do not read, copy or change the source home's files yourself.
 
 Pass `--session-transcripts` only when your task needs the session's own transcript. The runner then
 copies every transcript of the session, subagents' included, into `artifacts/session-transcripts` in its session

@@ -501,9 +501,9 @@ public final class ClaudeConnectionSettings
 	 * Writes settings for an isolated Claude instance, as
 	 * {@link #writeIsolatedSettings(HarnessRunnerScope, Path, Path, Path, Path, List, Path, List, String,
 	 * SessionRequestAccess, Path, Path, ChildPolicy, ExtraPermissions, String)} does, except that the settings also set
-	 * the lifetime of the instance's prompt cache when {@code promptCacheTtl} is not empty, and hold the source home's
-	 * {@code apiKeyHelper}, wrapped, and its key lifetime, as {@link ClaudeAuthentication#addTo} adds them, and no other
-	 * setting of the source home. Claude Code's
+	 * the lifetime of the instance's prompt cache when {@code promptCacheTtl} is not empty, and hold the one
+	 * {@code apiKeyHelper} that delivers the source home's selected credential, as {@link ClaudeAuthentication#addTo}
+	 * adds it, and no other setting of the source home. Claude Code's
 	 * {@code promptCacheTtl} setting alone switches every cache write to that lifetime, so the settings set no
 	 * environment variable for it.
 	 * <p>
@@ -610,7 +610,7 @@ public final class ClaudeConnectionSettings
 		if (!promptCacheTtl.isEmpty())
 			settings.put("promptCacheTtl", promptCacheTtl);
 		if (authentication != null)
-			authentication.addTo(settings);
+			authentication.addTo(settings, destination.getParent());
 		copyPermissionRestrictions(parentSettings.path("permissions"), settings);
 		if (instructionFilesMode.isEmpty())
 			copyInstructionFilesMode(parentSettings, settings);

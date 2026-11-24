@@ -23,8 +23,8 @@ import tools.jackson.databind.node.ObjectNode;
  * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param home       the absolute source home
- * @param parts      the names of the copied or shared settings and files, such as {@code apiKeyHelper} or
- *                   {@code .credentials.json}, in the order that the harness ranks them
+ * @param parts      the names of the settings and files that the session receives, each a setting's name or a file's
+ *                   path in the source home
  * @param loginClass the class of the login that the harness selects
  */
 public record AuthenticationEvidence(Path home, List<String> parts, HostLogin loginClass)

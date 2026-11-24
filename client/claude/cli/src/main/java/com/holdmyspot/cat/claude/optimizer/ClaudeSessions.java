@@ -78,7 +78,7 @@ public final class ClaudeSessions extends RunnerSessions
 	 * session's model receives or how its actions take effect, and register the new version with the hash of the
 	 * settings that the runner generates.
 	 */
-	private static final int SESSION_ENVIRONMENT_VERSION = 27;
+	private static final int SESSION_ENVIRONMENT_VERSION = 28;
 	/**
 	 * The CAT release that introduced {@link #SESSION_ENVIRONMENT_VERSION}. Set it to the release that ships a new
 	 * version whenever the version changes.
@@ -306,7 +306,7 @@ public final class ClaudeSessions extends RunnerSessions
 		if (environment.containsKey(HarnessEnvironment.NESTED_SESSION_VARIABLE))
 			return Optional.empty();
 		return Optional.of(ClaudeAuthentication.read(JsonMapper.builder().build(), settings().authentication(),
-			environment, Platform.current()).evidence());
+			environment, Platform.current(), settings().artifact()).evidence());
 	}
 
 	/**

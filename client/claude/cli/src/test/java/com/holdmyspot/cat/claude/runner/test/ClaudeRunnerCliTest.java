@@ -36,6 +36,7 @@ import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -837,7 +838,7 @@ public final class ClaudeRunnerCliTest
 			Map<String, String> environment = sourceHome(home);
 
 			int status = ClaudeRunnerCli.reportChildNeeds(scope, environment, report, AuthenticationOptions.DEFAULT,
-				new PrintWriter(errors, true));
+				SourceHomes.PLUGIN, new PrintWriter(errors, true));
 
 			requireThat(status, "status").isZero();
 			requireThat(ChildNeedsReport.read(scope.json(), report).hosts(), "hosts").isEqualTo(Set.of(
@@ -851,7 +852,7 @@ public final class ClaudeRunnerCliTest
 				""");
 
 			status = ClaudeRunnerCli.reportChildNeeds(scope, environment, refused, new AuthenticationOptions(
-				Optional.of(noHost), Optional.of(HostLogin.API_KEY), false), new PrintWriter(errors, true));
+				Optional.of(noHost), Optional.of(HostLogin.API_KEY), false), SourceHomes.PLUGIN, new PrintWriter(errors, true));
 
 			requireThat(status, "refusedStatus").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
 			requireThat(Files.exists(refused), "refusedWritten").isFalse();
@@ -1032,8 +1033,197 @@ public final class ClaudeRunnerCliTest
 			int status = launchWithAuthentication(root, List.of("--home", source.toString()), environment, errors);
 
 			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
-			requireThat(errors.toString(), "errors").contains(source.resolve(".claude/settings.json").toString()).
-				contains(source.resolve(".claude/.credentials.json").toString()).doesNotContain(SourceHomes.SECRET);
+			requireNoAuthenticationRefusal(errors.toString(), root, source);
+			requireThat(Files.exists(root.resolve("results")), "resultsFolderExists").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that a launch whose source home's only Claude credential is a {@code /login} login, in
+	 * {@code .credentials.json}, is refused with the refusal status before it creates a nested session, because sessions
+	 * do not use such a login, and that the refusal names {@code claude setup-token} and the {@code claude-credential}
+	 * command that saves CAT's credential file for that source home, by the launcher's absolute path.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void refusesLoginOnlySourceHome() throws IOException
+	{
+		// Requirement: R-I14
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("source-home-")).toRealPath();
+			Path source = SourceHomes.create(root, "source");
+			SourceHomes.storedLogin(source);
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(),
+				SourceHomes.create(root, "runner").toString());
+			StringWriter errors = new StringWriter();
+
+			int status = launchWithAuthentication(root, List.of("--home", source.toString()), environment, errors);
+
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireNoAuthenticationRefusal(errors.toString(), root, source);
+			requireThat(Files.exists(root.resolve("results")), "resultsFolderExists").isFalse();
+		}
+	}
+
+	/**
+	 * Requires the refusal of a source home without Claude authentication: it names the files that the runner read,
+	 * says that sessions do not use a {@code /login} login, names {@code claude setup-token} and the
+	 * {@code claude-credential set} command for the source home by the launcher's absolute path, and quotes no secret.
+	 *
+	 * @param errors what the launch printed
+	 * @param root   the test's directory, which holds the plugin folder that the launch names
+	 * @param source the source home
+	 */
+	private static void requireNoAuthenticationRefusal(String errors, Path root, Path source)
+	{
+		requireThat(errors, "errors").contains(source.resolve(".claude/settings.json").toString()).
+			contains(source.resolve(".cat/claude/.credentials.json").toString()).contains("/login").
+			contains("claude setup-token").
+			contains(root.resolve("plugin/bin/claude-credential") + " set --home " + source).
+			doesNotContain(SourceHomes.SECRET).doesNotContain(SourceHomes.SETUP_TOKEN);
+	}
+
+	/**
+	 * Verifies that a launch whose source home's CAT credential file is unusable is refused with the refusal status
+	 * before it creates a nested session, naming the file and the fault, and for a token of another kind both accepted
+	 * forms, without quoting the file's token.
+	 *
+	 * @param fault    the fault that the test gives the file
+	 * @param expected text that the refusal names for the fault
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test(dataProvider = "unusableCatCredentials")
+	public void refusesUnusableCatCredential(String fault, List<String> expected) throws IOException
+	{
+		// Requirement: R-I14
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("source-home-")).toRealPath();
+			Path source = SourceHomes.create(root, "source");
+			Path file = source.resolve(".cat/claude/.credentials.json");
+			String valid = """
+				{"format_version": 1, "token": "%s"}
+				""".formatted(SourceHomes.SECRET);
+			switch (fault)
+			{
+				case "mode" -> Files.setPosixFilePermissions(SourceHomes.catCredentialFile(source, valid),
+					PosixFilePermissions.fromString("rw-r--r--"));
+				case "link" ->
+				{
+					Path target = SourceHomes.secret(root.resolve("elsewhere/credentials.json"));
+					Files.writeString(target, valid);
+					Files.createDirectories(file.getParent());
+					Files.createSymbolicLink(file, target);
+				}
+				case "prefix" -> SourceHomes.catCredential(source, "sk-proj-fixture");
+				case "field" -> SourceHomes.catCredentialFile(source, """
+					{"format_version": 1, "token": "%s", "login_class": "api_key"}
+					""".formatted(SourceHomes.SECRET));
+				case "version" -> SourceHomes.catCredentialFile(source, """
+					{"format_version": 2, "token": "%s"}
+					""".formatted(SourceHomes.SECRET));
+				case "array" -> SourceHomes.catCredentialFile(source, "[\"" + SourceHomes.SECRET + "\"]");
+				case "size" -> SourceHomes.catCredentialFile(source, """
+					{"format_version": 1, "token": "%s%s"}
+					""".formatted(SourceHomes.SECRET, "x".repeat(16 * 1024)));
+				default -> throw new AssertionError(fault);
+			}
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(),
+				SourceHomes.create(root, "runner").toString());
+			StringWriter errors = new StringWriter();
+
+			int status = launchWithAuthentication(root, List.of("--home", source.toString()), environment, errors);
+
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").contains(file.toString()).doesNotContain(SourceHomes.SECRET).
+				doesNotContain("sk-proj-fixture");
+			for (String text : expected)
+				requireThat(errors.toString(), "errors").contains(text);
+			requireThat(Files.exists(root.resolve("results")), "resultsFolderExists").isFalse();
+		}
+	}
+
+	/**
+	 * Returns the faults of a CAT credential file, each with the text that its refusal names.
+	 *
+	 * @return the faults
+	 */
+	@DataProvider
+	public static Object[][] unusableCatCredentials()
+	{
+		return new Object[][]
+		{
+			// Other users may read the file
+			{"mode", List.of("group read", "other read")},
+			// Anyone who may write the folder can change a link's target
+			{"link", List.of("symbolic link")},
+			// The token is neither an Anthropic API key nor a setup token
+			{"prefix", List.of("sk-ant-api", "sk-ant-oat", "claude setup-token")},
+			// The file holds a field beyond the format's
+			{"field", List.of("login_class")},
+			// The file is in a later format
+			{"version", List.of("format_version")},
+			// The file holds no JSON object
+			{"array", List.of("JSON object")},
+			// The file is larger than the format allows
+			{"size", List.of("16384")}
+		};
+	}
+
+	/**
+	 * Verifies that a launch whose source home holds only CAT's credential file goes on to start its session, as far as
+	 * a test without a CAT artifact goes.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void startsLaunchWithOnlyCatCredential() throws IOException
+	{
+		// Requirement: R-I14
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("source-home-")).toRealPath();
+			Path home = SourceHomes.create(root, "runner");
+			SourceHomes.catCredential(home, SourceHomes.SETUP_TOKEN);
+			StringWriter errors = new StringWriter();
+
+			IOException failure = expectThrows(IOException.class, () -> launchWithAuthentication(root, List.of(),
+				Map.of("PATH", "", Platform.current().homeVariable(), home.toString()), errors));
+
+			// The session starts and fails only because the test runs no CAT artifact
+			requireThat(failure, "failure").isNotInstanceOf(SessionRefusedException.class);
+			requireThat(errors.toString(), "errors").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that a launch whose bound denies reading CAT's credential file of the source home is refused with the
+	 * refusal status, naming the file and the denial.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void refusesCatCredentialThatBoundDenies() throws IOException
+	{
+		// Requirement: R-I14
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("source-home-")).toRealPath();
+			Path source = SourceHomes.create(root, "source");
+			Path file = SourceHomes.catCredential(source, SourceHomes.SETUP_TOKEN);
+			Path denied = source.resolve(".cat");
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(),
+				SourceHomes.create(root, "runner").toString());
+			StringWriter errors = new StringWriter();
+
+			int status = launchWithAuthentication(root, List.of("--home", source.toString()), environment, errors,
+				List.of(denied));
+
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").contains(file.toString()).doesNotContain(SourceHomes.SETUP_TOKEN);
+			requireThat(errors.toString().replace(file.toString(), ""), "denial").contains(denied.toString());
 			requireThat(Files.exists(root.resolve("results")), "resultsFolderExists").isFalse();
 		}
 	}
@@ -1245,7 +1435,7 @@ public final class ClaudeRunnerCliTest
 			StringWriter errors = new StringWriter();
 
 			int status = ClaudeRunnerCli.reportChildNeeds(scope, environment, report, new AuthenticationOptions(
-				Optional.of(source), Optional.empty(), false), new PrintWriter(errors, true));
+				Optional.of(source), Optional.empty(), false), SourceHomes.PLUGIN, new PrintWriter(errors, true));
 
 			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
 			requireThat(errors.toString(), "errors").contains(source.resolve(".claude/settings.json").toString());

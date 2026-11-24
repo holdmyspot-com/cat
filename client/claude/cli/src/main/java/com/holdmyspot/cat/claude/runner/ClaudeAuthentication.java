@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.claude.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.common.BoundedInput;
@@ -15,10 +16,19 @@ import com.holdmyspot.cat.common.runner.SourceHome;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.SeekableByteChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.AclEntry;
+import java.nio.file.attribute.AclEntryPermission;
+import java.nio.file.attribute.AclEntryType;
+import java.nio.file.attribute.FileAttribute;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -31,19 +41,22 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * The Claude authentication that a nested session takes from a source home's Claude folder, as the user's own Claude
- * Code in that home would authenticate. Its parts are the {@code apiKeyHelper} and the {@code env} entries
- * {@code ANTHROPIC_BASE_URL}, {@code ANTHROPIC_AUTH_TOKEN}, {@code ANTHROPIC_API_KEY} and
- * {@code CLAUDE_CODE_OAUTH_TOKEN} of the folder's {@code settings.json}, and the stored login that Claude Code's
- * {@code /login} keeps in {@code .credentials.json}. Claude Code chooses among them by its own order:
- * {@code ANTHROPIC_AUTH_TOKEN}, then {@code ANTHROPIC_API_KEY}, then {@code apiKeyHelper}, then
- * {@code CLAUDE_CODE_OAUTH_TOKEN}, then the stored login.
+ * The Claude authentication that a nested session takes from a source home, as the user's own Claude Code in that home
+ * would authenticate. Its parts are the {@code apiKeyHelper} and the {@code env} entries {@code ANTHROPIC_BASE_URL},
+ * {@code ANTHROPIC_AUTH_TOKEN}, {@code ANTHROPIC_API_KEY} and {@code CLAUDE_CODE_OAUTH_TOKEN} of the
+ * {@code settings.json} of the source home's Claude folder, and CAT's credential file, as {@link ClaudeCredentialFile}
+ * reads it. The runner chooses the one credential that the session receives by Claude Code's own order, with CAT's
+ * credential file in the place of the stored login: {@code ANTHROPIC_AUTH_TOKEN}, then {@code ANTHROPIC_API_KEY},
+ * then {@code apiKeyHelper}, then {@code CLAUDE_CODE_OAUTH_TOKEN}, then CAT's credential file.
  * <p>
- * The session receives the helper in its own settings, wrapped to run with the source home as its home folder, the
- * tokens and the base URL in its Claude process's environment, never in a file, and shares the stored login through
- * {@code CLAUDE_SECURESTORAGE_CONFIG_DIR}, which names the source's Claude folder: the session's Claude Code reads and
- * refreshes that login in place, so a refresh never stops the user's own login. Nothing else of the source home reaches
- * the session.
+ * A chosen token reaches the session's Claude Code only through the session's key file, which the one
+ * {@code apiKeyHelper} of the session's settings prints with {@code cat}; no token is in the Claude process's
+ * environment, in a settings file or on a command line, so the commands and hooks that Claude Code starts inherit none.
+ * A chosen helper is copied into the session's settings, wrapped to run with the source home as its home folder. The
+ * base URL goes into the Claude process's environment. A login that Claude Code's {@code /login} stores is never
+ * shared, copied or read: the session's Claude Code keeps its own login store, the session's new and empty Claude
+ * folder, so sessions never refresh, write or replace the user's login. Nothing else of the source home reaches the
+ * session.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -59,12 +72,14 @@ public final class ClaudeAuthentication
 	public static final String FOLDER_VARIABLE = "CLAUDE_CONFIG_DIR";
 	/**
 	 * The variables that select a session's credential or the login store that its Claude Code reads. Only the source
-	 * home's files decide them: the session's Claude process receives none of the runner's own values.
+	 * home's files decide the credential, and the session's Claude Code keeps its own login store: the session's Claude
+	 * process receives none of the runner's own values.
 	 */
 	public static final Set<String> CREDENTIAL_VARIABLES = Set.of("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
 		"ANTHROPIC_BASE_URL", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_SECURESTORAGE_CONFIG_DIR");
 	/**
-	 * The file in which Claude Code's {@code /login} stores a login, in a Claude folder.
+	 * The file in which Claude Code's {@code /login} stores a login, in a Claude folder. The runner never reads it, but
+	 * denies the source's to the session, because it holds the user's own login.
 	 */
 	private static final String STORED_LOGIN = ".credentials.json";
 	/**
@@ -103,103 +118,115 @@ public final class ClaudeAuthentication
 	private static final List<String> UNCOPIED_CREDENTIALS = List.of("CLAUDE_CODE_USE_BEDROCK",
 		"CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY", "ANTHROPIC_PROFILE");
 	/**
-	 * The variable that names the Claude folder whose stored login Claude Code reads and refreshes.
+	 * The {@code claude-credential} launcher, relative to the plugin folder, which saves CAT's credential file.
 	 */
-	private static final String LOGIN_STORE = "CLAUDE_SECURESTORAGE_CONFIG_DIR";
+	private static final Path CREDENTIAL_LAUNCHER = Path.of("bin/claude-credential");
 	/**
-	 * The variable that has Claude Code remove credentials from the environment of every command and hook that it
-	 * starts.
+	 * The name of the key file in a session's Claude folder.
 	 */
-	private static final String SCRUB = "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB";
+	private static final String KEY_FILE = "cat-api-key";
 	/**
 	 * The size of the largest settings file that is read.
 	 */
 	private static final int MAXIMUM_SETTINGS_BYTES = 1_048_576;
 	private final SourceHome source;
-	private final Path folder;
 	private final Path settings;
-	/**
-	 * The tokens of the source's {@code env}, by variable, in the order that Claude Code ranks them.
-	 */
-	private final Map<String, String> tokens;
 	private final String baseUrl;
+	/**
+	 * The name of the part that Claude Code's order selects.
+	 */
+	private final String selected;
+	/**
+	 * The selected token, which only the session's key file receives, or {@code null} if the source's helper is
+	 * selected.
+	 */
+	private final String token;
+	/**
+	 * The source's {@code apiKeyHelper} when Claude Code's order selects it, or {@code null}.
+	 */
 	private final String helper;
 	private final String helperLifetime;
-	private final boolean storedLogin;
 	private final HostLogin loginClass;
 	private final String modelHost;
 	private final List<Path> secretFiles;
 	private final List<Path> sourceFiles;
+	/**
+	 * The source files that the session and every session that it requests must not read.
+	 */
+	private final List<Path> deniedFiles;
 
 	/**
 	 * Creates authentication.
 	 *
 	 * @param source         the source home
-	 * @param folder         the source home's Claude folder
-	 * @param settings       the folder's settings file
-	 * @param tokens         the tokens of the source's {@code env}, by variable, in the order that Claude Code ranks
-	 *                       them
+	 * @param settings       the settings file of the source home's Claude folder
 	 * @param baseUrl        the source's {@code ANTHROPIC_BASE_URL}, or {@code null} if it sets none
-	 * @param helper         the source's {@code apiKeyHelper}, or {@code null} if it sets none
-	 * @param helperLifetime the source's {@code CLAUDE_CODE_API_KEY_HELPER_TTL_MS}, or {@code null} if it sets none or
-	 *                       sets no helper
-	 * @param storedLogin    {@code true} if the folder holds a stored login
-	 * @param loginClass     the class of the login that Claude Code selects
+	 * @param selected       the name of the part that Claude Code's order selects
+	 * @param token          the selected token, or {@code null} if the source's helper is selected
+	 * @param helper         the source's {@code apiKeyHelper} when it is selected, or {@code null}
+	 * @param helperLifetime the source's {@code CLAUDE_CODE_API_KEY_HELPER_TTL_MS} when the helper is selected, or
+	 *                       {@code null}
+	 * @param loginClass     the class of the selected credential
 	 * @param modelHost      the host of the session's model provider
 	 * @param secretFiles    the source files that hold a secret
 	 * @param sourceFiles    the source files that the runner reads
+	 * @param deniedFiles    the source files that the session and every session that it requests must not read
 	 */
-	private ClaudeAuthentication(SourceHome source, Path folder, Path settings, Map<String, String> tokens,
-		String baseUrl, String helper, String helperLifetime, boolean storedLogin, HostLogin loginClass,
-		String modelHost, List<Path> secretFiles, List<Path> sourceFiles)
+	private ClaudeAuthentication(SourceHome source, Path settings, String baseUrl, String selected, String token,
+		String helper, String helperLifetime, HostLogin loginClass, String modelHost, List<Path> secretFiles,
+		List<Path> sourceFiles, List<Path> deniedFiles)
 	{
 		this.source = source;
-		this.folder = folder;
 		this.settings = settings;
-		this.tokens = tokens;
 		this.baseUrl = baseUrl;
+		this.selected = selected;
+		this.token = token;
 		this.helper = helper;
 		this.helperLifetime = helperLifetime;
-		this.storedLogin = storedLogin;
 		this.loginClass = loginClass;
 		this.modelHost = modelHost;
 		this.secretFiles = secretFiles;
 		this.sourceFiles = sourceFiles;
+		this.deniedFiles = deniedFiles;
 	}
 
 	/**
 	 * Reads the authentication of a launch's source home. The source's Claude folder is {@code .claude} in a home that
 	 * the launch names; otherwise it is the folder that the runner's {@code CLAUDE_CONFIG_DIR} names, or else
-	 * {@code .claude} in the runner's home folder.
+	 * {@code .claude} in the runner's home folder. CAT's credential file lies in the source home whatever
+	 * {@code CLAUDE_CONFIG_DIR} names.
 	 * <p>
-	 * A source file holds a secret when it is the stored login, a file that the {@code apiKeyHelper} command names by an
-	 * absolute path or a path under {@code ~/}, which names the source home, or the settings file when its {@code env}
-	 * holds a token. Each one must hold its secret safely, as {@link SecretFile} decides from its metadata.
+	 * A source file holds a secret when it is CAT's credential file, a file that the {@code apiKeyHelper} command names
+	 * by an absolute path or a path under {@code ~/}, which names the source home, or the settings file when its
+	 * {@code env} holds a token. Each one must hold its secret safely, as {@link SecretFile} decides from its metadata.
 	 *
 	 * @param json        reads the source's settings file
 	 * @param options     the launch's choice of source home and gateway login class
 	 * @param environment the runner's environment
 	 * @param platform    the platform whose home variable names the runner's home folder
+	 * @param plugin      the folder of the Claude Code plugin that holds the runner, whose launchers a refusal names
 	 * @return the authentication
 	 * @throws NullPointerException    if any of the arguments are null
 	 * @throws SessionRefusedException if the source home does not exist; if its settings file cannot be parsed; if its
-	 *                                 {@code env} selects a cloud provider or a profile; if it holds none of the parts;
-	 *                                 if its base URL names no host, or the launch declares no class of login for it;
-	 *                                 or if a file that holds a secret does not hold it safely. The reason names the
-	 *                                 files or the setting and never quotes a secret.
+	 *                                 settings select a cloud provider or a profile; if it holds none of the parts, a
+	 *                                 login that Claude Code's login command stores alone included; if CAT's
+	 *                                 credential file is unusable, as {@link ClaudeCredentialFile#read} decides; if its
+	 *                                 base URL names no host, or the launch declares no class of login for it; or if a
+	 *                                 file that holds a secret does not hold it safely. The reason names the files or
+	 *                                 the setting and never quotes a secret.
 	 * @throws IOException             if a source file cannot be read
 	 */
 	public static ClaudeAuthentication read(JsonMapper json, AuthenticationOptions options,
-		Map<String, String> environment, Platform platform) throws IOException
+		Map<String, String> environment, Platform platform, Path plugin) throws IOException
 	{
 		requireThat(json, "json").isNotNull();
 		requireThat(options, "options").isNotNull();
 		requireThat(environment, "environment").isNotNull();
 		requireThat(platform, "platform").isNotNull();
+		requireThat(plugin, "plugin").isNotNull();
 		SourceHome source = options.sourceHome(environment, platform);
 		Path folder = source.folder(FOLDER, FOLDER_VARIABLE, environment);
 		Path settings = folder.resolve(SETTINGS);
-		Path login = folder.resolve(STORED_LOGIN);
 		JsonNode document = readSettings(json, settings);
 		JsonNode env = document.path("env");
 		for (String variable : UNCOPIED_CREDENTIALS)
@@ -224,14 +251,18 @@ public final class ClaudeAuthentication
 		String helperLifetime = null;
 		if (helper != null)
 			helperLifetime = text(env.path(HELPER_LIFETIME));
-		boolean storedLogin = Files.exists(login, NOFOLLOW_LINKS);
-		if (tokens.isEmpty() && helper == null && !storedLogin)
+		Optional<ClaudeCredentialFile> credential = ClaudeCredentialFile.read(json, source.directory());
+		if (tokens.isEmpty() && helper == null && credential.isEmpty())
 		{
+			// The refusal gives both fixes without looking for a /login login, which the runner never reads
 			throw new SessionRefusedException("CAT does not start the session: the source home " +
 				source.directory() + " holds no Claude authentication. The runner read " + settings + ", which sets " +
 				"neither " + HELPER + " nor env." + AUTH_TOKEN + ", env." + API_KEY + " or env." + OAUTH_TOKEN +
-				", and found no stored login " + login + ". Log in to Claude Code with /login in that home, add one " +
-				"of those settings, or name another source home with " + AuthenticationOptions.HOME_OPTION + ".");
+				", and found no CAT credential file " + ClaudeCredentialFile.path(source.directory()) + ". Sessions do " +
+				"not use a login that Claude Code's /login stores. Run claude setup-token and save the token that it " +
+				"prints, or save an Anthropic API key, with " + plugin.resolve(CREDENTIAL_LAUNCHER) + " set " +
+				AuthenticationOptions.HOME_OPTION + " " + source.directory() + "; or add one of those settings, or " +
+				"name another source home with " + AuthenticationOptions.HOME_OPTION + ".");
 		}
 		Optional<HostLogin> declared = options.gatewayLoginClass();
 		String modelHost = modelHost(settings, baseUrl);
@@ -242,8 +273,7 @@ public final class ClaudeAuthentication
 				"gateway bills. Name it with " + AuthenticationOptions.LOGIN_CLASS_OPTION + " subscription or " +
 				AuthenticationOptions.LOGIN_CLASS_OPTION + " api_key.");
 		}
-		HostLogin loginClass = loginClass(tokens, helper, declared.orElse(null));
-		List<Path> secretFiles = secretFiles(source, settings, login, tokens, helper, storedLogin);
+		List<Path> secretFiles = secretFiles(source, settings, tokens, helper, credential);
 		for (Path file : secretFiles)
 		{
 			Optional<String> problem = SecretFile.problem(file, SecretFile.read(file));
@@ -254,8 +284,50 @@ public final class ClaudeAuthentication
 		if (Files.exists(settings))
 			sourceFiles.add(settings);
 		sourceFiles.addAll(secretFiles);
-		return new ClaudeAuthentication(source, folder, settings, Collections.unmodifiableMap(tokens), baseUrl, helper,
-			helperLifetime, storedLogin, loginClass, modelHost, secretFiles, List.copyOf(sourceFiles));
+		List<Path> deniedFiles = new ArrayList<>(secretFiles);
+		Path login = folder.resolve(STORED_LOGIN);
+		if (Files.exists(login, NOFOLLOW_LINKS))
+			deniedFiles.add(login);
+		String selected = select(tokens, helper);
+		String token = tokens.get(selected);
+		HostLogin fileClass = null;
+		if (selected.equals(ClaudeCredentialFile.RELATIVE_NAME))
+		{
+			token = credential.orElseThrow().token();
+			fileClass = credential.orElseThrow().loginClass();
+		}
+		String selectedHelper = null;
+		String selectedLifetime = null;
+		if (selected.equals(HELPER))
+		{
+			selectedHelper = helper;
+			selectedLifetime = helperLifetime;
+		}
+		HostLogin loginClass = loginClass(selected, fileClass, baseUrl, declared.orElse(null));
+		return new ClaudeAuthentication(source, settings, baseUrl, selected, token, selectedHelper, selectedLifetime,
+			loginClass, modelHost, secretFiles, List.copyOf(sourceFiles), List.copyOf(deniedFiles));
+	}
+
+	/**
+	 * Returns the part that Claude Code's order selects among a source's parts.
+	 *
+	 * @param tokens the source's tokens, by variable
+	 * @param helper the source's {@code apiKeyHelper}, or {@code null} if it sets none
+	 * @return the name of the selected part: a token's variable, {@code apiKeyHelper} or the path of CAT's credential
+	 *   file in the source home, which the caller selects only when the file exists
+	 */
+	private static String select(Map<String, String> tokens, String helper)
+	{
+		for (String variable : List.of(AUTH_TOKEN, API_KEY))
+		{
+			if (tokens.containsKey(variable))
+				return variable;
+		}
+		if (helper != null)
+			return HELPER;
+		if (tokens.containsKey(OAUTH_TOKEN))
+			return OAUTH_TOKEN;
+		return ClaudeCredentialFile.RELATIVE_NAME;
 	}
 
 	/**
@@ -327,46 +399,47 @@ public final class ClaudeAuthentication
 	}
 
 	/**
-	 * Returns the class of the login that Claude Code selects among a source's parts.
+	 * Returns the class of the credential that Claude Code's order selects among a source's parts.
 	 *
-	 * @param tokens   the source's tokens
-	 * @param helper   the source's {@code apiKeyHelper}, or {@code null} if it sets none
-	 * @param declared the class that the launch declares for the source's base URL, or {@code null} if the source sets
-	 *                 none
+	 * @param selected  the name of the selected part
+	 * @param fileClass the class of the token of CAT's credential file when it is selected, or {@code null}
+	 * @param baseUrl   the source's {@code ANTHROPIC_BASE_URL}, or {@code null} if it sets none
+	 * @param declared  the class that the launch declares, or {@code null} if it declares none
 	 * @return {@code declared} when the source sends its requests to a gateway; otherwise {@code unknown} for a bearer
-	 *   token, whose billing CAT cannot see, {@code api_key} for an API key or a helper, and {@code subscription} for
-	 *   an OAuth token or a stored login
+	 *   token, whose billing CAT cannot see, {@code api_key} for an API key or a helper, {@code subscription} for a
+	 *   {@code claude setup-token} token, and the class of the token of CAT's credential file, which its prefix gives
 	 */
-	private static HostLogin loginClass(Map<String, String> tokens, String helper, HostLogin declared)
+	private static HostLogin loginClass(String selected, HostLogin fileClass, String baseUrl, HostLogin declared)
 	{
-		if (declared != null)
+		if (baseUrl != null)
 			return declared;
-		if (tokens.containsKey(AUTH_TOKEN))
-			return HostLogin.UNKNOWN;
-		if (tokens.containsKey(API_KEY) || helper != null)
-			return HostLogin.API_KEY;
-		return HostLogin.SUBSCRIPTION;
+		if (fileClass != null)
+			return fileClass;
+		return switch (selected)
+		{
+			case AUTH_TOKEN -> HostLogin.UNKNOWN;
+			case API_KEY, HELPER -> HostLogin.API_KEY;
+			default -> HostLogin.SUBSCRIPTION;
+		};
 	}
 
 	/**
 	 * Returns the source files that hold a secret.
 	 *
-	 * @param source      the source home, which {@code ~/} names in the helper's command
-	 * @param settings    the source's settings file
-	 * @param login       the source's stored login
-	 * @param tokens      the source's tokens
-	 * @param helper      the source's {@code apiKeyHelper}, or {@code null} if it sets none
-	 * @param storedLogin {@code true} if the source holds a stored login
+	 * @param source     the source home, which {@code ~/} names in the helper's command
+	 * @param settings   the source's settings file
+	 * @param tokens     the source's tokens
+	 * @param helper     the source's {@code apiKeyHelper}, or {@code null} if it sets none
+	 * @param credential CAT's credential file of the source home, or empty if it has none
 	 * @return the files, each once
 	 */
-	private static List<Path> secretFiles(SourceHome source, Path settings, Path login, Map<String, String> tokens,
-		String helper, boolean storedLogin)
+	private static List<Path> secretFiles(SourceHome source, Path settings, Map<String, String> tokens, String helper,
+		Optional<ClaudeCredentialFile> credential)
 	{
 		Set<Path> files = new LinkedHashSet<>();
 		if (!tokens.isEmpty())
 			files.add(settings);
-		if (storedLogin)
-			files.add(login);
+		credential.ifPresent(file -> files.add(file.file()));
 		if (helper != null)
 		{
 			for (String word : helper.strip().split("\\s+"))
@@ -397,31 +470,18 @@ public final class ClaudeAuthentication
 	}
 
 	/**
-	 * Returns the source home's Claude folder, whose stored login the session shares.
-	 *
-	 * @return the folder
-	 */
-	public Path folder()
-	{
-		return folder;
-	}
-
-	/**
-	 * Returns the variables that the session's Claude process receives for its credential: the source's tokens and base
-	 * URL, {@code CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1} whenever a token is among them, so that Claude Code passes no token
-	 * to the commands and hooks that it starts, {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} naming the source's Claude
-	 * folder, and {@value HarnessEnvironment#HOST_LOGIN_VARIABLE} stating {@link #loginClass()}.
+	 * Returns the variables that the session's Claude process receives for its credential: the source's base URL, which
+	 * is not a secret, and {@value HarnessEnvironment#HOST_LOGIN_VARIABLE} stating {@link #loginClass()}. They hold no
+	 * token: a selected token reaches Claude Code only through the session's key file, as {@link #writeKeyFile(Path)}
+	 * writes it. They name no login store either, so the session's Claude Code keeps its login in its own Claude folder.
 	 *
 	 * @return the variables, which the caller may change
 	 */
 	public Map<String, String> environment()
 	{
-		Map<String, String> environment = new LinkedHashMap<>(tokens);
+		Map<String, String> environment = new LinkedHashMap<>();
 		if (baseUrl != null)
 			environment.put(BASE_URL, baseUrl);
-		if (!tokens.isEmpty())
-			environment.put(SCRUB, "1");
-		environment.put(LOGIN_STORE, folder.toString());
 		environment.put(HarnessEnvironment.HOST_LOGIN_VARIABLE, AuthenticationOptions.classValue(loginClass));
 		return environment;
 	}
@@ -469,18 +529,25 @@ public final class ClaudeAuthentication
 	}
 
 	/**
-	 * Adds the source's helper to a session's settings, wrapped so that it runs with the source home as its home
-	 * folder, so that a {@code ~} in it names the same file as for the user, together with the helper's key lifetime
-	 * when the source sets one.
+	 * Adds the session's one {@code apiKeyHelper} to its settings. When Claude Code's order selects a token, the helper
+	 * runs {@code cat} with the absolute path of the session's key file, so that the settings name the file and never
+	 * the token. When it selects the source's helper, that helper is copied, wrapped so that it runs with the source
+	 * home as its home folder, so that a {@code ~} in it names the same file as for the user, together with the helper's
+	 * key lifetime when the source sets one.
 	 *
 	 * @param sessionSettings the session's settings
-	 * @throws NullPointerException if {@code sessionSettings} is null
+	 * @param claudeFolder    the session's Claude folder, which holds its key file
+	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public void addTo(ObjectNode sessionSettings)
+	public void addTo(ObjectNode sessionSettings, Path claudeFolder)
 	{
 		requireThat(sessionSettings, "sessionSettings").isNotNull();
-		if (helper == null)
+		requireThat(claudeFolder, "claudeFolder").isNotNull();
+		if (token != null)
+		{
+			sessionSettings.put(HELPER, "cat " + shellQuoted(keyFile(claudeFolder).toAbsolutePath().toString()));
 			return;
+		}
 		sessionSettings.put(HELPER, "env HOME=" + shellQuoted(source.directory().toString()) + " sh -c " +
 			shellQuoted(helper));
 		if (helperLifetime == null)
@@ -506,8 +573,99 @@ public final class ClaudeAuthentication
 	}
 
 	/**
-	 * Returns a launch's options with the source files that hold a secret among its denied reads, so that neither the
-	 * session nor any session that it requests may read them.
+	 * Returns the key file of a session's Claude folder, which holds the token that Claude Code's order selects while
+	 * the session's Claude process runs.
+	 *
+	 * @param claudeFolder the session's Claude folder
+	 * @return the key file
+	 * @throws NullPointerException if {@code claudeFolder} is null
+	 */
+	public static Path keyFile(Path claudeFolder)
+	{
+		requireThat(claudeFolder, "claudeFolder").isNotNull();
+		return claudeFolder.resolve(KEY_FILE);
+	}
+
+	/**
+	 * Writes the session's key file before its Claude process starts or resumes. The file is created new with access
+	 * for its owner alone, set as it is created, and receives the selected token's bytes from memory. A key file that an
+	 * earlier launch left is removed first, so a resume writes the resuming launch's token; when Claude Code's order
+	 * selects the source's helper, no key file remains.
+	 *
+	 * @param claudeFolder the session's Claude folder, which exists
+	 * @throws NullPointerException if {@code claudeFolder} is null
+	 * @throws IOException          if the file cannot be removed, created or written; a file that was created is then
+	 *                              removed
+	 */
+	public void writeKeyFile(Path claudeFolder) throws IOException
+	{
+		Path file = keyFile(claudeFolder);
+		Files.deleteIfExists(file);
+		if (token == null)
+			return;
+		try (SeekableByteChannel channel = Files.newByteChannel(file, EnumSet.of(StandardOpenOption.CREATE_NEW,
+			StandardOpenOption.WRITE), ownerOnly(claudeFolder)))
+		{
+			ByteBuffer bytes = ByteBuffer.wrap(token.getBytes(UTF_8));
+			while (bytes.hasRemaining())
+				channel.write(bytes);
+		}
+		catch (IOException | RuntimeException e)
+		{
+			try
+			{
+				Files.deleteIfExists(file);
+			}
+			catch (IOException suppressed)
+			{
+				e.addSuppressed(suppressed);
+			}
+			throw e;
+		}
+	}
+
+	/**
+	 * Returns the access that a new key file gets as it is created: on a file system with POSIX permissions, reading and
+	 * writing by its owner alone; on one with access lists, an access list that grants its owner alone.
+	 *
+	 * @param claudeFolder the session's Claude folder, whose owner owns the file
+	 * @return the file attribute
+	 * @throws IOException if the file system reports neither, or the folder's owner cannot be read
+	 */
+	private static FileAttribute<?> ownerOnly(Path claudeFolder) throws IOException
+	{
+		Set<String> views = claudeFolder.getFileSystem().supportedFileAttributeViews();
+		if (views.contains("posix"))
+		{
+			return PosixFilePermissions.asFileAttribute(EnumSet.of(PosixFilePermission.OWNER_READ,
+				PosixFilePermission.OWNER_WRITE));
+		}
+		if (views.contains("acl"))
+		{
+			AclEntry owner = AclEntry.newBuilder().setType(AclEntryType.ALLOW).
+				setPrincipal(Files.getOwner(claudeFolder)).setPermissions(EnumSet.allOf(AclEntryPermission.class)).build();
+			return new FileAttribute<List<AclEntry>>()
+			{
+				@Override
+				public String name()
+				{
+					return "acl:acl";
+				}
+
+				@Override
+				public List<AclEntry> value()
+				{
+					return List.of(owner);
+				}
+			};
+		}
+		throw new IOException("The file system of " + claudeFolder + " reports neither POSIX permissions nor an " +
+			"access list, so CAT cannot create the session's key file readable by its owner alone.");
+	}
+
+	/**
+	 * Returns a launch's options with the source files that hold a secret, and the source's stored login when it exists,
+	 * among its denied reads, so that neither the session nor any session that it requests may read them.
 	 *
 	 * @param options the launch's options
 	 * @return the options
@@ -516,7 +674,7 @@ public final class ClaudeAuthentication
 	public HarnessRunnerOptions withDeniedReads(HarnessRunnerOptions options)
 	{
 		requireThat(options, "options").isNotNull();
-		return options.withDeniedReads(secretFiles);
+		return options.withDeniedReads(deniedFiles);
 	}
 
 	/**
@@ -548,8 +706,9 @@ public final class ClaudeAuthentication
 	}
 
 	/**
-	 * Returns the record of the session's authentication: the source home, the names of the copied and shared parts,
-	 * in the order that Claude Code ranks them, and the class of the login that it selects.
+	 * Returns the record of the session's authentication: the source home, the names of the parts that the session
+	 * receives, which are the base URL when the source sets one, the part that Claude Code's order selects and, with a
+	 * selected helper, its key lifetime when the source sets one, and the class of the selected credential.
 	 *
 	 * @return the evidence
 	 */
@@ -558,19 +717,9 @@ public final class ClaudeAuthentication
 		List<String> parts = new ArrayList<>();
 		if (baseUrl != null)
 			parts.add(BASE_URL);
-		for (String variable : List.of(AUTH_TOKEN, API_KEY))
-		{
-			if (tokens.containsKey(variable))
-				parts.add(variable);
-		}
-		if (helper != null)
-			parts.add(HELPER);
+		parts.add(selected);
 		if (helperLifetime != null)
 			parts.add(HELPER_LIFETIME);
-		if (tokens.containsKey(OAUTH_TOKEN))
-			parts.add(OAUTH_TOKEN);
-		if (storedLogin)
-			parts.add(STORED_LOGIN);
 		return new AuthenticationEvidence(source.directory(), parts, loginClass);
 	}
 
