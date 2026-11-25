@@ -221,6 +221,18 @@ public final class CodexOptimizerBoundary
 	}
 
 	/**
+	 * Indicates whether {@link #validate(Command)} authenticated the host session that runs the command, which it does
+	 * only for a command that runs outside the session's sandbox. A command inside the sandbox cannot find the session
+	 * among its own processes.
+	 *
+	 * @return {@code true} if the command's host session is authenticated
+	 */
+	public boolean hasValidatedSession()
+	{
+		return session != null;
+	}
+
+	/**
 	 * Reads the authenticated owner's policies before running a check program.
 	 *
 	 * @return the initial policy when available and the current readings, before intersection

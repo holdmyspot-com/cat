@@ -24,6 +24,7 @@ import com.holdmyspot.cat.common.runner.HookComparisonResult;
 import com.holdmyspot.cat.common.runner.NestedSession;
 import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.NestedSessionReceipt;
+import com.holdmyspot.cat.common.runner.OwnerPolicyClient;
 import com.holdmyspot.cat.common.runner.RequestServer;
 import com.holdmyspot.cat.common.runner.RequestedRunner;
 import com.holdmyspot.cat.common.runner.RuntimeBinding;
@@ -41,6 +42,7 @@ import com.holdmyspot.cat.common.runner.policy.HostAccess;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyBoundFile;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
+import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import com.holdmyspot.cat.common.test.ExitedProcess;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -1537,6 +1539,75 @@ public final class RequestServerTest
 		 * @throws IOException if the operation fails or is refused
 		 */
 		void run() throws IOException;
+	}
+
+	/**
+	 * Verifies that the server states the policy of the session that it serves to a command that runs in the session's
+	 * sandbox, which cannot read the policy itself: each reading is the session's policy, with the snapshot that the
+	 * server took before it served.
+	 *
+	 * @throws IOException if the fixture cannot be created or a request cannot be served
+	 */
+	@Test(timeOut = 60_000)
+	public void statesOwnerPolicy() throws IOException
+	{
+		// Requirement: R-L21
+		try (Fixture fixture = new Fixture())
+		{
+			ParentPolicy expected = ParentPolicy.UNSANDBOXED.intersect(fixture.policy(List.of(fixture.project)));
+			try (Fixture.Running server = fixture.start())
+			{
+				OwnerPolicyClient client = new OwnerPolicyClient(
+					() -> Optional.of(new ServerChannel(server.requests(), server.exit())), JsonMapper.builder().build(),
+					Thread::yield);
+
+				List<ParentPolicy> policies = client.read();
+
+				requireThat(policies, "policies").isNotEmpty();
+				for (ParentPolicy policy : policies)
+					requireThat(policy, "policy").isEqualTo(expected);
+				try (Stream<Path> responses = Files.list(fixture.sessionDirectory().resolve("responses")))
+				{
+					requireThat(responses.toList(), "responses").isEmpty();
+				}
+			}
+		}
+	}
+
+	/**
+	 * Verifies that the server refuses to state the policy of its session once the session's sandbox lets its commands
+	 * write the installed plugin, as it refuses a launch, so that no command bounds a check program by a policy that
+	 * the session could change.
+	 *
+	 * @throws IOException if the fixture cannot be created or a request cannot be served
+	 */
+	@Test(timeOut = 60_000)
+	public void refusesPolicyOfWritablePlugin() throws IOException
+	{
+		// Requirement: R-L21
+		try (Fixture fixture = new Fixture())
+		{
+			try (Fixture.Running server = fixture.start())
+			{
+				fixture.policy.allow(fixture.policy(List.of(fixture.project, fixture.plugin)));
+				OwnerPolicyClient client = new OwnerPolicyClient(
+					() -> Optional.of(new ServerChannel(server.requests(), server.exit())), JsonMapper.builder().build(),
+					Thread::yield);
+
+				SessionRefusedException refused = null;
+				try
+				{
+					client.read();
+				}
+				catch (SessionRefusedException e)
+				{
+					refused = e;
+				}
+
+				requireThat(refused, "refused").isNotNull();
+				requireThat(refused.getMessage(), "message").contains("lets its commands write " + fixture.plugin);
+			}
+		}
 	}
 
 	/**

@@ -341,7 +341,7 @@ public final class CodexRunner
 					throw refusalOf(e);
 				}
 				LiveNestedSession session = new LiveNestedSession(nestedSession, removingLoginCopy(process, codexFolder),
-					scope, lock, catPlugin);
+					scope, lock, catPlugin, policy.asParentPolicy());
 				child.release();
 				return session;
 			}

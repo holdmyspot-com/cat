@@ -9,6 +9,7 @@ import com.holdmyspot.cat.common.optimizer.workspace.GitWorktreeRegistrar;
 import com.holdmyspot.cat.common.runner.RequestArchive.LaunchRequest;
 import com.holdmyspot.cat.common.runner.launcher.RunnerArguments;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
+import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.BufferedReader;
 import java.io.Closeable;
@@ -220,7 +221,28 @@ public final class SessionRequestBroker implements Closeable
 	public SessionRequestBroker(NestedSession nestedSession, NestedSessionManager manager, HarnessRunnerOptions options,
 		Path catPlugin, RequestedSessionStarter starter)
 	{
-		this(nestedSession, manager, options, catPlugin, starter, RequestLimits.IN_NESTED_SESSION,
+		this(nestedSession, manager, options, catPlugin, null, starter, RequestLimits.IN_NESTED_SESSION,
+			new ProcessHandleLiveness());
+	}
+
+	/**
+	 * Creates a broker for an already prepared nested session whose commands may ask the broker for the policy that the
+	 * runner applied to the nested session's sandbox. The runner creates its access directories before sandbox setup.
+	 *
+	 * @param nestedSession the requesting nested session
+	 * @param manager       records the nested session's lifecycle in its manifest, including how many requests the broker
+	 *                      has accepted; the broker keeps it
+	 * @param options       the requesting runner's options
+	 * @param catPlugin     the directory of the CAT plugin installed in the nested session's harness session's home,
+	 *                      whose launchers the session's commands run, or {@code null} if the session has none
+	 * @param ownerPolicy   the policy that the nested session's sandbox applies to its commands, or {@code null} if the
+	 *                      runner states none, in which case an owner policy request is refused
+	 * @param starter       resolves and starts child runners
+	 */
+	public SessionRequestBroker(NestedSession nestedSession, NestedSessionManager manager, HarnessRunnerOptions options,
+		Path catPlugin, ParentPolicy ownerPolicy, RequestedSessionStarter starter)
+	{
+		this(nestedSession, manager, options, catPlugin, ownerPolicy, starter, RequestLimits.IN_NESTED_SESSION,
 			new ProcessHandleLiveness());
 	}
 
@@ -256,7 +278,7 @@ public final class SessionRequestBroker implements Closeable
 	public SessionRequestBroker(NestedSession nestedSession, NestedSessionManager manager, HarnessRunnerOptions options,
 		RequestedSessionStarter starter, RequestLimits limits, HarnessProcessLiveness liveness)
 	{
-		this(nestedSession, manager, options, null, starter, limits, liveness);
+		this(nestedSession, manager, options, null, null, starter, limits, liveness);
 	}
 
 	/**
@@ -270,14 +292,17 @@ public final class SessionRequestBroker implements Closeable
 	 * @param options       the requesting runner's options
 	 * @param catPlugin     the directory of the CAT plugin that the nested session's commands run, which the nested
 	 *                      session's requested sessions may read, or {@code null} if the nested session has none
+	 * @param ownerPolicy   the policy that the nested session's sandbox applies to its commands, or {@code null} if the
+	 *                      runner states none
 	 * @param starter       resolves and starts child runners
 	 * @param limits        the bounds that each request's archive must stay within
 	 * @param liveness      checks and stops the processes that a slot's previous session left
 	 */
 	private SessionRequestBroker(NestedSession nestedSession, NestedSessionManager manager, HarnessRunnerOptions options,
-		Path catPlugin, RequestedSessionStarter starter, RequestLimits limits, HarnessProcessLiveness liveness)
+		Path catPlugin, ParentPolicy ownerPolicy, RequestedSessionStarter starter, RequestLimits limits,
+		HarnessProcessLiveness liveness)
 	{
-		this(new NestedSessionSite(nestedSession, manager, options, catPlugin, limits, new SessionSlots(
+		this(new NestedSessionSite(nestedSession, manager, options, catPlugin, ownerPolicy, limits, new SessionSlots(
 			SessionRequestAccess.requestedSlotsDirectory(nestedSession), options.maximumConcurrency(), liveness,
 			manager.fileLocks()), starter));
 	}
@@ -398,6 +423,8 @@ public final class SessionRequestBroker implements Closeable
 			return takeWorktree(id, file, directory);
 		if (id.startsWith(DiscardRequest.PREFIX))
 			return takeDiscard(id, file, directory);
+		if (id.startsWith(OwnerPolicyRequest.PREFIX))
+			return takeOwnerPolicy(id, file, directory);
 		if (id.startsWith(RetainedTrialRequest.PREFIX))
 			return takeRetainedTrial(id, file, directory);
 		if (id.startsWith(HookComparisonRequest.PREFIX))
@@ -709,6 +736,83 @@ public final class SessionRequestBroker implements Closeable
 			{
 				Thread.currentThread().interrupt();
 				response = WorktreeResponse.failed(site.closedReason());
+			}
+			response.write(json, id, directory);
+		}
+		catch (IOException e)
+		{
+			synchronized (this)
+			{
+				recordFailure(e);
+			}
+		}
+	}
+
+	/**
+	 * Takes an owner policy request, which takes no slot, no permit and no count of the requests that the site allows:
+	 * the broker carries it out on its worktree thread, since reading a host session's policy may start processes.
+	 *
+	 * @param id        the request ID
+	 * @param file      the request archive
+	 * @param directory the request's response directory
+	 * @return {@code true} if the request was answered or started, or {@code false} if its archive is busy
+	 * @throws IOException if a response cannot be published
+	 */
+	private boolean takeOwnerPolicy(String id, Path file, Path directory) throws IOException
+	{
+		if (stopped)
+		{
+			WorktreeResponse.failed(site.closedReason()).write(json, id, directory);
+			return true;
+		}
+		Path inputs = directory.resolve(INPUTS);
+		try
+		{
+			unpack(file, directory, inputs);
+			OwnerPolicyRequest.read(json, inputs);
+		}
+		catch (RequestArchiveBusyException _)
+		{
+			Files.delete(directory);
+			return false;
+		}
+		catch (IOException | IllegalArgumentException | JacksonException e)
+		{
+			WorktreeResponse.refused(String.valueOf(e.getMessage())).write(json, id, directory);
+			return true;
+		}
+		finally
+		{
+			if (Files.exists(inputs, LinkOption.NOFOLLOW_LINKS))
+				TemporaryDirectories.deleteRecursively(inputs);
+		}
+		worktrees.submit(() -> serveOwnerPolicy(id, directory));
+		return true;
+	}
+
+	/**
+	 * Carries out an owner policy request on the broker's worktree thread and publishes its response.
+	 *
+	 * @param id        the request ID
+	 * @param directory the request's response directory
+	 */
+	private void serveOwnerPolicy(String id, Path directory)
+	{
+		try
+		{
+			WorktreeResponse response;
+			try
+			{
+				String policies = OwnerPolicyRequest.encode(json, site.ownerPolicies());
+				response = new WorktreeResponse(WorktreeRequest.DONE, "", Optional.of(policies));
+			}
+			catch (SessionRefusedException e)
+			{
+				response = WorktreeResponse.refused(String.valueOf(e.getMessage()));
+			}
+			catch (IOException e)
+			{
+				response = WorktreeResponse.failed(String.valueOf(e.getMessage()));
 			}
 			response.write(json, id, directory);
 		}
@@ -1592,7 +1696,8 @@ public final class SessionRequestBroker implements Closeable
 				continue;
 			String id = directory.getFileName().toString();
 			if (id.startsWith(WorktreeRequest.PREFIX) || id.startsWith(DiscardRequest.PREFIX) ||
-				id.startsWith(RetainedTrialRequest.PREFIX) || id.startsWith(HookComparisonRequest.PREFIX))
+				id.startsWith(OwnerPolicyRequest.PREFIX) || id.startsWith(RetainedTrialRequest.PREFIX) ||
+				id.startsWith(HookComparisonRequest.PREFIX))
 				WorktreeResponse.failed(ENDED).write(json, id, directory);
 			else
 				respond(id, "", "failed", ENDED, "", directory);
@@ -1903,6 +2008,20 @@ public final class SessionRequestBroker implements Closeable
 		WorktreeResponse worktree(WorktreeRequest request);
 
 		/**
+		 * Reads the policy that bounds the commands of the session that the site serves, for the owner policy request of
+		 * a command that cannot read it from inside the session's sandbox.
+		 *
+		 * @return the readings of the policy, which the requester intersects
+		 * @throws SessionRefusedException if the policy cannot be read safely, or the site states none; the message says
+		 *                                 why
+		 * @throws IOException             if the policy cannot be read
+		 */
+		default List<ParentPolicy> ownerPolicies() throws IOException
+		{
+			throw new SessionRefusedException("This site states no policy for its session's commands");
+		}
+
+		/**
 		 * Returns the site's authenticated Codex comparison service, if it has one.
 		 *
 		 * @return the service, or empty when execution is unsupported
@@ -1950,13 +2069,15 @@ public final class SessionRequestBroker implements Closeable
 	 * @param options       the requesting runner's options
 	 * @param catPlugin     the directory of the CAT plugin that the nested session's commands run, which the nested
 	 *                      session's requested sessions may read, or {@code null} if the nested session has none
+	 * @param ownerPolicy   the policy that the nested session's sandbox applies to its commands, or {@code null} if the
+	 *                      runner states none
 	 * @param limits        the bounds that each request's archive must stay within
 	 * @param slots         the slots, each a results folder, that the nested session's requested sessions take
 	 * @param starter       resolves and starts child runners
 	 */
 	private record NestedSessionSite(NestedSession nestedSession, NestedSessionManager manager,
-		HarnessRunnerOptions options, Path catPlugin, RequestLimits limits, SessionSlots slots,
-		RequestedSessionStarter starter) implements Site
+		HarnessRunnerOptions options, Path catPlugin, ParentPolicy ownerPolicy, RequestLimits limits,
+		SessionSlots slots, RequestedSessionStarter starter) implements Site
 	{
 		/**
 		 * Carries out the nested session's worktree requests.
@@ -1971,10 +2092,13 @@ public final class SessionRequestBroker implements Closeable
 		 * @param options       the requesting runner's options
 		 * @param catPlugin     the directory of the CAT plugin that the nested session's commands run, which the nested
 		 *                      session's requested sessions may read, or {@code null} if the nested session has none
+		 * @param ownerPolicy   the policy that the nested session's sandbox applies to its commands, or {@code null} if
+		 *                      the runner states none
 		 * @param limits        the bounds that each request's archive must stay within
 		 * @param slots         the slots, each a results folder, that the nested session's requested sessions take
 		 * @param starter       resolves and starts child runners
-		 * @throws NullPointerException if any of the arguments other than {@code catPlugin} are null
+		 * @throws NullPointerException if any of the arguments other than {@code catPlugin} and {@code ownerPolicy} are
+		 *                              null
 		 */
 		private NestedSessionSite
 		{
@@ -2141,6 +2265,22 @@ public final class SessionRequestBroker implements Closeable
 					"session directory of the nested session's project, so CAT cannot tell which campaign the request names.");
 			}
 			return WORKTREES.serve(request, project, campaigns.getFirst().getParent(), Optional.empty());
+		}
+
+		/**
+		 * States the policy that the nested session's runner applied to the nested session's sandbox, which the
+		 * nested session's commands cannot read from inside it. The runner fixes the policy when it starts the session,
+		 * so the one reading is both the initial and the current one.
+		 *
+		 * @return the policy
+		 * @throws SessionRefusedException if the runner states no policy
+		 */
+		@Override
+		public List<ParentPolicy> ownerPolicies() throws SessionRefusedException
+		{
+			if (ownerPolicy == null)
+				throw new SessionRefusedException("The nested session's runner states no policy for its commands");
+			return List.of(ownerPolicy);
 		}
 
 		@Override

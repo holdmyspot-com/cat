@@ -133,7 +133,8 @@ public final class NestedSessionReceipt
 				{
 					String requestId = directory.getFileName().toString();
 					boolean isControlResponse = requestId.startsWith(WorktreeRequest.PREFIX) ||
-						requestId.startsWith(DiscardRequest.PREFIX) || requestId.startsWith(RetainedTrialRequest.PREFIX);
+						requestId.startsWith(DiscardRequest.PREFIX) || requestId.startsWith(OwnerPolicyRequest.PREFIX) ||
+						requestId.startsWith(RetainedTrialRequest.PREFIX);
 					if (!Files.isDirectory(directory) || isControlResponse)
 						continue;
 					Path responsePath = directory.resolve("response.json").toAbsolutePath().normalize();

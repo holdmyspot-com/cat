@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Optional;
@@ -21,6 +22,10 @@ public final class LiveNestedSession implements AutoCloseable
 	 * or {@code null} if the nested session has none.
 	 */
 	private final Path catPlugin;
+	/**
+	 * The policy that the nested session's sandbox applies to its commands, or {@code null} if the runner states none.
+	 */
+	private final ParentPolicy ownerPolicy;
 	private final AtomicBoolean closed = new AtomicBoolean();
 
 	/**
@@ -66,6 +71,27 @@ public final class LiveNestedSession implements AutoCloseable
 	public LiveNestedSession(NestedSession nestedSession, HarnessProcess process, AbstractHarnessRunnerScope scope,
 		NestedSessionLock lock, Path catPlugin)
 	{
+		this(nestedSession, process, scope, lock, catPlugin, null);
+	}
+
+	/**
+	 * Attaches a live harness process and its exclusive nested-session lock to an owned nested session whose home holds
+	 * the CAT plugin that the session's commands run, and whose runner states the policy that the session's sandbox
+	 * applies to those commands.
+	 *
+	 * @param nestedSession the owned nested session
+	 * @param process       the live harness process
+	 * @param scope         services owned for the process lifetime
+	 * @param lock          the exclusive nested-session lock
+	 * @param catPlugin     the directory of the CAT plugin installed in the nested session's home, whose launchers the
+	 *                      session's commands run, or {@code null} if the nested session has none
+	 * @param ownerPolicy   the policy that the nested session's sandbox applies to its commands, which the session's
+	 *                      commands cannot read from inside the sandbox, or {@code null} if the runner states none
+	 * @throws NullPointerException if {@code nestedSession}, {@code process}, {@code scope}, or {@code lock} are null
+	 */
+	public LiveNestedSession(NestedSession nestedSession, HarnessProcess process, AbstractHarnessRunnerScope scope,
+		NestedSessionLock lock, Path catPlugin, ParentPolicy ownerPolicy)
+	{
 		requireThat(nestedSession, "nestedSession").isNotNull();
 		requireThat(process, "process").isNotNull();
 		requireThat(scope, "scope").isNotNull();
@@ -75,6 +101,7 @@ public final class LiveNestedSession implements AutoCloseable
 		this.scope = scope;
 		this.lock = lock;
 		this.catPlugin = catPlugin;
+		this.ownerPolicy = ownerPolicy;
 	}
 
 	/**
@@ -183,6 +210,16 @@ public final class LiveNestedSession implements AutoCloseable
 	public Optional<Path> catPlugin()
 	{
 		return Optional.ofNullable(catPlugin);
+	}
+
+	/**
+	 * Returns the policy that the nested session's sandbox applies to its commands.
+	 *
+	 * @return the policy, or empty if the runner states none
+	 */
+	public Optional<ParentPolicy> ownerPolicy()
+	{
+		return Optional.ofNullable(ownerPolicy);
 	}
 
 	/**

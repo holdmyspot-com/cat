@@ -146,6 +146,22 @@ public final class ChildBound
 	}
 
 	/**
+	 * Reads the parent's policy now, as {@link #parentPolicy(Optional)} reads it, but returns each reading separately:
+	 * the snapshots and the current reading, each refused if it lets the parent's commands write a trusted path.
+	 *
+	 * @param askingThread the identifier that the parent's harness gives the thread that asks for the policy, or empty
+	 *                     for the parent's main thread
+	 * @return the readings, before intersection
+	 * @throws NullPointerException    if {@code askingThread} is null
+	 * @throws SessionRefusedException if the parent's policy cannot be read safely; the message says how to fix it
+	 */
+	public List<ParentPolicy> readings(Optional<String> askingThread) throws SessionRefusedException
+	{
+		requireThat(askingThread, "askingThread").isNotNull();
+		return readPolicies(trusted, fixes, askingThread);
+	}
+
+	/**
 	 * Returns the narrowed owner policy after verifying a source against each authenticated reading separately.
 	 *
 	 * @param askingThread the requesting thread, or empty for the parent's main thread

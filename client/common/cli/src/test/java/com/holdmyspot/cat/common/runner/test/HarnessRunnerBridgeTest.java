@@ -44,6 +44,13 @@ import com.holdmyspot.cat.common.runner.NestedSession;
 import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.NestedSessionReceipt;
 import com.holdmyspot.cat.common.runner.TurnMode;
+import java.util.Set;
+import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
+import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
+import com.holdmyspot.cat.common.runner.WorktreeRequestClient;
+import com.holdmyspot.cat.common.runner.SessionRequestAccess;
+import com.holdmyspot.cat.common.runner.OwnerPolicyClient;
+import com.holdmyspot.cat.common.runner.NestedSessionLock;
 import com.holdmyspot.cat.common.runner.fakes.test.ManualTicker;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedProcess;
@@ -691,6 +698,75 @@ public final class HarnessRunnerBridgeTest
 		Files.createDirectories(childTranscript.getParent());
 		Files.writeString(rootTranscript, "root-" + snapshot + "\n");
 		Files.writeString(childTranscript, "child-" + snapshot + "\n");
+	}
+
+	/**
+	 * Verifies that the runner of a nested session states, to a command that asks from inside the session's sandbox, the
+	 * policy that its live session was started with, so that the command can bound its check programs by it.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test(timeOut = 30_000)
+	@SuppressWarnings("PMD.CloseResource")
+	public void statesLiveSessionPolicyToItsCommands() throws IOException
+	{
+		// Requirement: R-L21
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			LinkedNestedSession fixture = new LinkedNestedSession(cleanup);
+			Path root = fixture.nestedSession().directory().toRealPath();
+			ParentPolicy owner = new ChildPolicy(List.of(root.resolve("session")), List.of(root.resolve("kept")),
+				List.of(root.resolve("secret")), List.of(), Set.of("api.example.com"), false).asParentPolicy();
+			SessionRequestAccess.allowing(fixture.nestedSession(), root, 0, Platform.current(),
+				SessionRequestAccess.Shell.POSIX);
+			TestHarnessRunnerScope scope = new TestHarnessRunnerScope();
+			AtomicReference<List<ParentPolicy>> stated = new AtomicReference<>();
+			OwnerPolicyClient client = new OwnerPolicyClient(() -> Optional.of(new NestedChannel(
+				SessionRequestAccess.requestsDirectory(fixture.nestedSession()))), JsonMapper.builder().build(),
+				scope.heartbeatTicker()::tick);
+			Turn turn = Turn.replies("done").withCheckpoint(printed ->
+			{
+				if (printed == 0)
+					stated.set(client.read());
+			});
+			try (ScriptedProcess process = new ScriptedProcess(List.of(turn), new ArrayList<>());
+				StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n" +
+					"{\"type\":\"complete\"}\n"))
+			{
+				HarnessRunnerBridge.serve(() -> new LiveNestedSession(fixture.nestedSession(), process, scope,
+					NestedSessionLock.unlocked(), null, owner), fixture.manager(), fixture.options(),
+					JsonMapper.builder().build(), Yielding.fileReplacer(), input, new StringWriter(), (_, _, _) ->
+					{
+						throw new AssertionError("The command requested a session");
+					});
+			}
+			requireThat(stated.get(), "stated").isEqualTo(List.of(owner));
+		}
+	}
+
+	/**
+	 * The channel to the runner of a nested session.
+	 *
+	 * @param requests the nested session's requests directory
+	 */
+	private record NestedChannel(Path requests) implements WorktreeRequestClient.Channel
+	{
+		@Override
+		public boolean isServed()
+		{
+			return true;
+		}
+
+		@Override
+		public boolean removesResponses()
+		{
+			return false;
+		}
+
+		@Override
+		public void close()
+		{
+		}
 	}
 
 	/**

@@ -11,6 +11,7 @@ import com.holdmyspot.cat.common.runner.NestedSessionReceipt;
 import com.holdmyspot.cat.common.runner.ResultsCopy;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestBroker;
+import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.secrets.MainHarnessRunnerScopeSecrets;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -123,6 +124,41 @@ public final class RequestingNestedSession implements AutoCloseable
 	public RequestingNestedSession(Path root, FileLocks fileLocks, int sessionRequests, IntFunction<String> replyForTurn)
 		throws IOException
 	{
+		this(root, fileLocks, sessionRequests, replyForTurn, null);
+	}
+
+	/**
+	 * Creates the nested session and starts its broker, whose runner states the policy that its session's sandbox
+	 * applies.
+	 *
+	 * @param root            the folder that holds the nested session and its artifact
+	 * @param fileLocks       the file locks of the nested sessions
+	 * @param sessionRequests how many sessions the nested session allows
+	 * @param ownerPolicy     the policy that the nested session's sandbox applies to its commands
+	 * @throws NullPointerException if {@code ownerPolicy} is null
+	 * @throws IOException          if the nested session cannot be created or its broker cannot start
+	 */
+	public RequestingNestedSession(Path root, FileLocks fileLocks, int sessionRequests, ParentPolicy ownerPolicy)
+		throws IOException
+	{
+		this(root, fileLocks, sessionRequests, turn -> "reply " + turn, ownerPolicy);
+		requireThat(ownerPolicy, "ownerPolicy").isNotNull();
+	}
+
+	/**
+	 * Creates the nested session and starts its broker.
+	 *
+	 * @param root            the folder that holds the nested session and its artifact
+	 * @param fileLocks       the file locks of the nested sessions
+	 * @param sessionRequests how many sessions the nested session allows
+	 * @param replyForTurn    returns the reply for a one-based turn number; it must be immutable and thread-safe
+	 * @param ownerPolicy     the policy that the nested session's sandbox applies to its commands, or {@code null} if
+	 *                        the runner states none
+	 * @throws IOException if the nested session cannot be created or its broker cannot start
+	 */
+	private RequestingNestedSession(Path root, FileLocks fileLocks, int sessionRequests,
+		IntFunction<String> replyForTurn, ParentPolicy ownerPolicy) throws IOException
+	{
 		requireThat(replyForTurn, "replyForTurn").isNotNull();
 		this.fileLocks = fileLocks;
 		this.replyForTurn = replyForTurn;
@@ -137,7 +173,7 @@ public final class RequestingNestedSession implements AutoCloseable
 			"--project", nestedSession.directory().resolve("project").toString(), "--model", "model-a", "--effort",
 			"effort-a", "--results", results.toString(), "--session-requests", String.valueOf(sessionRequests)}, "harness",
 			HarnessTemporaryRoot.of(root));
-		this.broker = new SessionRequestBroker(nestedSession, manager, options, plugin(),
+		this.broker = new SessionRequestBroker(nestedSession, manager, options, plugin(), ownerPolicy,
 			(harness, arguments, _) -> child(harness, arguments));
 		broker.start(MainHarnessRunnerScopeSecrets.getMainHarnessRunnerScopeAccess().heartbeatEvery(SCAN_PERIOD));
 	}

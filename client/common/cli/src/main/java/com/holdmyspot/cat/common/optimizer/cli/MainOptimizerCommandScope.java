@@ -31,6 +31,7 @@ import com.holdmyspot.cat.common.runner.HarnessMarkers;
 import com.holdmyspot.cat.common.runner.HarnessSandbox;
 import com.holdmyspot.cat.common.runner.LaunchRoute;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
+import com.holdmyspot.cat.common.runner.OwnerPolicyClient;
 import com.holdmyspot.cat.common.runner.RequestServer;
 import com.holdmyspot.cat.common.runner.RetainedNestedSessionClient;
 import com.holdmyspot.cat.common.runner.RetainedTrialRequest;
@@ -295,6 +296,28 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	 * @throws PolicyRefusal if the owner or its policy cannot be authenticated
 	 */
 	protected abstract List<ParentPolicy> checkProgramPolicies() throws IOException, PolicyRefusal;
+
+	/**
+	 * Asks whatever serves the requests of the session that runs this command for the policies that bound the
+	 * session's commands, by the route that decides its launches: the nested session's runner inside a nested session
+	 * and the host session's request server outside one. A command that runs in the session's sandbox cannot read the
+	 * policy itself, because the harness process that holds it is not among the processes that the sandbox shows the
+	 * command.
+	 *
+	 * @return the initial and current policy readings, before intersection
+	 * @throws WorktreeRefusedException if the route refuses the command's requests, or no request server serves the
+	 *                                  host session
+	 * @throws IOException              if the receiver cannot read the policy safely, the request cannot be sent or its
+	 *                                  answer cannot be read
+	 * @throws IllegalStateException    if this scope is closed
+	 */
+	protected final List<ParentPolicy> ownerPolicies() throws IOException
+	{
+		ensureOpen();
+		OwnerPolicyClient client = new OwnerPolicyClient(this::worktreeChannel, json(),
+			waiting().every(SessionRequestForwarder.RESPONSE_POLL));
+		return client.read();
+	}
 
 	@Override
 	protected final CheckProgramEvaluation checkPrograms()

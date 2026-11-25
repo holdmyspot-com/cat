@@ -319,7 +319,7 @@ public final class ClaudeRunner
 				if (watch != null)
 					session = watch.guard(process);
 				LiveNestedSession live = new LiveNestedSession(nestedSession, removingKeyFile(session, isolatedConfiguration),
-					scope, lock, catPlugin);
+					scope, lock, catPlugin, policy.asParentPolicy());
 				child.release();
 				return live;
 			}

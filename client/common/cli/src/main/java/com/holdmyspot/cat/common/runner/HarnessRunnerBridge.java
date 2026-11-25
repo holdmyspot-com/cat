@@ -857,7 +857,7 @@ public final class HarnessRunnerBridge
 			return null;
 		requireThat(starter, "requestedStarter").isNotNull();
 		SessionRequestBroker broker = new SessionRequestBroker(session.nestedSession(), manager, options,
-			session.catPlugin().orElse(null), starter);
+			session.catPlugin().orElse(null), session.ownerPolicy().orElse(null), starter);
 		try
 		{
 			if (options.resumeSlot() != null)

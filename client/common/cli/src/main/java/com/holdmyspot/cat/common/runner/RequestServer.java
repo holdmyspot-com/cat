@@ -875,6 +875,19 @@ public final class RequestServer
 			return worktrees.serve(request, session.projectRoot(), session.campaigns(), Optional.of(policy));
 		}
 
+		/**
+		 * Reads the policy of the session that runs the server, which the session's commands cannot read from inside
+		 * the session's sandbox, as the server reads it for a launch.
+		 *
+		 * @return the snapshots and the current reading
+		 * @throws SessionRefusedException if the policy cannot be read safely
+		 */
+		@Override
+		public List<ParentPolicy> ownerPolicies() throws SessionRefusedException
+		{
+			return bound.readings(askingThread);
+		}
+
 		@Override
 		public RequestLimits limits()
 		{
