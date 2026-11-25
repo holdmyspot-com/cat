@@ -2548,8 +2548,13 @@ public final class CodexSessionsTest
 				List<Path> copies = new ArrayList<>();
 				for (int index = 0; index < launch.size() - 1; ++index)
 				{
-					if (launch.get(index).equals("--read-only-evidence"))
+					// On Linux with bubblewrap, a requested Codex session also reads the requesting session's CAT plugin
+					// as evidence, in place of a listing of the requester's results folder
+					if (launch.get(index).equals("--read-only-evidence") &&
+						!Path.of(launch.get(index + 1)).equals(parent.plugin()))
+					{
 						copies.add(Path.of(launch.get(index + 1)));
+					}
 				}
 				requireThat(copies.size(), "evidenceCount").isEqualTo(expectedGrants);
 				Path offeredEffects = copies.getFirst();
