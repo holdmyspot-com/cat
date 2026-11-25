@@ -45,6 +45,8 @@ public final class AssertionChecksTest
 	private static final String READABLE = "readable";
 	private static final String REPORT_MENTIONED = "report_mentioned";
 	private static final String PLAIN_TEXT = "plain_text";
+	private static final String JUDGED_PROGRAM = "judged_program";
+	private static final String DECIDED_PROGRAM = "decided_program";
 	private static final String PASS_REGULAR = "pass_regular";
 	private static final String FAIL_MISSING = "fail_missing";
 	private static final String FIRST_OUTCOME = "The annual report is still in progress.";
@@ -97,6 +99,37 @@ public final class AssertionChecksTest
 
 		requireThat(selected.stream().map(JudgedExample::check).toList(), "selectedChecks").isEqualTo(checks);
 		requireThat(selected.getFirst().test().id(), "selectedTest").isEqualTo(SECOND_TEST);
+	}
+
+	/**
+	 * Verifies that the failing examples that a check program fails go to the judge when its failures do, and that
+	 * its examples stay with the program otherwise or when it passes them.
+	 */
+	@Test
+	public void selectsJudgedCheckProgramFailures()
+	{
+		// Requirement: R-L16
+		String tool = "check-program checks/Check.java";
+		MappedAssertion judged = new MappedAssertion(new Assertion(JUDGED_PROGRAM, AssertionKind.EFFECT, tool,
+			OnToolFailure.JUDGE, "The agent updated the report.", null, EvidenceScope.ACTIONS), "r1");
+		MappedAssertion decided = new MappedAssertion(new Assertion(DECIDED_PROGRAM, AssertionKind.EFFECT, tool,
+			OnToolFailure.FAIL, "The agent kept the report's title."), "r1");
+		List<PromptTest> tests = List.of(promptTest(FORMATTING, List.of(judged, decided)));
+		List<Requirement> requirements = List.of(new Requirement("r1", "Answer the user's question clearly.",
+			"CLAUDE.md", null, List.of("unclear")));
+		Contract contract = new Contract(requirements, tests, ContractFixtures.profiles(requirements, tests),
+			ContractFixtures.judge(), List.of(), Contract.DEFAULT_MINIMUM_PASS_RATE, ContractFixtures.SALT);
+		List<AssertionExampleCheck> checks = List.of(
+			new AssertionExampleCheck(FORMATTING, JUDGED_PROGRAM, PASS_REGULAR, "check-program", true),
+			new AssertionExampleCheck(FORMATTING, JUDGED_PROGRAM, FAIL_MISSING, "check-program", false),
+			new AssertionExampleCheck(FORMATTING, DECIDED_PROGRAM, PASS_REGULAR, "check-program", true),
+			new AssertionExampleCheck(FORMATTING, DECIDED_PROGRAM, FAIL_MISSING, "check-program", false));
+
+		List<JudgedExample> selected = AssertionChecks.selectExamples(contract, checks);
+
+		requireThat(selected.stream().map(JudgedExample::check).toList(), "selectedChecks").
+			isEqualTo(List.of(checks.get(1)));
+		requireThat(selected.getFirst().assertion().scope(), "scope").isEqualTo(EvidenceScope.ACTIONS);
 	}
 
 	/**

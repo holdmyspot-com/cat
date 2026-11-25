@@ -20,6 +20,7 @@ import com.holdmyspot.cat.common.optimizer.contract.TestValueJson;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.contract.ValuesFile;
 import com.holdmyspot.cat.common.optimizer.contract.ValuesFile.DraftTestCase;
+import com.holdmyspot.cat.common.optimizer.execution.CheckProgramEvaluation;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -70,19 +71,23 @@ public final class ContractTools
 	private final JsonMapper json;
 	private final ProposalSchema schema;
 	private final OutputFile outputFile;
+	private final CheckProgramEvaluation checkPrograms;
 
 	/**
 	 * Creates the tools.
 	 *
-	 * @param json the operation-owned JSON mapper
-	 * @throws NullPointerException if {@code json} is null
+	 * @param json          the operation-owned JSON mapper
+	 * @param checkPrograms runs the check programs of the draft's prompt tests on their assertion examples
+	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public ContractTools(JsonMapper json)
+	public ContractTools(JsonMapper json, CheckProgramEvaluation checkPrograms)
 	{
 		requireThat(json, "json").isNotNull();
+		requireThat(checkPrograms, "checkPrograms").isNotNull();
 		this.json = json;
 		this.schema = new ProposalSchema(json);
 		this.outputFile = new OutputFile(json);
+		this.checkPrograms = checkPrograms;
 	}
 
 	/**
@@ -97,6 +102,7 @@ public final class ContractTools
 	 * @return 0 if the check found no problem, otherwise 1
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IOException          if the context file cannot be read or is not a context file
+	 * @throws ProposalCheck.Interrupted if the thread is interrupted while a check program runs on an assertion example
 	 */
 	public int check(Path contextFile, PrintStream out) throws IOException
 	{
@@ -160,6 +166,7 @@ public final class ContractTools
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IOException          if the context file cannot be read or is not a context file, or a file cannot be
 	 *                              read or written
+	 * @throws ProposalCheck.Interrupted if the thread is interrupted while a check program runs on an assertion example
 	 */
 	public int workspace(Path contextFile, Path testDirectory, int testCase, Path output, PrintStream out)
 		throws IOException
@@ -248,7 +255,7 @@ public final class ContractTools
 		ContractContext context = ContractContext.read(json, file);
 		Path project = file.getParent();
 		ProposalCheck check = new ProposalCheck(json, schema, new JudgeTemplate(json, context.role()),
-			context.target(), context.reportsExitStatus(), context.recorded());
+			context.target(), context.reportsExitStatus(), context.recorded(), checkPrograms);
 		return new Session(context, project, project.resolve(context.draft()).normalize(), check);
 	}
 

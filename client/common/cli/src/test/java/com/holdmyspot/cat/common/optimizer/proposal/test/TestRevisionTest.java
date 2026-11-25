@@ -13,6 +13,7 @@ import com.holdmyspot.cat.common.optimizer.contract.ProposalSchema;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
 import com.holdmyspot.cat.common.optimizer.execution.AssertionReview.Finding;
 import com.holdmyspot.cat.common.optimizer.execution.AssertionReview.Kind;
+import com.holdmyspot.cat.common.optimizer.execution.CheckProgram;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.port.FollowUp;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
@@ -391,6 +392,76 @@ public final class TestRevisionTest
 			doesNotContain("held-out").doesNotContain(" part");
 		requireThat(report.output(), "output").isEqualTo(problemReport(problems));
 		requireThat(report.exitCode(), "exitCode").isEqualTo(1);
+	}
+
+	/**
+	 * Verifies that a test revision whose test decides its assertion with the program in its {@code checks}
+	 * directory reruns that program twice on each of the revised test's examples, and that a program that fails a
+	 * passing example is refused both when the session ends and by {@code contract check}, with the same problem.
+	 *
+	 * @throws IOException              if a file cannot be read or written
+	 * @throws InvalidProposalException if the confirmed proposal is refused
+	 */
+	@Test
+	public void rerunsRevisedCheckProgram() throws IOException, InvalidProposalException
+	{
+		// Requirement: R-C27
+		// Requirement: R-L15
+		Examination examined = examination();
+		Path project = revisionProject(examined, revisedFormatting(test ->
+		{
+			ObjectNode assertion = (ObjectNode) test.get("assertions").get(0);
+			assertion.put("tool", "check-program checks/Check.java").put("on_tool_failure", "fail");
+			assertion.remove("evidence_scope");
+		}));
+		ContractContext context = ContractContext.read(json, contextFile(project));
+		Path test = project.resolve(context.draft()).resolve(FORMATTING);
+		String source = "class Check\n{\n\t// revised\n}\n";
+		Files.createDirectories(test.resolve("checks"));
+		Files.writeString(test.resolve("checks/Check.java"), source, UTF_8);
+		Path examples = test.resolve("examples/uses_requested_tone");
+		for (String tone : List.of("upbeat", "somber", "neutral", "playful", "stern", "warm"))
+		{
+			Files.writeString(Files.createDirectories(examples.resolve("pass_" + tone + "_tone")).
+				resolve("replies.json"), "[[\"A passing reply.\"], [\"A passing reply.\"]]", UTF_8);
+		}
+		Files.writeString(Files.createDirectories(examples.resolve("fail_omits_answer")).resolve("replies.json"),
+			"[[\"A failing reply.\"], [\"A failing reply.\"]]", UTF_8);
+		ScriptedCheckPrograms checkPrograms = new ScriptedCheckPrograms(Map.of(
+			"A passing reply.", ScriptedCheckPrograms.agreeing(CheckProgram.Outcome.FAIL, "a passing example"),
+			"A failing reply.", ScriptedCheckPrograms.agreeing(CheckProgram.Outcome.FAIL, "a failing example")));
+		TestRevisionProtocol checking = new TestRevisionProtocol(json, new ProposalSchema(json),
+			ContractToolSessions.contractAuthor(json, _ -> OptionalLong.empty(), checkPrograms));
+
+		Report report = ContractToolSessions.check(json, contextFile(project), checkPrograms);
+
+		List<String> problems;
+		try
+		{
+			checking.result(ContractToolSessions.completed(project,
+				directories.add(Files.createTempDirectory("test-revision-initial-"))),
+				ContractToolSessions.PROMPT_SYSTEM, examined);
+			throw new AssertionError("The session-end validation accepted the result");
+		}
+		catch (InvalidProposalException e)
+		{
+			problems = e.problems();
+		}
+		requireThat(problems, "problems").size().isEqualTo(6);
+		requireThat(String.join("\n", problems), "problems").contains("Prompt test `formatting`, assertion " +
+			"`uses_requested_tone`, example `pass_upbeat_tone`: the check program failed this passing example.\n").
+			contains("first run on a passing example").contains("second run on a passing example").
+			doesNotContain("held-out").doesNotContain("development");
+		requireThat(report.output(), "output").isEqualTo(problemReport(problems));
+		requireThat(report.exitCode(), "exitCode").isEqualTo(1);
+		List<ScriptedCheckPrograms.Call> calls = checkPrograms.calls();
+		requireThat(calls.size(), "calls").isEqualTo(14);
+		for (ScriptedCheckPrograms.Call call : calls)
+		{
+			requireThat(call.testId(), "testId").isEqualTo("formatting");
+			requireThat(call.runs(), "runs").isEqualTo(2);
+			requireThat(call.checkFiles(), "checkFiles").isEqualTo(Map.of("Check.java", source));
+		}
 	}
 
 	/**

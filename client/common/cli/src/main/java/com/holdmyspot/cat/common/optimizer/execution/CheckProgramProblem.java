@@ -7,6 +7,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * A check program whose two runs on one guard pilot trial show that it cannot be trusted to decide later trials: the
@@ -89,6 +90,41 @@ public record CheckProgramProblem(String assertionId, int position, CheckProgram
 	}
 
 	/**
+	 * Returns how two runs of one check program on the same evidence disagree: in outcome, or in that a run took longer
+	 * than {@link #LONGEST_RUN}.
+	 *
+	 * @param first  the first run
+	 * @param second the second run
+	 * @return a clause, without a final period, that shows both outcomes if they differ and both elapsed times if a run
+	 *   took too long; empty if the runs have the same outcome and neither took too long
+	 * @throws NullPointerException if a run, its outcome, its output or its elapsed time is null
+	 */
+	public static Optional<String> disagreement(CheckProgram.Result first, CheckProgram.Result second)
+	{
+		requireRun(first, "first");
+		requireRun(second, "second");
+		if (!isProblem(first, second))
+			return Optional.empty();
+		StringBuilder text = new StringBuilder(120);
+		boolean outcomesDiffer = first.outcome() != second.outcome();
+		boolean tookTooLong = isTooLong(first) || isTooLong(second);
+		if (outcomesDiffer)
+		{
+			text.append("its two runs had different outcomes (").append(outcomeName(first.outcome())).
+				append(", then ").append(outcomeName(second.outcome())).append(')');
+			if (tookTooLong)
+				text.append(", and ");
+		}
+		if (tookTooLong)
+		{
+			text.append("a run took longer than half the time limit of ").append(seconds(CheckProgram.TIME_LIMIT)).
+				append(" (").append(seconds(first.elapsed())).append(", then ").append(seconds(second.elapsed())).
+				append(')');
+		}
+		return Optional.of(text.toString());
+	}
+
+	/**
 	 * Creates a problem.
 	 *
 	 * @param assertionId the check-program assertion
@@ -140,24 +176,8 @@ public record CheckProgramProblem(String assertionId, int position, CheckProgram
 	 */
 	public String describe()
 	{
-		StringBuilder text = new StringBuilder(160).append("Pilot trial ").append(position + 1).
-			append(", the check program of the assertion `").append(assertionId).append("`: ");
-		boolean outcomesDiffer = outcomesDiffer();
-		boolean tookTooLong = tookTooLong();
-		if (outcomesDiffer)
-		{
-			text.append("its two runs had different outcomes (").append(outcomeName(first.outcome())).
-				append(", then ").append(outcomeName(second.outcome())).append(')');
-			if (tookTooLong)
-				text.append(", and ");
-		}
-		if (tookTooLong)
-		{
-			text.append("a run took longer than half the time limit of ").append(seconds(CheckProgram.TIME_LIMIT)).
-				append(" (").append(seconds(first.elapsed())).append(", then ").append(seconds(second.elapsed())).
-				append(')');
-		}
-		return text.append('.').toString();
+		return "Pilot trial " + (position + 1) + ", the check program of the assertion `" + assertionId + "`: " +
+			disagreement(first, second).orElseThrow() + ".";
 	}
 
 	/**

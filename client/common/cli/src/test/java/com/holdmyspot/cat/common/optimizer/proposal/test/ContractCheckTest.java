@@ -6,6 +6,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.contract.InvalidProposalException;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
+import com.holdmyspot.cat.common.optimizer.execution.CheckProgram;
 import com.holdmyspot.cat.common.optimizer.proposal.ContractAuthorProtocol;
 import com.holdmyspot.cat.common.optimizer.proposal.ContractContext;
 import com.holdmyspot.cat.common.optimizer.proposal.ContractTools;
@@ -139,6 +140,64 @@ public final class ContractCheckTest
 			expected.add("- " + problem);
 		requireThat(report.output(), "output").isEqualTo(expected.toString());
 		requireThat(report.exitCode(), "exitCode").isEqualTo(1);
+	}
+
+	/**
+	 * Verifies that {@code contract check} runs each check program twice on each of its assertion's examples and
+	 * reports a program that fails a passing example in the words of the session-end validation, naming the test, the
+	 * assertion, the example and both outputs, but no part.
+	 *
+	 * @throws IOException if a file cannot be read or written
+	 */
+	@Test
+	public void reportsContradictedCheckProgram() throws IOException
+	{
+		// Requirement: R-C27
+		// Requirement: R-L15
+		Path project = directories.add(Files.createTempDirectory("contract-check-program-"));
+		Path contextFile = ContractToolSessions.write(json, contractAuthor, PROFILES,
+			ContractToolSessions.derivation(json, proposal -> ((ObjectNode) proposal.at("/tests/1/assertions/0")).
+				put("tool", "check-program checks/Check.java").put("on_tool_failure", "fail")), project);
+		Path test = project.resolve(DraftDirectory.name(ContractToolSessions.PROMPT_SYSTEM)).
+			resolve(".cat/tests/CLAUDE/plain_list");
+		Files.createDirectories(test.resolve("checks"));
+		Files.writeString(test.resolve("checks/Check.java"), "class Check\n{\n}\n", UTF_8);
+		Path examples = test.resolve("examples/keeps_requested_tone");
+		Files.writeString(Files.createDirectories(examples.resolve("pass_item_kind")).resolve("replies.json"),
+			"[[\"A passing reply.\"]]", UTF_8);
+		Files.writeString(Files.createDirectories(examples.resolve("fail_omits_answer")).resolve("replies.json"),
+			"[[\"A failing reply.\"]]", UTF_8);
+		ScriptedCheckPrograms checkPrograms = new ScriptedCheckPrograms(Map.of(
+			"A passing reply.", ScriptedCheckPrograms.agreeing(CheckProgram.Outcome.FAIL, "the passing example"),
+			"A failing reply.", ScriptedCheckPrograms.agreeing(CheckProgram.Outcome.FAIL, "the failing example")));
+
+		Report report = ContractToolSessions.check(json, contextFile, checkPrograms);
+
+		List<String> problems;
+		try
+		{
+			ContractToolSessions.contractAuthor(json, _ -> OptionalLong.empty(), checkPrograms).
+				proposal(ContractToolSessions.completed(project,
+					directories.add(Files.createTempDirectory("contract-check-program-initial-"))),
+					ContractToolSessions.PROMPT_SYSTEM, PROFILES, ContractFixtures.SALT);
+			throw new AssertionError("The session-end validation accepted the proposal");
+		}
+		catch (InvalidProposalException e)
+		{
+			problems = e.problems();
+		}
+		requireThat(problems, "problems").size().isEqualTo(1);
+		requireThat(problems.getFirst(), "problem").startsWith("Prompt test `plain_list`, assertion " +
+			"`keeps_requested_tone`, example `pass_item_kind`: the check program failed this passing example.\n").
+			contains("first run on the passing example").contains("second run on the passing example").
+			doesNotContain("held-out").doesNotContain("development");
+		StringJoiner expected = new StringJoiner(System.lineSeparator(), "", System.lineSeparator());
+		expected.add("`contract check` found 1 problem(s):");
+		expected.add("- " + problems.getFirst());
+		requireThat(report.output(), "output").isEqualTo(expected.toString());
+		requireThat(report.exitCode(), "exitCode").isEqualTo(1);
+		requireThat(checkPrograms.calls().stream().map(ScriptedCheckPrograms.Call::runs).toList(), "runs").
+			isEqualTo(List.of(2, 2, 2, 2));
 	}
 
 	/**

@@ -43,6 +43,8 @@ import com.holdmyspot.cat.common.optimizer.contract.ValueGenerators;
 import com.holdmyspot.cat.common.optimizer.contract.VariableDeclaration;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
 import com.holdmyspot.cat.common.optimizer.execution.AssertionReview.Finding;
+import com.holdmyspot.cat.common.optimizer.execution.CheckProgram;
+import com.holdmyspot.cat.common.optimizer.execution.CheckProgramEvaluation;
 import com.holdmyspot.cat.common.optimizer.execution.AssertionReview.Kind;
 import com.holdmyspot.cat.common.optimizer.execution.GuardPilot;
 import com.holdmyspot.cat.common.optimizer.execution.PilotResult;
@@ -92,6 +94,7 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -164,6 +167,22 @@ public final class ProposalTest
 	 */
 	private static final Function<TrialProfile, OptionalLong> UNKNOWN_LIMIT = profile -> OptionalLong.empty();
 	/**
+	 * The tool of an assertion that a check program decides.
+	 */
+	private static final String CHECK_PROGRAM = "check-program checks/Check.java";
+	/**
+	 * The source of the check program, which the runner does not compile.
+	 */
+	private static final String CHECK_SOURCE = "class Check\n{\n}\n";
+	/**
+	 * The passing example of the assertion {@code keeps_requested_tone} of the test {@code plain_list}.
+	 */
+	private static final String PASS_EXAMPLE = "pass_item_kind";
+	/**
+	 * The failing example of the assertion {@code keeps_requested_tone} of the test {@code plain_list}.
+	 */
+	private static final String FAIL_EXAMPLE = "fail_omits_answer";
+	/**
 	 * Holds the projects of the sessions that the tests create.
 	 */
 	private final TemporaryDirectories directories = new TemporaryDirectories();
@@ -171,7 +190,8 @@ public final class ProposalTest
 	private final ProposalSchema schema = new ProposalSchema(json);
 	private final JudgeTemplate judge = new JudgeTemplate(json, ROLE);
 	private final ContractAuthorProtocol contractAuthor = new ContractAuthorProtocol(json, schema, judge,
-		new RegressionScenarios(PROMPT_SYSTEM, List.of()), TARGET, null, true, List.of(), LAUNCHER, UNKNOWN_LIMIT);
+		new RegressionScenarios(PROMPT_SYSTEM, List.of()), TARGET, null, true, List.of(), LAUNCHER, UNKNOWN_LIMIT,
+			CheckProgramEvaluation.UNAVAILABLE);
 
 	/**
 	 * Creates the test fixture.
@@ -1798,7 +1818,8 @@ public final class ProposalTest
 	{
 		ContractAuthorProtocol withPlugins = new ContractAuthorProtocol(json, schema, judge,
 			new RegressionScenarios(PROMPT_SYSTEM, List.of()), TARGET, null, true,
-			List.of(builtPlugin(), installedPlugin()), LAUNCHER, UNKNOWN_LIMIT);
+			List.of(builtPlugin(), installedPlugin()), LAUNCHER, UNKNOWN_LIMIT,
+			CheckProgramEvaluation.UNAVAILABLE);
 
 		String listed = withPlugins.request(PROMPT_SYSTEM, PROFILES, List.of(), List.of(), SALT).turns().getFirst();
 		String none = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), List.of(), SALT).turns().getFirst();
@@ -1819,7 +1840,8 @@ public final class ProposalTest
 		ContractAuthorProtocol author = new ContractAuthorProtocol(json, schema, judge,
 			new RegressionScenarios(PROMPT_SYSTEM, List.of()), TARGET, null, true,
 			Map.of(Harness.CODEX, List.of(builtPlugin(), installedPlugin()), Harness.CLAUDE, List.of()),
-			LAUNCHER, UNKNOWN_LIMIT);
+			LAUNCHER, UNKNOWN_LIMIT,
+			CheckProgramEvaluation.UNAVAILABLE);
 		Map<Harness, List<HookRegistration>> hooks = Map.of(Harness.CLAUDE, List.of(), Harness.CODEX,
 			List.of(new HookRegistration("cat", "hooks/hooks.json", "SessionStart", "", "bin/codex-start")));
 
@@ -2556,7 +2578,8 @@ public final class ProposalTest
 	private ContractAuthorProtocol contractAuthor(RegressionScenarios scenarios)
 	{
 		return new ContractAuthorProtocol(json, schema, judge, scenarios, scenarios.project().resolve("CLAUDE.md"),
-			null, true, List.of(), LAUNCHER, UNKNOWN_LIMIT);
+			null, true, List.of(), LAUNCHER, UNKNOWN_LIMIT,
+			CheckProgramEvaluation.UNAVAILABLE);
 	}
 
 	/**
@@ -2978,7 +3001,8 @@ public final class ProposalTest
 	private ContractAuthorProtocol regressionContractAuthor()
 	{
 		return new ContractAuthorProtocol(json, schema, judge, regressionScenarios(), PROMPT_SYSTEM.resolve("rules"),
-			null, true, List.of(), LAUNCHER, UNKNOWN_LIMIT);
+			null, true, List.of(), LAUNCHER, UNKNOWN_LIMIT,
+			CheckProgramEvaluation.UNAVAILABLE);
 	}
 
 	/**
@@ -3054,7 +3078,8 @@ public final class ProposalTest
 		String goal = "Summaries must stay safe for a general audience.";
 		ContractAuthorProtocol withGoal = new ContractAuthorProtocol(json, schema, judge,
 			new RegressionScenarios(PROMPT_SYSTEM, List.of()), PROMPT_SYSTEM.resolve("rules/safety.md"), goal, true,
-			List.of(), LAUNCHER, UNKNOWN_LIMIT);
+			List.of(), LAUNCHER, UNKNOWN_LIMIT,
+			CheckProgramEvaluation.UNAVAILABLE);
 		String prompt = withGoal.request(PROMPT_SYSTEM, PROFILES, List.of(), List.of(), SALT).turns().getFirst();
 		requireThat(prompt, "prompt").contains("`rules/safety.md`").contains(goal);
 	}
@@ -3614,7 +3639,8 @@ public final class ProposalTest
 		Files.delete(missing);
 		ObjectNode output = (ObjectNode) json.readTree(Files.readString(
 			project.resolve(OutputFile.name(result.initialProject())), UTF_8));
-		ProposalCheck proposalCheck = new ProposalCheck(json, schema, judge, Path.of("CLAUDE.md"), true, List.of());
+		ProposalCheck proposalCheck = new ProposalCheck(json, schema, judge, Path.of("CLAUDE.md"), true, List.of(),
+			CheckProgramEvaluation.UNAVAILABLE);
 
 		ProposalCheck.Assessment assessed = proposalCheck.inspect(output, project, draft, OBSERVED, PROFILES, SALT,
 			Map.of());
@@ -3700,12 +3726,289 @@ public final class ProposalTest
 	private ProposalCheck.Assessment inspectExamples(SessionResult.Completed result, boolean reportsExitStatus)
 		throws IOException
 	{
+		return inspectExamples(result, reportsExitStatus, CheckProgramEvaluation.UNAVAILABLE);
+	}
+
+	/**
+	 * Inspects the proposal and draft that a contract author session returned, running check programs on a runner.
+	 *
+	 * @param result            the completed session
+	 * @param reportsExitStatus whether the harness reports exit status
+	 * @param checkPrograms     runs the check programs on the assertion examples
+	 * @return the mechanical assessment
+	 * @throws IOException if the authored draft cannot be read
+	 */
+	private ProposalCheck.Assessment inspectExamples(SessionResult.Completed result, boolean reportsExitStatus,
+		CheckProgramEvaluation checkPrograms) throws IOException
+	{
 		Path project = result.effects();
 		Path draft = project.resolve(DraftDirectory.name(result.initialProject()));
 		ObjectNode output = (ObjectNode) json.readTree(Files.readString(
 			project.resolve(OutputFile.name(result.initialProject())), UTF_8));
-		ProposalCheck check = new ProposalCheck(json, schema, judge, Path.of("CLAUDE.md"), reportsExitStatus, List.of());
+		ProposalCheck check = new ProposalCheck(json, schema, judge, Path.of("CLAUDE.md"), reportsExitStatus, List.of(),
+			checkPrograms);
 		return check.inspect(output, project, draft, OBSERVED, PROFILES, SALT, Map.of());
+	}
+
+	/**
+	 * Verifies that a check-program assertion needs a passing example for each boundary class and a failing example,
+	 * as a reply tool's does.
+	 *
+	 * @throws IOException if the check program cannot be written
+	 */
+	@Test
+	public void refusesCheckProgramWithoutExamples() throws IOException
+	{
+		// Requirement: R-L15
+		SessionResult.Completed result = session(changedDerivation(proposal ->
+			((ObjectNode) proposal.at("/tests/1/assertions/0")).put("tool", CHECK_PROGRAM).put("on_tool_failure", "fail")));
+		writeCheckProgram(result);
+
+		try
+		{
+			checkingAuthor(new ScriptedCheckPrograms(Map.of())).proposal(result, PROMPT_SYSTEM, PROFILES, SALT);
+			throw new AssertionError("The proposal was accepted without the check program's examples");
+		}
+		catch (InvalidProposalException e)
+		{
+			requireThat(e.problems(), "problems").
+				contains("Prompt test `plain_list`, assertion `keeps_requested_tone` is missing example " +
+					"`pass_item_kind`.").
+				contains("Prompt test `plain_list`, assertion `keeps_requested_tone` is missing a failing example " +
+					"named `fail_<snake_case_name>`.");
+		}
+	}
+
+	/**
+	 * Returns check-program runs on one example that contradict the example or disagree with each other, and the
+	 * clause that the refusal states for them.
+	 *
+	 * @return the example, its two runs and the clause
+	 */
+	@DataProvider
+	public Object[][] contradictedExamples()
+	{
+		CheckProgram.Outcome pass = CheckProgram.Outcome.PASS;
+		CheckProgram.Outcome fail = CheckProgram.Outcome.FAIL;
+		CheckProgram.Outcome error = CheckProgram.Outcome.ERROR;
+		String firstOnPass = "first run on " + PASS_EXAMPLE;
+		String secondOnPass = "second run on " + PASS_EXAMPLE;
+		return new Object[][]
+			{
+				{PASS_EXAMPLE, ScriptedCheckPrograms.agreeing(fail, PASS_EXAMPLE), "failed this passing example."},
+				{FAIL_EXAMPLE, ScriptedCheckPrograms.agreeing(pass, FAIL_EXAMPLE), "passed this failing example."},
+				{PASS_EXAMPLE, ScriptedCheckPrograms.agreeing(error, PASS_EXAMPLE),
+					"had a program error on this passing example."},
+				{FAIL_EXAMPLE, ScriptedCheckPrograms.agreeing(error, FAIL_EXAMPLE),
+					"had a program error on this failing example, which does not count as failing it."},
+				{PASS_EXAMPLE, List.of(ScriptedCheckPrograms.run(pass, firstOnPass),
+					ScriptedCheckPrograms.run(fail, secondOnPass)),
+					"failed this passing example, and its two runs had different outcomes (pass, then fail)."},
+				{FAIL_EXAMPLE, List.of(ScriptedCheckPrograms.run(fail, "first run on " + FAIL_EXAMPLE),
+					ScriptedCheckPrograms.run(error, "second run on " + FAIL_EXAMPLE)),
+					"had a program error on this failing example, which does not count as failing it, and its two " +
+						"runs had different outcomes (fail, then program error)."},
+				{PASS_EXAMPLE, List.of(new CheckProgram.Result(pass, firstOnPass, Duration.ofSeconds(1)),
+					new CheckProgram.Result(pass, secondOnPass, Duration.ofSeconds(31))),
+					"passed this passing example, but a run took longer than half the time limit of 60 s (1 s, then " +
+						"31 s)."}
+			};
+	}
+
+	/**
+	 * Verifies that the check program runs twice on each example and that a program that fails a passing example,
+	 * passes a failing one, has a program error on either, differs between its runs or takes longer than half its
+	 * time limit is refused, naming the test, the assertion, the example and both outputs, but no part.
+	 *
+	 * @param example  the example whose runs are wrong
+	 * @param runs     the program's two runs on that example
+	 * @param sentence the clause that the refusal states after naming the example
+	 * @throws IOException if an example cannot be written
+	 */
+	@Test(dataProvider = "contradictedExamples")
+	public void refusesContradictedCheckProgram(String example, List<CheckProgram.Result> runs, String sentence)
+		throws IOException
+	{
+		// Requirement: R-L15
+		Map<String, List<CheckProgram.Result>> runsByReply = new HashMap<>(correctRuns());
+		runsByReply.put(reply(example), runs);
+		SessionResult.Completed result = checkProgramExamples("fail");
+
+		try
+		{
+			checkingAuthor(new ScriptedCheckPrograms(runsByReply)).proposal(result, PROMPT_SYSTEM, PROFILES, SALT);
+			throw new AssertionError("The proposal was accepted with a contradicted check program");
+		}
+		catch (InvalidProposalException e)
+		{
+			String name = "Prompt test `plain_list`, assertion `keeps_requested_tone`, example `" + example + "`: ";
+			List<String> problems = e.problems().stream().filter(problem -> problem.startsWith(name)).toList();
+			requireThat(problems, "problems").size().isEqualTo(1);
+			requireThat(problems.getFirst(), "problem").startsWith(name + "the check program " + sentence + "\n").
+				contains(runs.getFirst().observed()).contains(runs.getLast().observed()).
+				doesNotContain("held-out").doesNotContain("development");
+			requireThat(e.problems().size(), "problemCount").isEqualTo(1);
+		}
+	}
+
+	/**
+	 * Verifies that a check program that passes its passing examples and fails its failing ones in both runs is
+	 * accepted, that each example runs only that assertion's program twice with the example's test case and the
+	 * test's check files, and that the proposal records each example's result.
+	 *
+	 * @throws IOException              if an example cannot be written
+	 * @throws InvalidProposalException if the proposal is refused
+	 */
+	@Test
+	public void acceptsAgreeingCheckProgram() throws IOException, InvalidProposalException
+	{
+		// Requirement: R-L15
+		ScriptedCheckPrograms checkPrograms = new ScriptedCheckPrograms(correctRuns());
+
+		DerivedProposal proposal = checkingAuthor(checkPrograms).proposal(checkProgramExamples("fail"), PROMPT_SYSTEM,
+			PROFILES, SALT);
+
+		requireThat(proposal.exampleChecks().stream().filter(check -> check.testId().equals("plain_list")).toList(),
+			"exampleChecks").containsExactly(List.of(
+				new AssertionExampleCheck("plain_list", "keeps_requested_tone", FAIL_EXAMPLE, "check-program", false),
+				new AssertionExampleCheck("plain_list", "keeps_requested_tone", PASS_EXAMPLE, "check-program", true)));
+		List<ScriptedCheckPrograms.Call> calls = checkPrograms.calls();
+		requireThat(calls.stream().map(call -> call.replies().getFirst().getFirst()).toList(), "replies").
+			containsExactly(List.of(reply(FAIL_EXAMPLE), reply(PASS_EXAMPLE)));
+		for (ScriptedCheckPrograms.Call call : calls)
+		{
+			requireThat(call.testId(), "testId").isEqualTo("plain_list");
+			requireThat(call.assertionIds(), "assertionIds").isEqualTo(Set.of("keeps_requested_tone"));
+			requireThat(call.runs(), "runs").isEqualTo(2);
+			requireThat(call.checkFiles(), "checkFiles").isEqualTo(Map.of("Check.java", CHECK_SOURCE));
+			requireThat(call.testCase().boundaryClass(), "boundaryClass").isEqualTo("item_kind");
+		}
+	}
+
+	/**
+	 * Verifies that under {@code judge} the failing examples that the check program fails go to the judged check,
+	 * and the passing examples that it passes do not.
+	 *
+	 * @throws IOException if an example cannot be written
+	 */
+	@Test
+	public void judgesFailingExamplesThatProgramFails() throws IOException
+	{
+		// Requirement: R-L16
+		SessionResult.Completed result = checkProgramExamples("judge");
+
+		ProposalCheck.Assessment assessed = inspectExamples(result, true, new ScriptedCheckPrograms(correctRuns()));
+
+		requireThat(assessed.problems(), "problems").isEmpty();
+		DerivedProposal proposal = assessed.proposal().orElseThrow();
+		List<AssertionExampleCheck> selected = AssertionChecks.selectExamples(proposal.contract(),
+			proposal.exampleChecks()).stream().map(AssertionChecks.JudgedExample::check).
+			filter(check -> check.testId().equals("plain_list")).toList();
+		requireThat(selected, "selected").containsExactly(List.of(
+			new AssertionExampleCheck("plain_list", "keeps_requested_tone", FAIL_EXAMPLE, "check-program", false)));
+		requireThat(assessed.judgeInputs().orElseThrow().tests().stream().map(PromptTest::id).toList(), "eligible").
+			contains("plain_list");
+	}
+
+	/**
+	 * Verifies that a check program whose failures the judge considers cannot limit the judge to the replies.
+	 *
+	 * @throws IOException if the check program cannot be written
+	 */
+	@Test
+	public void refusesJudgedCheckProgramOnReplies() throws IOException
+	{
+		// Requirement: R-L15
+		SessionResult.Completed result = session(changedDerivation(proposal ->
+			((ObjectNode) proposal.at("/tests/1/assertions/0")).put("tool", CHECK_PROGRAM).
+				put("on_tool_failure", "judge").put("evidence_scope", "response")));
+		writeCheckProgram(result);
+
+		try
+		{
+			checkingAuthor(new ScriptedCheckPrograms(correctRuns())).proposal(result, PROMPT_SYSTEM, PROFILES, SALT);
+			throw new AssertionError("The proposal was accepted with a response scope for a check program");
+		}
+		catch (InvalidProposalException e)
+		{
+			requireThat(String.join("\n", e.problems()), "problems").contains("plain_list/scenario.md").
+				contains("the evidence_scope response reads only the replies, but the tool check-program examines " +
+					"more than the replies; use actions");
+		}
+	}
+
+	/**
+	 * Returns a contract author whose check programs run on a runner.
+	 *
+	 * @param checkPrograms runs the check programs on the assertion examples
+	 * @return the contract author
+	 */
+	private ContractAuthorProtocol checkingAuthor(CheckProgramEvaluation checkPrograms)
+	{
+		return new ContractAuthorProtocol(json, schema, judge, new RegressionScenarios(PROMPT_SYSTEM, List.of()), TARGET,
+			null, true, List.of(), LAUNCHER, UNKNOWN_LIMIT, checkPrograms);
+	}
+
+	/**
+	 * Returns the reply of one of the examples of a check program.
+	 *
+	 * @param example the example
+	 * @return the reply
+	 */
+	private static String reply(String example)
+	{
+		return "The reply of " + example + ".";
+	}
+
+	/**
+	 * Returns runs that pass the passing example and fail the failing example in both runs.
+	 *
+	 * @return the runs, by the example's reply
+	 */
+	private static Map<String, List<CheckProgram.Result>> correctRuns()
+	{
+		return Map.of(reply(PASS_EXAMPLE), ScriptedCheckPrograms.agreeing(CheckProgram.Outcome.PASS, PASS_EXAMPLE),
+			reply(FAIL_EXAMPLE), ScriptedCheckPrograms.agreeing(CheckProgram.Outcome.FAIL, FAIL_EXAMPLE));
+	}
+
+	/**
+	 * Creates a proposal whose test {@code plain_list} decides its assertion with a check program and has one passing
+	 * and one failing example of it.
+	 *
+	 * @param onToolFailure the choice for a tool failure
+	 * @return the contract author's completed session
+	 * @throws IOException if a file cannot be written
+	 */
+	private SessionResult.Completed checkProgramExamples(String onToolFailure) throws IOException
+	{
+		SessionResult.Completed result = session(changedDerivation(proposal ->
+		{
+			ObjectNode assertion = (ObjectNode) proposal.at("/tests/1/assertions/0");
+			assertion.put("tool", CHECK_PROGRAM).put("on_tool_failure", onToolFailure);
+			if (onToolFailure.equals("judge"))
+				assertion.put("evidence_scope", "actions");
+		}));
+		Path test = writeCheckProgram(result);
+		Path examples = test.resolve("examples/keeps_requested_tone");
+		for (String example : List.of(PASS_EXAMPLE, FAIL_EXAMPLE))
+			writeExampleReply(Files.createDirectories(examples.resolve(example)), reply(example));
+		return result;
+	}
+
+	/**
+	 * Writes the check program of the test {@code plain_list} to a session's draft directory.
+	 *
+	 * @param result the contract author's completed session
+	 * @return the test's directory
+	 * @throws IOException if the file cannot be written
+	 */
+	private static Path writeCheckProgram(SessionResult.Completed result) throws IOException
+	{
+		Path test = result.effects().resolve(DraftDirectory.name(result.initialProject())).
+			resolve(".cat/tests/CLAUDE/plain_list");
+		Files.createDirectories(test.resolve("checks"));
+		Files.writeString(test.resolve("checks/Check.java"), CHECK_SOURCE, UTF_8);
+		return test;
 	}
 
 	/**
@@ -3809,7 +4112,8 @@ public final class ProposalTest
 		contractAuthor.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT);
 
 		ContractAuthorProtocol unreported = new ContractAuthorProtocol(json, schema, judge,
-			new RegressionScenarios(PROMPT_SYSTEM, List.of()), TARGET, null, false, List.of(), LAUNCHER, UNKNOWN_LIMIT);
+			new RegressionScenarios(PROMPT_SYSTEM, List.of()), TARGET, null, false, List.of(), LAUNCHER, UNKNOWN_LIMIT,
+			CheckProgramEvaluation.UNAVAILABLE);
 		try
 		{
 			unreported.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT);

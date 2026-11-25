@@ -13,6 +13,7 @@ import com.holdmyspot.cat.common.optimizer.contract.ProposalSchema;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.contract.ValueGenerators;
+import com.holdmyspot.cat.common.optimizer.execution.CheckProgramEvaluation;
 import com.holdmyspot.cat.common.optimizer.execution.PilotResult;
 import com.holdmyspot.cat.common.optimizer.port.FollowUp;
 import com.holdmyspot.cat.common.optimizer.port.HookRegistration;
@@ -123,6 +124,7 @@ public final class ContractAuthorProtocol
 	 * @param launcher          the absolute path of the launcher that provides the contract tools
 	 * @param toolOutputBytes   returns the number of bytes of each tool output that a trial of a profile receives
 	 *                          whole, or empty if the harness's limit is not known
+	 * @param checkPrograms     runs the check programs of an authored test on its assertion examples
 	 * @throws NullPointerException     if any of the arguments other than {@code goal} are null
 	 * @throws IllegalArgumentException if {@code goal} is blank, {@code target} lies outside the project, or
 	 *                                  {@code target} or {@code launcher} are relative
@@ -131,10 +133,10 @@ public final class ContractAuthorProtocol
 	public ContractAuthorProtocol(JsonMapper json, ProposalSchema schema, JudgeTemplate judge,
 		RegressionScenarios scenarios, Path target, String goal, boolean reportsExitStatus,
 		List<TrialPlugin> trialPlugins, Path launcher,
-		Function<TrialProfile, OptionalLong> toolOutputBytes)
+		Function<TrialProfile, OptionalLong> toolOutputBytes, CheckProgramEvaluation checkPrograms)
 	{
 		this(json, schema, judge, scenarios, target, goal, reportsExitStatus, trialPlugins(trialPlugins), launcher,
-			toolOutputBytes);
+			toolOutputBytes, checkPrograms);
 	}
 
 	/**
@@ -154,6 +156,7 @@ public final class ContractAuthorProtocol
 	 * @param launcher          the absolute path of the launcher that provides the contract tools
 	 * @param toolOutputBytes   returns the number of bytes of each tool output that a trial of a profile receives
 	 *                          whole, or empty if the harness's limit is not known
+	 * @param checkPrograms     runs the check programs of an authored test on its assertion examples
 	 * @throws NullPointerException     if any of the arguments other than {@code goal} are null
 	 * @throws IllegalArgumentException if {@code goal} is blank, {@code target} lies outside the project, or
 	 *                                  {@code target} or {@code launcher} are relative
@@ -162,10 +165,10 @@ public final class ContractAuthorProtocol
 	public ContractAuthorProtocol(JsonMapper json, ProposalSchema schema, JudgeTemplate judge,
 		RegressionScenarios scenarios, Path target, String goal, boolean reportsExitStatus,
 		Map<Harness, List<TrialPlugin>> trialPlugins, Path launcher,
-		Function<TrialProfile, OptionalLong> toolOutputBytes)
+		Function<TrialProfile, OptionalLong> toolOutputBytes, CheckProgramEvaluation checkPrograms)
 	{
 		this(json, schema, judge, scenarios, target, goal, reportsExitStatus, trialPlugins(trialPlugins), launcher,
-			toolOutputBytes);
+			toolOutputBytes, checkPrograms);
 	}
 
 	/**
@@ -181,11 +184,12 @@ public final class ContractAuthorProtocol
 	 * @param trialPlugins the Markdown description of all plugin inputs
 	 * @param launcher the absolute launcher path
 	 * @param toolOutputBytes the tool output limit by trial profile
+	 * @param checkPrograms the runner of check programs on assertion examples
 	 */
 	private ContractAuthorProtocol(JsonMapper json, ProposalSchema schema, JudgeTemplate judge,
 		RegressionScenarios scenarios, Path target, String goal, boolean reportsExitStatus,
 		String trialPlugins, Path launcher,
-		Function<TrialProfile, OptionalLong> toolOutputBytes)
+		Function<TrialProfile, OptionalLong> toolOutputBytes, CheckProgramEvaluation checkPrograms)
 	{
 		requireThat(json, "json").isNotNull();
 		requireThat(schema, "schema").isNotNull();
@@ -205,7 +209,8 @@ public final class ContractAuthorProtocol
 		this.goal = goal;
 		this.reportsExitStatus = reportsExitStatus;
 		this.recorded = ProposalCheck.recorded(this.scenarios);
-		this.check = new ProposalCheck(json, schema, judge, relativeTarget(), reportsExitStatus, recorded);
+		this.check = new ProposalCheck(json, schema, judge, relativeTarget(), reportsExitStatus, recorded,
+			checkPrograms);
 		this.launcher = launcher;
 		this.toolOutputBytes = toolOutputBytes;
 		this.trialPlugins = trialPlugins;

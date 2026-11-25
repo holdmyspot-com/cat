@@ -182,7 +182,7 @@ public final class CheckProgramDriverTest
 			CountDownLatch finish = new CountDownLatch(1);
 			AtomicInteger checkRuns = new AtomicInteger();
 			Thread driverThread = Thread.currentThread();
-			CheckProgramEvaluation check = (test, testCase, evidence, runs) ->
+			CheckProgramEvaluation check = (test, _, testCase, evidence, runs) ->
 			{
 				requireThat(Thread.currentThread() == driverThread, "ranOnDriverThread").isFalse();
 				requireThat(checkRuns.incrementAndGet(), "checkRuns").isEqualTo(1);

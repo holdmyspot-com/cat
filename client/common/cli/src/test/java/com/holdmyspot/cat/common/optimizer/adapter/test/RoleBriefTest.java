@@ -18,6 +18,7 @@ import com.holdmyspot.cat.common.optimizer.contract.Part;
 import com.holdmyspot.cat.common.optimizer.contract.ProposalSchema;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
+import com.holdmyspot.cat.common.optimizer.execution.CheckProgramEvaluation;
 import com.holdmyspot.cat.common.optimizer.execution.PromptAuthorBrief;
 import com.holdmyspot.cat.common.optimizer.execution.prompt.PromptAuthorPrompt;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
@@ -168,7 +169,8 @@ public final class RoleBriefTest
 				ContractAuthorProtocol contractAuthor = new ContractAuthorProtocol(json, schema,
 					new JudgeTemplate(json, new TrialProfile("role-model", "high")), new RegressionScenarios(root, List.of()),
 					root.resolve("CLAUDE.md"), null, true, List.of(),
-					root.toAbsolutePath().resolve("bin/prompt-optimizer"), profile -> OptionalLong.empty());
+					root.toAbsolutePath().resolve("bin/prompt-optimizer"), profile -> OptionalLong.empty(),
+				CheckProgramEvaluation.UNAVAILABLE);
 				SessionRequest request = contractAuthor.request(root, new ProfileEvidence(ContractFixtures.ONE_PROFILE,
 					ContractFixtures.ranking(ContractFixtures.ONE_PROFILE), Map.of()), List.of(), List.of(),
 					ContractFixtures.SALT);
@@ -218,7 +220,8 @@ public final class RoleBriefTest
 			ContractAuthorProtocol author = new ContractAuthorProtocol(json, schema,
 				new JudgeTemplate(json, SESSION_PROFILE), new RegressionScenarios(root, List.of()),
 				root.resolve(TestSessions.INSTRUCTIONS), null, true, List.of(), root.resolve("bin/prompt-optimizer"),
-				profile -> OptionalLong.empty());
+				profile -> OptionalLong.empty(),
+				CheckProgramEvaluation.UNAVAILABLE);
 			SessionRequest request = author.request(staged, new ProfileEvidence(ContractFixtures.ONE_PROFILE,
 				ContractFixtures.ranking(ContractFixtures.ONE_PROFILE), Map.of()), List.of(),
 				List.of(new DerivedSource(listed.toString(), "Plugin rule")), ContractFixtures.SALT);

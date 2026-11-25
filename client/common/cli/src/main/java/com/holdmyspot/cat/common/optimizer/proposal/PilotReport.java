@@ -243,7 +243,7 @@ final class PilotReport
 	 * @param number the run's number, starting at 1
 	 * @param run    the run
 	 */
-	private static void run(StringBuilder text, int number, CheckProgram.Result run)
+	static void run(StringBuilder text, int number, CheckProgram.Result run)
 	{
 		text.append("  - Run ").append(number).append(": ").append(CheckProgramProblem.outcomeName(run.outcome())).
 			append(" after ").append(CheckProgramProblem.seconds(run.elapsed()));

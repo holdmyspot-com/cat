@@ -31,6 +31,7 @@ import com.holdmyspot.cat.common.optimizer.contract.TrialProfiles;
 import com.holdmyspot.cat.common.optimizer.contract.ValuesFile;
 import com.holdmyspot.cat.common.optimizer.contract.ValuesFile.DraftTestCase;
 import com.holdmyspot.cat.common.optimizer.contract.VariableDeclaration;
+import com.holdmyspot.cat.common.optimizer.execution.CheckProgramEvaluation;
 import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
 import com.holdmyspot.cat.common.optimizer.inventory.FileDelta;
 import com.holdmyspot.cat.common.optimizer.inventory.InventoryScanner;
@@ -120,6 +121,7 @@ public final class ProposalCheck
 	 * The recorded prompt tests of the target, by their directory in the draft directory.
 	 */
 	private final Map<Path, RecordedTest> recorded;
+	private final CheckProgramEvaluation checkPrograms;
 
 	/**
 	 * A recorded prompt test of the campaign's target.
@@ -248,6 +250,27 @@ public final class ProposalCheck
 	}
 
 	/**
+	 * Carries an interruption of a check program that runs on an assertion example out of the validation, whose
+	 * callers do not declare {@link InterruptedException}.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is thread-safe.
+	 */
+	public static final class Interrupted extends RuntimeException
+	{
+		private static final long serialVersionUID = 1L;
+
+		/**
+		 * Creates an interruption.
+		 *
+		 * @param cause the underlying interruption
+		 */
+		Interrupted(InterruptedException cause)
+		{
+			super(cause);
+		}
+	}
+
+	/**
 	 * Creates a validator.
 	 *
 	 * @param json              the operation-owned JSON mapper
@@ -257,16 +280,18 @@ public final class ProposalCheck
 	 * @param reportsExitStatus {@code true} if the harness reports the exit status of commands, so that a built-in
 	 *                          check that needs it can be decided
 	 * @param recorded          the recorded prompt tests of the target
+	 * @param checkPrograms     runs the check programs of an authored test on its assertion examples
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code target} is absolute
 	 */
 	public ProposalCheck(JsonMapper json, ProposalSchema schema, JudgeTemplate judge, Path target,
-		boolean reportsExitStatus, List<RecordedTest> recorded)
+		boolean reportsExitStatus, List<RecordedTest> recorded, CheckProgramEvaluation checkPrograms)
 	{
 		requireThat(json, "json").isNotNull();
 		requireThat(schema, "schema").isNotNull();
 		requireThat(judge, "judge").isNotNull();
 		requireThat(recorded, "recorded").isNotNull();
+		requireThat(checkPrograms, "checkPrograms").isNotNull();
 		this.json = json;
 		this.schema = schema;
 		this.judge = judge;
@@ -277,6 +302,7 @@ public final class ProposalCheck
 		for (RecordedTest test : recorded)
 			byDirectory.put(test.directory(), test);
 		this.recorded = byDirectory;
+		this.checkPrograms = checkPrograms;
 	}
 
 	/**
@@ -304,6 +330,7 @@ public final class ProposalCheck
 	 *                                  that the harness does not report, or breaks a rule of the contract model. The
 	 *                                  exception lists every problem found.
 	 * @throws UncheckedIOException     if a file cannot be read
+	 * @throws Interrupted              if the thread is interrupted while a check program runs on an assertion example
 	 */
 	public DerivedProposal check(ObjectNode proposalFile, Path project, Path draft, String observedSources,
 		ProfileEvidence profiles, long salt) throws InvalidProposalException
@@ -332,6 +359,7 @@ public final class ProposalCheck
 	 * @throws InvalidProposalException if the proposal breaks a rule that
 	 *                                  {@link #check(ObjectNode, Path, Path, String, ProfileEvidence, long)} lists
 	 * @throws UncheckedIOException     if a file cannot be read
+	 * @throws Interrupted              if the thread is interrupted while a check program runs on an assertion example
 	 */
 	public DerivedProposal check(ObjectNode proposalFile, Path project, Path draft, String observedSources,
 		ProfileEvidence profiles, long salt, Map<Path, ObjectNode> fixed) throws InvalidProposalException
@@ -354,6 +382,7 @@ public final class ProposalCheck
 	 * @return the mechanically checked draft and any problems
 	 * @throws NullPointerException if any argument is null
 	 * @throws UncheckedIOException if a file cannot be read
+	 * @throws Interrupted          if the thread is interrupted while a check program runs on an assertion example
 	 */
 	public Assessment inspect(ObjectNode proposalFile, Path project, Path draft, String observedSources,
 		ProfileEvidence profiles, long salt, Map<Path, ObjectNode> fixed)
@@ -1158,7 +1187,7 @@ public final class ProposalCheck
 					}
 					int before = problems.size();
 					List<AssertionChecks.PreparedExample> checks = ExampleChecks.check(json, test, input.files(), ordered,
-						project, excluded, problems);
+						project, excluded, checkPrograms, problems);
 					if (problems.size() == before && !refused.contains(test.id()))
 					{
 						checked.addAll(checks);

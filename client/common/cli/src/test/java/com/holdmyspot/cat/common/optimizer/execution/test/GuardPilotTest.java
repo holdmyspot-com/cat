@@ -1163,7 +1163,7 @@ public final class GuardPilotTest
 				return "pass";
 			});
 			AtomicInteger evaluations = new AtomicInteger();
-			CheckProgramEvaluation checkPrograms = (test, _, _, runs) ->
+			CheckProgramEvaluation checkPrograms = (test, _, _, _, runs) ->
 			{
 				requireThat(test.id(), "test").isEqualTo("safety");
 				requireThat(runs, "runs").isEqualTo(2);
@@ -1236,7 +1236,7 @@ public final class GuardPilotTest
 					return reply;
 				return "pass";
 			});
-			CheckProgramEvaluation checkPrograms = (_, _, _, runs) ->
+			CheckProgramEvaluation checkPrograms = (_, _, _, _, runs) ->
 			{
 				requireThat(runs, "runs").isEqualTo(2);
 				return Map.of(assertion, List.of(new Result(Outcome.FAIL, "missing state", Duration.ofSeconds(1)),

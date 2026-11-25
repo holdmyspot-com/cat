@@ -4,6 +4,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.optimizer.contract.ProposalSchema;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
+import com.holdmyspot.cat.common.optimizer.execution.CheckProgramEvaluation;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.proposal.ContractAuthorProtocol;
 import com.holdmyspot.cat.common.optimizer.proposal.ContractContext;
@@ -71,9 +72,24 @@ public final class ContractToolSessions
 	public static ContractAuthorProtocol contractAuthor(JsonMapper json,
 		Function<TrialProfile, OptionalLong> toolOutputBytes)
 	{
+		return contractAuthor(json, toolOutputBytes, CheckProgramEvaluation.UNAVAILABLE);
+	}
+
+	/**
+	 * Returns a contract author whose target is {@code CLAUDE.md}, whose campaign has no recorded prompt test and
+	 * whose check programs run on a runner.
+	 *
+	 * @param json            the JSON mapper
+	 * @param toolOutputBytes returns the tool-output limit of each profile, or empty if it is not known
+	 * @param checkPrograms   runs the check programs of the authored tests on their assertion examples
+	 * @return the contract author
+	 */
+	public static ContractAuthorProtocol contractAuthor(JsonMapper json,
+		Function<TrialProfile, OptionalLong> toolOutputBytes, CheckProgramEvaluation checkPrograms)
+	{
 		return new ContractAuthorProtocol(json, new ProposalSchema(json), new JudgeTemplate(json, ROLE),
 			new RegressionScenarios(PROMPT_SYSTEM, List.of()), TARGET, null, true, List.of(), LAUNCHER,
-			toolOutputBytes);
+			toolOutputBytes, checkPrograms);
 	}
 
 	/**
@@ -155,10 +171,25 @@ public final class ContractToolSessions
 	 */
 	public static Report check(JsonMapper json, Path contextFile) throws IOException
 	{
+		return check(json, contextFile, CheckProgramEvaluation.UNAVAILABLE);
+	}
+
+	/**
+	 * Runs {@code contract check} with a runner of check programs.
+	 *
+	 * @param json          the JSON mapper
+	 * @param contextFile   the session's context file
+	 * @param checkPrograms runs the check programs of the draft's tests on their assertion examples
+	 * @return the tool's report
+	 * @throws IOException if the context file cannot be read
+	 */
+	public static Report check(JsonMapper json, Path contextFile, CheckProgramEvaluation checkPrograms)
+		throws IOException
+	{
 		ByteArrayOutputStream bytes = new ByteArrayOutputStream();
 		try (PrintStream out = new PrintStream(bytes, true, UTF_8))
 		{
-			int exitCode = new ContractTools(json).check(contextFile, out);
+			int exitCode = new ContractTools(json, checkPrograms).check(contextFile, out);
 			return new Report(exitCode, bytes.toString(UTF_8));
 		}
 	}
@@ -180,7 +211,8 @@ public final class ContractToolSessions
 		ByteArrayOutputStream bytes = new ByteArrayOutputStream();
 		try (PrintStream out = new PrintStream(bytes, true, UTF_8))
 		{
-			int exitCode = new ContractTools(json).workspace(contextFile, testDirectory, testCase, output, out);
+			int exitCode = new ContractTools(json, CheckProgramEvaluation.UNAVAILABLE).workspace(contextFile,
+				testDirectory, testCase, output, out);
 			return new Report(exitCode, bytes.toString(UTF_8));
 		}
 	}

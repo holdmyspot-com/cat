@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PortablePaths;
+import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.Choice;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationRecord;
@@ -12,13 +13,18 @@ import com.holdmyspot.cat.common.optimizer.campaign.DeliveryLabel;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.campaign.HistoryEntry;
 import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
+import com.holdmyspot.cat.common.optimizer.execution.CheckProgram;
+import com.holdmyspot.cat.common.optimizer.execution.CheckProgramEvaluation;
 import com.holdmyspot.cat.common.optimizer.proposal.ContractTools;
+import com.holdmyspot.cat.common.optimizer.proposal.ProposalCheck;
 import com.holdmyspot.cat.common.optimizer.report.CertificationStatus;
 import com.holdmyspot.cat.common.optimizer.report.ChoiceItem;
 import com.holdmyspot.cat.common.optimizer.workspace.WorktreeRefusedException;
 import com.holdmyspot.cat.common.runner.HarnessSandbox;
 import com.holdmyspot.cat.common.runner.WorktreeRequest;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
+import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
+import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import com.holdmyspot.cat.common.secrets.CommandsSecrets;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
@@ -26,6 +32,7 @@ import tools.jackson.databind.node.ObjectNode;
 
 import java.io.IOException;
 import java.io.PrintStream;
+import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.time.ZoneId;
@@ -616,7 +623,7 @@ public final class Commands
 			return 0;
 		}
 		if (isContractTool(args))
-			return executeContractTool(json, args, out);
+			return executeContractTool(json, args, CheckProgramEvaluation.UNAVAILABLE, out);
 		Command command;
 		try
 		{
@@ -676,16 +683,19 @@ public final class Commands
 	/**
 	 * Runs a contract tool and prints its report as text for the contract author session that runs it.
 	 *
-	 * @param json the JSON mapper that reads the session's files
-	 * @param args the arguments, starting with {@code contract}
-	 * @param out  receives the report
-	 * @return 0 if the tool found no problem, 1 if it found one or failed, or 2 for invalid input
+	 * @param json          the JSON mapper that reads the session's files
+	 * @param args          the arguments, starting with {@code contract}
+	 * @param checkPrograms runs the check programs of the draft's prompt tests on their assertion examples
+	 * @param out           receives the report
+	 * @return 0 if the tool found no problem, 1 if it found one, failed or was interrupted, or 2 for invalid input
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if the arguments do not start with {@code contract}
 	 */
-	public static int executeContractTool(JsonMapper json, List<String> args, PrintStream out)
+	public static int executeContractTool(JsonMapper json, List<String> args, CheckProgramEvaluation checkPrograms,
+		PrintStream out)
 	{
 		requireThat(json, "json").isNotNull();
+		requireThat(checkPrograms, "checkPrograms").isNotNull();
 		requireThat(out, "out").isNotNull();
 		requireThat(isContractTool(args), "isContractTool(args)").isTrue();
 		Command.ContractTool tool;
@@ -698,7 +708,7 @@ public final class Commands
 			out.println(e.getMessage() + "\n" + USAGE);
 			return 2;
 		}
-		ContractTools tools = new ContractTools(json);
+		ContractTools tools = new ContractTools(json, checkPrograms);
 		try
 		{
 			return switch (tool)
@@ -713,6 +723,50 @@ public final class Commands
 			out.println("The contract tool failed: " + e.getClass().getSimpleName() + ": " + e.getMessage());
 			return 1;
 		}
+		catch (ProposalCheck.Interrupted _)
+		{
+			Thread.currentThread().interrupt();
+			out.println("The contract tool was interrupted.");
+			return 1;
+		}
+	}
+
+	/**
+	 * Returns the runner of check programs for the contract tools, which run inside a contract author session's
+	 * sandbox. Each run reads only what that sandbox lets the session read, so the runner adds no read policy of its
+	 * own, and stages each example's evidence in a new temporary directory that it deletes afterwards.
+	 *
+	 * @param json        the JSON mapper that writes the staged evidence
+	 * @param platform    the platform that runs the contract tool
+	 * @param environment the session's environment, whose {@code PATH} locates Bubblewrap
+	 * @return the runner, which fails with the reason if the host cannot run a check program
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public static CheckProgramEvaluation contractCheckPrograms(JsonMapper json, Platform platform,
+		Map<String, String> environment)
+	{
+		requireThat(json, "json").isNotNull();
+		requireThat(platform, "platform").isNotNull();
+		requireThat(environment, "environment").isNotNull();
+		return (test, assertionIds, testCase, record, runs) ->
+		{
+			CheckProgram.Launch launch;
+			try
+			{
+				launch = CheckProgram.ownerLaunch(platform, environment, List.of(ParentPolicy.UNSANDBOXED), List.of());
+			}
+			catch (PolicyRefusal e)
+			{
+				// An unsandboxed policy trusts every path, so this cannot happen
+				throw new AssertionError(e);
+			}
+			try (TemporaryDirectories directories = new TemporaryDirectories())
+			{
+				Path staging = directories.add(Files.createTempDirectory("cat-check-program-"));
+				return CheckProgramEvaluation.isolated(launch, json, staging).run(test, assertionIds, testCase, record,
+					runs);
+			}
+		};
 	}
 
 	/**

@@ -113,6 +113,7 @@ import com.holdmyspot.cat.common.optimizer.proposal.PluginCheck;
 import com.holdmyspot.cat.common.optimizer.proposal.PluginMapping;
 import com.holdmyspot.cat.common.optimizer.proposal.ProfileEvidence;
 import com.holdmyspot.cat.common.optimizer.proposal.Proposal;
+import com.holdmyspot.cat.common.optimizer.proposal.ProposalCheck;
 import com.holdmyspot.cat.common.optimizer.proposal.RegressionScenarios;
 import com.holdmyspot.cat.common.optimizer.proposal.TestRevisionProtocol;
 import com.holdmyspot.cat.common.optimizer.report.CertificationStatus;
@@ -531,10 +532,12 @@ public final class OptimizerCore implements Core
 		if (!evaluators.isEmpty())
 		{
 			return new ContractAuthorProtocol(scope.json(), schema, judge, scenarios, header.target(), header.goal(),
-				reportsExitStatus, evaluatorPlugins(campaign), scope.launcher(), scope.profiles()::toolOutputBytes);
+				reportsExitStatus, evaluatorPlugins(campaign), scope.launcher(), scope.profiles()::toolOutputBytes,
+				scope.checkPrograms());
 		}
 		return new ContractAuthorProtocol(scope.json(), schema, judge, scenarios, header.target(), header.goal(),
-			reportsExitStatus, campaign.plugins().orElseThrow(), scope.launcher(), scope.profiles()::toolOutputBytes);
+			reportsExitStatus, campaign.plugins().orElseThrow(), scope.launcher(), scope.profiles()::toolOutputBytes,
+			scope.checkPrograms());
 	}
 
 	/**
@@ -2714,7 +2717,7 @@ public final class OptimizerCore implements Core
 				pauseAssertionChecks(store, campaign, e.getMessage(), "");
 				return Examined.notice(assertionChecksPaused(campaign.header().id()));
 			}
-			catch (AssertionCheckRun.Interrupted e)
+			catch (AssertionCheckRun.Interrupted | ProposalCheck.Interrupted e)
 			{
 				throw (InterruptedException) e.getCause();
 			}
@@ -4062,7 +4065,7 @@ public final class OptimizerCore implements Core
 			reports.keySet().removeIf(id -> checked.findTest(id).isEmpty());
 			derived = derived.withJudgedReports(reports);
 		}
-		catch (AssertionCheckRun.Interrupted e)
+		catch (AssertionCheckRun.Interrupted | ProposalCheck.Interrupted e)
 		{
 			throw (InterruptedException) e.getCause();
 		}
@@ -5343,7 +5346,7 @@ public final class OptimizerCore implements Core
 			file.write(draft);
 			return continueAuthor(port, request, file, draft);
 		}
-		catch (AssertionCheckRun.Interrupted e)
+		catch (AssertionCheckRun.Interrupted | ProposalCheck.Interrupted e)
 		{
 			throw (InterruptedException) e.getCause();
 		}

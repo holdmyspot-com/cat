@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -57,7 +58,8 @@ public final class PromptOptimizerCli
 	public static void main(String[] args, ScopeFactory factory)
 	{
 		args = CommandLineArguments.recover(args);
-		int exitCode = run(args, factory, ZoneId.systemDefault(), System.out);
+		int exitCode = run(args, factory, ZoneId.systemDefault(), Platform.current().environment(System.getenv()),
+			System.out);
 		if (exitCode != 0)
 			System.exit(exitCode);
 	}
@@ -65,7 +67,7 @@ public final class PromptOptimizerCli
 	/**
 	 * Opens a scope, runs a command and closes the scope; renders creation failures as command failures. A contract
 	 * tool runs without a scope, since it needs no campaign and no harness, inside a contract author session's
-	 * sandbox.
+	 * sandbox, and with an empty environment, in which it finds no sandbox to run check programs in.
 	 * <p>
 	 * A command that starts sessions may name {@value AuthenticationOptions#HOME_OPTION} and
 	 * {@value AuthenticationOptions#LOGIN_CLASS_OPTION} anywhere after its name; the scope passes them to every session
@@ -81,13 +83,36 @@ public final class PromptOptimizerCli
 	 */
 	public static int run(String[] args, ScopeFactory factory, ZoneId zone, PrintStream out)
 	{
+		return run(args, factory, zone, Map.of(), out);
+	}
+
+	/**
+	 * Opens a scope, runs a command and closes the scope, as {@link #run(String[], ScopeFactory, ZoneId, PrintStream)}
+	 * does, giving a contract tool the process environment in which it looks for the sandbox of check programs.
+	 *
+	 * @param args the command and its arguments
+	 * @param factory opens the selected harness's command scope
+	 * @param zone the user's time zone, in which the human summary shows times
+	 * @param environment the process environment, whose {@code PATH} locates Bubblewrap for a contract tool
+	 * @param out receives the command's JSON result or failure
+	 * @return 0 for a result, 1 for a refusal or failure, or 2 for invalid input
+	 * @throws NullPointerException if any argument is null
+	 */
+	public static int run(String[] args, ScopeFactory factory, ZoneId zone, Map<String, String> environment,
+		PrintStream out)
+	{
 		requireThat(args, "args").isNotNull();
 		requireThat(factory, "factory").isNotNull();
 		requireThat(zone, "zone").isNotNull();
+		requireThat(environment, "environment").isNotNull();
 		requireThat(out, "out").isNotNull();
 		List<String> arguments = List.of(args);
 		if (Commands.isContractTool(arguments))
-			return Commands.executeContractTool(JsonMapper.builder().build(), arguments, out);
+		{
+			JsonMapper json = JsonMapper.builder().build();
+			return Commands.executeContractTool(json, arguments,
+				Commands.contractCheckPrograms(json, Platform.current(), environment), out);
+		}
 		boolean evaluatorInfo = !arguments.isEmpty() && arguments.getFirst().equals(EvaluatorInfo.COMMAND);
 		boolean evaluatorTrial = arguments.size() == 1 && arguments.getFirst().equals(EvaluatorTrial.COMMAND);
 		AuthenticationOptions authentication = AuthenticationOptions.DEFAULT;
