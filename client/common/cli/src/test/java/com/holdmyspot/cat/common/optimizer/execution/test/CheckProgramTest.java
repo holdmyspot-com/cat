@@ -15,10 +15,13 @@ import com.holdmyspot.cat.common.runner.policy.HostAccess;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.lang.module.ModuleFinder;
 import java.net.InetAddress;
 import java.net.ServerSocket;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -41,6 +44,49 @@ public final class CheckProgramTest
 	private static final Duration NORMAL_TIMEOUT = Duration.ofSeconds(30);
 	private static final int NORMAL_OUTPUT_LIMIT = 16 * 1024;
 	private static final String SOURCE_MARKER = "private check source marker";
+	private static final String DENIED_PATHS_HELD = "Denied paths held";
+	/**
+	 * A program that fails if a path of its arguments lists any entry or accepts a connection.
+	 */
+	private static final String DENIED_PATHS_PROGRAM = """
+		import java.io.IOException;
+		import java.net.StandardProtocolFamily;
+		import java.net.UnixDomainSocketAddress;
+		import java.nio.channels.SocketChannel;
+		import java.nio.file.DirectoryStream;
+		import java.nio.file.Files;
+		import java.nio.file.Path;
+
+		final class Check
+		{
+			public static void main(String[] args) throws IOException
+			{
+				for (String argument : args)
+				{
+					Path path = Path.of(argument);
+					try (DirectoryStream<Path> entries = Files.newDirectoryStream(path))
+					{
+						if (entries.iterator().hasNext())
+							throw new IllegalStateException("Listed a denied folder: " + path);
+					}
+					catch (IOException e)
+					{
+						// Not a folder, or not reachable
+					}
+					try (SocketChannel channel = SocketChannel.open(StandardProtocolFamily.UNIX))
+					{
+						channel.connect(UnixDomainSocketAddress.of(path));
+						throw new IllegalStateException("Connected to a denied socket: " + path);
+					}
+					catch (IOException e)
+					{
+						// Refused, as required
+					}
+				}
+				System.out.println("Denied paths held");
+			}
+		}
+		""";
 
 	/**
 	 * Creates the test.
@@ -418,6 +464,115 @@ public final class CheckProgramTest
 	}
 
 	/**
+	 * A path that the owner is denied and that does not exist for the driver does not exist for the program, so the
+	 * launch goes ahead. The driver's own sandbox hides such a path, for example a folder that its host denies to it.
+	 *
+	 * @throws IOException if a fixture or process cannot be used
+	 * @throws InterruptedException if a process wait is interrupted
+	 */
+	@Test
+	public void launchesWithAbsentDeniedPath() throws IOException, InterruptedException
+	{
+		// Requirement: R-L21
+		Launch nativeLaunch = nativeLaunch();
+		try (TestJvmScope jvm = new TestJvmScope(); TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "check-absent-"));
+			Fixture fixture = fixture(root, DENIED_PATHS_PROGRAM);
+			Path absent = root.resolve("run-like-absent");
+			Path absentBelow = root.resolve("another-absent").resolve("socket-holder");
+
+			Result result = runWithOwnerDenials(nativeLaunch, fixture, root, List.of(absent, absentBelow),
+				List.of(absent, absentBelow));
+
+			requireThat(result.outcome(), "outcome").isEqualTo(Outcome.PASS);
+			requireThat(result.observed(), "observed").contains(DENIED_PATHS_HELD);
+			requireThat(Files.exists(absent), "absentCreated").isFalse();
+			requireScratchClean(fixture.scratchParent());
+		}
+	}
+
+	/**
+	 * A denied folder that holds a socket is masked: the program neither lists the folder nor connects to the socket.
+	 *
+	 * @throws IOException if a fixture or process cannot be used
+	 * @throws InterruptedException if a process wait is interrupted
+	 */
+	@Test
+	public void masksOwnerDeniedFolderHoldingSocket() throws IOException, InterruptedException
+	{
+		// Requirement: R-L21
+		Launch nativeLaunch = nativeLaunch();
+		try (TestJvmScope jvm = new TestJvmScope(); TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "check-socket-dir-"));
+			Fixture fixture = fixture(root, DENIED_PATHS_PROGRAM);
+			Path folder = Files.createDirectory(root.resolve("socket-folder"));
+			Path socket = folder.resolve("interop");
+			try (SocketHolder _ = SocketHolder.start(nativeLaunch.javaExecutable(), root, folder))
+			{
+				Result result = runWithOwnerDenials(nativeLaunch, fixture, root, List.of(folder),
+					List.of(folder, socket));
+
+				requireThat(result.outcome(), "outcome").isEqualTo(Outcome.PASS);
+				requireThat(result.observed(), "observed").contains(DENIED_PATHS_HELD);
+				requireScratchClean(fixture.scratchParent());
+			}
+		}
+	}
+
+	/**
+	 * A denied socket is masked: the program cannot connect to it.
+	 *
+	 * @throws IOException if a fixture or process cannot be used
+	 * @throws InterruptedException if a process wait is interrupted
+	 */
+	@Test
+	public void masksOwnerDeniedSocket() throws IOException, InterruptedException
+	{
+		// Requirement: R-L21
+		Launch nativeLaunch = nativeLaunch();
+		try (TestJvmScope jvm = new TestJvmScope(); TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "check-socket-"));
+			Fixture fixture = fixture(root, DENIED_PATHS_PROGRAM);
+			Path folder = Files.createDirectory(root.resolve("socket-folder"));
+			Path socket = folder.resolve("interop");
+			try (SocketHolder _ = SocketHolder.start(nativeLaunch.javaExecutable(), root, folder))
+			{
+				Result result = runWithOwnerDenials(nativeLaunch, fixture, root, List.of(socket), List.of(socket));
+
+				requireThat(result.outcome(), "outcome").isEqualTo(Outcome.PASS);
+				requireThat(result.observed(), "observed").contains(DENIED_PATHS_HELD);
+				requireScratchClean(fixture.scratchParent());
+			}
+		}
+	}
+
+	/**
+	 * Runs the denied-paths program for an owner whose sandbox denies reading some paths.
+	 *
+	 * @param launch   the native launch
+	 * @param fixture  the staged program
+	 * @param root     the folder that the owner may read and write
+	 * @param denials  the paths that the owner is denied reading
+	 * @param probes   the paths that the program checks
+	 * @return the program's result
+	 * @throws IOException if a fixture or process cannot be used
+	 * @throws InterruptedException if a process wait is interrupted
+	 */
+	private static Result runWithOwnerDenials(Launch launch, Fixture fixture, Path root, List<Path> denials,
+		List<Path> probes) throws IOException, InterruptedException
+	{
+		ParentPolicy owner = new ParentPolicy(true, List.of(root), List.of(), denials, List.of(), HostAccess.ALL,
+			true, List.of());
+		List<String> arguments = probes.stream().map(Path::toString).toList();
+		return CheckProgram.run(new Launch(launch.bubblewrap(), launch.javaExecutable(), owner, List.of()),
+			fixture.input(), fixture.scratchParent(), new BuiltInTool.CheckProgram(PROGRAM, arguments), Map.of(),
+			NORMAL_TIMEOUT, NORMAL_OUTPUT_LIMIT);
+	}
+
+	/**
 	 * A missing sandbox launcher causes an infrastructure exception and leaves no scratch directory.
 	 *
 	 * @throws IOException if a fixture cannot be prepared or inspected
@@ -537,5 +692,86 @@ public final class CheckProgramTest
 	 */
 	private record Fixture(Path input, Path scratchParent)
 	{
+	}
+
+	/**
+	 * A process that holds a listening Unix socket named {@code interop} in a folder. A separate process binds it
+	 * by a relative name from inside the folder, because a socket's full path may not exceed 107 bytes and the
+	 * folders of a test can be deeper.
+	 */
+	private static final class SocketHolder implements AutoCloseable
+	{
+		private static final String SOURCE = """
+			import java.net.StandardProtocolFamily;
+			import java.net.UnixDomainSocketAddress;
+			import java.nio.channels.ServerSocketChannel;
+
+			final class Holder
+			{
+				public static void main(String[] args) throws Exception
+				{
+					try (ServerSocketChannel server = ServerSocketChannel.open(StandardProtocolFamily.UNIX))
+					{
+						server.bind(UnixDomainSocketAddress.of("interop"));
+						System.out.println("ready");
+						System.in.read();
+					}
+				}
+			}
+			""";
+		private final Process process;
+
+		/**
+		 * Wraps a started holder.
+		 *
+		 * @param process the holder process
+		 */
+		private SocketHolder(Process process)
+		{
+			this.process = process;
+		}
+
+		/**
+		 * Starts a holder and waits until its socket listens.
+		 *
+		 * @param java   the Java executable
+		 * @param root   where the holder's source is written
+		 * @param folder the folder in which the socket is created
+		 * @return the running holder
+		 * @throws IOException if the holder cannot start or does not report a listening socket
+		 */
+		@SuppressWarnings("PMD.CloseResource")
+		static SocketHolder start(Path java, Path root, Path folder) throws IOException
+		{
+			Path source = Files.writeString(root.resolve("Holder.java"), SOURCE);
+			Process process = new ProcessBuilder(java.toString(), source.toString()).directory(folder.toFile()).
+				redirectErrorStream(true).start();
+			SocketHolder holder = new SocketHolder(process);
+			BufferedReader reader = new BufferedReader(
+				new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
+			String line = reader.readLine();
+			if (!"ready".equals(line))
+			{
+				holder.close();
+				throw new IOException("The socket holder did not start: " + line);
+			}
+			return holder;
+		}
+
+		@Override
+		public void close() throws IOException
+		{
+			process.getOutputStream().close();
+			process.destroy();
+			try
+			{
+				process.waitFor();
+			}
+			catch (InterruptedException e)
+			{
+				Thread.currentThread().interrupt();
+				throw new IOException(e);
+			}
+		}
 	}
 }

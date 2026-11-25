@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.runner.policy;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.PosixFilePermissions;
@@ -27,8 +28,9 @@ public final class BubblewrapReadView
 	}
 
 	/**
-	 * Masks owner-denied reads after the writable overlays. An exception covering a denial leaves nothing to mask.
-	 * A partial exception or a path that cannot be masked makes the view unavailable.
+	 * Masks owner-denied reads after the writable overlays. An exception covering a denial leaves nothing to mask,
+	 * and neither does a denied path that does not exist for the launching process, because the view shows only what
+	 * that process sees. A partial exception or a path that cannot be masked makes the view unavailable.
 	 *
 	 * @param command   the sandbox command after its writable overlays
 	 * @param policy    the authenticated owner's filesystem policy
@@ -45,7 +47,10 @@ public final class BubblewrapReadView
 
 	/**
 	 * Masks owner-denied reads and any additional required masks after the writable overlays. Required masks apply
-	 * even if the owner could read those paths. A path already covered by a mask needs no separate mount.
+	 * even if the owner could read those paths. A path already covered by a mask needs no separate mount. An
+	 * owner-denied path that does not exist for the launching process, such as a folder that its own sandbox hides,
+	 * needs no mask, since the view shows the program only what that process sees; a required mask that does not exist
+	 * makes the view unavailable.
 	 *
 	 * @param command       the sandbox command after its writable overlays
 	 * @param policy        the authenticated owner's filesystem policy
@@ -88,26 +93,36 @@ public final class BubblewrapReadView
 				throw new IOException(subject + " cannot represent the owner's read restriction during " + operation +
 					": " + path);
 			}
-			mask(command, path, scratch, failure);
+			mask(command, path, mandatory, scratch, failure);
 			masked.add(path);
 		}
 	}
 
 	/**
-	 * Replaces the denied filesystem object with an empty read-only object.
+	 * Replaces the denied filesystem object with an empty read-only object. A folder is replaced by an empty
+	 * read-only folder, and any other object, such as a file or a socket, by an empty file. A path that does not exist
+	 * for the launching process needs no mask unless it is required.
 	 *
-	 * @param command the sandbox command
-	 * @param denied  the canonical denied path
-	 * @param scratch where a private empty file can be created
-	 * @param failure the message if the denied object cannot be masked
+	 * @param command   the sandbox command
+	 * @param denied    the canonical denied path
+	 * @param mandatory {@code true} if the path is a required mask, which must exist
+	 * @param scratch   where a private empty file can be created
+	 * @param failure   the message if the denied object cannot be masked
 	 * @throws IOException if the denied path cannot be masked
 	 */
-	private static void mask(List<String> command, Path denied, Path scratch, String failure) throws IOException
+	private static void mask(List<String> command, Path denied, boolean mandatory, Path scratch, String failure)
+		throws IOException
 	{
 		BasicFileAttributes attributes;
 		try
 		{
 			attributes = Files.readAttributes(denied, BasicFileAttributes.class);
+		}
+		catch (NoSuchFileException e)
+		{
+			if (mandatory)
+				throw new IOException(failure, e);
+			return;
 		}
 		catch (IOException e)
 		{
@@ -115,14 +130,12 @@ public final class BubblewrapReadView
 		}
 		if (attributes.isDirectory())
 			command.addAll(List.of("--tmpfs", denied.toString(), "--remount-ro", denied.toString()));
-		else if (attributes.isRegularFile())
+		else
 		{
 			Path empty = Files.createTempFile(scratch, "denied-read-", ".empty",
 				PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("---------")));
 			command.addAll(List.of("--ro-bind", empty.toString(), denied.toString()));
 		}
-		else
-			throw new IOException(failure);
 	}
 
 	/**
