@@ -522,7 +522,8 @@ public final class ClaudeSessionSandboxTest
 			bwrapDirectory = Files.createDirectory(root.resolve("bwrap-bin"));
 			socatDirectory = Files.createDirectory(root.resolve("socat-bin"));
 			Path macos = Files.createDirectory(root.resolve("macos"));
-			folder = Files.createDirectory(root.resolve("tmp"));
+			// Only the folder's length is decided; a short path keeps it under the limit whatever the host temp path is
+			folder = folderOfLength(10);
 			executable(bwrapDirectory.resolve("bwrap"));
 			executable(socatDirectory.resolve("socat"));
 			macosExecutable = executable(macos.resolve("sandbox-exec"));

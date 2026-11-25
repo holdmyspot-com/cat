@@ -8,6 +8,7 @@ import com.holdmyspot.cat.claude.credential.ClaudeCredentialFile;
 import com.holdmyspot.cat.claude.credential.CredentialRefusedException;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.runner.SecretFile;
@@ -159,6 +160,12 @@ public final class ClaudeCredentialFileTest
 			Path file = ClaudeCredentialFile.path(home);
 			byte[] earlier = Files.readAllBytes(file);
 			Path folder = file.getParent();
+			if (!PortableFiles.hasModes(folder))
+			{
+				// Windows keeps creating files in a folder whose read-only attribute is set, so no folder state that a
+				// test can set there makes the save fail
+				return;
+			}
 			Files.setPosixFilePermissions(folder, PosixFilePermissions.fromString("r-x------"));
 			try
 			{
@@ -280,8 +287,8 @@ public final class ClaudeCredentialFileTest
 			Path home = cleanup.add(Files.createTempDirectory("cat-credential-")).toRealPath();
 			Path file = ClaudeCredentialFile.path(home);
 			Files.createDirectories(file.getParent());
+			Files.createFile(file, SecretFile.ownerOnlyFile(file.getParent()));
 			Files.writeString(file, content, UTF_8);
-			Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rw-------"));
 			try
 			{
 				ClaudeCredentialFile.read(json, home);
