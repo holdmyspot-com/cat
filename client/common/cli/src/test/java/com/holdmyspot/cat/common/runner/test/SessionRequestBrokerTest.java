@@ -242,11 +242,13 @@ public final class SessionRequestBrokerTest
 	{
 		FileLocks fileLocks = new FileLocks();
 		// Requirement: R-I14
-		try (Fixture fixture = new Fixture("--session-requests", "3", "--home", "/source/home", "--gateway-login-class",
-			"api_key"))
+		Path sourceHome = Path.of("/source/home").toAbsolutePath();
+		Path codexAuthentication = sourceHome.resolve(".codex").resolve("auth.json");
+		try (Fixture fixture = new Fixture("--session-requests", "3", "--home", sourceHome.toString(),
+			"--gateway-login-class", "api_key"))
 		{
 			Map<String, List<String>> started = new ConcurrentHashMap<>();
-			AuthenticationEvidence evidence = new AuthenticationEvidence(Path.of("/source/home"),
+			AuthenticationEvidence evidence = new AuthenticationEvidence(sourceHome,
 				List.of("apiKeyHelper"), HostLogin.API_KEY);
 			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.nestedSession, fixture.manager,
 				fixture.options, (harness, options, directory) ->
@@ -256,7 +258,7 @@ public final class SessionRequestBrokerTest
 					if (harness.equals("codex"))
 					{
 						Files.writeString(directory.resolve(RequestedSessionStarter.ERROR_FILE), "The source home " +
-							"/source/home holds no codex authentication: the runner read /source/home/.codex/auth.json" +
+							sourceHome + " holds no codex authentication: the runner read " + codexAuthentication +
 							System.lineSeparator());
 						FakeHarnessCli process = new FakeHarnessCli(exitOnCompleteRecord(fixture.json, child),
 							HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
@@ -288,13 +290,13 @@ public final class SessionRequestBrokerTest
 				requireThat(AuthenticationEvidence.fromJson(claude.path(AuthenticationEvidence.FIELD)), "evidence").
 					isEqualTo(evidence);
 				requireThat(codex.path("status").asString(), "codexStatus").isEqualTo("refused");
-				requireThat(codex.path("reason").asString(), "codexReason").contains("/source/home/.codex/auth.json");
+				requireThat(codex.path("reason").asString(), "codexReason").contains(codexAuthentication.toString());
 				Path nestedHome = fixture.nestedSession.directory().resolve("home");
 				for (String harness : List.of("claude", "codex"))
 				{
 					List<String> arguments = started.get(harness);
 					requireThat(arguments, harness).isNotNull();
-					requireThat(option(arguments, "--home"), harness + ".home").isEqualTo("/source/home");
+					requireThat(option(arguments, "--home"), harness + ".home").isEqualTo(sourceHome.toString());
 					requireThat(option(arguments, "--gateway-login-class"), harness + ".loginClass").isEqualTo("api_key");
 					requireThat(arguments, harness).contains("--inherited-source-home");
 					for (String argument : arguments)
