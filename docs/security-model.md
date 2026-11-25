@@ -428,8 +428,8 @@ The request server treats every request as the session's and checks it before it
 - It starts the new session inside that harness's own sandbox, so that the new session can read, write and reach no
 	more than the session that asked for it, and stops the new session's processes when the new session ends, or when
 	the session that it serves ends.
-- A launch that names an option that only CAT itself passes, such as `--policy-bound`, `--capacity-held`,
-	`--child-needs`, `--git-name` or `--git-email`, exits with status 2 and starts nothing. A launcher always runs its
+- A launch that names an option that only CAT itself passes, such as `--policy-bound` or
+	`--child-needs`, exits with status 2 and starts nothing. A launcher always runs its
 	own CAT artifact and the `claude` or `codex` command that your `PATH` finds: a launch that names `--artifact` exits
 	with status 2 and starts nothing. A runner launcher or request server run by the harness whose plugin did not
 	provide it starts nothing and names the plugin to use instead.

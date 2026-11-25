@@ -228,7 +228,7 @@ Launch once it prints that it serves this session's launches; it serves them unt
 status `2` instead, report its reason to the user and do not launch, unless the reason says that another request server
 already serves this session.
 
-Never pass `--policy-bound`, `--capacity-held`, `--child-needs`, `--git-name`, `--git-email`,
+Never pass `--policy-bound`, `--child-needs`,
 `--continue-after-failed-turn`, `--slot-id`, `--resume-slot`, `--inherited-deny-read`, `--inherited-source-home` or
 `--startup-permit`: only
 CAT itself passes them, and the launcher refuses them. The launcher

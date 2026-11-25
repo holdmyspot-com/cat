@@ -568,8 +568,7 @@ public final class CodexRunnerCli
 	 * @param output the bridge output
 	 * @param environment the host environment
 	 * @param capacityForMaximum creates the shared harness capacity for the {@code --max-concurrency} value that the
-	 *   command selected. The bridge waits for a permit before it starts Codex, unless the command names
-	 *   {@code --capacity-held}.
+	 *   command selected. The bridge waits for a permit before it starts Codex.
 	 * @throws NullPointerException    if any argument is null
 	 * @throws SessionRefusedException if the launch's source home would refuse the launch, as
 	 *                                 {@link CodexAuthentication#read} decides; if the launch names no
@@ -619,15 +618,12 @@ public final class CodexRunnerCli
 			NestedSessionManager manager = inSlot(opened, options.slotId(), args);
 			try
 			{
-				HarnessCapacity.Permit permit = null;
-				if (!options.capacityHeld())
-				{
-					HarnessCapacity capacity = capacityForMaximum.apply(options.maximumConcurrency());
-					if (options.capacityWait() == null)
-						permit = capacity.acquire();
-					else
-						permit = capacity.acquire(options.capacityWait());
-				}
+				HarnessCapacity.Permit permit;
+				HarnessCapacity capacity = capacityForMaximum.apply(options.maximumConcurrency());
+				if (options.capacityWait() == null)
+					permit = capacity.acquire();
+				else
+					permit = capacity.acquire(options.capacityWait());
 				try (HarnessCapacity.Permit _ = permit)
 				{
 					AtomicReference<ChildPolicy> policy = new AtomicReference<>();
@@ -636,7 +632,7 @@ public final class CodexRunnerCli
 						options.workspace(), trialPlugins, manager, "codex", environment, options.model(),
 						options.effort(), options.installCat(), agent, options.readOnlyEvidence(), options.deniedReads(),
 						toolOutputTokenLimit, options.sessionTranscripts(), options.sessionRequests(), bound, policy::set,
-						options.gitName(), options.gitEmail(), extraPermissions, options.resumeSlot(), authentication),
+						extraPermissions, options.resumeSlot(), authentication),
 						manager, options, scope.json(), replacer, input, output, (harness, arguments, directory) ->
 						requestedRunner(scope, options.artifact(), harness, environment).start(PolicyBoundFile.
 							boundArguments(scope.json(), arguments, directory, policy.get()), directory,

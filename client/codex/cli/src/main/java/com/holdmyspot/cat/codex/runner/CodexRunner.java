@@ -154,8 +154,6 @@ public final class CodexRunner
 	 * @param bound the policy that bounds the session's sandbox: the session gets its session folder, the dependency
 	 *   caches and its model host only within it
 	 * @param policyListener receives the session's sandbox policy before its Codex process starts
-	 * @param gitName the Git user name of the copied project, or {@code null} to read {@code project}'s
-	 * @param gitEmail the Git user email of the copied project, or {@code null} to read {@code project}'s
 	 * @param extraPermissions the writes and hosts that the session's commands need beyond what Codex needs
 	 * @param resumedSession the thread that the nested session of {@code manager}'s slot records and that the runner
 	 *   continues, or {@code null} to start a thread in a new nested session. A resumed nested session keeps its project
@@ -173,7 +171,7 @@ public final class CodexRunner
 		NestedSessionManager manager, String executable, Map<String, String> environment, String model, String effort,
 		boolean installCat, CodexAgentDefinition agent, List<Path> readOnlyEvidence, List<Path> deniedReads,
 		int toolOutputTokenLimit, boolean sessionTranscripts, int sessionRequests, ParentPolicy bound,
-		Consumer<ChildPolicy> policyListener, String gitName, String gitEmail, ExtraPermissions extraPermissions,
+		Consumer<ChildPolicy> policyListener, ExtraPermissions extraPermissions,
 		String resumedSession, CodexAuthentication authentication) throws IOException
 	{
 		requireThat(artifact, "artifact").isNotNull();
@@ -214,7 +212,7 @@ public final class CodexRunner
 					manager.copyWorkspace(workspace, nestedSession);
 				manager.snapshotProject(nestedSession);
 				HarnessProjectRepository.initialize(project, nestedSession.directory().resolve("project"),
-					nestedSession.directory(), environment, executables, gitName, gitEmail);
+					nestedSession.directory(), environment, executables);
 			}
 			// A nested session that an earlier runner started keeps its Codex files directly in its home
 			if (resumes)

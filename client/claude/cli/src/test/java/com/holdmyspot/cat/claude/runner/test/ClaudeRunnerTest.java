@@ -2280,7 +2280,7 @@ public final class ClaudeRunnerTest
 				{
 					new ClaudeRunner(Yielding.waiting()).start(root.resolve("artifact"), root.resolve("project"), null,
 						List.of(), manager, executable.toString(), Map.of("PATH", ""), "sonnet", "low", null, false,
-						List.of(), List.of(), "", false, 0, null, listened::set, null, null, ExtraPermissions.NONE,
+						List.of(), List.of(), "", false, 0, null, listened::set, ExtraPermissions.NONE,
 						ClaudeSessionRole.TRIAL, resumed, authentication);
 					throw new AssertionError("The launch was not refused");
 				}
@@ -2324,7 +2324,7 @@ public final class ClaudeRunnerTest
 			{
 				new ClaudeRunner(Yielding.waiting()).start(root.resolve("artifact"), root.resolve("project"), null,
 					List.of(), manager, "claude", Map.of("PATH", ""), "sonnet", "low", null, false, List.of(),
-					List.of(), "", false, 0, null, listened::set, null, null, ExtraPermissions.NONE, ClaudeSessionRole.JUDGE,
+					List.of(), "", false, 0, null, listened::set, ExtraPermissions.NONE, ClaudeSessionRole.JUDGE,
 					null, SourceHomes.keyHelper(home));
 				throw new AssertionError("The launch started");
 			}

@@ -146,8 +146,6 @@ public final class ClaudeRunner
 	 *   and responses directories
 	 * @param bound the policy that bounds the session's sandbox policy, or {@code null} if nothing bounds it
 	 * @param policyListener receives the session's sandbox policy before its Claude Code process starts
-	 * @param gitName the Git user name of the copied project, or {@code null} to read {@code project}'s
-	 * @param gitEmail the Git user email of the copied project, or {@code null} to read {@code project}'s
 	 * @param extraPermissions the writes and hosts that the session's commands need beyond what Claude Code needs
 	 * @param role the session's role, which decides its tools, its prompt cache's lifetime and whether it runs inside a
 	 *   sandbox, or {@code null} to keep Claude Code's defaults
@@ -172,7 +170,7 @@ public final class ClaudeRunner
 		NestedSessionManager manager, String executable, Map<String, String> environment, String model, String effort,
 		ClaudeAgentDefinition agent, boolean installCat, List<Path> readOnlyEvidence,
 		List<Path> deniedReads, String instructionFilesMode, boolean sessionTranscripts, int sessionRequests,
-		ChildPolicy bound, Consumer<ChildPolicy> policyListener, String gitName, String gitEmail,
+		ChildPolicy bound, Consumer<ChildPolicy> policyListener,
 		ExtraPermissions extraPermissions, ClaudeSessionRole role, String resumedSession,
 		ClaudeAuthentication authentication) throws IOException
 	{
@@ -216,7 +214,7 @@ public final class ClaudeRunner
 					manager.copyWorkspace(workspace, nestedSession);
 				manager.snapshotProject(nestedSession);
 				HarnessProjectRepository.initialize(project, nestedSession.directory().resolve("project"),
-					nestedSession.directory(), environment, executables, gitName, gitEmail);
+					nestedSession.directory(), environment, executables);
 			}
 			Path hostConfiguration = claudeConfigDirectory(environment, Platform.current());
 			Path claudeTemporaryDirectory = nestedSession.directory().resolve("claude");

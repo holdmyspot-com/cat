@@ -34,7 +34,6 @@ import java.io.PrintWriter;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.nio.file.Files;
-import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Clock;
@@ -694,47 +693,6 @@ public final class ClaudeRunnerCliTest
 
 			requireThat(refusal.getMessage(), "message").contains(Path.of("relative/cache").toString()).
 				contains(extra.toString());
-		}
-	}
-
-	/**
-	 * Verifies that a launch whose requester holds the session's capacity slot reaches bridge input opening without
-	 * taking another slot or starting a runner.
-	 *
-	 * @throws IOException if the test filesystem cannot be used
-	 */
-	@Test
-	public void heldCapacityTakesNoSlot() throws IOException
-	{
-		try (TestJvmScope jvm = new TestJvmScope();
-			TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
-			Path home = Files.createDirectory(root.resolve("home"));
-			Path configuration = Files.createDirectory(home.resolve(".claude"));
-			Path input = root.resolve("missing-input.jsonl");
-			SourceHomes.settings(home, """
-				{"apiKeyHelper": "printf key"}
-				""");
-			Map<String, String> environment = Map.of(Platform.current().homeVariable(), home.toString(),
-				"CLAUDE_CONFIG_DIR", configuration.toString());
-			String[] args = {"--artifact", root.resolve("artifact").toString(), "--project",
-				root.resolve("project").toString(), "--results", root.resolve("results").toString(), "--model", "sonnet",
-				"--effort", "low", "--policy-bound", policyBound(root).toString(), "--capacity-held", "--input",
-				input.toString()};
-
-			try
-			{
-				ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), environment, _ ->
-				{
-					throw new AssertionError("The launch took a capacity slot");
-				});
-				throw new AssertionError("The bridge opened a missing input file");
-			}
-			catch (NoSuchFileException e)
-			{
-				requireThat(Path.of(e.getFile()), "missingInput").isEqualTo(input);
-			}
 		}
 	}
 
@@ -1716,7 +1674,7 @@ public final class ClaudeRunnerCliTest
 			 "read_reallowances": [], "hosts": ["api.anthropic.com", "gateway.example"], "allow_local_binding": false}
 			""".formatted(json.writeValueAsString(root.toString()), String.join(", ", denials)));
 		List<String> args = new ArrayList<>(List.of("--project", project.toString(), "--results",
-			root.resolve("results").toString(), "--model", "sonnet", "--effort", "low", "--capacity-held",
+			root.resolve("results").toString(), "--model", "sonnet", "--effort", "low",
 			PolicyBoundFile.OPTION, bound.toString()));
 		args.addAll(options);
 		PrintWriter writer = new PrintWriter(errors, true);

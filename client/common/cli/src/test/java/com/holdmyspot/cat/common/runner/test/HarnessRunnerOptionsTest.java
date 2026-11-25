@@ -766,26 +766,40 @@ public final class HarnessRunnerOptionsTest
 	}
 
 	/**
-	 * Verifies that a request server's options reach the runner: the file of the session's policy bound, that the
-	 * requester holds the session's capacity slot, and the Git identity of the copied project; and that a launch
-	 * without them has no bound, takes its own slot and reads the identity from the source project.
+	 * Verifies that a request server's {@code --policy-bound} reaches the runner as the file of the session's policy
+	 * bound, and that a launch without it has no bound.
 	 */
 	@Test
 	public void parsesLauncherOptions()
 	{
 		HarnessRunnerOptions result = HarnessRunnerOptions.parse(launch("--policy-bound",
-			absolute("requests/r1/policy-bound.json"), "--capacity-held", "--git-name", "A User", "--git-email",
-			"user@example.test"), "harness", SESSION);
+			absolute("requests/r1/policy-bound.json")), "harness", SESSION);
 		HarnessRunnerOptions without = HarnessRunnerOptions.parse(launch(), "harness", SESSION);
 
 		requireThat(result.policyBound(), "policyBound").isEqualTo(path("requests/r1/policy-bound.json"));
-		requireThat(result.capacityHeld(), "capacityHeld").isTrue();
-		requireThat(result.gitName(), "gitName").isEqualTo("A User");
-		requireThat(result.gitEmail(), "gitEmail").isEqualTo("user@example.test");
 		requireThat(without.policyBound(), "withoutPolicyBound").isNull();
-		requireThat(without.capacityHeld(), "withoutCapacityHeld").isFalse();
-		requireThat(without.gitName(), "withoutGitName").isNull();
-		requireThat(without.gitEmail(), "withoutGitEmail").isNull();
+	}
+
+	/**
+	 * Verifies that {@code --capacity-held}, {@code --git-name} and {@code --git-email} are no longer options: no
+	 * starter passes them, so a launch that names one is refused as one that names any unknown option.
+	 */
+	@Test
+	public void rejectsRemovedLauncherOptions()
+	{
+		for (String[] removed : new String[][]{{"--capacity-held"}, {"--git-name", "A User"},
+			{"--git-email", "user@example.test"}})
+		{
+			try
+			{
+				HarnessRunnerOptions.parse(launch(removed), "harness", SESSION);
+				throw new AssertionError("A launch accepted " + removed[0]);
+			}
+			catch (IllegalArgumentException e)
+			{
+				requireThat(e.getMessage(), "message").isEqualTo("Unsupported option: " + removed[0]);
+			}
+		}
 	}
 
 	/**

@@ -994,38 +994,6 @@ public final class CodexRunnerCliTest
 	}
 
 	/**
-	 * Verifies that a launch whose requester holds the session's capacity slot takes none, so that it starts even
-	 * while every slot is taken.
-	 *
-	 * @throws IOException if the test filesystem cannot be used
-	 */
-	@Test
-	public void heldCapacityTakesNoSlot() throws IOException
-	{
-		try (TestJvmScope jvm = new TestJvmScope();
-			TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
-			String[] args = {"serve", "--artifact", root.resolve("artifact").toString(), "--project",
-				root.resolve("project").toString(), "--results", root.resolve("results").toString(), "--model",
-				"gpt-6-luna", "--effort", "low", "--policy-bound", policyBound(root).toString(), "--capacity-held"};
-			try
-			{
-				CodexRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(),
-					CodexSourceHomes.runnerEnvironment(root), _ ->
-				{
-					throw new AssertionError("The launch took a capacity slot");
-				});
-				throw new AssertionError("The launch started a session without a CAT artifact");
-			}
-			catch (IOException _)
-			{
-				// The session starts without a slot, and fails only because the test runs no CAT artifact
-			}
-		}
-	}
-
-	/**
 	 * Returns command environments and the harnesses whose markers they hold.
 	 *
 	 * @return the environments and the harnesses that run their commands
@@ -1309,7 +1277,7 @@ public final class CodexRunnerCliTest
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 
 			int status = CodexRunnerCli.launch(new String[]{"serve", "--project", home.toString(),
-					"--capacity-held"}, environment, Yielding.waiting(), new StringReader(""), output,
+					"--policy-bound", home.toString()}, environment, Yielding.waiting(), new StringReader(""), output,
 				new PrintWriter(errors, true), () ->
 				{
 					throw new AssertionError("No plugin is found");
@@ -1319,7 +1287,7 @@ public final class CodexRunnerCliTest
 				});
 
 			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
-			requireThat(errors.toString(), "errors").contains("only CAT itself passes --capacity-held");
+			requireThat(errors.toString(), "errors").contains("only CAT itself passes --policy-bound");
 			requireThat(output.size(), "outputSize").isZero();
 		}
 	}
@@ -1937,7 +1905,7 @@ public final class CodexRunnerCliTest
 			 "read_reallowances": [], "hosts": ["api.openai.com", "gateway.example"], "allow_local_binding": false}
 			""".formatted(json.writeValueAsString(root.toString()), String.join(", ", denials)));
 		List<String> args = new ArrayList<>(List.of("serve", "--project", project.toString(), "--results",
-			root.resolve("results").toString(), "--model", "gpt-6-luna", "--effort", "low", "--capacity-held",
+			root.resolve("results").toString(), "--model", "gpt-6-luna", "--effort", "low",
 			PolicyBoundFile.OPTION, bound.toString()));
 		args.addAll(options);
 		PrintWriter writer = new PrintWriter(errors, true);

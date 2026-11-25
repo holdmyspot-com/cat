@@ -8,11 +8,6 @@ package com.holdmyspot.cat.common.runner.launcher;
 public final class RunnerArguments
 {
 	/**
-	 * The runner option that tells the runner that the requester holds the child's capacity slot itself, so that the
-	 * child takes none.
-	 */
-	public static final String CAPACITY_HELD_OPTION = "--capacity-held";
-	/**
 	 * The runner option with which CAT starts the runner of a requested conversation, so that a turn that fails while
 	 * the harness keeps running does not end the session.
 	 */
@@ -48,14 +43,6 @@ public final class RunnerArguments
 	 * The launch option that selects one project directory whose link declarations are returned as result data.
 	 */
 	public static final String RESULT_PROJECT_LINKS_OPTION = "--result-project-links";
-	/**
-	 * The runner option that names the Git author of the copied project.
-	 */
-	public static final String GIT_NAME_OPTION = "--git-name";
-	/**
-	 * The runner option that names the Git author email of the copied project.
-	 */
-	public static final String GIT_EMAIL_OPTION = "--git-email";
 	/**
 	 * The runner option that a nested session's runner passes to the runner of each session that its session requests,
 	 * beside its own launch's source home and gateway login class. The requested session's runner then takes them from

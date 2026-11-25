@@ -48,10 +48,6 @@ import tools.jackson.databind.json.JsonMapper;
  *   which the bridge's records go too, or {@code null} if the nested session holds none
  * @param policyBound the file of the policy that bounds the session's sandbox policy, which the request server
  *   writes, or {@code null} if the launch names none
- * @param capacityHeld indicates whether the requester holds the session's capacity slot itself, so that the runner
- *   takes none
- * @param gitName the Git user name of the copied project, or {@code null} to read the source project's
- * @param gitEmail the Git user email of the copied project, or {@code null} to read the source project's
  * @param extraPermissions the file that lists the writes and hosts that the session needs beyond its harness's, in the
  *   format of {@link ExtraPermissions}, or {@code null} if the launch asks for none
  * @param turnCopy the directory that receives a copy of the nested session's project and initial project at the end of
@@ -72,8 +68,8 @@ import tools.jackson.databind.json.JsonMapper;
 public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFolder, String model, String effort,
 	Path output, Path receipt, boolean sessionTranscripts, boolean installCat, int maximumConcurrency,
 	List<Path> deniedReads, List<Path> readOnlyEvidence, Path workspace, int sessionRequests,
-	Duration capacityWait, int requestDepth, Path input, Path conversation, Path policyBound, boolean capacityHeld,
-	String gitName, String gitEmail, Path extraPermissions, Path turnCopy, boolean continueAfterFailedTurn,
+	Duration capacityWait, int requestDepth, Path input, Path conversation, Path policyBound,
+	Path extraPermissions, Path turnCopy, boolean continueAfterFailedTurn,
 	String slotId, String resumeSlot, List<TrialPluginInput> pluginInputs, Path resultProjectLinks,
 	AuthenticationOptions authentication)
 {
@@ -96,7 +92,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 	 */
 	private static final Set<String> VALUE_OPTIONS = Set.of("--artifact", "--project", "--results", "--model",
 		"--effort", "--output", "--receipt", "--deny-read", "--read-only-evidence", "--workspace", "--plugin", "--input",
-		"--session-requests", "--request-depth", "--capacity-wait", "--policy-bound", "--git-name", "--git-email",
+		"--session-requests", "--request-depth", "--capacity-wait", "--policy-bound",
 		ExtraPermissions.OPTION, Conversation.OPTION, "--turn-copy", TrialPluginInput.ID_OPTION,
 		RunnerArguments.RESULT_PROJECT_LINKS_OPTION,
 		RunnerArguments.SLOT_ID_OPTION, RunnerArguments.RESUME_SLOT_OPTION, RunnerArguments.STARTUP_PERMIT_OPTION,
@@ -110,13 +106,13 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 	public HarnessRunnerOptions(Path artifact, Path project, Path resultsFolder, String model, String effort,
 		Path output, Path receipt, boolean sessionTranscripts, boolean installCat, int maximumConcurrency,
 		List<Path> deniedReads, List<Path> readOnlyEvidence, Path workspace, List<Path> plugins, int sessionRequests,
-		Duration capacityWait, int requestDepth, Path input, Path conversation, Path policyBound, boolean capacityHeld,
-		String gitName, String gitEmail, Path extraPermissions, Path turnCopy, boolean continueAfterFailedTurn,
+		Duration capacityWait, int requestDepth, Path input, Path conversation, Path policyBound,
+		Path extraPermissions, Path turnCopy, boolean continueAfterFailedTurn,
 		String slotId, String resumeSlot)
 	{
 		this(artifact, project, resultsFolder, model, effort, output, receipt, sessionTranscripts, installCat,
 			maximumConcurrency, deniedReads, readOnlyEvidence, workspace, sessionRequests, capacityWait, requestDepth,
-			input, conversation, policyBound, capacityHeld, gitName, gitEmail, extraPermissions, turnCopy,
+			input, conversation, policyBound, extraPermissions, turnCopy,
 			continueAfterFailedTurn, slotId, resumeSlot, TrialPluginInput.unbound(plugins), null,
 			AuthenticationOptions.DEFAULT);
 	}
@@ -183,12 +179,6 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 			if (option.equals(RunnerArguments.HELD_OUT_OPTION))
 			{
 				// Only a request server or a nested session's broker uses the part, to pick the slot that the session runs in
-				index += 1;
-				continue;
-			}
-			if (option.equals("--capacity-held"))
-			{
-				options.capacityHeld = true;
 				index += 1;
 				continue;
 			}
@@ -292,10 +282,6 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 			}
 			else if (option.equals("--policy-bound"))
 				options.policyBound = Path.of(value);
-			else if (option.equals("--git-name"))
-				options.gitName = value;
-			else if (option.equals("--git-email"))
-				options.gitEmail = value;
 			else if (option.equals(ExtraPermissions.OPTION))
 				options.extraPermissions = Path.of(value);
 			else if (option.equals(Conversation.OPTION))
@@ -359,7 +345,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 			options.receipt, options.sessionTranscripts, options.installCat, options.maximumConcurrency,
 			options.deniedReads, options.readOnlyEvidence, options.workspace, options.sessionRequests,
 			options.capacityWait, options.requestDepth, options.input, options.conversation, options.policyBound,
-			options.capacityHeld, options.gitName, options.gitEmail, options.extraPermissions,
+			options.extraPermissions,
 			options.turnCopy, options.continueAfterFailedTurn, options.slotId, options.resumeSlot, options.plugins,
 			options.resultProjectLinks, authentication);
 	}
@@ -749,9 +735,6 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 	 *   if the nested session holds none
 	 * @param policyBound the file of the policy that bounds the session's sandbox policy, or {@code null} if the
 	 *   launch names none
-	 * @param capacityHeld whether the requester holds the session's capacity slot itself
-	 * @param gitName the Git user name of the copied project, or {@code null} to read the source project's
-	 * @param gitEmail the Git user email of the copied project, or {@code null} to read the source project's
 	 * @param extraPermissions the file that lists the writes and hosts that the session needs beyond its harness's, or
 	 *   {@code null} if the launch asks for none
 	 * @param turnCopy the directory that receives a copy of the nested session's project and initial project at the end
@@ -766,7 +749,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 	 * @param authentication the launch's choice of the source home and of the gateway login class
 	 * @throws NullPointerException if any of the arguments are null, other than {@code output}, {@code receipt},
 	 *   {@code workspace}, {@code capacityWait}, {@code input}, {@code conversation}, {@code policyBound},
-	 *   {@code gitName}, {@code gitEmail}, {@code extraPermissions}, {@code turnCopy}, {@code slotId} and
+	 *   {@code extraPermissions}, {@code turnCopy}, {@code slotId} and
 	 *   {@code resumeSlot} and {@code resultProjectLinks}
 	 * @throws IllegalArgumentException if {@code model} or {@code effort} are blank, {@code resultsFolder} or an element
 	 *   of {@code deniedReads} or {@code readOnlyEvidence} is not absolute, {@code sessionRequests} or {@code
@@ -832,7 +815,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 		all.addAll(denied);
 		return new HarnessRunnerOptions(artifact, project, resultsFolder, model, effort, output, receipt,
 			sessionTranscripts, installCat, maximumConcurrency, List.copyOf(all), readOnlyEvidence, workspace,
-			sessionRequests, capacityWait, requestDepth, input, conversation, policyBound, capacityHeld, gitName, gitEmail,
+			sessionRequests, capacityWait, requestDepth, input, conversation, policyBound,
 			extraPermissions, turnCopy, continueAfterFailedTurn, slotId, resumeSlot, pluginInputs, resultProjectLinks,
 			authentication);
 	}
@@ -955,9 +938,6 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 		private Path input;
 		private Path conversation;
 		private Path policyBound;
-		private boolean capacityHeld;
-		private String gitName;
-		private String gitEmail;
 		private Path extraPermissions;
 		private Path turnCopy;
 		private Path resultProjectLinks;

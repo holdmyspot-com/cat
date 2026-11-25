@@ -28,8 +28,7 @@ public sealed interface LaunchRoute
 	 * The options that only CAT's own starters pass to a runner launcher. A harness session's launch may not name
 	 * them: each one would let the session choose what bounds the new session.
 	 */
-	List<String> INTERNAL_OPTIONS = List.of(PolicyBoundFile.OPTION, RunnerArguments.CAPACITY_HELD_OPTION,
-		ChildNeedsReport.OPTION, RunnerArguments.GIT_NAME_OPTION, RunnerArguments.GIT_EMAIL_OPTION,
+	List<String> INTERNAL_OPTIONS = List.of(PolicyBoundFile.OPTION, ChildNeedsReport.OPTION,
 		RunnerArguments.CONTINUE_AFTER_FAILED_TURN_OPTION, RunnerArguments.SLOT_ID_OPTION,
 		RunnerArguments.RESUME_SLOT_OPTION, RunnerArguments.STARTUP_PERMIT_OPTION,
 		RunnerArguments.INHERITED_DENY_READ_OPTION, RunnerArguments.INHERITED_SOURCE_HOME_OPTION);
