@@ -2856,7 +2856,8 @@ the judge, which decides it once, when the test is written.
 	stale one when a revision leaves no empty directory. Reading a prompt test creates each listed directory in the
 	example's membership, and refuses a malformed file, a path that leaves `examples/`, names a file, or names a
 	directory that holds an entry. A prompt test without the file reads as before. CAT owns the file: the contract
-	author does not write it, a draft example's empty directories are themselves its record, and staging and judged
+	author does not write it, a draft example's empty directories are themselves its record (so seeding a draft from a
+	delivered prompt test recreates each listed directory in the draft and leaves the file out), and staging and judged
 	evidence leave it out with the rest of the prompt test directory.
 
 The contract author writes the examples when it writes the test, and CAT checks every assertion when the session ends,

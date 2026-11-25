@@ -10578,11 +10578,13 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 	snapshots and apply defaults only to the omitted ones; delivery writes `examples.json` only for a non-empty list and
 	removes a stale one when a revision leaves no empty directory; a prompt test without the file reads as before;
 	malformed content, a path that leaves `examples/`, names a file or names a non-empty directory is refused; the file
-	reaches neither a staged trial nor judged evidence. Then the clean full offline build, reporting every test taking
+	reaches neither a staged trial nor judged evidence; `DraftDirectoryTest`: seeding a draft from a delivered
+	prompt test whose checkout dropped its empty directories recreates each listed directory in the draft and leaves
+	`examples.json` out, so delivering that draft unchanged keeps the explicit empty snapshots. Then the clean full offline build, reporting every test taking
 	at least one second.
 - **Classes affected:** `PromptTest`, `PromptTestFiles`, `Assertion`, `ProposalSchema`, `BuiltInTool`, `TrialRecord`,
 	`PeerTrialEvidence` and the moved activity reader, `Proposal`, `ProposalCheck`, `ContractTools`, `Markdown`,
-	`TestRevisionCheck`, `Delivery`, new `AssertionExamples` and `BareValue`.
+	`TestRevisionCheck`, `Delivery`, `DraftDirectory`, new `AssertionExamples`, `BareValue` and `ExamplesFile`.
 - **Exit:** the tests pass and failed before; every prompt test that the repository's test fixtures build names a
 	requirement for each assertion and carries the examples that its assertions need; no design or plan ID appears in
 	code. Closes R-L14 and R-L15.
