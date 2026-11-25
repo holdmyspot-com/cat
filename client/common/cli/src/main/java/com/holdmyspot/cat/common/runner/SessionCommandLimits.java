@@ -14,14 +14,13 @@ import java.util.Set;
  * The limits of the commands that a session runs, the same in every harness. A session's commands run with the nested
  * session's isolated home as their home directory, and cannot read any harness's login or configuration files, in the
  * nested session's home or the user's, except the session's own, nor any nested session under the results folder except
- * their own. The session's own files are, for a Codex session, its login in the nested session's home, the copy of the
- * user's login that its runner puts there, which a harness that the session starts from a command reads, and its {@code
- * config.toml}, which holds no login and from which CAT's {@code read-part} command reads the session's tool output
- * limit. A Claude session has no login file of its own: its Claude Code uses the user's own Claude login, which its
- * commands cannot read. The user's own logins and the other harness's files in the nested session's home stay
- * unreadable. The commands of a Codex session receive none of the {@link #CREDENTIAL_VARIABLES}. The commands of a
- * Claude session receive Claude's connection credentials, which the session's parent has too, and a harness that the
- * session starts from a command authenticates only through them.
+ * their own. A Codex session's own file is the {@code config.toml} in its home's {@code .codex} folder, which holds no
+ * secret and from which CAT's {@code read-part} command reads the session's tool output limit; the copy of its
+ * source home's {@code auth.json} that its runner puts beside it stays unreadable. A Claude session has no readable
+ * file of its own: its Claude Code takes its credential from a key file that its runner writes, which its commands
+ * cannot read. The user's own logins and the other harness's files in the nested session's home stay unreadable. The
+ * commands of a session of either harness receive none of the {@link #CREDENTIAL_VARIABLES}, so a harness that a
+ * session starts from a command authenticates only through a request to the session's runner.
  * <p>
  * The user's harness directories stay readable apart from those files, because the plugins installed in a session
  * link to files there. Each runner applies these limits through its harness's own sandbox settings and environment.
@@ -30,8 +29,8 @@ public final class SessionCommandLimits
 {
 	/**
 	 * The environment variables that carry a harness's credentials: Claude Code's API key, authentication token and
-	 * OAuth token, and the Codex and OpenAI API keys that Codex reads. The commands of a Codex session receive none of
-	 * them; the commands of a Claude session receive Claude's three variables, which the session's parent has too.
+	 * OAuth token, and the Codex and OpenAI API keys that Codex reads. The commands of a session receive none of them,
+	 * because neither runner gives them to the session's harness.
 	 */
 	public static final Set<String> CREDENTIAL_VARIABLES = Set.of("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
 		"CLAUDE_CODE_OAUTH_TOKEN", "CODEX_API_KEY", "OPENAI_API_KEY");
