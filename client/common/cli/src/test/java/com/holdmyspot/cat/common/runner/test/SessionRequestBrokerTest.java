@@ -3894,6 +3894,196 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
+	 * Verifies that a Codex session that a nested session requests is denied the requesting session's results folder as
+	 * one path where Linux has bubblewrap, and is given the requesting session's CAT plugin as read-only evidence, so
+	 * that the folder's files, which the requester's runner replaces while the session starts, are not each hidden by
+	 * Codex's helper; and that where the runner has no bubblewrap, or the platform is not Linux, the session is denied
+	 * each file and directory of the folder except the plugin and the directories that lead to it.
+	 *
+	 * @param bwrap whether the runner's {@code PATH} has bubblewrap
+	 * @throws IOException if fixture, broker or launch I/O fails
+	 */
+	@Test(dataProvider = "bubblewrapOnPath", timeOut = 30_000)
+	public void deniesCodexSessionResultsFolderAsOnePath(boolean bwrap) throws IOException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			Path bin = Files.createDirectories(fixture.root.resolve("bin"));
+			if (bwrap)
+			{
+				Path program = Files.writeString(bin.resolve("bwrap"), "");
+				requireThat(program.toFile().setExecutable(true), "setExecutable").isTrue();
+			}
+			Map<String, String> environment = Map.of("PATH", bin.toString());
+			boolean onePath = bwrap && Platform.current().isLinux();
+			Path results = fixture.options.resultsFolder();
+			Path catPlugin = Files.createDirectories(results.resolve("plugins/cat-plugin"));
+			Files.writeString(results.resolve("session.json"), "{}");
+			AtomicReference<List<String>> arguments = new AtomicReference<>();
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.nestedSession, fixture.manager,
+				fixture.options, catPlugin, environment, (harness, options, directory) ->
+				{
+					arguments.set(options);
+					throw new IOException("The requested session does not start in this test");
+				}))
+			{
+				ObjectNode request = fixture.document();
+				request.put("harness", "codex");
+				fixture.writeRequest("first", request);
+				broker.scan();
+				fixture.await("first");
+			}
+			List<Path> denied = optionValues(arguments.get(), "--deny-read");
+			List<Path> evidence = optionValues(arguments.get(), "--read-only-evidence");
+			if (onePath)
+			{
+				requireThat(denied, "denied").contains(results).contains(fixture.denied);
+				requireThat(denied.stream().filter(path -> !path.equals(results) && path.startsWith(results)).toList(),
+					"deniedInsideResults").isEmpty();
+				requireThat(evidence, "evidence").isEqualTo(List.of(catPlugin));
+			}
+			else
+			{
+				requireThat(denied, "denied").doesNotContain(results).contains(fixture.denied).
+					contains(results.resolve("session.json"));
+				requireThat(denied.stream().anyMatch(catPlugin::startsWith), "pluginDenied").isFalse();
+				requireThat(evidence, "evidence").isEmpty();
+			}
+		}
+	}
+
+	/**
+	 * Returns whether the runner's {@code PATH} has bubblewrap.
+	 *
+	 * @return the values
+	 */
+	@DataProvider
+	public static Object[][] bubblewrapOnPath()
+	{
+		return new Object[][]{{true}, {false}};
+	}
+
+	/**
+	 * Returns the combinations of a requested session's harness and platform, and whether the runner's {@code PATH} has
+	 * bubblewrap, that decide how the requested session is denied the requesting session's results folder.
+	 *
+	 * @return the harness, platform, whether {@code PATH} has bubblewrap, and whether the requested session is denied
+	 *   the folder as one path
+	 */
+	@DataProvider
+	public static Object[][] resultsAccessCases()
+	{
+		return new Object[][]
+		{
+			{"codex", Platform.LINUX_X64, true, true},
+			{"codex", Platform.LINUX_ARM64, true, true},
+			{"codex", Platform.LINUX_X64, false, false},
+			{"claude", Platform.LINUX_X64, true, false},
+			{"codex", Platform.MACOS_ARM64, true, false},
+			{"codex", Platform.WINDOWS_X64, true, false}
+		};
+	}
+
+	/**
+	 * Verifies that a requested session is denied the requesting session's results folder as one path, with the CAT
+	 * plugin as read-only evidence, only if it is a Codex session on Linux whose runner has bubblewrap on its
+	 * {@code PATH}, and is otherwise denied each file and directory of the folder except the plugin and the directories
+	 * that lead to it.
+	 *
+	 * @param harness  the requested session's harness
+	 * @param platform the platform that the requested session runs on
+	 * @param bwrap    whether the runner's {@code PATH} has bubblewrap
+	 * @param onePath  whether the requested session is denied the folder as one path
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test(dataProvider = "resultsAccessCases")
+	public void resultsAccessByHarnessAndPlatform(String harness, Platform platform, boolean bwrap, boolean onePath)
+		throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			TestJvmScope jvm = new TestJvmScope())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "results-access-")).toRealPath();
+			Path results = Files.createDirectories(root.resolve("results"));
+			Path plugin = Files.createDirectories(results.resolve("codex/session-1/home/plugin"));
+			Path sibling = Files.createDirectories(results.resolve("codex/session-2"));
+			Path manifest = Files.writeString(results.resolve("codex/session-1/session.json"), "{}");
+			Path bin = Files.createDirectories(root.resolve("bin"));
+			if (bwrap)
+			{
+				Path program = Files.writeString(bin.resolve("bwrap"), "");
+				requireThat(program.toFile().setExecutable(true), "setExecutable").isTrue();
+			}
+			Map<String, String> environment = Map.of("PATH", bin.toString());
+
+			SessionRequestBroker.ResultsAccess access = SessionRequestBroker.resultsAccess(results, plugin, harness,
+				platform, environment);
+
+			if (onePath)
+			{
+				requireThat(access.deniedReads(), "deniedReads").isEqualTo(List.of(results));
+				requireThat(access.readOnlyEvidence(), "readOnlyEvidence").isEqualTo(List.of(plugin));
+			}
+			else
+			{
+				requireThat(access.deniedReads(), "deniedReads").contains(sibling).contains(manifest).
+					doesNotContain(results);
+				requireThat(access.deniedReads().stream().anyMatch(plugin::startsWith), "pluginDenied").isFalse();
+				requireThat(access.readOnlyEvidence(), "readOnlyEvidence").isEmpty();
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a requested Codex session on Linux is denied the results folder as one path, with no evidence, when
+	 * the requesting session has no CAT plugin inside the folder.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void resultsAccessWithoutPluginInFolder() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			TestJvmScope jvm = new TestJvmScope())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "results-access-")).toRealPath();
+			Path results = Files.createDirectories(root.resolve("results"));
+			Path outside = Files.createDirectories(root.resolve("plugin"));
+			Path bin = Files.createDirectories(root.resolve("bin"));
+			Path program = Files.writeString(bin.resolve("bwrap"), "");
+			requireThat(program.toFile().setExecutable(true), "setExecutable").isTrue();
+			Map<String, String> environment = Map.of("PATH", bin.toString());
+
+			for (Path plugin : Arrays.asList(null, outside))
+			{
+				SessionRequestBroker.ResultsAccess access = SessionRequestBroker.resultsAccess(results, plugin, "codex",
+					Platform.LINUX_X64, environment);
+
+				requireThat(access.deniedReads(), "deniedReads").isEqualTo(List.of(results));
+				requireThat(access.readOnlyEvidence(), "readOnlyEvidence").isEmpty();
+			}
+		}
+	}
+
+	/**
+	 * Returns every value of an option in the child runner command.
+	 *
+	 * @param arguments the runner options
+	 * @param name      the option name
+	 * @return the values, in order
+	 */
+	private static List<Path> optionValues(List<String> arguments, String name)
+	{
+		List<Path> values = new ArrayList<>();
+		for (int index = 0; index + 1 < arguments.size(); ++index)
+		{
+			if (arguments.get(index).equals(name))
+				values.add(Path.of(arguments.get(index + 1)));
+		}
+		return values;
+	}
+
+	/**
 	 * Finds one option in the child runner command.
 	 *
 	 * @param arguments the runner options

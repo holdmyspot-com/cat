@@ -1450,6 +1450,95 @@ public final class CodexRunnerTest
 	}
 
 	/**
+	 * Verifies that a Codex session on Linux that a Codex session requests, where the {@code PATH} has bubblewrap, is
+	 * denied the requesting session's results folder as one path, which its app-server's bubblewrap hides, and sees the
+	 * CAT version that Codex installed in the requesting session's home through a read-only mount, so that Codex's
+	 * sandbox helper does not bind-mount over each file of the folder, which the requesting session's runner replaces
+	 * while the session starts.
+	 *
+	 * @throws IOException if the nested sessions cannot be created
+	 */
+	@Test
+	public void deniedResultsFolderAsOnePath() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-requester-plugin-")).
+				toRealPath();
+			Path artifact = root.resolve("artifact");
+			Path results = root.resolve("results");
+			NestedSessionManager firstManager = new NestedSessionManager(jvm.fileLocks(), results, Clock.systemUTC(),
+				Yielding.fileReplacer());
+			NestedSession first = firstManager.create("codex");
+			SessionRequestAccess firstAccess = SessionRequestAccess.allowing(first, artifact, 1, Platform.LINUX_X64,
+				SessionRequestAccess.Shell.POSIX).orElseThrow();
+			Path firstHome = Files.createDirectories(first.directory().resolve("home"));
+			Files.writeString(firstHome.resolve("config.toml"), """
+				[plugins."cat@cat"]
+				enabled = true
+				""");
+			Path version = firstHome.resolve("plugins/cache/cat/cat/1.0+b0123456789ab");
+			Files.writeString(Files.createDirectories(version.resolve(".codex-plugin")).resolve("plugin.json"),
+				"{\"name\": \"cat\"}\n");
+			Files.writeString(Files.createDirectories(version.resolve("bin")).resolve("prompt-optimizer"), "launcher");
+			Path login = Files.writeString(firstHome.resolve("auth.json"), "{}");
+			Path plugin = CodexRunner.installedCat(firstHome);
+			Path bin = Files.createDirectories(root.resolve("bin"));
+			Path bwrap = Files.writeString(bin.resolve("bwrap"), "");
+			requireThat(bwrap.toFile().setExecutable(true), "setExecutable").isTrue();
+			Map<String, String> environment = Map.of("PATH", bin.toString());
+			NestedSessionManager nestedManager = new NestedSessionManager(jvm.fileLocks(),
+				firstAccess.requestedResultsFolder(1), Clock.systemUTC(), Yielding.fileReplacer());
+			NestedSession nested = nestedManager.create("codex");
+			SessionRequestAccess nestedAccess = SessionRequestAccess.allowing(nested, artifact, 0, Platform.LINUX_X64,
+				SessionRequestAccess.Shell.POSIX).orElseThrow();
+			Path configuration = nested.directory().resolve("home/config.toml");
+			CodexConnectionConfiguration.copy(nested.directory().resolve("missing.toml"), configuration,
+				nested.directory().resolve("project"));
+			SessionRequestBroker.ResultsAccess access = SessionRequestBroker.resultsAccess(results, plugin, "codex",
+				Platform.LINUX_X64, environment);
+
+			SessionSandbox sandbox = CodexRunner.sessionSandbox(configuration, nestedManager, nested,
+				access.readOnlyEvidence(), access.deniedReads(), Platform.LINUX_X64, environment, nestedAccess,
+				CodexRunner.appServerCommand("codex", false));
+
+			List<String> command = sandbox.command();
+			int separator = command.indexOf("--");
+			requireThat(separator, "separator").isPositive();
+			List<String> mounts = command.subList(0, separator);
+			requireThat(mounts, "mounts").containsAll(List.of("--tmpfs", results.toString()));
+			requireThat(mounts.indexOf(results.toString()) - mounts.indexOf("--tmpfs"), "tmpfsDestination").isEqualTo(1);
+			boolean pluginReadOnly = false;
+			for (int index = 0; index + 2 < separator; ++index)
+			{
+				if (mounts.get(index).equals("--ro-bind") && mounts.get(index + 1).equals(plugin.toString()) &&
+					mounts.get(index + 2).equals(plugin.toString()))
+				{
+					pluginReadOnly = true;
+				}
+			}
+			requireThat(pluginReadOnly, "pluginReadOnly").isTrue();
+			requireThat(mounts, "mounts").doesNotContain(login.toString());
+			JsonNode permissions = TomlMapper.builder().build().readTree(Files.readString(configuration)).
+				path("permissions");
+			for (String name = sandbox.profile(); permissions.has(name);
+				name = permissions.path(name).path("extends").stringValue(""))
+			{
+				JsonNode filesystem = permissions.path(name).path("filesystem");
+				for (String path : filesystem.propertyNames())
+				{
+					// The bubblewrap around the app-server hides the results folder, so the profile denies none of its
+					// files but the session's own, such as its log of events
+					if (filesystem.get(path).stringValue().equals("deny") && !Path.of(path).startsWith(nested.directory()))
+						requireThat(path.startsWith(results.toString()), "deniedInsideResults").withContext(path, "path").
+							isFalse();
+				}
+			}
+		}
+	}
+
+	/**
 	 * Verifies that a session's developer instructions first tell the model that the denied reads under the results
 	 * folder do not cover its project or home, then give the agent's contract, if any. Codex lists the results folder
 	 * among the denied reads, and without that note models answered that their own project was denied without trying to

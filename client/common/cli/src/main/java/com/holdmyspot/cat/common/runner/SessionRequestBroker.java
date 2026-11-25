@@ -6,6 +6,7 @@ import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.execution.CheckProgram;
 import com.holdmyspot.cat.common.optimizer.workspace.GitWorktreeRegistrar;
 import com.holdmyspot.cat.common.runner.RequestArchive.LaunchRequest;
@@ -152,6 +153,71 @@ public final class SessionRequestBroker implements Closeable
 		return NestedSessionManager.deniedReads(directory, readable);
 	}
 
+	/**
+	 * Returns what a requested session of a harness may not read, and may read but not change, of the results folder that
+	 * holds its requesting nested session, so that it can read and run the CAT plugin installed in the requesting
+	 * session's home, whose launchers the request's prompt may name.
+	 * <p>
+	 * Codex's sandbox helper hides each denied file by mounting over it, and the mount fails when the requesting
+	 * session's runner replaces the file, such as the session's {@code session.json}, while the session starts. Where
+	 * the requested session is a Codex session on Linux and the {@code PATH} has bubblewrap, the session is therefore
+	 * denied the results folder as one path, and the plugin is its read-only evidence, which the bubblewrap around
+	 * the session's app-server reopens inside the hidden folder. Every other requested session, and a Codex session on
+	 * Linux that has no bubblewrap, is denied the listing that {@link #resultsDenials(Path, Path)} returns.
+	 *
+	 * @param results     the results folder
+	 * @param catPlugin   the directory of the CAT plugin that the requesting session's commands run, or {@code null} if
+	 *                    the requesting session has none
+	 * @param harness     the requested session's harness, such as {@code codex}
+	 * @param platform    the platform that the requested session runs on
+	 * @param environment the environment of the requested session's runner, whose {@code PATH} names bubblewrap
+	 * @return the access
+	 * @throws NullPointerException if any of the arguments other than {@code catPlugin} are null
+	 * @throws IOException          if a directory of the results folder cannot be listed
+	 */
+	public static ResultsAccess resultsAccess(Path results, Path catPlugin, String harness, Platform platform,
+		Map<String, String> environment) throws IOException
+	{
+		requireThat(results, "results").isNotNull();
+		requireThat(harness, "harness").isNotNull();
+		requireThat(platform, "platform").isNotNull();
+		requireThat(environment, "environment").isNotNull();
+		Path directory = results.toAbsolutePath().normalize();
+		if (catPlugin != null && harness.equals(Harness.CODEX.commandName()) && platform.isLinux() &&
+			NestedSessionManager.containsAny(directory, List.of(catPlugin)) &&
+			HarnessEnvironment.findExecutable("bwrap", environment.getOrDefault("PATH", "")).isPresent())
+		{
+			return new ResultsAccess(List.of(directory), List.of(catPlugin.toAbsolutePath().normalize()));
+		}
+		return new ResultsAccess(resultsDenials(results, catPlugin), List.of());
+	}
+
+	/**
+	 * What a requested session may not read, and may read but not change, of the results folder that holds its
+	 * requesting nested session.
+	 *
+	 * @param deniedReads      the files and directories that the session may not read, none of which contains another
+	 * @param readOnlyEvidence the files and directories that the session may read but not change, even where
+	 *                         {@code deniedReads} would deny them
+	 */
+	public record ResultsAccess(List<Path> deniedReads, List<Path> readOnlyEvidence)
+	{
+		/**
+		 * Creates the access.
+		 *
+		 * @param deniedReads      the files and directories that the session may not read
+		 * @param readOnlyEvidence the files and directories that the session may read but not change
+		 * @throws NullPointerException if any of the arguments are null
+		 */
+		public ResultsAccess
+		{
+			requireThat(deniedReads, "deniedReads").isNotNull();
+			requireThat(readOnlyEvidence, "readOnlyEvidence").isNotNull();
+			deniedReads = List.copyOf(deniedReads);
+			readOnlyEvidence = List.copyOf(readOnlyEvidence);
+		}
+	}
+
 	private final Site site;
 	private final JsonMapper json = JsonMapper.builder().build();
 	private final ExecutorService children = Executors.newVirtualThreadPerTaskExecutor();
@@ -224,7 +290,28 @@ public final class SessionRequestBroker implements Closeable
 	public SessionRequestBroker(NestedSession nestedSession, NestedSessionManager manager, HarnessRunnerOptions options,
 		Path catPlugin, RequestedSessionStarter starter)
 	{
-		this(nestedSession, manager, options, catPlugin, null, starter, RequestLimits.IN_NESTED_SESSION,
+		this(nestedSession, manager, options, catPlugin, hostEnvironment(), starter);
+	}
+
+	/**
+	 * Creates a broker for an already prepared nested session whose requested sessions may read the CAT plugin that the
+	 * nested session's commands run, and whose requested sessions' runners have the given environment.
+	 *
+	 * @param nestedSession the requesting nested session
+	 * @param manager       records the nested session's lifecycle in its manifest, including how many requests the broker
+	 *                      has accepted; the broker keeps it
+	 * @param options       the requesting runner's options
+	 * @param catPlugin     the directory of the CAT plugin installed in the nested session's harness session's home,
+	 *                      whose launchers the session's commands run, or {@code null} if the session has none
+	 * @param environment   the environment that the requested sessions' runners have, whose {@code PATH} names
+	 *                      bubblewrap
+	 * @param starter       resolves and starts child runners
+	 * @throws NullPointerException if any of the arguments other than {@code catPlugin} are null
+	 */
+	public SessionRequestBroker(NestedSession nestedSession, NestedSessionManager manager, HarnessRunnerOptions options,
+		Path catPlugin, Map<String, String> environment, RequestedSessionStarter starter)
+	{
+		this(nestedSession, manager, options, catPlugin, null, environment, starter, RequestLimits.IN_NESTED_SESSION,
 			new ProcessHandleLiveness());
 	}
 
@@ -245,8 +332,8 @@ public final class SessionRequestBroker implements Closeable
 	public SessionRequestBroker(NestedSession nestedSession, NestedSessionManager manager, HarnessRunnerOptions options,
 		Path catPlugin, ParentPolicy ownerPolicy, RequestedSessionStarter starter)
 	{
-		this(nestedSession, manager, options, catPlugin, ownerPolicy, starter, RequestLimits.IN_NESTED_SESSION,
-			new ProcessHandleLiveness());
+		this(nestedSession, manager, options, catPlugin, ownerPolicy, hostEnvironment(), starter,
+			RequestLimits.IN_NESTED_SESSION, new ProcessHandleLiveness());
 	}
 
 	/**
@@ -281,7 +368,7 @@ public final class SessionRequestBroker implements Closeable
 	public SessionRequestBroker(NestedSession nestedSession, NestedSessionManager manager, HarnessRunnerOptions options,
 		RequestedSessionStarter starter, RequestLimits limits, HarnessProcessLiveness liveness)
 	{
-		this(nestedSession, manager, options, null, null, starter, limits, liveness);
+		this(nestedSession, manager, options, null, null, hostEnvironment(), starter, limits, liveness);
 	}
 
 	/**
@@ -297,17 +384,28 @@ public final class SessionRequestBroker implements Closeable
 	 *                      session's requested sessions may read, or {@code null} if the nested session has none
 	 * @param ownerPolicy   the policy that the nested session's sandbox applies to its commands, or {@code null} if the
 	 *                      runner states none
+	 * @param environment   the environment that the requested sessions' runners have
 	 * @param starter       resolves and starts child runners
 	 * @param limits        the bounds that each request's archive must stay within
 	 * @param liveness      checks and stops the processes that a slot's previous session left
 	 */
 	private SessionRequestBroker(NestedSession nestedSession, NestedSessionManager manager, HarnessRunnerOptions options,
-		Path catPlugin, ParentPolicy ownerPolicy, RequestedSessionStarter starter, RequestLimits limits,
-		HarnessProcessLiveness liveness)
+		Path catPlugin, ParentPolicy ownerPolicy, Map<String, String> environment, RequestedSessionStarter starter,
+		RequestLimits limits, HarnessProcessLiveness liveness)
 	{
-		this(new NestedSessionSite(nestedSession, manager, options, catPlugin, ownerPolicy, limits, new SessionSlots(
-			SessionRequestAccess.requestedSlotsDirectory(nestedSession), options.maximumConcurrency(), liveness,
-			manager.fileLocks()), starter));
+		this(new NestedSessionSite(nestedSession, manager, options, catPlugin, ownerPolicy, environment, limits,
+			new SessionSlots(SessionRequestAccess.requestedSlotsDirectory(nestedSession), options.maximumConcurrency(),
+				liveness, manager.fileLocks()), starter));
+	}
+
+	/**
+	 * Returns the environment that the runner's own process has, which its requested sessions' runners inherit.
+	 *
+	 * @return the environment
+	 */
+	private static Map<String, String> hostEnvironment()
+	{
+		return Platform.current().environment(System.getenv());
 	}
 
 	/**
@@ -2091,13 +2189,15 @@ public final class SessionRequestBroker implements Closeable
 	 *                      session's requested sessions may read, or {@code null} if the nested session has none
 	 * @param ownerPolicy   the policy that the nested session's sandbox applies to its commands, or {@code null} if the
 	 *                      runner states none
+	 * @param environment   the environment that the requested sessions' runners have, whose {@code PATH} names
+	 *                      bubblewrap
 	 * @param limits        the bounds that each request's archive must stay within
 	 * @param slots         the slots, each a results folder, that the nested session's requested sessions take
 	 * @param starter       resolves and starts child runners
 	 */
 	private record NestedSessionSite(NestedSession nestedSession, NestedSessionManager manager,
-		HarnessRunnerOptions options, Path catPlugin, ParentPolicy ownerPolicy, RequestLimits limits,
-		SessionSlots slots, RequestedSessionStarter starter) implements Site
+		HarnessRunnerOptions options, Path catPlugin, ParentPolicy ownerPolicy, Map<String, String> environment,
+		RequestLimits limits, SessionSlots slots, RequestedSessionStarter starter) implements Site
 	{
 		/**
 		 * Carries out the nested session's worktree requests.
@@ -2114,6 +2214,8 @@ public final class SessionRequestBroker implements Closeable
 		 *                      session's requested sessions may read, or {@code null} if the nested session has none
 		 * @param ownerPolicy   the policy that the nested session's sandbox applies to its commands, or {@code null} if
 		 *                      the runner states none
+		 * @param environment   the environment that the requested sessions' runners have, whose {@code PATH} names
+		 *                      bubblewrap
 		 * @param limits        the bounds that each request's archive must stay within
 		 * @param slots         the slots, each a results folder, that the nested session's requested sessions take
 		 * @param starter       resolves and starts child runners
@@ -2125,6 +2227,7 @@ public final class SessionRequestBroker implements Closeable
 			requireThat(nestedSession, "nestedSession").isNotNull();
 			requireThat(manager, "manager").isNotNull();
 			requireThat(options, "options").isNotNull();
+			requireThat(environment, "environment").isNotNull();
 			requireThat(limits, "limits").isNotNull();
 			requireThat(slots, "slots").isNotNull();
 			requireThat(starter, "starter").isNotNull();
@@ -2204,12 +2307,12 @@ public final class SessionRequestBroker implements Closeable
 
 		/**
 		 * Retains the parent's denied reads and capacity ceiling, denies the child the parent's results folder except
-		 * for the CAT plugin that the parent's commands run, as {@link #resultsDenials(Path, Path)} does, and, while the
-		 * parent's request depth leaves a level below the child, lets the child request as many sessions as the
-		 * parent, one level less deep; otherwise it may request none. A resume adds the parent's current denials to
-		 * those fixed at the child's start. The child, of either harness, takes its credential from the source home and
-		 * gateway login class of the parent's own launch, never from the nested session's isolated home, as passed on
-		 * from the parent runner rather than chosen by the requesting session.
+		 * for the CAT plugin that the parent's commands run, as {@link #resultsAccess(Path, Path, String, Platform, Map)}
+		 * does, and, while the parent's request depth leaves a level below the child, lets the child request as many
+		 * sessions as the parent, one level less deep; otherwise it may request none. A resume adds the parent's current
+		 * denials to those fixed at the child's start. The child, of either harness, takes its credential from the
+		 * source home and gateway login class of the parent's own launch, never from the nested session's isolated
+		 * home, as passed on from the parent runner rather than chosen by the requesting session.
 		 *
 		 * @param request       the request
 		 * @param resultsFolder the request's results folder
@@ -2226,8 +2329,16 @@ public final class SessionRequestBroker implements Closeable
 				denialOption = RunnerArguments.INHERITED_DENY_READ_OPTION;
 			for (Path denied : options.deniedReads())
 				arguments.addAll(List.of(denialOption, denied.toString()));
-			for (Path denied : resultsDenials(options.resultsFolder(), catPlugin))
+			ResultsAccess results = resultsAccess(options.resultsFolder(), catPlugin, request.harness(),
+				Platform.current(), environment);
+			for (Path denied : results.deniedReads())
 				arguments.addAll(List.of(denialOption, denied.toString()));
+			// A resumed session keeps the evidence that its start fixed, which its runner refuses to be given again
+			if (request.resume().isEmpty())
+			{
+				for (Path evidence : results.readOnlyEvidence())
+					arguments.addAll(List.of("--read-only-evidence", evidence.toString()));
+			}
 			if (options.requestDepth() > 0)
 			{
 				arguments.addAll(List.of("--session-requests", String.valueOf(options.sessionRequests())));
