@@ -228,6 +228,16 @@ but the session that starts them needs a credential and a working sandbox:
   readable by you alone, such as after `chmod go= <file>`, and the session's commands cannot read it. The runner
   refuses to start a session without such a credential. "Login" in the [security model](security-model.md#login) gives
   the details.
+- A Codex session uses the Codex authentication of your home folder: the `auth.json` of your Codex folder, the one
+  that `CODEX_HOME` names when it is set, or else `.codex` in your home folder, when it holds an API key, as
+  `codex login --with-api-key` writes it; or else a token command in the `auth` table of the model provider that its
+  `config.toml` selects. Sessions do not use a ChatGPT sign-in, which `codex login` writes: a launch from a home folder
+  whose `auth.json` holds one is refused. Nor do they use a provider's `env_key` or `env_http_headers`, an
+  `experimental_bearer_token` or `http_headers`, or a login in the operating system's credential store. To bill
+  another credential, have the agent name another home folder with `--home <dir>`, and when the provider's `base_url`
+  or `openai_base_url` names a gateway, tell the agent the kind of login that it bills, as for Claude. Each file that
+  holds the credential must be readable by you alone, and the session's commands cannot read it or the session's
+  copy of `auth.json`.
 - A Codex session that a runner starts reaches its model, so Codex's sandbox needs network access on. On Linux,
   `codex-runner` also needs bubblewrap (`bwrap`) on your `PATH`.
 
