@@ -47,6 +47,21 @@ public final class AssertionReviewPromptTest
 	}
 
 	/**
+	 * Checks that the review prompt names a check program as the tool for an action that no fixed built-in tool
+	 * observes, and still lists the fixed tools.
+	 */
+	@Test
+	public void namesCheckProgramForUnobservedActions()
+	{
+		// Requirement: R-L22
+		String prompt = PromptTemplate.load("/optimizer/assertions/assertion-review.md").fill(Map.of(
+			"assertions", "[]", "result_schema", "{}")).replaceAll("\\s+", " ");
+		requireThat(prompt, "prompt").contains("`check-program checks/<file>`").
+			contains("no built-in tool above observes the fact that shows the action happened").
+			contains("`tool-used <tool> [<input-regex>]`");
+	}
+
+	/**
 	 * Checks that rendering includes tools and scopes without expanding placeholders or including unrelated requirements.
 	 */
 	@Test
