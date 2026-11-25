@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.runner.policy.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static org.testng.Assert.expectThrows;
 
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.policy.HostAccess;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
@@ -15,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
+import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 /**
@@ -38,8 +40,10 @@ public final class SeatbeltProfileTest
 	public void profileDeniesNetworkWritesAndReads()
 	{
 		// Requirement: R-L21
-		String profile = SeatbeltProfile.confining(Path.of("/private/var/scratch"),
-			List.of(Path.of("/Users/owner/held-out"), Path.of("/Users/owner/.ssh")));
+		Path scratch = absolute("/private/var/scratch");
+		Path heldOut = absolute("/Users/owner/held-out");
+		Path ssh = absolute("/Users/owner/.ssh");
+		String profile = SeatbeltProfile.confining(scratch, List.of(heldOut, ssh));
 
 		requireThat(profile, "profile").isEqualTo("""
 			(version 1)
@@ -47,10 +51,10 @@ public final class SeatbeltProfileTest
 			(deny network*)
 			(deny file-write*)
 			(allow file-write* (literal "/dev/null") (literal "/dev/zero") (literal "/dev/dtracehelper") \
-			(subpath "/private/var/scratch"))
-			(deny file-read* (subpath "/Users/owner/held-out"))
-			(deny file-read* (subpath "/Users/owner/.ssh"))
-			""");
+			(subpath "%s"))
+			(deny file-read* (subpath "%s"))
+			(deny file-read* (subpath "%s"))
+			""".formatted(escaped(scratch), escaped(heldOut), escaped(ssh)));
 	}
 
 	/**
@@ -60,27 +64,44 @@ public final class SeatbeltProfileTest
 	public void profileWithoutReadsKeepsOtherDenials()
 	{
 		// Requirement: R-L21
-		String profile = SeatbeltProfile.confining(Path.of("/scratch"), List.of());
+		String profile = SeatbeltProfile.confining(absolute("/scratch"), List.of());
 
 		requireThat(profile, "profile").contains("(deny network*)").contains("(deny file-write*)").
 			doesNotContain("file-read*");
 	}
 
 	/**
-	 * Verifies that a quote or a backslash in a path cannot end the profile's string and add a rule of its own.
+	 * Verifies that a quote in a path cannot end the profile's string and add a rule of its own.
+	 *
+	 * @throws SkipException if the platform does not allow a quote in a path
 	 */
 	@Test
-	public void profileEscapesQuotesAndBackslashes()
+	public void profileEscapesQuotes()
 	{
 		// Requirement: R-L21
+		if (Platform.current().isWindows())
+			throw new SkipException("A Windows path cannot hold a quote, so there is no such path to quote");
 		String profile = SeatbeltProfile.confining(Path.of("/scratch"),
-			List.of(Path.of("/held \") (allow file-read* (subpath \"/"), Path.of("/back\\slash")));
+			List.of(Path.of("/held \") (allow file-read* (subpath \"/")));
 
 		requireThat(profile, "profile").
-			contains("(deny file-read* (subpath \"/held \\\") (allow file-read* (subpath \\\"\"))").
-			contains("(deny file-read* (subpath \"/back\\\\slash\"))");
+			contains("(deny file-read* (subpath \"/held \\\") (allow file-read* (subpath \\\"\"))");
 		long allowances = profile.lines().filter(line -> line.startsWith("(allow file-read*")).count();
 		requireThat(allowances, "readAllowances").isEqualTo(0L);
+	}
+
+	/**
+	 * Verifies that a backslash in a path cannot escape the profile's closing quote.
+	 */
+	@Test
+	public void profileEscapesBackslashes()
+	{
+		// Requirement: R-L21
+		Path denied = absolute("/back\\slash");
+		String profile = SeatbeltProfile.confining(absolute("/scratch"), List.of(denied));
+
+		requireThat(profile, "profile").contains("(deny file-read* (subpath \"" + escaped(denied) + "\"))");
+		requireThat(escaped(denied), "escaped").doesNotContain("\\\"");
 	}
 
 	/**
@@ -90,7 +111,7 @@ public final class SeatbeltProfileTest
 	public void profileRefusesLineBreakInPath()
 	{
 		// Requirement: R-L21
-		expectThrows(IllegalArgumentException.class, () -> SeatbeltProfile.confining(Path.of("/scratch"),
+		expectThrows(IllegalArgumentException.class, () -> SeatbeltProfile.confining(absolute("/scratch"),
 			List.of(Path.of("/held\n(allow default)"))));
 	}
 
@@ -155,12 +176,36 @@ public final class SeatbeltProfileTest
 	public void refusesDenialOfFileSystemRoot()
 	{
 		// Requirement: R-L21
-		ParentPolicy owner = new ParentPolicy(true, List.of(), List.of(), List.of(Path.of("/")), List.of(),
+		Path root = absolute("/");
+		ParentPolicy owner = new ParentPolicy(true, List.of(), List.of(), List.of(root), List.of(),
 			HostAccess.ALL, true, List.of());
 
 		IOException failure = expectThrows(IOException.class, () ->
 			ReadDenials.of(owner, List.of(), "CAT", "check program launch"));
 
 		requireThat(failure.getMessage(), "message").contains("CAT cannot represent the owner's read restriction");
+	}
+
+	/**
+	 * Returns an absolute path for a path written with Unix separators. On Windows, the path is rooted at the current
+	 * drive, because a path that starts with a separator alone is not absolute there.
+	 *
+	 * @param unixPath the path
+	 * @return the absolute path
+	 */
+	private static Path absolute(String unixPath)
+	{
+		return Path.of(unixPath).toAbsolutePath();
+	}
+
+	/**
+	 * Returns a path's text as the profile writes it inside a string, with each backslash doubled.
+	 *
+	 * @param path the path
+	 * @return the escaped text
+	 */
+	private static String escaped(Path path)
+	{
+		return path.toString().replace("\\", "\\\\");
 	}
 }
