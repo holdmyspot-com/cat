@@ -437,7 +437,8 @@ public final class CodexAuthentication
 	}
 
 	/**
-	 * Returns a provider's token command, wrapped so that it runs with the source home as its home folder.
+	 * Returns a provider's token command, wrapped so that it runs with the source home as its home folder, through
+	 * {@link CodexSourceHomeCommand}, which needs neither {@code env} nor a {@code PATH} lookup.
 	 *
 	 * @param source  the source home
 	 * @param command the provider's {@code auth} table
@@ -446,12 +447,17 @@ public final class CodexAuthentication
 	private static ObjectNode wrapped(SourceHome source, JsonNode command)
 	{
 		ObjectNode wrapped = ((ObjectNode) command).deepCopy();
-		ArrayNode arguments = wrapped.putArray("args");
-		arguments.add("HOME=" + source.directory());
-		arguments.add(command.path("command").asString());
+		List<String> sourceArguments = new ArrayList<>();
 		for (JsonNode argument : command.path("args"))
+			sourceArguments.add(argument.asString());
+		CodexKeyFileCommand.Invocation invocation = CodexSourceHomeCommand.invocation(source.directory(),
+			command.path("command").asString(), sourceArguments);
+		wrapped.put("command", invocation.program());
+		ArrayNode arguments = wrapped.putArray("args");
+		for (String argument : invocation.arguments())
 			arguments.add(argument);
-		wrapped.put("command", "env");
+		// A Java program starts slower than Codex's default timeout allows on a loaded machine
+		wrapped.put("timeout_ms", Math.max(KEY_FILE_COMMAND_TIMEOUT_MS, command.path("timeout_ms").asLong(0)));
 		return wrapped;
 	}
 

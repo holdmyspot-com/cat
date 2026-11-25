@@ -67,22 +67,42 @@ public final class CodexKeyFileCommand
 	public static Invocation invocation(Path keyFile, Platform platform, Path javaHome, String modulePath)
 	{
 		requireThat(keyFile, "keyFile").isNotNull();
+		return bundled(CodexKeyFileCommand.class, List.of(keyFile.toString()), platform, javaHome, modulePath);
+	}
+
+	/**
+	 * Returns the command that runs a program of this module with the runtime that runs the runner.
+	 *
+	 * @param program    the class, of this module, whose {@code main} method the command runs
+	 * @param arguments  the arguments of {@code main}
+	 * @param platform   the platform that the command runs on
+	 * @param javaHome   the home folder of the runtime that runs the runner
+	 * @param modulePath the module path that the runner's program was started with, or {@code null} if its modules
+	 *                   are in the runtime
+	 * @return the invocation, whose program is the runtime's Java program by its absolute path
+	 * @throws NullPointerException if any of the arguments other than {@code modulePath} are null
+	 */
+	static Invocation bundled(Class<?> program, List<String> arguments, Platform platform, Path javaHome,
+		String modulePath)
+	{
+		requireThat(program, "program").isNotNull();
+		requireThat(arguments, "arguments").isNotNull();
 		requireThat(platform, "platform").isNotNull();
 		requireThat(javaHome, "javaHome").isNotNull();
 		String name = "java";
 		if (platform.isWindows())
 			name = "java.exe";
-		List<String> arguments = new ArrayList<>(List.of("-XX:+PerfDisableSharedMem",
+		List<String> command = new ArrayList<>(List.of("-XX:+PerfDisableSharedMem",
 			"--enable-native-access=com.holdmyspot.cat.common.cli"));
 		if (modulePath != null)
 		{
-			arguments.add("--module-path");
-			arguments.add(modulePath);
+			command.add("--module-path");
+			command.add(modulePath);
 		}
-		arguments.add("-m");
-		arguments.add(MODULE + "/" + CodexKeyFileCommand.class.getName());
-		arguments.add(keyFile.toString());
-		return new Invocation(javaHome.resolve("bin").resolve(name).toString(), arguments);
+		command.add("-m");
+		command.add(MODULE + "/" + program.getName());
+		command.addAll(arguments);
+		return new Invocation(javaHome.resolve("bin").resolve(name).toString(), command);
 	}
 
 	/**

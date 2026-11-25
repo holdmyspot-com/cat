@@ -276,7 +276,15 @@ public final class CodexKeyFileTest
 				isFalse();
 			JsonNode auth = TomlMapper.builder().build().readTree(authentication.settings(codexFolder)).
 				path("model_providers").path("gateway").path("auth");
-			requireThat(auth.path("command").asString(), "command").isEqualTo("env");
+			Path launcher = Path.of(auth.path("command").asString());
+			requireThat(launcher.isAbsolute(), "launcherIsAbsolute").isTrue();
+			requireThat(List.of("java", "java.exe").contains(launcher.getFileName().toString()), "launcherIsJava").
+				isTrue();
+			List<String> arguments = new ArrayList<>();
+			for (JsonNode argument : auth.path("args"))
+				arguments.add(argument.asString());
+			requireThat(arguments, "arguments").contains(source.resolve(".codex").getParent().toString()).
+				contains("sh").contains("-c").contains("cat ~/key");
 		}
 	}
 
