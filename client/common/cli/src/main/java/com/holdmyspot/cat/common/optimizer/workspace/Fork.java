@@ -391,6 +391,35 @@ public final class Fork implements ForkView
 	}
 
 	/**
+	 * Recreates the optimization worktree of a campaign whose worktree sandboxed code deleted, and opens the fork. The
+	 * new worktree holds the base's files at its {@code HEAD}: the caller writes the files that the worktree must hold.
+	 *
+	 * @param base      the base worktree
+	 * @param campaign  the campaign storage directory
+	 * @param replacer  replaces the fork's stored participant selection
+	 * @param registrar deletes, prunes and adds the optimization worktree's registration with the base's repository
+	 * @return the fork, which reports no notice about the base's {@code .gitignore}
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws WorkspaceException       if the campaign holds no recorded fork, in which case no worktree is created
+	 * @throws WorktreeRefusedException if the registrar refuses to recreate the worktree
+	 * @throws IOException              if the worktree cannot be recreated or the recorded files cannot be read
+	 */
+	public static Fork recreate(Path base, Path campaign, FileReplacer replacer, WorktreeRegistrar registrar)
+		throws IOException
+	{
+		requireThat(base, "base").isNotNull();
+		requireThat(campaign, "campaign").isNotNull();
+		requireThat(replacer, "replacer").isNotNull();
+		requireThat(registrar, "registrar").isNotNull();
+		Path normalizedBase = base.toAbsolutePath().normalize();
+		Path normalizedCampaign = campaign.toAbsolutePath().normalize();
+		// A campaign with no recorded fork is refused before any worktree is created
+		ForkTree.open(base, normalizedCampaign);
+		registrar.recreate(normalizedBase, normalizedCampaign);
+		return open(base, campaign, replacer, registrar);
+	}
+
+	/**
 	 * Returns where a campaign holds its optimization worktree.
 	 *
 	 * @param campaign the campaign storage directory

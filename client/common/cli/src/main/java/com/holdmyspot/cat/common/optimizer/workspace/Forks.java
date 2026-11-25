@@ -77,6 +77,20 @@ public interface Forks
 	ForkView open(Path base, Path campaign) throws IOException;
 
 	/**
+	 * Recreates the optimization worktree of a campaign whose worktree sandboxed code deleted, and opens the fork. The
+	 * new worktree holds the base's files at its {@code HEAD}: the caller writes the files that the worktree must hold.
+	 *
+	 * @param base the base worktree
+	 * @param campaign the campaign storage directory
+	 * @return the fork
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws WorkspaceException if the campaign holds no recorded fork, in which case no worktree is created
+	 * @throws WorktreeRefusedException if nothing can recreate the worktree for the command
+	 * @throws IOException if the worktree cannot be recreated or the recorded files cannot be read
+	 */
+	ForkView recreate(Path base, Path campaign) throws IOException;
+
+	/**
 	 * Indicates whether a campaign holds a fork.
 	 *
 	 * @param campaign the campaign storage directory

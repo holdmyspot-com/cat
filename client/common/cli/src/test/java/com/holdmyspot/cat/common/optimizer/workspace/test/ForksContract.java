@@ -425,6 +425,38 @@ public final class ForksContract
 	}
 
 	/**
+	 * Verifies that a campaign whose worktree was deleted behind the adapter's back gets a new worktree that holds the
+	 * base's files, and opens as the fork it was, and that a campaign with no recorded fork gets no worktree.
+	 *
+	 * @param created the view returned by creation
+	 * @throws IOException if the worktree cannot be removed or recreated, or its records cannot be read
+	 */
+	public void recreatesDeletedWorktree(ForkView created) throws IOException
+	{
+		Path worktree = campaign.resolve("worktree");
+		TemporaryDirectories.deleteRecursively(worktree);
+		requireThat(forks.exists(campaign), "existsAfterDelete").isFalse();
+
+		ForkView recreated = forks.recreate(base, campaign);
+
+		requireThat(forks.exists(campaign), "existsAfterRecreate").isTrue();
+		requireThat(recreated.inventory(), "recreated").isEqualTo(created.inventory());
+		requireThat(forks.open(base, campaign).inventory(), "reopened").isEqualTo(created.inventory());
+		requireThat(Files.readString(worktree.resolve("prompt.md"), UTF_8), "worktreePrompt").isEqualTo("prompt");
+
+		Path other = campaign.resolveSibling("without-fork");
+		try
+		{
+			forks.recreate(base, other);
+			throw new AssertionError("A campaign with no recorded fork must not get a worktree");
+		}
+		catch (WorkspaceException _)
+		{
+			requireThat(Files.exists(other.resolve("worktree")), "otherWorktree").isFalse();
+		}
+	}
+
+	/**
 	 * Verifies the public refusal when the campaign no longer holds a worktree.
 	 *
 	 * @throws IOException if reading the recorded fork fails for another reason

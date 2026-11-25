@@ -139,6 +139,25 @@ public final class GitlessForksContractTest
 	}
 
 	/**
+	 * Verifies that a campaign whose worktree was deleted gets a new worktree and opens as the fork it was.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void deletedWorktreeIsRecreated() throws IOException
+	{
+		// Requirement: R-W17
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = Fixture.create(cleanup);
+
+			ForkView created = fixture.create(Set.of());
+
+			fixture.contract().recreatesDeletedWorktree(created);
+		}
+	}
+
+	/**
 	 * Verifies that a fork captures the tracked files and the participants, and keeps the captured bytes after the base
 	 * changes.
 	 *

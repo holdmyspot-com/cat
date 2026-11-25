@@ -73,6 +73,12 @@ public final class GitForks implements Forks
 	}
 
 	@Override
+	public ForkView recreate(Path base, Path campaign) throws IOException
+	{
+		return Fork.recreate(base, campaign, replacer, registrar);
+	}
+
+	@Override
 	public boolean exists(Path campaign)
 	{
 		return Files.isDirectory(Fork.worktreeOf(campaign));

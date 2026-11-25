@@ -2088,6 +2088,85 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Returns the commands that reconnect a campaign's optimization worktree, each as a name and what it runs.
+	 *
+	 * @return the name and the command, which takes the campaign's identifier
+	 */
+	@DataProvider
+	public Object[][] reconnectingCommands()
+	{
+		return new Object[][]
+		{
+			{"continue", (ThrowingFunction) OptimizerCore::continueCampaign},
+			{"request-changes", (ThrowingFunction) (core, id) ->
+				core.requestChanges(id, "Exempt detailed safety explanations.")},
+			{"decide", (ThrowingFunction) (core, id) -> core.decide(id, Choice.RESUME, 0, 0)}
+		};
+	}
+
+	/**
+	 * A command of a campaign that the optimizer's core runs.
+	 */
+	@FunctionalInterface
+	private interface ThrowingFunction
+	{
+		/**
+		 * Runs the command.
+		 *
+		 * @param core the core
+		 * @param id the campaign's identifier
+		 * @return the command's result
+		 * @throws Exception if the command fails
+		 */
+		CommandResult run(OptimizerCore core, String id) throws Exception;
+	}
+
+	/**
+	 * Verifies that {@code status} leaves a campaign whose worktree directory sandboxed code deleted without its
+	 * worktree, and that the next {@code continue}, {@code request-changes} or {@code decide} recreates the worktree
+	 * holding the campaign's working candidate instead of refusing the campaign as one with no usable fork.
+	 *
+	 * @param name the command's name
+	 * @param command the command
+	 * @throws Exception if the repository cannot be written or the command fails for another reason
+	 */
+	@Test(dataProvider = "reconnectingCommands")
+	public void commandRecreatesDeletedWorktree(String name, ThrowingFunction command) throws Exception
+	{
+		// Requirement: R-W17
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
+			Path directory = repository.directory(id);
+			Path worktree = directory.resolve("worktree");
+			String prompt = Files.readString(worktree.resolve("CLAUDE.md"));
+			TemporaryDirectories.deleteRecursively(worktree);
+
+			repository.core().status(id);
+
+			requireThat(repository.forks().exists(directory), name + "-existsAfterStatus").isFalse();
+
+			String refusal = "";
+			try
+			{
+				command.run(repository.core(), id);
+			}
+			catch (CommandRefusedException e)
+			{
+				refusal = e.getMessage();
+			}
+
+			requireThat(refusal, name + "-refusal").doesNotContain("no usable fork");
+			requireThat(repository.forks().exists(directory), name + "-existsAfterCommand").isTrue();
+			requireThat(Files.readString(worktree.resolve("CLAUDE.md")), name + "-prompt").isEqualTo(prompt);
+		}
+	}
+
+	/**
 	 * Verifies that the stored pilot records the number of trials that it drew and, for each trial, the boundary
 	 * class of its test case, with at least two trials of every boundary class that the test's development test
 	 * cases have.

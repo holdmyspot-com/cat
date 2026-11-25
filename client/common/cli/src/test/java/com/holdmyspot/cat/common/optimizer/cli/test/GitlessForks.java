@@ -177,6 +177,24 @@ public final class GitlessForks implements Forks
 	}
 
 	@Override
+	public ForkView recreate(Path base, Path campaign) throws IOException
+	{
+		Path worktree = Files.createDirectories(campaign.resolve("worktree"));
+		try
+		{
+			Fork fork = Fork.open(base, campaign, replacer, PlainWorktreeLinks.INSTANCE);
+			// A Git worktree holds the tracked files apart from the base; here the workspace writes all of them
+			fork.workspace().materialize(Overlay.of(fork.inventory()));
+			return new Noticing(fork, Optional.empty());
+		}
+		catch (IOException e)
+		{
+			TemporaryDirectories.deleteRecursively(worktree);
+			throw e;
+		}
+	}
+
+	@Override
 	public boolean exists(Path campaign)
 	{
 		return Files.isDirectory(campaign.resolve("worktree"));

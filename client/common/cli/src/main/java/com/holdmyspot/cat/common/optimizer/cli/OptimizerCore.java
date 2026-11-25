@@ -5763,19 +5763,27 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
-	 * Opens a campaign's fork.
+	 * Opens a campaign's fork. A campaign whose optimization worktree directory is gone, as sandboxed code can leave
+	 * it, gets a new worktree that holds the working candidate's files.
 	 *
 	 * @param root the project root
 	 * @param campaign the campaign
 	 * @return the fork
 	 * @throws CommandRefusedException if the campaign holds no fork
-	 * @throws IOException if the fork cannot be read
+	 * @throws IOException if the fork cannot be read, or its worktree cannot be recreated
 	 */
 	private ForkView openFork(Path root, Campaign campaign) throws CommandRefusedException, IOException
 	{
 		try
 		{
-			return scope.forks().open(root, campaignDirectory(campaign.header().id()));
+			Path directory = campaignDirectory(campaign.header().id());
+			if (scope.forks().exists(directory))
+				return scope.forks().open(root, directory);
+			ForkView fork = scope.forks().recreate(root, directory);
+			Overlay working = new FileCandidateOverlays(directory, fork.inventory(), fork::version, scope.json(),
+				scope.fileReplacer()).require(campaign.development().working().snapshot());
+			fork.workspace().materialize(working);
+			return fork;
 		}
 		catch (WorkspaceException e)
 		{

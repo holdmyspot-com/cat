@@ -358,6 +358,32 @@ public final class ForkTest
 	}
 
 	/**
+	 * Verifies that an optimization worktree that sandboxed code deleted, which leaves Git's registration of it stale,
+	 * is recreated as the one worktree of the campaign that Git registers, with no stale registration left.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void deletedWorktreeIsRecreated() throws IOException
+	{
+		// Requirement: R-W17
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
+			Path base = repository(root);
+			Path campaign = base.resolve(CAMPAIGNS + "/c1");
+			Fork created = Fork.create(base, campaign, Set.of(), Yielding.fileReplacer(), REGISTRAR);
+
+			new ForksContract(new GitForks(Yielding.fileReplacer(), REGISTRAR), base, campaign).
+				recreatesDeletedWorktree(created);
+
+			requireThat(registeredWorktrees(new Git(base)), "worktrees").
+				isEqualTo(List.of(base.toRealPath(), campaign.resolve("worktree").toRealPath()));
+			requireThat(prunable(new Git(base)), "prunable").isEqualTo(0L);
+		}
+	}
+
+	/**
 	 * Verifies that a copy of a project whose campaign holds an optimization worktree reconnects that worktree to the
 	 * copy's repository before the worktree is checked, leaves the original project's worktree linked to the original,
 	 * and keeps the working candidate in the worktree, so the check finds no change that CAT did not make.
