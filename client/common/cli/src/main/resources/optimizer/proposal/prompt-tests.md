@@ -5,9 +5,9 @@ hide behind common or easy ones. Write a separate test for each use that needs i
 value is another test case of the same test, not another test.
 
 A prompt test is a directory of files in the draft directory `{{draft_directory}}`, at the path relative to the project
-where it belongs, with `scenario.md`, `values.json`, `workspace/` and `examples/`. When CAT delivers a certified
-prompt, it writes these files to the project at the same paths, so the user's project receives them as you write
-them.
+where it belongs, with `scenario.md`, `values.json`, `workspace/` and `examples/`, and `checks/` when an assertion uses a check
+program. When CAT delivers a certified prompt, it writes these files to the project at the same paths, so the user's
+project receives them as you write them.
 
 Write every test by these rules:
 
@@ -175,8 +175,8 @@ assertion of its test. Each assertion's `### <id>` is unique within the test. Ch
 `expected_outcome`, which CAT reserves. If a requirement asks for a test case's result, declare an assertion for
 that requirement and use `{{expected_outcome}}` in its statement or tool.
 
-Give each assertion a built-in tool when the tool can decide it. A trial whose tools decide every assertion needs no
-judge session. Each assertion holds these pairs:
+Give each assertion a built-in tool when the tool can decide it, a fixed one from the table below or, when none observes
+the fact, a check program. A trial whose tools decide every assertion needs no judge session. Each assertion holds these pairs:
 
 - `kind`: `guard` when an agent passes the assertion almost always even when the target prompt files are empty, such
 	as answering a search question correctly; it protects an operation that the prompts must not harm. `effect` when the
@@ -195,7 +195,7 @@ judge session. Each assertion holds these pairs:
 	- `response`: the assertion is about what the agent says, such as the time that a reply states or whether an
 		explanation in it is correct. Its judge reads the test case's variable values and the trial's replies and nothing else: no built-in
 		tool result, no project file and no transcript. Give `response` only to an assertion without a `tool` or whose
-		tool examines replies: `exact-text`, `forbidden-text`, `pattern` or `count`.
+		tool examines replies: `exact-text`, `forbidden-text`, `pattern` or `count`, never `check-program`.
 	- `actions`: the assertion is about what the agent does, such as whether a brief that it gave a child agent was
 		sufficient. Its judge reads the replies too, and the built-in tool results, the trial's project after the trial
 		and its transcript.
@@ -207,7 +207,8 @@ Where a requirement is about what the agent does, split its assertions wherever 
 a built-in tool decides whether the action happened, from the files that the trial left, its tool calls and their
 inputs, or a command's exit status, and a narrow judged assertion decides only the part that needs meaning, such as
 whether a brief that the agent gave a child agent was sufficient. That judged assertion's description states only that
-part, and its `judge_reason` names that part.
+part, and its `judge_reason` names that part. When no fixed built-in tool observes the fact that shows the action
+happened, a check program decides it, as Check programs below describes.
 
 `tool` names one of CAT's built-in tools, never a tool of the agent under test: `tool-used Read` is CAT's built-in tool
 that passes when the agent called its Read tool. The description may still describe the agent's tools, such as "the
@@ -250,6 +251,7 @@ only the reply to turn n, counted from 1.
 | `no-tool-call` | the trial called no tool | `unneeded_tool_call` |
 | `read-in-full <path>` | every non-blank line of the file as staged appeared in the tool output that the trial's agents received | `file_not_read_in_full` |
 | `read-at-most <path> <percent>` | at most that percentage of the file's non-blank lines appeared in the tool output that the trial's agents received | `file_read_beyond_limit` |
+| `check-program checks/<file> [<argument>...]` | the test's check program, run after the trial, exits with status 0 | `check_program_failed` for status 1, `check_program_error` for any other result |
 
 `read-in-full` and `read-at-most` count only the tool output that reached the agents: Codex and Claude Code can shorten
 a tool's output before the model receives it, and the part that they cut off does not count.
@@ -260,10 +262,60 @@ reports no exit statuses.
 A tool verdict is exact and final, so it needs no judge qualification. Qualification and near-miss comparisons apply
 only to assertions the judge decides.
 
+### Check programs
+
+A fixed tool of the table observes one kind of fact. When whether an action happened shows only in another fact of the
+trial's final project, its activity or its replies, decide it with a check program, the assertion's `tool`
+`check-program checks/<file> [<argument>...]`. Examples are a configuration file that parses and
+names a new service, an edit that leaves every other entry of a file as it was, and tool calls in a given order. A
+program's verdict is final and costs no judge session, so prefer it to a judged `actions` assertion whenever a program
+can decide the happening. Whether a brief was sufficient or an explanation is correct needs meaning and stays with a
+judged assertion.
+
+- **Declaration.** The program's path is relative to the test directory, names a regular file that is not a link in
+	the test's `checks/` directory and holds no placeholder. The arguments may hold placeholders. The files of `checks/`
+	belong to the test and are delivered with it, so an edit to one is a test revision. No trial or judge sees them.
+- **Form.** The program is a Java source file `checks/<Name>.java`, with any other `.java` files of `checks/` that it
+	uses. CAT runs it in source-file mode with the Java runtime that CAT ships, without a shell. Rely on no library: use
+	only the classes of the Java platform, and read a JSON file as text or parse it yourself.
+- **Input.** CAT starts the program after the trial's last turn, with a new empty scratch directory as its working
+	directory and the environment variable `CAT_CHECK_INPUT` naming a read-only input directory. The arguments follow the
+	program as its command-line arguments. The input directory holds:
+	- `project/`, the trial's final project;
+	- `initial/`, the project as it was when the trial started;
+	- `activity.json`, the trial's activity in the format of the example files above, whichever harness ran the trial,
+		with that harness's own tool names. An `entries` record has one `type`: `tool` (every tool call of the main agent
+		and of each child, with its complete `input`, its `exit_status` where the harness reports one and its complete
+		`output`), `command_end`, `hook`, `assistant` (with `position`, `text` and the `questions` it asked) or
+		`child_event` (with `child`, `name`, `kind` of `STARTED`, `SENT`, `RECEIVED` or `ENDED`, and `text`), in the
+		harness's order. `received` holds every tool result as an agent received it;
+	- `replies.json`, one array per turn holding that turn's messages in order, ending with its final response;
+	- `checks/`, a copy of the test's `checks/` directory, from which the program runs.
+- **Environment.** Only `CAT_CHECK_INPUT`, `CAT_CHECK_SCRATCH`, which names the scratch directory, `HOME`, `TMPDIR`,
+	`TMP` and `TEMP`, which name it too, `TZ=UTC` and `LC_ALL=C.UTF-8`. CAT deletes the scratch directory after the run.
+- **Sandbox.** The program has no network, writes only its scratch directory and cannot read held-out content. CAT
+	runs it under bubblewrap on Linux, and refuses a proposal with a check program, naming the reason, on native
+	Windows and on a host that cannot apply the sandbox, such as a Linux host without bubblewrap.
+- **Outcome.** The program exits with status 0 to pass and with status 1 to fail. Any other status, a run longer than
+	60 seconds, output beyond 16 KiB of standard output and standard error together, and a program that does not
+	compile are a program error. CAT keeps the output, up to the limit and with standard output first, as the
+	assertion's rationale, so print what the program found. A failure shows the behavior `check_program_failed` and a
+	program error `check_program_error`, and both are failures of the tool under `on_tool_failure`. A program error does
+	not make CAT rerun the trial, so write the program to give a verdict on every trial that it can meet, including
+	one that left a file unreadable or absent.
+- **Same input, same outcome.** Read no clock, random source or file outside the input directory. CAT runs the program
+	twice on each example and on each guard pilot trial, and refuses it when the two runs differ in outcome or either run
+	takes more than 30 seconds.
+- **Refusals.** CAT refuses a program path that lies outside `checks/`, goes through a link, names no regular file or
+	holds a placeholder; an assertion without a passing example for each boundary class or without a failing example;
+	and a program that fails or errs on a passing example, passes a failing example or differs between its two runs. It
+	refuses `on_tool_failure: judge` with `evidence_scope: response`, because the program reads more than the replies.
+	An edit to a file of `checks/` or `examples/` revises the test, and CAT runs its examples again.
+
 ### Assertion examples
 
-For each assertion decided by `exact-text`, `forbidden-text`, `pattern` or `count`, and for each assertion the judge
-can decide, write one passing example for each boundary class and at least one failing example. Each passing example
+For each assertion decided by `exact-text`, `forbidden-text`, `pattern`, `count` or `check-program`, and for each
+assertion the judge can decide, write one passing example for each boundary class and at least one failing example. Each passing example
 meets the assertion's requirement and the expected outcome of its class's first test case. Each failing example
 misses the assertion. An action tool under `on_tool_failure: fail` needs no examples.
 
@@ -281,6 +333,13 @@ results as strings. For a tool call, use `type: tool` and give the entry `turn` 
 CAT fills placeholders in example file names and UTF-8 contents with the first matching case in `values.json`
 for a passing example and the first case in the file for a failing example. CAT refuses a reply tool that fails a
 passing example and any tool that passes a failing example, under either `on_tool_failure` setting.
+
+A check program reads an example as its input directory, with the defaults above, so an example of a check-program
+assertion holds the `initial/`, `project/`, `activity.json` and `replies.json` files that the program reads. CAT runs the
+program twice on each example, and refuses it when either run does not exit with status 0 on a passing example or
+with status 1 on a failing example; a program error on a failing example does not count as failing it.
+`contract check` runs the same check, so you see a failing example before your session ends. A problem names the test,
+the assertion, the example and the output of both runs.
 
 ### Near misses
 

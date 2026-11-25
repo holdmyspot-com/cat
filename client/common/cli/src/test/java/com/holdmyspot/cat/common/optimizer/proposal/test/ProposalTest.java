@@ -3364,6 +3364,77 @@ public final class ProposalTest
 	}
 
 	/**
+	 * Verifies that the proposal shows a check-program assertion with its program, its supporting files and the result
+	 * of each of its examples, and names the tool's two kinds of failure.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 * @throws InvalidProposalException if the proposal is refused
+	 */
+	@Test
+	public void rendersCheckProgramAssertion() throws IOException, InvalidProposalException
+	{
+		// Requirement: R-L21
+		String tool = "check-program checks/Check.java {{expected_outcome}}";
+		SessionResult.Completed result = session(changedDerivation(proposal ->
+			((ObjectNode) proposal.at("/tests/1/assertions/0")).put("tool", tool)));
+		Path checks = Files.createDirectories(result.effects().resolve(DraftDirectory.name(result.initialProject())).
+			resolve(".cat/tests/CLAUDE/plain_list/checks"));
+		Files.writeString(checks.resolve("Check.java"), "class Check\n{\n}\n", UTF_8);
+		Files.writeString(checks.resolve("Notes.txt"), "supporting data", UTF_8);
+		DerivedProposal derived = contractAuthor.proposal(result, PROMPT_SYSTEM, PROFILES, SALT);
+		List<AssertionExampleCheck> exampleChecks = new ArrayList<>(derived.exampleChecks());
+		exampleChecks.add(new AssertionExampleCheck("plain_list", "keeps_requested_tone", "pass_item_kind", tool, true));
+		exampleChecks.add(new AssertionExampleCheck("plain_list", "keeps_requested_tone", "fail_omits_answer", tool,
+			false));
+		DerivedProposal withResults = new DerivedProposal(derived.contract(), derived.derivedSources(),
+			derived.scopeConditions(), derived.conflicts(), derived.observedSources(), derived.derivation(),
+			derived.draft(), derived.changes(), exampleChecks);
+
+		String text = render(withResults);
+
+		requireThat(text, "proposal").
+			contains("The built-in tool `" + tool + "` decides it; a failure is the behavior `check_program_failed`, " +
+				"and a program error is `check_program_error`.\n").
+			contains("- Check files, which run after each trial on its final project, its activity and its replies:\n" +
+				"  - `checks/Check.java`:\n\n    ```\n    class Check\n").
+			contains("  - `checks/Notes.txt`:\n\n    ```\n    supporting data\n    ```\n").
+			contains("`keeps_requested_tone` / `pass_item_kind` (boundary class `item_kind`): `" + tool + "` passed.").
+			contains("`keeps_requested_tone` / `fail_omits_answer` (first test case): `" + tool + "` failed.");
+		DerivedProposal plain = contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM, PROFILES,
+			SALT);
+		requireThat(render(plain), "withoutProgram").doesNotContain("Check files");
+	}
+
+	/**
+	 * Verifies that a review warning that names a check program tells the author to write the program and its examples,
+	 * and that a warning that names a fixed tool does not.
+	 *
+	 * @throws InvalidProposalException if the fixture is rejected
+	 */
+	@Test
+	public void reviewWarningNamesCheckProgram() throws InvalidProposalException
+	{
+		// Requirement: R-L22
+		DerivedProposal first = contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM, PROFILES,
+			SALT);
+		TestReport program = new TestReport(List.of(), List.of(new Finding("uses_requested_tone",
+			Kind.ACTION_DECIDABLE_BY_TOOL, "The configuration file names the service.",
+			"check-program checks/Check.java")));
+		TestReport fixed = new TestReport(List.of(), List.of(new Finding("keeps_requested_tone",
+			Kind.ACTION_DECIDABLE_BY_TOOL, "A tool call identifies the action.", "tool-used")));
+		DerivedProposal reported = first.withJudgedReports(Map.of("formatting", program, "plain_list", fixed));
+
+		String brief = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), List.of(), reported, "Keep the tests.",
+			Map.of()).turns().getFirst();
+
+		requireThat(brief, "brief").contains("Test `formatting`, assertion `uses_requested_tone`. " +
+			"A check program, `check-program checks/Check.java`, can decide whether the action happened: write the " +
+			"program in `checks/` with its examples. The configuration file names the service.").
+			contains("Test `plain_list`, assertion `keeps_requested_tone`. " +
+				"`tool-used` can decide whether the action happened. A tool call identifies the action.");
+	}
+
+	/**
 	 * Replacing one test's report retains the other test's review warning and shows the new judge decision after its
 	 * mechanical result.
 	 *

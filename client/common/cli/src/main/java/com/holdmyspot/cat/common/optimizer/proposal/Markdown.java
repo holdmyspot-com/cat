@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.optimizer.proposal;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.optimizer.campaign.Baseline;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
@@ -10,6 +12,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.Development;
 import com.holdmyspot.cat.common.optimizer.campaign.CommitGate;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
 import com.holdmyspot.cat.common.optimizer.contract.Assertion;
+import com.holdmyspot.cat.common.optimizer.contract.BuiltInTool;
 import com.holdmyspot.cat.common.optimizer.contract.Cell;
 import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
@@ -24,6 +27,8 @@ import com.holdmyspot.cat.common.optimizer.contract.Part;
 import com.holdmyspot.cat.common.optimizer.contract.Requirement;
 import com.holdmyspot.cat.common.optimizer.contract.Split;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
+import com.holdmyspot.cat.common.optimizer.contract.PromptTest.Draft;
+import com.holdmyspot.cat.common.optimizer.contract.PromptTestFiles;
 import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TestValue;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
@@ -34,6 +39,7 @@ import com.holdmyspot.cat.common.optimizer.execution.AssertionReview;
 import com.holdmyspot.cat.common.optimizer.execution.AssertionReview.Finding;
 import com.holdmyspot.cat.common.optimizer.execution.PilotResult;
 import com.holdmyspot.cat.common.optimizer.inventory.Authority;
+import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.proposal.DerivedProposal.ExampleJudgment;
 import com.holdmyspot.cat.common.optimizer.proposal.DerivedProposal.TestReport;
@@ -68,6 +74,14 @@ import java.util.stream.Collectors;
 public final class Markdown
 {
 	private static final MathContext PERCENT_DIGITS = new MathContext(3);
+	/**
+	 * The name of the built-in tool that runs a prompt test's own program.
+	 */
+	private static final String CHECK_PROGRAM = "check-program";
+	/**
+	 * The behavior that a check program's error shows, as the proposal names it for the author.
+	 */
+	private static final String CHECK_PROGRAM_ERROR = "check_program_error";
 	/**
 	 * The largest number of files that a group of the files that load only in production may hold and still have the
 	 * proposal name each file.
@@ -405,6 +419,7 @@ public final class Markdown
 			append("- Risk rank: ").append(test.riskRank().position()).append(" (1 is the riskiest)\n");
 		TestReport report = derived.judgedReports().getOrDefault(test.id(), TestReport.EMPTY);
 		requirements(test, report.findings());
+		checkFiles(test);
 		assertionExamples(test, report.examples());
 		if (!test.absentTriggers().isEmpty())
 		{
@@ -436,6 +451,27 @@ public final class Markdown
 			text.append("- Interactions this test cannot cover:\n");
 			for (String interaction : test.uncoveredInteractions())
 				text.append("  - ").append(interaction).append('\n');
+		}
+	}
+
+	/**
+	 * Lists the program and the supporting files of a test's {@code checks/} directory, which decide its check-program
+	 * assertions after each trial. A test without a check program lists none.
+	 *
+	 * @param test the prompt test
+	 */
+	private void checkFiles(PromptTest test)
+	{
+		if (!test.hasCheckProgram())
+			return;
+		Map<String, FileContent> files = delivered.get(test.id()).draft().map(Draft::checkFiles).orElse(Map.of());
+		if (files.isEmpty())
+			return;
+		text.append("- Check files, which run after each trial on its final project, its activity and its replies:\n");
+		for (Map.Entry<String, FileContent> file : files.entrySet())
+		{
+			text.append("  - `").append(PromptTestFiles.CHECKS).append('/').append(file.getKey()).append("`:\n\n");
+			fenced(new String(file.getValue().bytes(), UTF_8));
 		}
 	}
 
@@ -581,15 +617,26 @@ public final class Markdown
 					append("`\n");
 				continue;
 			}
-			String fence = "`".repeat(Math.max(3, longestBacktickRun(workspaceFile.content()) + 1));
-			text.append("  - `").append(workspaceFile.path()).append("`:\n\n    ").append(fence).append('\n');
-			String content = workspaceFile.content();
-			if (content.endsWith("\n"))
-				content = content.substring(0, content.length() - 1);
-			for (String line : content.split("\n", -1))
-				text.append("    ").append(line).append('\n');
-			text.append("    ").append(fence).append("\n\n");
+			text.append("  - `").append(workspaceFile.path()).append("`:\n\n");
+			fenced(workspaceFile.content());
 		}
+	}
+
+	/**
+	 * Shows file content as a fenced block that a list item holds, followed by a blank line.
+	 *
+	 * @param content the file's content
+	 */
+	private void fenced(String content)
+	{
+		String fence = "`".repeat(Math.max(3, longestBacktickRun(content) + 1));
+		text.append("    ").append(fence).append('\n');
+		String lines = content;
+		if (lines.endsWith("\n"))
+			lines = lines.substring(0, lines.length() - 1);
+		for (String line : lines.split("\n", -1))
+			text.append("    ").append(line).append('\n');
+		text.append("    ").append(fence).append("\n\n");
 	}
 
 	/**
@@ -797,6 +844,11 @@ public final class Markdown
 	{
 		if (finding.tool() == null)
 			return "This assertion depends only on replies. " + finding.rationale();
+		if (finding.tool().equals(CHECK_PROGRAM) || finding.tool().startsWith(CHECK_PROGRAM + " "))
+		{
+			return "A check program, `" + finding.tool() + "`, can decide whether the action happened: write the " +
+				"program in `checks/` with its examples. " + finding.rationale();
+		}
 		return "`" + finding.tool() + "` can decide whether the action happened. " + finding.rationale();
 	}
 
@@ -812,12 +864,25 @@ public final class Markdown
 			text.append("The judge decides it.\n");
 			return;
 		}
+		BuiltInTool tool = assertion.builtInTool().orElseThrow();
+		boolean program = tool instanceof BuiltInTool.CheckProgram;
 		text.append("The built-in tool `").append(assertion.tool());
 		switch (assertion.onToolFailure())
 		{
-			case FAIL -> text.append("` decides it; a failure is the behavior `").
-				append(assertion.builtInTool().orElseThrow().behavior()).append("`.\n");
-			case JUDGE -> text.append("` decides it when it passes; when it fails, the judge decides it.\n");
+			case FAIL ->
+			{
+				text.append("` decides it; a failure is the behavior `").append(tool.behavior());
+				if (program)
+					text.append("`, and a program error is `").append(CHECK_PROGRAM_ERROR);
+				text.append("`.\n");
+			}
+			case JUDGE ->
+			{
+				text.append("` decides it when it passes; when it fails");
+				if (program)
+					text.append(" or the program errs");
+				text.append(", the judge decides it.\n");
+			}
 		}
 	}
 
