@@ -39,6 +39,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -752,6 +753,82 @@ public final class SessionSlotsTest
 			requireThat(slots.discardTrial(original, unsafe.identity()).status(), "exactDiscard").
 				isEqualTo(Status.DISCARDED);
 			requireThat(slots.inspectTrial(original).status(), "afterDiscard").isEqualTo(Status.ABSENT);
+		}
+	}
+
+	/**
+	 * Supplies launch-request records that a slot cannot trust.
+	 *
+	 * @return the record's content
+	 */
+	@DataProvider
+	public Object[][] invalidLaunchRequests()
+	{
+		String id = UUID.randomUUID().toString();
+		return new Object[][]
+		{
+			{"{\"format_version\":1,\"request_id\":"},
+			{"{\"format_version\":2,\"request_id\":\"" + id + "\"}"},
+			{"{\"format_version\":1,\"session\":\"" + id + "\"}"},
+			{"{\"format_version\":1,\"request_id\":\"../escape\"}"}
+		};
+	}
+
+	/**
+	 * Verifies that a slot whose launch-request record is malformed, has another format version, or has no valid
+	 * request ID is refused, instead of being treated as unrelated to the trial.
+	 *
+	 * @param record the content of the slot's launch-request record
+	 * @throws IOException          if reading or writing the slot fails
+	 * @throws InterruptedException if taking the slot is interrupted
+	 */
+	@Test(dataProvider = "invalidLaunchRequests")
+	public void refusesInvalidLaunchRequestRecord(String record) throws IOException, InterruptedException
+	{
+		// Requirement: R-I12
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path base = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "slots-"));
+			SessionSlots slots = new SessionSlots(base, 1, new Liveness(), jvm.fileLocks());
+			SessionSlots.Slot slot = slots.acquire(false);
+			Path file = slot.root().resolve("launch-request.json");
+			Files.writeString(file, record);
+			slots.retain(slot);
+
+			IOException refused = expectThrows(IOException.class, () -> slots.inspectTrial(UUID.randomUUID()));
+			requireThat(refused.getMessage(), "message").isEqualTo("Invalid original launch request record: " + file);
+			expectThrows(IOException.class, () -> slots.discardTrial(UUID.randomUUID(), Optional.empty()));
+		}
+	}
+
+	/**
+	 * Verifies that a request that more than one slot records is refused, instead of one of the slots being chosen.
+	 *
+	 * @throws IOException          if reading or writing the slots fails
+	 * @throws InterruptedException if taking a slot is interrupted
+	 */
+	@Test
+	public void refusesRequestBoundByMoreThanOneSlot() throws IOException, InterruptedException
+	{
+		// Requirement: R-I12
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path base = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "slots-"));
+			SessionSlots slots = new SessionSlots(base, 2, new Liveness(), jvm.fileLocks());
+			SessionSlots.Slot first = slots.acquire(false);
+			SessionSlots.Slot second = slots.acquire(false);
+			UUID original = UUID.randomUUID();
+			writeTrialBinding(first, original);
+			writeTrialBinding(second, original);
+			slots.retain(first);
+			slots.retain(second);
+
+			IOException refused = expectThrows(IOException.class, () -> slots.inspectTrial(original));
+			requireThat(refused.getMessage(), "message").
+				isEqualTo("More than one slot records original launch request " + original);
+			requireThat(slots.inspectTrial(UUID.randomUUID()).status(), "unrelatedRequest").isEqualTo(Status.ABSENT);
 		}
 	}
 

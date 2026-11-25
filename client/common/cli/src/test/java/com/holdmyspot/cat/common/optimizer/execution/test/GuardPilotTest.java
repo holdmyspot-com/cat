@@ -1421,12 +1421,16 @@ public final class GuardPilotTest
 	 * A restarted pilot either resumes its original trial or fences off the old launch before replacing it.
 	 *
 	 * @param status what the broker reports for the original launch
+	 * @param retainedTurns the completed turns the broker reports when it is ready; the pilot recorded one
 	 * @throws IOException if the test directory cannot be used
 	 * @throws InterruptedException if the thread is interrupted
 	 */
 	@Test(dataProvider = "retainedStatuses")
-	public void reconcilesTheOriginalPilotTrial(Status status) throws IOException, InterruptedException
+	public void reconcilesTheOriginalPilotTrial(Status status, int retainedTurns)
+		throws IOException, InterruptedException
 	{
+		// Requirement: R-I12
+		boolean resumes = status == Status.READY && retainedTurns == 1;
 		Contract contract = TierFixtures.tieredContract();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -1487,7 +1491,7 @@ public final class GuardPilotTest
 								observed = Optional.of(identity);
 							OptionalInt turns = OptionalInt.empty();
 							if (status == Status.READY)
-								turns = OptionalInt.of(1);
+								turns = OptionalInt.of(retainedTurns);
 							yield new RetainedTrialResponse(request.requestId(), status, observed, turns);
 						}
 						case EXPORT_SUCCESSOR -> throw new AssertionError("A pilot cannot export an author correction");
@@ -1507,7 +1511,7 @@ public final class GuardPilotTest
 					if (!operations.contains("START"))
 					{
 						requireThat(request.turns(), "samePilotDraw").isEqualTo(originalRequest.get().turns());
-						if (status == Status.READY)
+						if (resumes)
 						{
 							requireThat(requestId, "resumedId").isEqualTo(original.get());
 							requireThat(claim, "claim").isEqualTo(Optional.of(new RetainedTrialClaim(original.get(), identity, 1)));
@@ -1539,9 +1543,9 @@ public final class GuardPilotTest
 				stored, new SplittableRandom(17), checkpoint::set);
 			List<String> prefix = List.of("STATUS", "START");
 			int failures = 0;
-			if (status == Status.UNSAFE)
+			if (status == Status.UNSAFE || status == Status.READY && !resumes)
 				prefix = List.of("STATUS", "DISCARD", "START");
-			if (status == Status.UNSAFE || status == Status.ABSENT)
+			if (status == Status.UNSAFE || status == Status.ABSENT || status == Status.READY && !resumes)
 				failures = 1;
 			requireThat(operations.subList(0, prefix.size()), "operationsBeforeReplacement").isEqualTo(prefix);
 			PilotTrial completed = recovered.values().iterator().next().trials().getFirst();
@@ -1550,14 +1554,24 @@ public final class GuardPilotTest
 	}
 
 	/**
-	 * Returns the possible retained states used in the recovery test.
+	 * Returns the possible retained states used in the recovery test. A ready session whose retained prefix does not
+	 * fit the pilot's recorded progress of one turn, because it holds fewer turns or more than one new turn, cannot be
+	 * resumed.
 	 *
-	 * @return the statuses
+	 * @return the statuses and the completed turns each reports
 	 */
 	@DataProvider
 	public Object[][] retainedStatuses()
 	{
-		return new Object[][]{{Status.READY}, {Status.UNSAFE}, {Status.ABSENT}, {Status.BUSY}};
+		return new Object[][]
+		{
+			{Status.READY, 1},
+			{Status.UNSAFE, 1},
+			{Status.ABSENT, 1},
+			{Status.BUSY, 1},
+			{Status.READY, 0},
+			{Status.READY, 3}
+		};
 	}
 
 	/**

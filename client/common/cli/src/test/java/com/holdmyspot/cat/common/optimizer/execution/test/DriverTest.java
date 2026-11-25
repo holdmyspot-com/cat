@@ -3486,6 +3486,68 @@ public final class DriverTest
 	}
 
 	/**
+	 * Supplies the completed turns of a ready session that do not fit the observer's recorded progress of one turn.
+	 *
+	 * @return fewer turns than the observer decided, and more than one turn beyond its last decision
+	 */
+	@DataProvider
+	public static Object[][] mismatchedPrefixes()
+	{
+		return new Object[][]{{0}, {3}};
+	}
+
+	/**
+	 * A ready session whose retained prefix does not fit the observer's recorded progress is discarded, and the trial
+	 * reruns as the same logical trial with the interrupted attempt counted.
+	 *
+	 * @param completedTurns the completed turns the broker reports for the retained session
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test(dataProvider = "mismatchedPrefixes")
+	public void discardsMismatchedReadyPrefix(int completedTurns) throws IOException
+	{
+		// Requirement: R-I12
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("driver-mismatched-prefix"));
+			DriverHarness harness = new DriverHarness(directory, developing().ceiling(1).build());
+			FileCampaignStore store = new FileCampaignStore(directory.resolve("stored"), JsonMapper.builder().build(),
+				Yielding.fileReplacer());
+			String campaignId = DriverHarness.CAMPAIGN;
+			store.replaceSnapshot(harness.campaign());
+			RecoverySessions sessions = new RecoverySessions(harness.sessions(), store, campaignId);
+			DriverContext context = recoveryContext(harness, store, sessions);
+			try (Driver driver = Driver.open(context, campaignId).orElseThrow())
+			{
+				driver.step();
+				SessionRequest request = harness.sessions().sessions().getFirst().request();
+				request.turnObserver().orElseThrow().endAfter(1, harness.passed());
+			}
+			TrialRecovery original = sessions.launches.getFirst();
+			requireThat(store.readTrialRecovery(campaignId, original.key(), original.attemptOrdinal()).orElseThrow().
+				observerTurn(), "observedTurn").isEqualTo(1);
+
+			sessions.status = RetainedTrialResponse.Status.READY;
+			sessions.readyTurns = completedTurns;
+			try (Driver driver = Driver.open(context, campaignId).orElseThrow())
+			{
+				driver.step();
+				requireThat(sessions.claims, "claims").isEmpty();
+				requireThat(sessions.discards, "discards").isEqualTo(List.of(RetainedTrialRequest.discard(
+					original.requestId(), Optional.of(sessions.identity))));
+				requireThat(sessions.launches.size(), "freshLaunches").isEqualTo(2);
+				TrialRecovery replacement = sessions.launches.getLast();
+				requireThat(replacement.key(), "sameTrial").isEqualTo(original.key());
+				requireThat(replacement.requestId(), "replacementRequest").isNotEqualTo(original.requestId());
+				requireThat(replacement.attemptOrdinal(), "replacementOrdinal").isEqualTo(2);
+				LogicalTrial retry = trials(store.load(campaignId).orElseThrow(), TrialState.RUNNING).getFirst();
+				requireThat(retry.key(), "retryKey").isEqualTo(original.key());
+				requireThat(retry.infrastructureAttempts().size(), "countedAttempts").isEqualTo(1);
+			}
+		}
+	}
+
+	/**
 	 * A native continuation failure waits for the broker and discards the newly claimed generation before a retry.
 	 *
 	 * @throws IOException if the fixture cannot be used
@@ -7433,6 +7495,7 @@ public final class DriverTest
 			Optional.of(new HarnessSession("codex", "11111111-2222-4333-8444-555555555555")));
 		private Optional<Identity> unsafeIdentity = Optional.of(identity);
 		private RetainedTrialResponse.Status status = RetainedTrialResponse.Status.BUSY;
+		private int readyTurns = 1;
 
 		/**
 		 * Creates a broker fixture for one campaign.
@@ -7481,7 +7544,7 @@ public final class DriverTest
 			return switch (status)
 			{
 				case READY -> new RetainedTrialResponse(request.requestId(), status, Optional.of(identity),
-					OptionalInt.of(1));
+					OptionalInt.of(readyTurns));
 				case UNSAFE -> new RetainedTrialResponse(request.requestId(), status, unsafeIdentity,
 					OptionalInt.empty());
 				default -> new RetainedTrialResponse(request.requestId(), status, Optional.empty(), OptionalInt.empty());
