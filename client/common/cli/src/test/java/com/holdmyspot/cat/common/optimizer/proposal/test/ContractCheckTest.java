@@ -231,6 +231,7 @@ public final class ContractCheckTest
 	{
 		// Requirement: R-C27
 		// Requirement: R-L15
+		// Requirement: R-L21
 		Path project = directories.add(Files.createTempDirectory("contract-check-sandbox-"));
 		Path contextFile = writeCheckProgramDraft(project);
 
