@@ -1994,7 +1994,10 @@ When a nested session installs CAT (`--install-cat`), the runner also writes int
 entries that CAT's installer writes for the installed copy: Claude Code's sandbox exceptions and allow rules for the
 installer and the request server, and Codex's installer rules, request-server rule and CAT hook approvals. A trial
 session thus meets the same approvals as a user's session, and starts its own requested sessions without asking. Entries
-that concern only the user's own home, such as the consented sandbox profile and the uninstall record, are not written.
+that concern only the user's own home, such as the consented sandbox profile and the uninstall record, are not written. The
+plugin that the runner installs stays readable and executable but not writable to the session's commands, in both
+harnesses, so a check program that the session's driver starts runs on a runtime that the session cannot change, as a
+host session is refused when it could write the copy of CAT that serves it.
 
 Staging excludes `.cat/sessions/`. This keeps a trial agent from reading other trials, judge results or formal
 assignments. Excluding the prompt test directories keeps a trial agent from reading a test's assertions, expected

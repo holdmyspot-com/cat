@@ -11394,7 +11394,7 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 	the clean full offline build, reporting every test taking at least one second and the time of one check-program run
 	on the build host. Gate 3's list of processes that tests start gains `bwrap` and `sandbox-exec`. End to end, on
 	Linux, one campaign in each harness whose prompt test has a check-program assertion with passing and failing
-	examples runs its guard pilot to the proposal, and the proposal shows each pilot trial's verdict from the program.
+	examples runs its guard pilot to the proposal, and the proposal shows each assertion's pass rate and failed pilot trials by class as the program decided them, with each trial's verdict in the pilot's trial records.
 - **Choices (user rulings, 2026-11-23):**
 	- **Q25, how a check program is launched. Ruled: (a); user's words: "25. a".** (a) A Java source program,
 		`checks/<Name>.java` with any other `.java` files of `checks/`, run in source-file mode by the Java runtime
