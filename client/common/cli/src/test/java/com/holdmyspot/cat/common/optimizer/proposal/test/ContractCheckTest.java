@@ -29,6 +29,7 @@ import java.util.OptionalLong;
 import java.util.StringJoiner;
 
 import org.testng.annotations.AfterClass;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
@@ -218,13 +219,15 @@ public final class ContractCheckTest
 	}
 
 	/**
-	 * Verifies that {@code contract check}, run where Bubblewrap cannot be found, refuses each example of a check
-	 * program and names the missing sandbox, instead of accepting the examples unchecked.
+	 * Verifies that {@code contract check}, run where Bubblewrap cannot be found or on native Windows, refuses each
+	 * example of a check program and names the missing sandbox, instead of accepting the examples unchecked.
 	 *
+	 * @param platform the platform that runs the contract tool
+	 * @param missing  the reason that each example's problem ends with
 	 * @throws IOException if a file cannot be read or written
 	 */
-	@Test
-	public void refusesCheckProgramWithoutSandbox() throws IOException
+	@Test(dataProvider = "hostsWithoutSandbox")
+	public void refusesCheckProgramWithoutSandbox(Platform platform, String missing) throws IOException
 	{
 		// Requirement: R-C27
 		// Requirement: R-L15
@@ -232,18 +235,32 @@ public final class ContractCheckTest
 		Path contextFile = writeCheckProgramDraft(project);
 
 		Report report = ContractToolSessions.check(json, contextFile,
-			Commands.contractCheckPrograms(json, Platform.LINUX_X64, Map.of()));
+			Commands.contractCheckPrograms(json, platform, Map.of()));
 
-		String missing = ": Check programs require Bubblewrap (bwrap) at an absolute location on PATH.";
 		StringJoiner expected = new StringJoiner(System.lineSeparator(), "", System.lineSeparator());
 		expected.add("`contract check` found 2 problem(s):");
 		for (String example : List.of("fail_omits_answer", "pass_item_kind"))
 		{
-			expected.add("- Prompt test `plain_list`, assertion `keeps_requested_tone`, example `" + example + "`" +
+			expected.add("- Prompt test `plain_list`, assertion `keeps_requested_tone`, example `" + example + "`: " +
 				missing);
 		}
 		requireThat(report.output(), "output").isEqualTo(expected.toString());
 		requireThat(report.exitCode(), "exitCode").isEqualTo(1);
+	}
+
+	/**
+	 * Returns hosts that cannot run a check program, with the reason that the contract tool reports.
+	 *
+	 * @return the data rows
+	 */
+	@DataProvider
+	public static Object[][] hostsWithoutSandbox()
+	{
+		return new Object[][]
+		{
+			{Platform.LINUX_X64, "Check programs require Bubblewrap (bwrap) at an absolute location on PATH."},
+			{Platform.WINDOWS_X64, "Check programs require WSL2 on Windows."}
+		};
 	}
 
 	/**
