@@ -29,6 +29,7 @@ import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfiles;
+import com.holdmyspot.cat.common.optimizer.contract.TrialRecord;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
 import com.holdmyspot.cat.common.optimizer.contract.test.TierFixtures;
 import com.holdmyspot.cat.common.optimizer.execution.AssertionVerdict;
@@ -557,6 +558,176 @@ public final class GuardPilotTest
 			PilotResult resumedPeer = resumed.get("codex:safety");
 			requireThat(resumedPeer.control(), "peerControl").isNotEqualTo(peerSafety.control());
 			requireThat(resumedPeer.passes("asks_before_deleting"), "resumedPeerPasses").isEqualTo(GuardPilot.TRIALS);
+		}
+	}
+
+	/**
+	 * A stored pilot outcome of a test with a check program is reused in each evaluator only while the version of the
+	 * programs' runtime is unchanged. A new version reruns that test's controls in every evaluator and keeps the other
+	 * tests' outcomes, so that a resumed pilot or a revision never confirms a check-program verdict of another runtime.
+	 *
+	 * @throws IOException          if the test directory cannot be used
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void checkProgramVersionRerunsPilot() throws IOException, InterruptedException
+	{
+		// Requirement: R-L7
+		// Requirement: R-L21
+		String assertion = "records_state";
+		Contract contract = withSafety(sharedContract(), List.of(checkProgramAssertion(assertion),
+			exactSafeReply(OnToolFailure.FAIL)));
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-check-version"));
+			FakeWorkspacePort workspace = workspace(directory);
+			SessionScript owner = safeSessions(directory.resolve("owner"));
+			SessionScript peer = safeSessions(directory.resolve("peer"));
+			CountedCheckPrograms first = new CountedCheckPrograms(assertion, "runtime-a");
+			Map<String, PilotResult> initial = sharedPilot(owner, peer, workspace, first).
+				run(contract, List.of(), control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(1));
+			requireThat(initial.keySet(), "pilotKeys").
+				containsExactly(Set.of("claude:formatting", "claude:safety", "codex:formatting", "codex:safety"));
+			int safetyTrials = initial.get("claude:safety").trialCount();
+			requireThat(initial.get("codex:safety").trialCount(), "peerSafetyTrials").isEqualTo(safetyTrials);
+			requireThat(first.calls(), "initialChecks").isEqualTo(2 * safetyTrials);
+			requireThat(initial.get("codex:safety").passes(assertion), "peerCheckPasses").isEqualTo(safetyTrials);
+
+			SessionScript sameOwner = safeSessions(directory.resolve("same-owner"));
+			SessionScript samePeer = safeSessions(directory.resolve("same-peer"));
+			CountedCheckPrograms same = new CountedCheckPrograms(assertion, "runtime-a");
+			Map<String, PilotResult> reused = sharedPilot(sameOwner, samePeer, workspace, same).
+				run(contract, List.of(), control(), Set.of(), SELECTION, initial, new SplittableRandom(2));
+			requireThat(sameOwner.requests(SessionRole.TRIAL), "reusedOwnerTrials").isEmpty();
+			requireThat(samePeer.requests(SessionRole.TRIAL), "reusedPeerTrials").isEmpty();
+			requireThat(same.calls(), "reusedChecks").isEqualTo(0);
+			requireThat(reused, "reused").isEqualTo(initial);
+
+			SessionScript nextOwner = safeSessions(directory.resolve("next-owner"));
+			SessionScript nextPeer = safeSessions(directory.resolve("next-peer"));
+			CountedCheckPrograms next = new CountedCheckPrograms(assertion, "runtime-b");
+			Map<String, PilotResult> rerun = sharedPilot(nextOwner, nextPeer, workspace, next).
+				run(contract, List.of(), control(), Set.of(), SELECTION, initial, new SplittableRandom(3));
+			requireThat(nextOwner.requests(SessionRole.TRIAL).size(), "rerunOwnerTrials").isEqualTo(safetyTrials);
+			requireThat(nextPeer.requests(SessionRole.TRIAL).size(), "rerunPeerTrials").isEqualTo(safetyTrials);
+			requireThat(next.calls(), "rerunChecks").isEqualTo(2 * safetyTrials);
+			for (String evaluator : List.of("claude", "codex"))
+			{
+				requireThat(rerun.get(evaluator + ":formatting"), evaluator + "Formatting").
+					isEqualTo(initial.get(evaluator + ":formatting"));
+				requireThat(rerun.get(evaluator + ":safety").control(), evaluator + "SafetyControl").
+					isNotEqualTo(initial.get(evaluator + ":safety").control());
+				requireThat(rerun.get(evaluator + ":safety").passes(assertion), evaluator + "SafetyPasses").
+					isEqualTo(safetyTrials);
+			}
+		}
+	}
+
+	/**
+	 * A stored pilot of a shared contract matches its conditions only while the version of the check programs'
+	 * runtime is unchanged, so that confirming it never admits a check-program verdict of another runtime in either
+	 * evaluator.
+	 *
+	 * @throws IOException          if the test directory cannot be used
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void storedPilotNeedsCheckVersion() throws IOException, InterruptedException
+	{
+		// Requirement: R-L7
+		// Requirement: R-L21
+		String assertion = "records_state";
+		Contract contract = withSafety(sharedContract(), List.of(checkProgramAssertion(assertion),
+			exactSafeReply(OnToolFailure.FAIL)));
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-check-stored"));
+			FakeWorkspacePort workspace = workspace(directory);
+			SessionScript owner = safeSessions(directory.resolve("owner"));
+			SessionScript peer = safeSessions(directory.resolve("peer"));
+			Map<String, PilotResult> stored = sharedPilot(owner, peer, workspace,
+				new CountedCheckPrograms(assertion, "runtime-a")).
+				run(contract, List.of(), control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(1));
+			Map<Harness, List<TrialPlugin>> plugins = Map.of(Harness.CLAUDE, List.of(), Harness.CODEX, List.of());
+
+			boolean sameVersion = sharedPilot(owner, peer, workspace, new CountedCheckPrograms(assertion, "runtime-a")).
+				matchesStored(contract, plugins, control(), SELECTION, stored);
+			boolean otherVersion = sharedPilot(owner, peer, workspace, new CountedCheckPrograms(assertion, "runtime-b")).
+				matchesStored(contract, plugins, control(), SELECTION, stored);
+			Map<String, PilotResult> peerOnly = new HashMap<>(stored);
+			peerOnly.keySet().removeIf(key -> key.startsWith("claude:"));
+			boolean otherVersionInPeer = sharedPilot(owner, peer, workspace,
+				new CountedCheckPrograms(assertion, "runtime-b")).
+				matchesStored(contract, plugins, control(), SELECTION, peerOnly);
+
+			requireThat(sameVersion, "sameVersion").isTrue();
+			requireThat(otherVersion, "otherVersion").isFalse();
+			requireThat(otherVersionInPeer, "otherVersionInPeer").isFalse();
+		}
+	}
+
+	/**
+	 * Returns sessions whose {@code safety} trials reply {@value #SAFE} and whose other trials and judges pass.
+	 *
+	 * @param directory a directory that the test owns
+	 * @return the sessions
+	 */
+	private static SessionScript safeSessions(Path directory)
+	{
+		return new SessionScript(directory, request ->
+		{
+			if (isSafety(request))
+				return SAFE;
+			return "pass";
+		});
+	}
+
+	/**
+	 * Passes one check-program assertion on each run, counts its evaluations and names a runtime version.
+	 */
+	private static final class CountedCheckPrograms implements CheckProgramEvaluation
+	{
+		private final String assertion;
+		private final String version;
+		private final AtomicInteger calls = new AtomicInteger();
+
+		/**
+		 * Creates an evaluation.
+		 *
+		 * @param assertion the check-program assertion
+		 * @param version   the version of the programs' runtime
+		 */
+		CountedCheckPrograms(String assertion, String version)
+		{
+			this.assertion = assertion;
+			this.version = version;
+		}
+
+		@Override
+		public Map<String, List<Result>> run(PromptTest test, Set<String> assertionIds, TestCase testCase,
+			TrialRecord record, int runs)
+		{
+			calls.incrementAndGet();
+			List<Result> results = new ArrayList<>();
+			for (int i = 0; i < runs; ++i)
+				results.add(new Result(Outcome.PASS, "state recorded", Duration.ofSeconds(1)));
+			return Map.of(assertion, results);
+		}
+
+		@Override
+		public String version()
+		{
+			return version;
+		}
+
+		/**
+		 * Returns the number of evaluated trials.
+		 *
+		 * @return the number of calls to {@link #run(PromptTest, Set, TestCase, TrialRecord, int)}
+		 */
+		int calls()
+		{
+			return calls.get();
 		}
 	}
 
@@ -2717,6 +2888,23 @@ public final class GuardPilotTest
 	}
 
 	/**
+	 * Returns a pilot with evaluator trials, the owner's judge and the owner's check programs.
+	 *
+	 * @param owner         starts Claude trials and judges both evaluators' evidence
+	 * @param peer          starts Codex trials
+	 * @param workspace     stages the control source
+	 * @param checkPrograms runs each check program of a completed trial
+	 * @return the pilot
+	 */
+	private GuardPilot sharedPilot(SessionScript owner, SessionScript peer, FakeWorkspacePort workspace,
+		CheckProgramEvaluation checkPrograms)
+	{
+		return new GuardPilot(owner.port(), Map.of(Harness.CLAUDE, owner.port(), Harness.CODEX, peer.port()),
+			workspace, PROMPT, owner.judge(), verdicts(new InMemoryCampaignStore()), new ProposalSchema(json), json, 4,
+			checkPrograms);
+	}
+
+	/**
 	 * Returns a contract with the same test and profiles in both evaluators.
 	 *
 	 * @return the shared contract
@@ -2945,9 +3133,20 @@ public final class GuardPilotTest
 	 */
 	private static Contract checkProgramContract(String assertion)
 	{
-		MappedAssertion check = new MappedAssertion(new Assertion(assertion, AssertionKind.EFFECT,
-			"check-program checks/Check.java", "The project records the requested state."), "r2");
-		return withSafety(TierFixtures.tieredContract(), List.of(check, exactSafeReply(OnToolFailure.FAIL)));
+		return withSafety(TierFixtures.tieredContract(), List.of(checkProgramAssertion(assertion),
+			exactSafeReply(OnToolFailure.FAIL)));
+	}
+
+	/**
+	 * Returns an effect assertion that {@code checks/Check.java} decides.
+	 *
+	 * @param assertion the assertion's ID
+	 * @return the assertion
+	 */
+	private static MappedAssertion checkProgramAssertion(String assertion)
+	{
+		return new MappedAssertion(new Assertion(assertion, AssertionKind.EFFECT, "check-program checks/Check.java",
+			"The project records the requested state."), "r2");
 	}
 
 	/**

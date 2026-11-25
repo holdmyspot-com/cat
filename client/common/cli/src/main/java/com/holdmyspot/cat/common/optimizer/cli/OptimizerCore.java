@@ -3270,8 +3270,9 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
-	 * Verifies that the first proposal's sole-evaluator pilot still matches the current judge and trial conditions.
-	 * The evaluator probe alone does not verify the owner judge version used by the pilot.
+	 * Verifies that the first proposal's pilot in each evaluator still matches the current judge, trial and
+	 * check-program conditions. The evaluator probe alone verifies neither the owner judge version that a sole
+	 * evaluator's pilot used nor the version of the runtime that ran each evaluator's check programs.
 	 *
 	 * @param campaign the campaign awaiting confirmation
 	 * @param fork the proposal's frozen sources
@@ -3286,14 +3287,17 @@ public final class OptimizerCore implements Core
 		SourceSelection selection, PluginCheck plugin, Map<String, PilotResult> pilots)
 		throws IOException, CommandRefusedException
 	{
-		Set<Harness> evaluators = campaign.header().evaluationHarnesses();
-		if (campaign.isConfirmed() || evaluators.size() != 1 || pilots.isEmpty())
+		if (campaign.isConfirmed() || pilots.isEmpty())
 			return;
-		Harness evaluator = evaluators.iterator().next();
-		List<TrialPlugin> plugins = plugin.plugins();
-		if (!plugin.byEvaluator().isEmpty())
-			plugins = evaluatorPlugins(campaign).get(evaluator);
-		if (!guardPilot(campaign, fork).matchesStored(derived.contract(), evaluator, plugins,
+		Map<Harness, List<TrialPlugin>> plugins = new EnumMap<>(Harness.class);
+		for (Harness evaluator : campaign.header().evaluationHarnesses())
+		{
+			if (plugin.byEvaluator().isEmpty())
+				plugins.put(evaluator, plugin.plugins());
+			else
+				plugins.put(evaluator, evaluatorPlugins(campaign).get(evaluator));
+		}
+		if (!guardPilot(campaign, fork).matchesStored(derived.contract(), plugins,
 			pilotControl(campaign, fork, derived), selection, pilots))
 		{
 			throw new CommandRefusedException("The guard pilot ran under measurement conditions that have changed. " +

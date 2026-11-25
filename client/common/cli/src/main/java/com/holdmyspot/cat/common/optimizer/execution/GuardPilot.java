@@ -381,30 +381,39 @@ public final class GuardPilot
 	}
 
 	/**
-	 * Checks whether the stored controls for a sole evaluator ran under the proposed conditions, without starting any
+	 * Checks whether the stored controls of each evaluator ran under the proposed conditions, without starting any
 	 * sessions. A result that recorded failed trials can still match its conditions.
 	 *
 	 * @param contract the proposal's contract
-	 * @param evaluator the sole evaluator
-	 * @param plugins its prepared trial plugins
+	 * @param plugins the prepared trial plugins of each evaluator, in installation order
 	 * @param control the control overlay
 	 * @param selection the files the control trials receive
 	 * @param stored the previously presented pilot results
 	 * @return whether each stored result matches its current conditions
+	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public boolean matchesStored(Contract contract, Harness evaluator, List<TrialPlugin> plugins, Overlay control,
+	public boolean matchesStored(Contract contract, Map<Harness, List<TrialPlugin>> plugins, Overlay control,
 		SourceSelection selection, Map<String, PilotResult> stored)
 	{
-		TrialProfiles profiles = contract.profiles().forEvaluator(evaluator);
+		requireThat(plugins, "plugins").isNotEmpty();
+		// The pilot of a shared contract is keyed by evaluator, so each stored result names its own
+		boolean shared = plugins.size() > 1;
+		Harness sole = plugins.keySet().iterator().next();
 		Sha256 files = control.snapshot().identity();
 		for (PilotResult result : stored.values())
 		{
+			Harness evaluator = sole;
+			if (shared)
+				evaluator = result.evaluator();
+			if (evaluator == null || !plugins.containsKey(evaluator))
+				return false;
+			TrialProfiles profiles = contract.profiles().forEvaluator(evaluator);
 			Optional<PromptTest> test = contract.findTest(result.testId());
 			if (test.isEmpty() || profiles.cellsOf(result.testId()).isEmpty())
 				return false;
 			Optional<Cell> cell = pilotCell(profiles, result.testId());
-			if (cell.isEmpty() || !conditionsFor(contract, test.orElseThrow(), cell.orElseThrow(), false, files,
-				selection, plugins).matches(result))
+			if (cell.isEmpty() || !conditionsFor(contract, test.orElseThrow(), cell.orElseThrow(), shared, files,
+				selection, plugins.get(evaluator)).matches(result))
 				return false;
 		}
 		return true;
