@@ -12,6 +12,11 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 public record BuiltInToolResult(Assertion assertion, Outcome outcome, String observed)
 {
 	/**
+	 * The behavior that a check program's error shows.
+	 */
+	public static final String PROGRAM_ERROR_BEHAVIOR = "check_program_error";
+
+	/**
 	 * How the built-in tool finished.
 	 */
 	public enum Outcome
@@ -133,7 +138,7 @@ public record BuiltInToolResult(Assertion assertion, Outcome outcome, String obs
 	public String behavior()
 	{
 		if (outcome == Outcome.PROGRAM_ERROR)
-			return "check_program_error";
+			return PROGRAM_ERROR_BEHAVIOR;
 		return assertion.builtInTool().orElseThrow().behavior();
 	}
 

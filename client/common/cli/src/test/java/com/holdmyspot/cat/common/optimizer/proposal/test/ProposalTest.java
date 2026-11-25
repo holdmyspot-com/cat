@@ -3365,7 +3365,7 @@ public final class ProposalTest
 
 	/**
 	 * Verifies that the proposal shows a check-program assertion with its program, its supporting files and the result
-	 * of each of its examples, and names the tool's two kinds of failure.
+	 * that the check program gave on each of its examples, and names the tool's two kinds of failure.
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 * @throws InvalidProposalException if the proposal is refused
@@ -3373,33 +3373,24 @@ public final class ProposalTest
 	@Test
 	public void rendersCheckProgramAssertion() throws IOException, InvalidProposalException
 	{
+		// Requirement: R-L15
 		// Requirement: R-L21
-		String tool = "check-program checks/Check.java {{expected_outcome}}";
-		SessionResult.Completed result = session(changedDerivation(proposal ->
-			((ObjectNode) proposal.at("/tests/1/assertions/0")).put("tool", tool)));
-		Path checks = Files.createDirectories(result.effects().resolve(DraftDirectory.name(result.initialProject())).
-			resolve(".cat/tests/CLAUDE/plain_list/checks"));
-		Files.writeString(checks.resolve("Check.java"), "class Check\n{\n}\n", UTF_8);
-		Files.writeString(checks.resolve("Notes.txt"), "supporting data", UTF_8);
-		DerivedProposal derived = contractAuthor.proposal(result, PROMPT_SYSTEM, PROFILES, SALT);
-		List<AssertionExampleCheck> exampleChecks = new ArrayList<>(derived.exampleChecks());
-		exampleChecks.add(new AssertionExampleCheck("plain_list", "keeps_requested_tone", "pass_item_kind", tool, true));
-		exampleChecks.add(new AssertionExampleCheck("plain_list", "keeps_requested_tone", "fail_omits_answer", tool,
-			false));
-		DerivedProposal withResults = new DerivedProposal(derived.contract(), derived.derivedSources(),
-			derived.scopeConditions(), derived.conflicts(), derived.observedSources(), derived.derivation(),
-			derived.draft(), derived.changes(), exampleChecks);
+		SessionResult.Completed result = checkProgramExamples("fail");
+		Files.writeString(writeCheckProgram(result).resolve("checks/Notes.txt"), "supporting data", UTF_8);
+		DerivedProposal derived = checkingAuthor(new ScriptedCheckPrograms(correctRuns())).proposal(result,
+			PROMPT_SYSTEM, PROFILES, SALT);
 
-		String text = render(withResults);
+		String text = render(derived);
 
 		requireThat(text, "proposal").
-			contains("The built-in tool `" + tool + "` decides it; a failure is the behavior `check_program_failed`, " +
-				"and a program error is `check_program_error`.\n").
+			contains("The built-in tool `" + CHECK_PROGRAM + "` decides it; a failure is the behavior " +
+				"`check_program_failed`, and a program error is `check_program_error`.\n").
 			contains("- Check files, which run after each trial on its final project, its activity and its replies:\n" +
 				"  - `checks/Check.java`:\n\n    ```\n    class Check\n").
 			contains("  - `checks/Notes.txt`:\n\n    ```\n    supporting data\n    ```\n").
-			contains("`keeps_requested_tone` / `pass_item_kind` (boundary class `item_kind`): `" + tool + "` passed.").
-			contains("`keeps_requested_tone` / `fail_omits_answer` (first test case): `" + tool + "` failed.");
+			contains("`keeps_requested_tone` / `" + PASS_EXAMPLE + "` (boundary class `item_kind`): `check-program` " +
+				"passed.\n").
+			contains("`keeps_requested_tone` / `" + FAIL_EXAMPLE + "` (first test case): `check-program` failed.\n");
 		DerivedProposal plain = contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM, PROFILES,
 			SALT);
 		requireThat(render(plain), "withoutProgram").doesNotContain("Check files");

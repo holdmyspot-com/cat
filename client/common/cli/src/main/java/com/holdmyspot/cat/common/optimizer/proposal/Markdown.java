@@ -13,6 +13,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.CommitGate;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
 import com.holdmyspot.cat.common.optimizer.contract.Assertion;
 import com.holdmyspot.cat.common.optimizer.contract.BuiltInTool;
+import com.holdmyspot.cat.common.optimizer.contract.BuiltInToolResult;
 import com.holdmyspot.cat.common.optimizer.contract.Cell;
 import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
@@ -74,14 +75,6 @@ import java.util.stream.Collectors;
 public final class Markdown
 {
 	private static final MathContext PERCENT_DIGITS = new MathContext(3);
-	/**
-	 * The name of the built-in tool that runs a prompt test's own program.
-	 */
-	private static final String CHECK_PROGRAM = "check-program";
-	/**
-	 * The behavior that a check program's error shows, as the proposal names it for the author.
-	 */
-	private static final String CHECK_PROGRAM_ERROR = "check_program_error";
 	/**
 	 * The largest number of files that a group of the files that load only in production may hold and still have the
 	 * proposal name each file.
@@ -844,7 +837,8 @@ public final class Markdown
 	{
 		if (finding.tool() == null)
 			return "This assertion depends only on replies. " + finding.rationale();
-		if (finding.tool().equals(CHECK_PROGRAM) || finding.tool().startsWith(CHECK_PROGRAM + " "))
+		if (finding.tool().equals(BuiltInTool.CheckProgram.NAME) ||
+			finding.tool().startsWith(BuiltInTool.CheckProgram.NAME + " "))
 		{
 			return "A check program, `" + finding.tool() + "`, can decide whether the action happened: write the " +
 				"program in `checks/` with its examples. " + finding.rationale();
@@ -873,7 +867,7 @@ public final class Markdown
 			{
 				text.append("` decides it; a failure is the behavior `").append(tool.behavior());
 				if (program)
-					text.append("`, and a program error is `").append(CHECK_PROGRAM_ERROR);
+					text.append("`, and a program error is `").append(BuiltInToolResult.PROGRAM_ERROR_BEHAVIOR);
 				text.append("`.\n");
 			}
 			case JUDGE ->

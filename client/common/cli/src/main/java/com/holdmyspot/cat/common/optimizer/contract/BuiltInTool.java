@@ -860,6 +860,11 @@ public sealed interface BuiltInTool
 	record CheckProgram(String program, List<String> arguments) implements BuiltInTool
 	{
 		/**
+		 * The name of the tool, which starts its {@code tool} line.
+		 */
+		public static final String NAME = "check-program";
+
+		/**
 		 * Creates a program declaration.
 		 *
 		 * @param program the path of the program under the prompt test's {@code checks/} directory
@@ -883,7 +888,7 @@ public sealed interface BuiltInTool
 		@Override
 		public String name()
 		{
-			return "check-program";
+			return NAME;
 		}
 
 		@Override
