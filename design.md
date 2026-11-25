@@ -1493,7 +1493,10 @@ that the write-ahead order below describes.
 	refuses (user ruling, 2026-11-18). Every deletion of a session folder removes its `session.json` last, so an
 	interrupted deletion keeps the record. Each launch records that a child may exist before spawning it, then records
 	its complete identity. Only a proven failed start or confirmed child exit can clear that uncertainty. A historical
-	record without child identity does not prove that no child exists. Historical complete identities remain usable for
+	record without child identity does not prove that no child exists. A slot whose launch state stays uncertain with
+	its owner gone is left untouched and reported, never emptied: the optimizer discards the attempt that the slot held
+	and reruns it in another slot, so the campaign continues, and the user removes the slot by hand (user ruling,
+	2026-11-25). Historical complete identities remain usable for
 	the same identity checks. Validate every affected record before deleting slot contents, and never signal a PID whose
 	identity is uncertain. A retained slot is never emptied to hand it on. Resuming or discarding its nested session
 	first stops the processes that its `session.json` records, under these identity checks, and refuses while one stays
@@ -1994,7 +1997,11 @@ When a nested session installs CAT (`--install-cat`), the runner also writes int
 entries that CAT's installer writes for the installed copy: Claude Code's sandbox exceptions and allow rules for the
 installer and the request server, and Codex's installer rules, request-server rule and CAT hook approvals. A trial
 session thus meets the same approvals as a user's session, and starts its own requested sessions without asking. Entries
-that concern only the user's own home, such as the consented sandbox profile and the uninstall record, are not written. The
+that concern only the user's own home, such as the consented sandbox profile and the uninstall record, are not written,
+and no installer policy is: the runner writes a marker that it installed CAT, and the installer's `status` in that
+home reports the installed version as installed by the runner, which that installer cannot update or repair, without
+contacting the release source, while a home with neither a policy nor the marker still refuses (user ruling,
+2026-11-25). The
 plugin that the runner installs stays readable and executable but not writable to the session's commands, in both
 harnesses, so a check program that the session's driver starts runs on a runtime that the session cannot change, as a
 host session is refused when it could write the copy of CAT that serves it.
@@ -3258,10 +3265,11 @@ brief was sufficient or an explanation is correct needs meaning and stays with a
 	`LC_ALL=C.UTF-8`, so that the host's settings do not change a verdict. CAT deletes the scratch directory after the
 	run. The program runs in the process that decides the trial's built-in tools, the campaign owner's driver, so a trial
 	that the other harness ran is checked in the same way ([§7.1](#71-shared-optimization-across-harnesses)). The
-	driver runs inside the owner session's sandbox, where the harness process that a policy reading must trust is not
-	visible, so it asks for the owner's sandbox policy the way it asks for a worktree: a nested session's runner answers
-	with the policy that it applied to that session, and the request server answers with its trusted readings of the
-	session it serves.
+	driver runs inside the owner session's sandbox, where neither the harness process that a policy reading must trust
+	nor the user namespaces and network setup that the program's sandbox needs are available, so it asks for the run the
+	way it asks for a worktree: outside that sandbox, a nested session's runner runs the program under the policy that it
+	applied to that session, and the request server runs it under its trusted readings of the session it serves; the
+	program's own sandbox, inputs and outcome are unchanged (user ruling, 2026-11-25).
 - **Outcome (limits: user ruling, 2026-11-23).** Exit status 0 passes and 1 fails. Any other status, a run that its
 	time limit of 60 seconds or its output limit of 16 KiB (standard output and standard error together) stops, and a
 	program that does not start because of its own content, such as one that does not compile, is a **program error**.
@@ -4379,7 +4387,9 @@ many sessions as its parent, one level less deep, and each level's runner starts
 session's sandbox (D107). The requesting session's results folder is denied to the requested session except the
 requesting session's installed CAT plugin, which stays readable and executable but not writable, so the requested
 session can run a contract tool that its request names by absolute path there; the exemption lists the folder's entries
-when the requested session starts. A requested session therefore has at most the permissions of the session that
+when the requested session starts. On Linux, where Codex hides a denied file by mounting over it and a file that CAT
+replaces during the mount fails the start, the requested session is denied the folder as one path instead and CAT's own
+outer bubblewrap gives the plugin back read-only; macOS and Windows keep the listing (user ruling, 2026-11-25). A requested session therefore has at most the permissions of the session that
 requested it, and no credential reaches a command beyond those its harness's limits allow. A requested session needs a
 few writes outside its session folder (its dependency caches) and hosts (its model's host); when the requesting
 session's sandbox does not allow all of them, the launcher does not start a session with less than it needs: it answers
