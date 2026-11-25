@@ -7,7 +7,6 @@ import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -63,39 +62,8 @@ public final class BubblewrapReadView
 	public static void applyReadDenials(List<String> command, ParentPolicy policy, Path scratch,
 		List<Path> requiredMasks, String subject, String operation) throws IOException
 	{
-		if (!policy.sandboxed() && requiredMasks.isEmpty())
-			return;
-		List<Path> required = RealPaths.resolveAll(requiredMasks);
-		List<Path> exceptions = List.of();
-		List<Path> denied = new ArrayList<>(required);
-		if (policy.sandboxed())
-		{
-			exceptions = RealPaths.resolveAll(policy.readReallowances()).stream().
-				filter(path -> !RealPaths.isInsideAny(path, required)).toList();
-			denied.addAll(RealPaths.resolveAll(policy.readDenials()));
-		}
-		denied.sort(Comparator.comparingInt(Path::getNameCount));
-		List<Path> masked = new ArrayList<>();
-		for (Path path : denied)
-		{
-			boolean mandatory = required.contains(path);
-			if (RealPaths.isInsideAny(path, masked) || !mandatory && RealPaths.isInsideAny(path, exceptions))
-				continue;
-			String denial = "the owner's denied read";
-			if (mandatory)
-				denial = "a required denied read";
-			String failure = subject + " cannot mask " + denial + " during " + operation + ": " + path;
-			if (path.getParent() == null || path.startsWith("/proc") || path.startsWith("/dev") ||
-				!mandatory && exceptions.stream().anyMatch(exception -> exception.startsWith(path)))
-			{
-				if (mandatory)
-					throw new IOException(failure);
-				throw new IOException(subject + " cannot represent the owner's read restriction during " + operation +
-					": " + path);
-			}
-			mask(command, path, mandatory, scratch, failure);
-			masked.add(path);
-		}
+		for (ReadDenials.Denial denial : ReadDenials.of(policy, requiredMasks, subject, operation))
+			mask(command, denial.path(), denial.mandatory(), scratch, denial.failure());
 	}
 
 	/**

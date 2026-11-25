@@ -294,8 +294,8 @@ judged assertion.
 - **Environment.** Only `CAT_CHECK_INPUT`, `CAT_CHECK_SCRATCH`, which names the scratch directory, `HOME`, `TMPDIR`,
 	`TMP` and `TEMP`, which name it too, `TZ=UTC` and `LC_ALL=C.UTF-8`. CAT deletes the scratch directory after the run.
 - **Sandbox.** The program has no network, writes only its scratch directory and cannot read held-out content. CAT
-	runs it under bubblewrap on Linux, and refuses a proposal with a check program, naming the reason, on native
-	Windows and on a host that cannot apply the sandbox, such as a Linux host without bubblewrap.
+	runs it under bubblewrap on Linux and under Seatbelt on macOS, and refuses a proposal with a check program, naming
+	the reason, on native Windows and on a host that cannot apply the sandbox, such as a Linux host without bubblewrap.
 - **Outcome.** The program exits with status 0 to pass and with status 1 to fail. Any other status, a run longer than
 	60 seconds, output beyond 16 KiB of standard output and standard error together, and a program that does not
 	compile are a program error. CAT keeps the output, up to the limit and with standard output first, as the

@@ -40,6 +40,7 @@ import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
+import com.holdmyspot.cat.common.runner.policy.SeatbeltProfile;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 
 import java.io.File;
@@ -2382,7 +2383,7 @@ public final class ClaudeRunnerTest
 				requireThat(ClaudeSessionSandbox.temporaryFolder(result), "temporaryFolder").isEqualTo(Path.of("/tmp"));
 				requireThat(ClaudeSessionSandbox.startRefusal(Platform.current(), result.get("PATH"),
 					ClaudeSessionSandbox.temporaryFolder(result), null, null,
-					ClaudeSessionSandbox.MACOS_SANDBOX_EXECUTABLE, null, null).orElse(""), "refusal").
+					SeatbeltProfile.SANDBOX_EXECUTABLE, null, null).orElse(""), "refusal").
 					doesNotContain("temporary folder");
 			}
 		}

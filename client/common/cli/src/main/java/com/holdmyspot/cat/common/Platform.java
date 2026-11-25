@@ -125,6 +125,16 @@ public enum Platform
 	}
 
 	/**
+	 * Indicates whether the platform is macOS.
+	 *
+	 * @return {@code true} for macOS
+	 */
+	public boolean isMacos()
+	{
+		return this == MACOS_X64 || this == MACOS_ARM64;
+	}
+
+	/**
 	 * Indicates whether the platform is Windows.
 	 *
 	 * @return {@code true} for Windows

@@ -118,7 +118,7 @@ public final class CheckProgramTest
 	{
 		// Requirement: R-L21
 		Launch nativeLaunch = nativeLaunch();
-		Path binary = nativeLaunch.bubblewrap();
+		Path binary = nativeLaunch.sandbox();
 		Map<String, String> environment = Map.of("PATH", binary.getParent().toString());
 		ParentPolicy earlier = new ParentPolicy(true, List.of(binary), List.of(), List.of(), List.of(),
 			HostAccess.ALL, true, List.of());
@@ -448,7 +448,7 @@ public final class CheckProgramTest
 			Path heldFixture = Files.writeString(held.resolve("data.txt"), "held-out fixture");
 			ParentPolicy owner = new ParentPolicy(true, List.of(root), List.of(), List.of(denied, held),
 				List.of(held), HostAccess.ALL, true, List.of());
-			Launch launch = new Launch(nativeLaunch.bubblewrap(), nativeLaunch.javaExecutable(), owner, List.of(held));
+			Launch launch = new Launch(nativeLaunch.sandbox(), nativeLaunch.javaExecutable(), owner, List.of(held));
 			List<String> arguments = List.of(outside.toString(), ownerFixture.toString(), heldFixture.toString(),
 				String.valueOf(socket.getLocalPort()));
 
@@ -567,7 +567,7 @@ public final class CheckProgramTest
 		ParentPolicy owner = new ParentPolicy(true, List.of(root), List.of(), denials, List.of(), HostAccess.ALL,
 			true, List.of());
 		List<String> arguments = probes.stream().map(Path::toString).toList();
-		return CheckProgram.run(new Launch(launch.bubblewrap(), launch.javaExecutable(), owner, List.of()),
+		return CheckProgram.run(new Launch(launch.sandbox(), launch.javaExecutable(), owner, List.of()),
 			fixture.input(), fixture.scratchParent(), new BuiltInTool.CheckProgram(PROGRAM, arguments), Map.of(),
 			NORMAL_TIMEOUT, NORMAL_OUTPUT_LIMIT);
 	}

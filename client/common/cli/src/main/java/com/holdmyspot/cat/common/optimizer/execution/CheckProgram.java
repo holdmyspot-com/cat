@@ -10,7 +10,9 @@ import com.holdmyspot.cat.common.optimizer.contract.BuiltInTool;
 import com.holdmyspot.cat.common.runner.policy.BubblewrapReadView;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
+import com.holdmyspot.cat.common.runner.policy.ReadDenials;
 import com.holdmyspot.cat.common.runner.policy.RealPaths;
+import com.holdmyspot.cat.common.runner.policy.SeatbeltProfile;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -19,6 +21,7 @@ import java.lang.module.ModuleFinder;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +43,7 @@ public final class CheckProgram
 	private static final Path ENV = Path.of("/usr/bin/env");
 	private static final String SCRATCH = "scratch";
 	private static final String LAUNCHER = "CatCheckSource.java";
+	private static final String PROFILE = "check-program.sb";
 	private static final String READY = "CAT check source ready";
 	/*
 	 * The launcher discards the source launcher's compiler output so that a warning of a program that runs stays out of
@@ -118,19 +122,20 @@ public final class CheckProgram
 	private static final Duration CLEANUP_LIMIT = Duration.ofSeconds(5);
 
 	/**
-	 * The trusted Linux launch executables and the owner's effective read restrictions.
+	 * The trusted launch executables and the owner's effective read restrictions.
 	 *
-	 * @param bubblewrap the absolute path to the protected sandbox executable
+	 * @param sandbox the absolute path to the protected sandbox executable: Bubblewrap on Linux and
+	 *   {@code sandbox-exec} on macOS
 	 * @param javaExecutable the absolute path to Java from CAT's runtime
 	 * @param policy the authenticated owner's filesystem policy
 	 * @param heldOut the absolute paths of the held-out content and results to mask independently of the policy
 	 */
-	public record Launch(Path bubblewrap, Path javaExecutable, ParentPolicy policy, List<Path> heldOut)
+	public record Launch(Path sandbox, Path javaExecutable, ParentPolicy policy, List<Path> heldOut)
 	{
 		/**
 		 * Records the launch conditions.
 		 *
-		 * @param bubblewrap the absolute path to the protected sandbox executable
+		 * @param sandbox the absolute path to the protected sandbox executable
 		 * @param javaExecutable the absolute path to Java from CAT's runtime
 		 * @param policy the authenticated owner's filesystem policy
 		 * @param heldOut the absolute paths of the held-out content and results to mask
@@ -139,7 +144,7 @@ public final class CheckProgram
 		 */
 		public Launch
 		{
-			requireThat(bubblewrap.isAbsolute(), "isAbsolute(bubblewrap)").isTrue();
+			requireThat(sandbox.isAbsolute(), "isAbsolute(sandbox)").isTrue();
 			requireThat(javaExecutable.isAbsolute(), "isAbsolute(javaExecutable)").isTrue();
 			requireThat(policy, "policy").isNotNull();
 			heldOut = List.copyOf(heldOut);
@@ -170,7 +175,8 @@ public final class CheckProgram
 	}
 
 	/**
-	 * Resolves the owner's Linux sandbox and bundled Java against each authenticated policy reading.
+	 * Resolves the owner's sandbox, Bubblewrap on Linux and {@code sandbox-exec} on macOS, and the bundled Java against
+	 * each authenticated policy reading.
 	 *
 	 * @param platform the execution platform
 	 * @param environment the owner's program search environment
@@ -190,14 +196,27 @@ public final class CheckProgram
 		requireThat(heldOut, "heldOut").isNotNull();
 		if (platform.isWindows())
 			throw new IOException("Check programs require WSL2 on Windows.");
-		if (!platform.isLinux())
+		if (!platform.isLinux() && !platform.isMacos())
 			throw new IOException("CAT has no check program sandbox on " + platform.id() + ".");
 		if (policies.isEmpty())
 			throw new IOException("No authenticated owner policy was available for the check program.");
 
-		Path located = Path.of(platform.findProgram("bwrap", environment));
-		if (!located.isAbsolute())
-			throw new IOException("Check programs require Bubblewrap (bwrap) at an absolute location on PATH.");
+		Path located;
+		if (platform.isLinux())
+		{
+			located = Path.of(platform.findProgram("bwrap", environment));
+			if (!located.isAbsolute())
+				throw new IOException("Check programs require Bubblewrap (bwrap) at an absolute location on PATH.");
+		}
+		else
+		{
+			located = SeatbeltProfile.SANDBOX_EXECUTABLE;
+			if (!Files.isExecutable(located))
+			{
+				throw new IOException("Check programs require " + located + " on macOS, which is missing or not " +
+					"executable.");
+			}
+		}
 		Path sandbox = located.toRealPath();
 		Path runtime = Path.of(System.getProperty("java.home")).toRealPath();
 		Path java = runtime.resolve("bin").resolve("java").toRealPath();
@@ -230,7 +249,7 @@ public final class CheckProgram
 	/**
 	 * Runs a program from a staged, private input directory, using an empty scratch directory.
 	 *
-	 * @param launch the trusted Linux executables and authenticated policy
+	 * @param launch the trusted executables and authenticated policy
 	 * @param input the staged input directory
 	 * @param scratchParent a private directory in which the owner may create scratch directories
 	 * @param declaration the assertion's check program
@@ -255,7 +274,7 @@ public final class CheckProgram
 	/**
 	 * Runs a program from a staged, private input directory, using an empty scratch directory.
 	 *
-	 * @param launch the trusted Linux executables and authenticated policy
+	 * @param launch the trusted executables and authenticated policy
 	 * @param input the staged input directory
 	 * @param scratchParent a private directory in which the owner may create scratch directories
 	 * @param programPath the path of the program below the input directory
@@ -276,8 +295,8 @@ public final class CheckProgram
 		requireThat(arguments, "arguments").isNotNull();
 		requireThat(timeout.isPositive(), "positiveTimeout").isTrue();
 		requireThat(outputLimit, "outputLimit").isPositive();
-		if (!Platform.current().isLinux())
-			throw new IOException("Check programs require the Linux sandbox or WSL2 on Windows");
+		if (Platform.current().isWindows())
+			throw new IOException("Check programs require WSL2 on Windows");
 
 		Path evidence = input.toRealPath();
 		Path program = evidence.resolve(programPath);
@@ -318,7 +337,7 @@ public final class CheckProgram
 	private static List<String> command(Launch launch, Path input, Path work, Path scratch) throws IOException
 	{
 		ParentPolicy policy = launch.policy();
-		for (Path executable : List.of(launch.bubblewrap(), launch.javaExecutable(), ENV))
+		for (Path executable : List.of(launch.sandbox(), launch.javaExecutable(), ENV))
 		{
 			if (!Files.isExecutable(executable) || !policy.mayRead(executable))
 				throw new IOException("Check program sandbox cannot use executable: " + executable);
@@ -331,17 +350,76 @@ public final class CheckProgram
 			if (input.startsWith(mask) || mask.startsWith(input) || work.startsWith(mask) || mask.startsWith(work))
 				throw new IOException("Check program input or scratch intersects a held-out directory: " + mask);
 		}
+		if (Platform.current().isMacos())
+			return seatbeltCommand(launch, input, work, scratch, masks);
+		return bubblewrapCommand(launch, input, work, scratch, masks);
+	}
 
-		List<String> command = BubblewrapReadView.readOnlyView(launch.bubblewrap());
+	/**
+	 * Builds the Linux command, which runs the program in a read-only view with the network unshared.
+	 *
+	 * @param launch the authenticated launch conditions
+	 * @param input the staged input
+	 * @param work the host-owned work directory for the launcher and masks
+	 * @param scratch the program's empty writable directory
+	 * @param masks the held-out paths to mask
+	 * @return the sandbox command prefix ending with the fixed environment assignments
+	 * @throws IOException if the filesystem view cannot be prepared
+	 */
+	private static List<String> bubblewrapCommand(Launch launch, Path input, Path work, Path scratch, List<Path> masks)
+		throws IOException
+	{
+		List<String> command = BubblewrapReadView.readOnlyView(launch.sandbox());
 		String scratchPath = scratch.toString();
 		command.addAll(List.of("--remount-ro", "/proc", "--remount-ro", "/dev", "--ro-bind", input.toString(),
 			input.toString(), "--bind", scratchPath, scratchPath));
-		BubblewrapReadView.applyReadDenials(command, policy, work, masks, "CAT", "check program launch");
+		BubblewrapReadView.applyReadDenials(command, launch.policy(), work, masks, "CAT", "check program launch");
 		// Bubblewrap supplies PWD even when its input environment is empty.
-		command.addAll(List.of("--chdir", scratchPath, "--", ENV.toString(), "-i", "CAT_CHECK_INPUT=" + input,
-			"CAT_CHECK_SCRATCH=" + scratchPath, "HOME=" + scratchPath, "TMPDIR=" + scratchPath, "TMP=" + scratchPath,
-			"TEMP=" + scratchPath, "TZ=UTC", "LC_ALL=C.UTF-8"));
+		command.addAll(List.of("--chdir", scratchPath, "--"));
+		command.addAll(environment(input, scratchPath));
 		return command;
+	}
+
+	/**
+	 * Builds the macOS command, which applies a profile that CAT writes to the work directory and denies the network,
+	 * every write outside the scratch directory and the same reads that the Linux view masks.
+	 *
+	 * @param launch the authenticated launch conditions
+	 * @param input the staged input
+	 * @param work the host-owned work directory for the launcher and the profile
+	 * @param scratch the program's empty writable directory
+	 * @param masks the held-out paths to deny
+	 * @return the sandbox command prefix ending with the fixed environment assignments
+	 * @throws IOException if the profile cannot be written or the read policy cannot be enforced
+	 */
+	private static List<String> seatbeltCommand(Launch launch, Path input, Path work, Path scratch, List<Path> masks)
+		throws IOException
+	{
+		List<Path> denied = new ArrayList<>();
+		for (ReadDenials.Denial denial : ReadDenials.of(launch.policy(), masks, "CAT", "check program launch"))
+		{
+			if (denial.mandatory() && !Files.exists(denial.path()))
+				throw new IOException(denial.failure());
+			denied.add(denial.path());
+		}
+		Path profile = Files.writeString(work.resolve(PROFILE), SeatbeltProfile.confining(scratch, denied));
+		List<String> command = new ArrayList<>(List.of(launch.sandbox().toString(), "-f", profile.toString()));
+		command.addAll(environment(input, scratch.toString()));
+		return command;
+	}
+
+	/**
+	 * Returns the command that starts the program with the fixed environment.
+	 *
+	 * @param input the staged input
+	 * @param scratchPath the program's writable directory
+	 * @return {@code env} with the assignments, which the caller follows with the program's own command
+	 */
+	private static List<String> environment(Path input, String scratchPath)
+	{
+		return List.of(ENV.toString(), "-i", "CAT_CHECK_INPUT=" + input, "CAT_CHECK_SCRATCH=" + scratchPath,
+			"HOME=" + scratchPath, "TMPDIR=" + scratchPath, "TMP=" + scratchPath, "TEMP=" + scratchPath, "TZ=UTC",
+			"LC_ALL=C.UTF-8");
 	}
 
 	/**

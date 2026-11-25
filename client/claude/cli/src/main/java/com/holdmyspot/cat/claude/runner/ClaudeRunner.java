@@ -45,6 +45,7 @@ import com.holdmyspot.cat.common.runner.UserRuleTree;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
+import com.holdmyspot.cat.common.runner.policy.SeatbeltProfile;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 
 import java.io.ByteArrayOutputStream;
@@ -365,7 +366,7 @@ public final class ClaudeRunner
 		Map<String, String> processEnvironment = ClaudeProcessEnvironment.baseEnvironment(environment);
 		String path = processEnvironment.getOrDefault("PATH", "");
 		Path temporaryFolder = ClaudeSessionSandbox.temporaryFolder(processEnvironment);
-		Path sandboxExecutable = ClaudeSessionSandbox.MACOS_SANDBOX_EXECUTABLE;
+		Path sandboxExecutable = SeatbeltProfile.SANDBOX_EXECUTABLE;
 		try (AbstractHarnessRunnerScope scope = new MainHarnessRunnerScope(environment, waiting))
 		{
 			// From the lowest precedence to the highest: the project's files, which the managed files override

@@ -6,6 +6,7 @@ import com.holdmyspot.cat.claude.runner.ClaudeSandboxSettings.Setting;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.HarnessSandbox;
+import com.holdmyspot.cat.common.runner.policy.SeatbeltProfile;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -36,17 +37,9 @@ public final class ClaudeSessionSandbox
 	 */
 	private static final int MACOS_FOLDER_LIMIT = 68;
 	/**
-	 * The Seatbelt profile that the macOS probe applies.
-	 */
-	private static final String MACOS_PROFILE = "(version 1)(allow default)";
-	/**
 	 * The start of every refusal of a launch whose sandbox would not start.
 	 */
 	private static final String START_PREFIX = "CAT does not start the session: ";
-	/**
-	 * The program that applies a Seatbelt profile on macOS, which Claude Code's sandbox runs its commands through.
-	 */
-	public static final Path MACOS_SANDBOX_EXECUTABLE = Path.of("/usr/bin/sandbox-exec");
 	/**
 	 * The tools that read and search files, and the only tools that a session that runs without a sandbox may be
 	 * offered: none of them runs a command or writes a file, so Claude Code's permission rules, which govern them
@@ -118,7 +111,7 @@ public final class ClaudeSessionSandbox
 		}
 		if (!Files.isExecutable(sandboxExecutable))
 			return Optional.empty();
-		return Optional.of(List.of(sandboxExecutable.toString(), "-p", MACOS_PROFILE, "/usr/bin/true"));
+		return Optional.of(List.of(sandboxExecutable.toString(), "-p", SeatbeltProfile.PERMISSIVE, "/usr/bin/true"));
 	}
 
 	/**
@@ -245,9 +238,9 @@ public final class ClaudeSessionSandbox
 		if (probe == null || probe.exitStatus() == 0)
 			return Optional.empty();
 		return Optional.of(START_PREFIX + "Seatbelt could not apply a profile: " +
-			probeOutcome("sandbox-exec -p '" + MACOS_PROFILE + "' /usr/bin/true", probe) + ". Claude Code's sandbox needs " +
-			"Seatbelt to apply a profile where CAT runs; start the session from a process that may run sandbox-exec, " +
-			"then start the session again.");
+			probeOutcome("sandbox-exec -p '" + SeatbeltProfile.PERMISSIVE + "' /usr/bin/true", probe) +
+			". Claude Code's sandbox needs Seatbelt to apply a profile where CAT runs; start the session from a " +
+			"process that may run sandbox-exec, then start the session again.");
 	}
 
 	/**
