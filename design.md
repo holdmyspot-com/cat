@@ -3254,7 +3254,11 @@ brief was sufficient or an explanation is correct needs meaning and stays with a
 	`CAT_CHECK_SCRATCH`, and `HOME`, `TMPDIR`, `TMP` and `TEMP` naming the scratch directory, `TZ=UTC` and
 	`LC_ALL=C.UTF-8`, so that the host's settings do not change a verdict. CAT deletes the scratch directory after the
 	run. The program runs in the process that decides the trial's built-in tools, the campaign owner's driver, so a trial
-	that the other harness ran is checked in the same way ([§7.1](#71-shared-optimization-across-harnesses)).
+	that the other harness ran is checked in the same way ([§7.1](#71-shared-optimization-across-harnesses)). The
+	driver runs inside the owner session's sandbox, where the harness process that a policy reading must trust is not
+	visible, so it asks for the owner's sandbox policy the way it asks for a worktree: a nested session's runner answers
+	with the policy that it applied to that session, and the request server answers with its trusted readings of the
+	session it serves.
 - **Outcome (limits: user ruling, 2026-11-23).** Exit status 0 passes and 1 fails. Any other status, a run that its
 	time limit of 60 seconds or its output limit of 16 KiB (standard output and standard error together) stops, and a
 	program that does not start because of its own content, such as one that does not compile, is a **program error**.
