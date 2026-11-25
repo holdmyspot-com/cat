@@ -11473,9 +11473,10 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 	are found by the `PATH` search of `CodexRunner.bubblewrap`, moved into `HarnessEnvironment` as a search for a named
 	program so that both runners use one.
 	(2) The check of the session's own report. The runner reads the result of the session's first Bash call once, and
-	recognizes Claude Code's report that its sandbox failed to start by the form that 2.1.330 recorded without the scrub,
-	"Sandbox is enabled but failed to initialize"; no session runs with the scrub (D170), so the form that it gives
-	under the scrub, "Sandbox is required but failed to initialize" (H47), is not recognized. On the report it stops the
+	recognizes Claude Code's report that its sandbox failed to start by either form: "Sandbox is enabled but failed to
+	initialize", which 2.1.330 recorded without `sandbox.failIfUnavailable`, and "Sandbox is required but failed to
+	initialize", which Claude Code gives when the settings hold `sandbox.failIfUnavailable: true`, as every runner
+	session's do, or under the scrub (H47; correction 2026-11-25 after the end-to-end check). On the report it stops the
 	Claude process, sends it no further input and reports the turn as an infrastructure failure whose
 	reason quotes the report and says whether a Bash result followed it, which shows that a command ran outside the
 	sandbox.
