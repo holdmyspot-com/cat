@@ -413,14 +413,11 @@ v2.0" ''; do
 	# The file's lines wrap and its bullet continues on an indented line, so the checks read it as one line
 	agent_section="$(tr '\n\t' '  ' < "${repository}/docs/agent-installation.md" | tr -s ' ')"
 	[[ "${agent_section}" == *"If CAT's \`update\` skill is installed, use it."* ]]
-	[[ "${agent_section}" == *"do not download or run this release's files"* ]]
-	[[ "${agent_section}" == *"after \`! \`"* ]]
-	[[ "${agent_section}" == *"\`CLAUDE_CONFIG_DIR=<value>\` or \`CODEX_HOME=<value>\` before \`sh\` when your session sets it"* ]]
-	[[ "${agent_section}" == *"${SINGLE_COMMAND_URL} | sh -s -- --harness claude"* ]]
+	[[ "${agent_section}" == *"Otherwise leave the installation to the user."* ]]
+	[[ "${agent_section}" == *"point them to the command for their harness and shell in the [getting-started guide](installation.md)"* ]]
+	[[ "${agent_section}" == *"write a runnable command file with values quoted for the receiving shell"* ]]
+	[[ "${agent_section}" == *"set \`HOME\` only when they differ or the account's home cannot be determined"* ]]
+	[[ "${agent_section}" == *"On Windows, use the harness configuration directory override when needed."* ]]
+	[[ "${agent_section}" == *"direct the user to the guide's custom-directory instructions"* ]]
 	[[ "${agent_section}" != *"HOME=<home>"* ]]
-	[[ "${agent_section}" == *"Add \`HOME=<your session's HOME>\` before \`sh\` only when it differs from the account's home folder"* ]]
-	[[ "${agent_section}" == *"\`getent passwd \"\$(id -un)\" | cut -d: -f6\` prints on Linux"* ]]
-	[[ "${agent_section}" == *"\`dscl . -read \"/Users/\$(id -un)\" NFSHomeDirectory\` on macOS, or when you cannot tell"* ]]
-	[[ "${agent_section}" == *"On Windows, write no \`HOME\`"* ]]
-	[[ "${agent_section}" == *"& ([scriptblock]::Create((irm https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.ps1))) -Harness claude"* ]]
 }
