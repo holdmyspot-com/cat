@@ -384,7 +384,8 @@ public final class RequestArchive
 		}
 		String program = optionalText(value, PROGRAM).orElse("");
 		Path path = Path.of(program);
-		if (program.isBlank() || path.isAbsolute() || !path.normalize().equals(path) || path.startsWith(".."))
+		// On Windows, a path that starts with a separator or a drive has a root but may not be absolute
+		if (program.isBlank() || path.getRoot() != null || !path.normalize().equals(path) || path.startsWith(".."))
 			throw new IOException("A check program must be a normalized relative path inside its input: " + program);
 		JsonNode argumentNodes = value.path(ARGUMENTS);
 		if (!argumentNodes.isArray() || argumentNodes.size() > MAXIMUM_CHECK_PROGRAM_ARGUMENTS)
