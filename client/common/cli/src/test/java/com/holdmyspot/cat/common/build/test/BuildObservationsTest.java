@@ -16,6 +16,7 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -149,6 +150,35 @@ public final class BuildObservationsTest
 				new SequencedIdentities(initial, replacement));
 
 			requireThat(observations.process(pid).isEmpty(), "processSample").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that the host sample reads available memory from the memory file that the observations are given, while it
+	 * reads the boot identity from the proc root.
+	 *
+	 * @throws IOException if the fixtures cannot be written or the host cannot be sampled
+	 */
+	@Test
+	public void hostSampleReadsMemoryFromTheNamedFile() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path proc = cleanup.add(Files.createTempDirectory("cat-build-proc-"));
+			UUID bootId = UUID.randomUUID();
+			Path bootIdFile = proc.resolve("sys/kernel/random/boot_id");
+			Files.createDirectories(bootIdFile.getParent());
+			Files.writeString(bootIdFile, bootId + "\n");
+			Files.writeString(proc.resolve("meminfo"), "MemAvailable: 1 kB\n");
+			Path meminfo = Files.writeString(cleanup.add(Files.createTempDirectory("cat-build-memory-")).
+				resolve("meminfo"), "MemAvailable: 42 kB\n");
+			BuildObservations observations = new BuildObservations(proc, meminfo, new FixedMetrics(101),
+				_ -> Optional.empty());
+
+			BuildObservations.HostSample host = observations.host();
+
+			requireThat(host.availableBytes(), "availableBytes").isEqualTo(42L * 1024);
+			requireThat(host.bootId(), "bootId").isEqualTo(bootId);
 		}
 	}
 

@@ -1002,8 +1002,10 @@ public final class BuildWorkerTest
 				BuildAdmission.HostContext context = BuildAdmission.HostContext.read(scope.json(), contextFile);
 				HarnessProcesses processAuthority = HarnessProcesses.system();
 				// This boundary checks real process discovery, RSS sampling and reaping.
-				// Host CPU admission is tested separately.
-				BuildObservations observations = new BuildObservations(Path.of("/proc"),
+				// Host CPU and memory admission are tested separately, so the host's load and free memory, which other
+				// processes of the build change, must not decide whether the worker starts.
+				Path meminfo = Files.writeString(root.resolve("meminfo"), "MemAvailable: 67108864 kB\n");
+				BuildObservations observations = new BuildObservations(Path.of("/proc"), meminfo,
 					new IdleCpuMetrics(BuildObservations.systemMetrics()), pid ->
 						processAuthority.find(pid).map(description -> description.start().map(start ->
 							new ProcessIdentity(pid, start)).orElse(null)));

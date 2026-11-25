@@ -33,6 +33,7 @@ public final class BuildObservations
 	private static final String DEFAULT_SYSFS = "/sys";
 	private static final Object OSHI_CONFIGURATION_LOCK = new Object();
 	private final Path procRoot;
+	private final Path meminfo;
 	private final Metrics metrics;
 	private final IdentityLookup identities;
 
@@ -46,7 +47,23 @@ public final class BuildObservations
 	 */
 	public BuildObservations(Path procRoot, Metrics metrics, IdentityLookup identities)
 	{
+		this(procRoot, Objects.requireNonNull(procRoot, "procRoot").resolve("meminfo"), metrics, identities);
+	}
+
+	/**
+	 * Creates observations that read host memory from a file other than the proc root's own, so that a caller can
+	 * observe real processes while it fixes the memory that the host reports.
+	 *
+	 * @param procRoot   root of the proc filesystem used for host and process records
+	 * @param meminfo    the file, in the format of {@code /proc/meminfo}, that reports the host's available memory
+	 * @param metrics    provider of CPU, process and descendant observations
+	 * @param identities lookup for stable process identities
+	 * @throws NullPointerException if any argument is null
+	 */
+	public BuildObservations(Path procRoot, Path meminfo, Metrics metrics, IdentityLookup identities)
+	{
 		this.procRoot = Objects.requireNonNull(procRoot, "procRoot").toAbsolutePath().normalize();
+		this.meminfo = Objects.requireNonNull(meminfo, "meminfo").toAbsolutePath().normalize();
 		this.metrics = Objects.requireNonNull(metrics, "metrics");
 		this.identities = Objects.requireNonNull(identities, "identities");
 	}
@@ -141,7 +158,7 @@ public final class BuildObservations
 		if (!validCpuLoad || !validProcessorCounts)
 			throw new IOException("Invalid host CPU observation in " + procRoot);
 
-		return new HostSample(bootId, availableMemory(procRoot.resolve("meminfo")), cpuLoad,
+		return new HostSample(bootId, availableMemory(meminfo), cpuLoad,
 			Math.min(logicalProcessors, availableProcessors));
 	}
 
