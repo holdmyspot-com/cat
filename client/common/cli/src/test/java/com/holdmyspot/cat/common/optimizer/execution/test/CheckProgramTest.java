@@ -40,6 +40,7 @@ public final class CheckProgramTest
 	private static final String INPUT_FILE = "project/message.txt";
 	private static final Duration NORMAL_TIMEOUT = Duration.ofSeconds(30);
 	private static final int NORMAL_OUTPUT_LIMIT = 16 * 1024;
+	private static final String SOURCE_MARKER = "private check source marker";
 
 	/**
 	 * Creates the test.
@@ -136,7 +137,8 @@ public final class CheckProgramTest
 	}
 
 	/**
-	 * Reports a Java compilation failure as a program error with a compiler diagnostic.
+	 * Reports a Java compilation failure as a program error with a compiler diagnostic that names the failing line
+	 * without quoting the program's source, since the observed value can reach a judge.
 	 *
 	 * @throws IOException if a fixture or process cannot be used
 	 * @throws InterruptedException if a process wait is interrupted
@@ -154,16 +156,53 @@ public final class CheckProgramTest
 				{
 					public static void main(String[] args)
 					{
-						missingForCompilationFixture();
+						missingForCompilationFixture(); // %s
 					}
 				}
-				""");
+				""".formatted(SOURCE_MARKER));
 
 			Result result = CheckProgram.run(launch, fixture.input(), fixture.scratchParent(),
 				new BuiltInTool.CheckProgram(PROGRAM, List.of()), Map.of(), NORMAL_TIMEOUT, NORMAL_OUTPUT_LIMIT);
 
 			requireThat(result.outcome(), "outcome").isEqualTo(Outcome.ERROR);
-			requireThat(result.observed(), "compilerDiagnostic").contains("missingForCompilationFixture");
+			requireThat(result.observed(), "compilerDiagnostic").contains(PROGRAM + ":5: error: cannot find symbol").
+				contains("missingForCompilationFixture").doesNotContain(SOURCE_MARKER);
+			requireScratchClean(fixture.scratchParent());
+		}
+	}
+
+	/**
+	 * Leaves compiler warnings, which quote the program's source, out of the observed value of a program that runs.
+	 *
+	 * @throws IOException if a fixture or process cannot be used
+	 * @throws InterruptedException if a process wait is interrupted
+	 */
+	@Test
+	public void omitsCompilerWarnings() throws IOException, InterruptedException
+	{
+		// Requirement: R-L21
+		Launch launch = nativeLaunch();
+		try (TestJvmScope jvm = new TestJvmScope(); TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "check-warning-"));
+			Fixture fixture = fixture(root, """
+				final class Check
+				{
+					public static void main(String[] args)
+					{
+						int year = new java.util.Date().getYear(); // %s
+						System.out.println("checked year " + (year >= 0));
+						System.exit(1);
+					}
+				}
+				""".formatted(SOURCE_MARKER));
+
+			Result result = CheckProgram.run(launch, fixture.input(), fixture.scratchParent(),
+				new BuiltInTool.CheckProgram(PROGRAM, List.of()), Map.of(), NORMAL_TIMEOUT, NORMAL_OUTPUT_LIMIT);
+
+			requireThat(result.outcome(), "outcome").isEqualTo(Outcome.FAIL);
+			requireThat(result.observed(), "observed").contains("checked year true").doesNotContain(SOURCE_MARKER).
+				doesNotContain("deprecat");
 			requireScratchClean(fixture.scratchParent());
 		}
 	}

@@ -41,10 +41,27 @@ public final class CheckProgram
 	private static final String SCRATCH = "scratch";
 	private static final String LAUNCHER = "CatCheckSource.java";
 	private static final String READY = "CAT check source ready";
+	/*
+	 * The compiler quotes a program's source lines in its warnings and errors, and the observed value can reach a judge,
+	 * which must never see the program. The launcher therefore discards the source launcher's compiler output and, when
+	 * the program does not start, reports each error by its location and message only.
+	 */
 	private static final String SOURCE = """
+		import com.sun.source.util.JavacTask;
 		import com.sun.tools.javac.launcher.Fault;
 		import com.sun.tools.javac.launcher.SourceLauncher;
+		import java.io.PrintWriter;
+		import java.io.StringWriter;
 		import java.lang.reflect.InvocationTargetException;
+		import java.nio.file.Path;
+		import java.util.List;
+		import java.util.Locale;
+		import javax.tools.Diagnostic;
+		import javax.tools.DiagnosticCollector;
+		import javax.tools.JavaCompiler;
+		import javax.tools.JavaFileObject;
+		import javax.tools.StandardJavaFileManager;
+		import javax.tools.ToolProvider;
 
 		class CatCheckSource
 		{
@@ -53,10 +70,11 @@ public final class CheckProgram
 				System.err.println("%s");
 				try
 				{
-					new SourceLauncher(System.err).run(new String[0], arguments);
+					new SourceLauncher(new PrintWriter(new StringWriter(), true)).run(new String[0], arguments);
 				}
 				catch (Fault e)
 				{
+					reportErrors(Path.of(arguments[0]));
 					System.err.println(e.getMessage());
 					System.exit(2);
 				}
@@ -64,6 +82,39 @@ public final class CheckProgram
 				{
 					e.getCause().printStackTrace(System.err);
 					System.exit(2);
+				}
+			}
+
+			private static void reportErrors(Path program)
+			{
+				try
+				{
+					JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+					DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
+					try (StandardJavaFileManager files = compiler.getStandardFileManager(diagnostics, Locale.ROOT, null))
+					{
+						JavacTask task = (JavacTask) compiler.getTask(new StringWriter(), files, diagnostics,
+							List.of("-proc:none", "-implicit:none", "-Xlint:none", "-sourcepath",
+								program.getParent().toString()), null, files.getJavaFileObjects(program));
+						task.analyze();
+					}
+					Path input = Path.of(System.getenv("CAT_CHECK_INPUT"));
+					for (Diagnostic<? extends JavaFileObject> diagnostic : diagnostics.getDiagnostics())
+					{
+						if (diagnostic.getKind() != Diagnostic.Kind.ERROR)
+							continue;
+						String location = "";
+						if (diagnostic.getSource() != null)
+						{
+							location = input.relativize(Path.of(diagnostic.getSource().toUri())) + ":" +
+								diagnostic.getLineNumber() + ": ";
+						}
+						System.err.println(location + "error: " + diagnostic.getMessage(Locale.ROOT));
+					}
+				}
+				catch (Exception | Error e)
+				{
+					System.err.println("The compiler errors could not be listed: " + e.getClass().getName());
 				}
 			}
 		}
