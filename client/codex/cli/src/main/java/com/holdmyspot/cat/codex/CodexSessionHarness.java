@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.codex;
 
 import com.holdmyspot.cat.codex.layout.CodexInstallation;
+import com.holdmyspot.cat.codex.optimizer.CodexInstalledCopies;
 import com.holdmyspot.cat.common.SessionHarness;
 import java.util.List;
 
@@ -18,7 +19,7 @@ public final class CodexSessionHarness
 	public static final SessionHarness HARNESS = new SessionHarness(CodexPluginInfo.HARNESS_ID, "CODEX_THREAD_ID",
 		"CODEX_HOME", CodexInstallation.defaultHome(),
 		List.of("sessions/**/rollout-*-" + SessionHarness.SESSION_ID + ".jsonl",
-			"archived_sessions/rollout-*-" + SessionHarness.SESSION_ID + ".jsonl"));
+			"archived_sessions/rollout-*-" + SessionHarness.SESSION_ID + ".jsonl"), CodexInstalledCopies::in);
 
 	/**
 	 * Returns the Codex session harness to a {@link java.util.ServiceLoader}.

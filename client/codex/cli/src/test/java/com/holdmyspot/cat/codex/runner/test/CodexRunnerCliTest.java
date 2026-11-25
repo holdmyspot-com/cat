@@ -4,9 +4,11 @@ import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.codex.optimizer.CodexInstalledCopies;
 import com.holdmyspot.cat.codex.runner.CodexRunnerCli;
 import com.holdmyspot.cat.codex.secrets.CodexRunnerCliAccess;
 import com.holdmyspot.cat.codex.secrets.CodexRunnerCliSecrets;
+import com.holdmyspot.cat.common.InstalledCopies;
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionHarness;
@@ -1165,6 +1167,38 @@ public final class CodexRunnerCliTest
 	}
 
 	/**
+	 * Verifies that when Codex caches two versions of CAT and the older one sorts first, the launch refusal from a copy
+	 * of CAT names the request server of the version that Codex loads, which is the newer one, not the first cache
+	 * entry.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void namesLoadedVersionServer() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("runner-home-")).toRealPath();
+			Path codexHome = Files.createDirectories(home.resolve(".codex"));
+			Path cache = codexHome.resolve("plugins/cache/cat/cat");
+			Path older = Files.createDirectories(cache.resolve("1.9.0/.codex-plugin"));
+			Path newer = Files.createDirectories(cache.resolve("2.0.0/.codex-plugin"));
+			Files.writeString(older.resolve("plugin.json"), "{\"version\": \"1.9.0\"}");
+			Files.writeString(newer.resolve("plugin.json"), "{\"version\": \"2.0.0\"}");
+			older = older.getParent();
+			newer = newer.getParent();
+			Files.writeString(codexHome.resolve("config.toml"), "[plugins.\"cat@cat\"]\nenabled = true\n");
+			Path plugin = home.resolve("copy");
+
+			String errors = launchWithoutServer(home, plugin, CodexInstalledCopies.in(codexHome));
+
+			requireThat(errors, "errors").contains(newer.resolve("bin/request-server").toString()).
+				doesNotContain(older.resolve("bin/request-server").toString()).
+				doesNotContain(plugin.resolve("bin/request-server").toString());
+		}
+	}
+
+	/**
 	 * Verifies that the installed plugin's own launcher, with no request server serving the session, still names its
 	 * own request server, among other installed copies of CAT.
 	 *
@@ -1198,6 +1232,20 @@ public final class CodexRunnerCliTest
 	 */
 	private static String launchWithoutServer(Path home, Path plugin, List<Path> installed) throws IOException
 	{
+		return launchWithoutServer(home, plugin, () -> installed);
+	}
+
+	/**
+	 * Runs a launch from a command that Codex runs outside a nested session, which no request server serves.
+	 *
+	 * @param home      the test's home directory
+	 * @param plugin    the folder of the plugin that holds the launcher
+	 * @param installed finds the installed copies of CAT
+	 * @return what the launcher wrote to its standard error
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	private static String launchWithoutServer(Path home, Path plugin, InstalledCopies installed) throws IOException
+	{
 		Path project = Files.createDirectories(home.resolve("project/.cat")).getParent();
 		Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
 			"CODEX_HOME", Files.createDirectories(home.resolve(".codex")).toString(), "CODEX_THREAD_ID", THREAD_ID);
@@ -1206,7 +1254,7 @@ public final class CodexRunnerCliTest
 		int status = CodexRunnerCli.launch(new String[]{"serve", "--project", project.toString(), "--model",
 				"gpt-6-luna", "--effort", "low", "--results", home.resolve("results").toString()}, environment,
 			Yielding.waiting(), new StringReader(""), new ByteArrayOutputStream(), new PrintWriter(errors, true),
-			() -> plugin, () -> installed, () -> ToolScope.forSession(project, environment,
+			() -> plugin, installed, () -> ToolScope.forSession(project, environment,
 				SessionHarness.installed(), Yielding.waiting(), GitProjects.IGNORING));
 
 		requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);

@@ -775,6 +775,7 @@ public final class ClaudeSessions extends RunnerSessions
 	private static Bridge productionBridge(Settings settings)
 	{
 		requireThat(settings, "settings").isNotNull();
-		return productionBridge(settings, HARNESS_ID, ClaudeRunnerCli.MARKERS.running(settings.environment()));
+		return productionBridge(settings, HARNESS_ID, ClaudeRunnerCli.MARKERS.running(settings.environment()),
+			ClaudeInstalledCopies.in(settings.configurationDirectory()));
 	}
 }

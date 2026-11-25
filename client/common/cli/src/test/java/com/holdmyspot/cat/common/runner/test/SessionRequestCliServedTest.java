@@ -63,8 +63,8 @@ public final class SessionRequestCliServedTest
 			StringWriter output = new StringWriter();
 			StringWriter errors = new StringWriter();
 
-			int status = SessionRequestCli.executeServed(submission(project, prompt), plugin, scopes(project),
-				new ManualClock(Instant.EPOCH), () ->
+			int status = SessionRequestCli.executeServed(submission(project, prompt), plugin, () -> List.of(plugin),
+				scopes(project), new ManualClock(Instant.EPOCH), () ->
 				{
 					throw new AssertionError("Nothing waits");
 				}, new PrintWriter(output, true), new PrintWriter(errors, true));
@@ -104,9 +104,9 @@ public final class SessionRequestCliServedTest
 				StandardOpenOption.CREATE, StandardOpenOption.WRITE);
 				FileLock _ = channel.lock())
 			{
-				status = SessionRequestCli.executeServed(submission(project, prompt), plugin, scopes(project), time,
-					() -> time.advance(Duration.ofSeconds(300)), new PrintWriter(output, true),
-					new PrintWriter(new StringWriter(), true));
+				status = SessionRequestCli.executeServed(submission(project, prompt), plugin, () -> List.of(plugin),
+					scopes(project), time, () -> time.advance(Duration.ofSeconds(300)),
+					new PrintWriter(output, true), new PrintWriter(new StringWriter(), true));
 			}
 
 			requireThat(status, "status").isEqualTo(3);
@@ -118,6 +118,75 @@ public final class SessionRequestCliServedTest
 			requireThat(output.toString(), "output").contains("\"" + plugin.resolve("bin/request-session") +
 				"\" --await " + id);
 		}
+	}
+
+	/**
+	 * Verifies that a copy of CAT that is not the installed plugin, which finds no request server, is told to start the
+	 * installed plugin's request server, because only the installed plugin's has the sandbox exception.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void namesInstalledServerFromCopy() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = project(jvm, cleanup);
+			Path plugin = Files.createDirectory(project.resolveSibling("plugin"));
+			Path installed = Files.createDirectory(project.resolveSibling("installed"));
+			Path prompt = Files.writeString(project.resolveSibling("prompt"), "prompt bytes");
+
+			String errors = refusal(project, plugin, List.of(installed), prompt);
+
+			requireThat(errors, "errors").contains(installed.resolve("bin/request-server").toString()).
+				doesNotContain(plugin.resolve("bin/request-server").toString());
+		}
+	}
+
+	/**
+	 * Verifies that a copy of CAT that is not the installed plugin, when no CAT plugin is installed, is told to install
+	 * CAT rather than to start its own request server.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void namesInstallCatFromCopy() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = project(jvm, cleanup);
+			Path plugin = Files.createDirectory(project.resolveSibling("plugin"));
+			Path prompt = Files.writeString(project.resolveSibling("prompt"), "prompt bytes");
+
+			String errors = refusal(project, plugin, List.of(), prompt);
+
+			requireThat(errors, "errors").contains("Install CAT").
+				doesNotContain(plugin.resolve("bin/request-server").toString());
+		}
+	}
+
+	/**
+	 * Returns what a command in a plugin folder prints when no request server serves its session.
+	 *
+	 * @param project   the session's project
+	 * @param plugin    the folder of the plugin that holds the command
+	 * @param installed the folders of the installed plugin
+	 * @param prompt    the session's prompt
+	 * @return the command's error output
+	 * @throws IOException if fixture I/O fails
+	 */
+	private static String refusal(Path project, Path plugin, List<Path> installed, Path prompt) throws IOException
+	{
+		StringWriter errors = new StringWriter();
+		int status = SessionRequestCli.executeServed(submission(project, prompt), plugin, () -> installed,
+			scopes(project), new ManualClock(Instant.EPOCH), () ->
+			{
+				throw new AssertionError("Nothing waits");
+			}, new PrintWriter(new StringWriter(), true), new PrintWriter(errors, true));
+		requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+		return errors.toString();
 	}
 
 	/**

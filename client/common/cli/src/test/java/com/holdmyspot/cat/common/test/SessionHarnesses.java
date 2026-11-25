@@ -14,14 +14,15 @@ public final class SessionHarnesses
 	 * A harness that keeps each transcript in one directory per project.
 	 */
 	public static final SessionHarness HARNESS_A = new SessionHarness("harness-a", "HARNESS_A_SESSION",
-		"HARNESS_A_CONFIGURATION", Path.of(".harness-a"), List.of("projects/*/" + SessionHarness.SESSION_ID + ".jsonl"));
+		"HARNESS_A_CONFIGURATION", Path.of(".harness-a"), List.of("projects/*/" + SessionHarness.SESSION_ID + ".jsonl"),
+		_ -> List::of);
 	/**
 	 * A harness that keeps transcripts in dated directories and moves archived ones to a flat directory.
 	 */
 	public static final SessionHarness HARNESS_B = new SessionHarness("harness-b", "HARNESS_B_SESSION",
 		"HARNESS_B_CONFIGURATION", Path.of(".harness-b"),
 		List.of("sessions/**/rollout-*-" + SessionHarness.SESSION_ID + ".jsonl",
-			"archived_sessions/rollout-*-" + SessionHarness.SESSION_ID + ".jsonl"));
+			"archived_sessions/rollout-*-" + SessionHarness.SESSION_ID + ".jsonl"), _ -> List::of);
 
 	/**
 	 * Prevents instantiation.

@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.common.runner;
 
 import com.holdmyspot.cat.common.CommandLineArguments;
+import com.holdmyspot.cat.common.InstalledCopies;
 import com.holdmyspot.cat.common.JvmScope;
 import com.holdmyspot.cat.common.MainJvmScope;
 import com.holdmyspot.cat.common.Pause;
@@ -96,6 +97,7 @@ public final class SessionRequestCli
 			try (JvmScope scope = new MainJvmScope(environment, Pause::sleeping))
 			{
 				status = executeServed(args, PluginDirectory.of(SessionRequestCli.class),
+					SessionHarness.installedCopies(environment),
 					() -> ToolScope.forSession(Path.of(""), environment, SessionHarness.installed(), scope.waiting()),
 					Clock.systemUTC(), Pause.sleeping(Duration.ofMillis(100)),
 					new PrintWriter(System.out, true, StandardCharsets.UTF_8),
@@ -179,6 +181,7 @@ public final class SessionRequestCli
 	 *
 	 * @param args   submission options or await options
 	 * @param plugin the folder of the plugin that holds the command
+	 * @param installed finds the installed copies of CAT, which name the request server that a copy of CAT points to
 	 * @param scopes opens the command's tool scope, which gives the session's CAT session directory
 	 * @param clock  measures the wait bound
 	 * @param pause  paces response checks
@@ -190,10 +193,12 @@ public final class SessionRequestCli
 	 * @throws IllegalArgumentException if options are incomplete, unknown, repeated, or invalid
 	 * @throws IOException              if no harness session runs the command, or request I/O fails
 	 */
-	public static int executeServed(String[] args, Path plugin, RequestServer.SessionScope scopes, Clock clock,
-		Pause pause, PrintWriter output, PrintWriter errors) throws IOException
+	public static int executeServed(String[] args, Path plugin, InstalledCopies installed,
+		RequestServer.SessionScope scopes, Clock clock, Pause pause, PrintWriter output, PrintWriter errors)
+		throws IOException
 	{
 		requireThat(plugin, "plugin").isNotNull();
+		requireThat(installed, "installed").isNotNull();
 		requireThat(scopes, "scopes").isNotNull();
 		requireThat(errors, "errors").isNotNull();
 		try (ToolScope tools = scopes.open())
@@ -206,7 +211,7 @@ public final class SessionRequestCli
 			Optional<Path> requests = RequestServer.servedRequests(tools);
 			if (requests.isEmpty())
 			{
-				errors.println(RequestServer.missingServer(plugin));
+				errors.println(RequestServer.missingServer(plugin, installed.find()));
 				return HarnessRunnerOptions.REFUSED_LAUNCH_STATUS;
 			}
 			return execute(args, requests.get(), RequestArchive.NULL_DEVICE, RequestLimits.UNBOUNDED, clock, pause,

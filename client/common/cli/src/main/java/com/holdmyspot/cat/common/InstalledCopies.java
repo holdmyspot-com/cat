@@ -1,4 +1,4 @@
-package com.holdmyspot.cat.common.runner;
+package com.holdmyspot.cat.common;
 
 import java.io.IOException;
 import java.nio.file.Path;

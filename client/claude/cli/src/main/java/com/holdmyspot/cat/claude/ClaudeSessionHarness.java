@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.claude;
 
+import com.holdmyspot.cat.claude.optimizer.ClaudeInstalledCopies;
 import com.holdmyspot.cat.common.SessionHarness;
 import java.nio.file.Path;
 import java.util.List;
@@ -16,7 +17,7 @@ public final class ClaudeSessionHarness
 	 */
 	public static final SessionHarness HARNESS = new SessionHarness(ClaudePluginInfo.HARNESS_ID,
 		"CLAUDE_CODE_SESSION_ID", "CLAUDE_CONFIG_DIR", Path.of(".claude"),
-		List.of("projects/*/" + SessionHarness.SESSION_ID + ".jsonl"));
+		List.of("projects/*/" + SessionHarness.SESSION_ID + ".jsonl"), ClaudeInstalledCopies::in);
 
 	/**
 	 * Returns the Claude Code session harness to a {@link java.util.ServiceLoader}.

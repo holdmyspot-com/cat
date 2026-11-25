@@ -431,6 +431,7 @@ public final class CodexSessions extends RunnerSessions
 	private static Bridge productionBridge(Settings settings)
 	{
 		requireThat(settings, "settings").isNotNull();
-		return productionBridge(settings, HARNESS_ID, CodexRunnerCli.MARKERS.running(settings.environment()));
+		return productionBridge(settings, HARNESS_ID, CodexRunnerCli.MARKERS.running(settings.environment()),
+			CodexInstalledCopies.in(settings.configurationDirectory()));
 	}
 }

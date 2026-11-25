@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.codex.optimizer;
 
+import com.holdmyspot.cat.common.InstalledCopies;
 import com.holdmyspot.cat.common.optimizer.cli.Command;
 import com.holdmyspot.cat.codex.runner.CodexServedSession;
 import com.holdmyspot.cat.codex.layout.CodexInstallation;
@@ -257,6 +258,13 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	{
 		ensureOpen();
 		return artifact;
+	}
+
+	@Override
+	protected InstalledCopies installedCopies()
+	{
+		ensureOpen();
+		return CodexInstalledCopies.in(configurationDirectory);
 	}
 
 	@Override

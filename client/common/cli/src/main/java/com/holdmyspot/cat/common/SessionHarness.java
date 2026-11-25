@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.ServiceLoader;
+import java.util.function.Function;
 
 /**
  * The parts of a CAT session directory that depend on the harness whose session owns it. Each harness module supplies
@@ -20,9 +21,11 @@ import java.util.ServiceLoader;
  * @param transcripts the glob patterns, relative to the configuration directory and separated by {@code /}, of the
  *   files in which the harness keeps a session's transcript; {@value #SESSION_ID} stands for the session's ID, and a
  *   {@code **} segment matches any number of directories
+ * @param installedCopies finds the folders of the CAT plugin that the harness has installed, from the harness's
+ *   configuration directory
  */
 public record SessionHarness(String id, String sessionVariable, String configurationVariable,
-	Path defaultConfigurationDirectory, List<String> transcripts)
+	Path defaultConfigurationDirectory, List<String> transcripts, Function<Path, InstalledCopies> installedCopies)
 {
 	/**
 	 * The text that stands for the session's ID in a transcript pattern.
@@ -40,6 +43,8 @@ public record SessionHarness(String id, String sessionVariable, String configura
 	 * @param transcripts the glob patterns, relative to the configuration directory and separated by {@code /}, of the
 	 *   files in which the harness keeps a session's transcript; {@value #SESSION_ID} stands for the session's ID, and a
 	 *   {@code **} segment matches any number of directories
+	 * @param installedCopies finds the folders of the CAT plugin that the harness has installed, from the harness's
+	 *   configuration directory
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code id}, {@code sessionVariable} or {@code configurationVariable} are
 	 *   blank, if {@code defaultConfigurationDirectory} is absolute, or if {@code transcripts} is empty or holds a
@@ -56,6 +61,7 @@ public record SessionHarness(String id, String sessionVariable, String configura
 		for (String pattern : transcripts)
 			requireThat(pattern, "pattern").contains(SESSION_ID);
 		transcripts = List.copyOf(transcripts);
+		requireThat(installedCopies, "installedCopies").isNotNull();
 	}
 
 	/**
@@ -66,6 +72,31 @@ public record SessionHarness(String id, String sessionVariable, String configura
 	public static List<SessionHarness> installed()
 	{
 		return ServiceLoader.load(SessionHarness.class).stream().map(ServiceLoader.Provider::get).toList();
+	}
+
+	/**
+	 * Returns what finds the installed CAT plugin of the harness that runs the process: the first harness whose session
+	 * variable the environment sets.
+	 *
+	 * @param environment the process environment
+	 * @return what finds the installed copies, which finds none if no harness runs the process
+	 * @throws NullPointerException if {@code environment} is null
+	 */
+	public static InstalledCopies installedCopies(Map<String, String> environment)
+	{
+		requireThat(environment, "environment").isNotNull();
+		return () ->
+		{
+			for (SessionHarness harness : installed())
+			{
+				String session = environment.get(harness.sessionVariable());
+				if (session == null || session.isBlank())
+					continue;
+				Path configuration = harness.configurationDirectory(environment, Platform.current().homeVariable());
+				return harness.installedCopies().apply(configuration).find();
+			}
+			return List.of();
+		};
 	}
 
 	/**

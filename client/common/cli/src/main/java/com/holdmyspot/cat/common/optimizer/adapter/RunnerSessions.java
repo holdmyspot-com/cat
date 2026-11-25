@@ -11,6 +11,7 @@ import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.RuleSource;
 import com.holdmyspot.cat.common.RuleVariableResolver;
+import com.holdmyspot.cat.common.InstalledCopies;
 import com.holdmyspot.cat.common.SessionHarness;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
@@ -162,13 +163,17 @@ public abstract class RunnerSessions implements SessionPort
 	 * @param settings how the runner is configured
 	 * @param harness the runner's harness
 	 * @param harnesses the harnesses running the optimizer command
+	 * @param installed finds the installed copies of CAT, which name the request server that a copy of CAT refused for
+	 *   lacking one points to
 	 * @return the bridge
 	 * @throws NullPointerException if any argument is null
 	 */
-	protected static Bridge productionBridge(Settings settings, String harness, Set<String> harnesses)
+	protected static Bridge productionBridge(Settings settings, String harness, Set<String> harnesses,
+		InstalledCopies installed)
 	{
 		requireThat(settings, "settings").isNotNull();
 		requireThat(harness, "harness").isNotNull();
+		requireThat(installed, "installed").isNotNull();
 		Set<String> running = Set.copyOf(harnesses);
 		return requestBridge(settings, harness, arguments ->
 		{
@@ -176,7 +181,7 @@ public abstract class RunnerSessions implements SessionPort
 				settings.environment()))
 			{
 				case LaunchRoute.Served _ -> new OwnerRequestRoute(SessionRequestForwarder.Route.SERVER,
-					servedRequests(settings));
+					servedRequests(settings, installed));
 				case LaunchRoute.Forward(Path requests) -> new OwnerRequestRoute(SessionRequestForwarder.Route.RUN,
 					requests);
 				case LaunchRoute.Refused(String reason) -> throw new LaunchRefusedException(reason);
@@ -1187,6 +1192,7 @@ public abstract class RunnerSessions implements SessionPort
 	 * environment name.
 	 *
 	 * @param settings how the runner is configured
+	 * @param installed finds the installed copies of CAT
 	 * @return the server's requests directory
 	 * @throws NullPointerException    if {@code settings} is null
 	 * @throws LaunchRefusedException  if the environment names no host session, or no request server serves it; the
@@ -1194,9 +1200,10 @@ public abstract class RunnerSessions implements SessionPort
 	 * @throws IOException             if the host session's CAT session directory or the server's lock file cannot
 	 *                                 be opened
 	 */
-	protected static Path servedRequests(Settings settings) throws IOException
+	protected static Path servedRequests(Settings settings, InstalledCopies installed) throws IOException
 	{
 		requireThat(settings, "settings").isNotNull();
+		requireThat(installed, "installed").isNotNull();
 		Path project = settings.hostProject();
 		if (project == null)
 			project = Path.of("");
@@ -1205,7 +1212,7 @@ public abstract class RunnerSessions implements SessionPort
 		{
 			Optional<Path> requests = RequestServer.servedRequests(tools);
 			if (requests.isEmpty())
-				throw new LaunchRefusedException(RequestServer.missingServer(settings.artifact()));
+				throw new LaunchRefusedException(RequestServer.missingServer(settings.artifact(), installed.find()));
 			return requests.get();
 		}
 	}

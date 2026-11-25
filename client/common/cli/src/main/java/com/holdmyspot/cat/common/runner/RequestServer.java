@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.ExclusiveFileLock;
 import com.holdmyspot.cat.common.FileLocks;
+import com.holdmyspot.cat.common.InstalledCopies;
 import com.holdmyspot.cat.common.LockFileOpener;
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.SessionDirectory;
@@ -387,7 +388,7 @@ public final class RequestServer
 	 * @return the reason
 	 * @throws NullPointerException if {@code plugin} is null
 	 */
-	public static String missingServer(Path plugin)
+	private static String ownServer(Path plugin)
 	{
 		return "No request server serves this session, and outside a nested session every session starts through it. " +
 			"Start it in the background once, as a command of its own: " + program(plugin) + ". Then launch again.";
@@ -409,7 +410,7 @@ public final class RequestServer
 		requireThat(plugin, "plugin").isNotNull();
 		requireThat(installed, "installed").isNotNull();
 		if (isInstalled(plugin, installed))
-			return missingServer(plugin);
+			return ownServer(plugin);
 		String reason = "No request server serves this session, and outside a nested session every session starts " +
 			"through it. Only the installed plugin's launchers start sessions, and ";
 		if (installed.isEmpty())
@@ -473,11 +474,43 @@ public final class RequestServer
 	 * @return the reason
 	 * @throws NullPointerException if {@code plugin} is null
 	 */
-	public static String missingWorktreeServer(Path plugin)
+	private static String ownWorktreeServer(Path plugin)
 	{
 		return "No request server serves this session, and the prompt optimizer adds, repairs and removes its " +
 			"optimization worktrees through it, outside the session's sandbox. Start it in the background once, as a " +
 			"command of its own: " + program(plugin) + ". Then run the command again.";
+	}
+
+	/**
+	 * Returns why a command that a harness session runs outside a nested session cannot have its optimization worktree's
+	 * registration changed, because no request server serves the session. Only the installed plugin's request server
+	 * has the sandbox exception that lets it run outside the session's sandbox, so a command in any other copy of CAT
+	 * names the installed plugin's.
+	 *
+	 * @param plugin    the folder of the plugin that holds the command
+	 * @param installed the folders of the installed plugin
+	 * @return the reason
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if a folder cannot be resolved
+	 */
+	public static String missingWorktreeServer(Path plugin, List<Path> installed) throws IOException
+	{
+		requireThat(plugin, "plugin").isNotNull();
+		requireThat(installed, "installed").isNotNull();
+		if (isInstalled(plugin, installed))
+			return ownWorktreeServer(plugin);
+		String reason = "No request server serves this session, and the prompt optimizer adds, repairs and removes its " +
+			"optimization worktrees through it, outside the session's sandbox. Only the installed plugin's launchers " +
+			"start sessions, and ";
+		if (installed.isEmpty())
+		{
+			return reason + "no CAT plugin is installed. Install CAT, then start its request server in the " +
+				"background once, as a command of its own, and run the command again from the installed plugin.";
+		}
+		return reason + "this copy of CAT, " + plugin + ", is not the installed plugin: its request server has no " +
+			"sandbox exception, so it would run inside the session's sandbox. Start the installed plugin's request " +
+			"server in the background once, as a command of its own: " + program(installed.getFirst()) +
+			". Then run the command again from the installed plugin.";
 	}
 
 	/**

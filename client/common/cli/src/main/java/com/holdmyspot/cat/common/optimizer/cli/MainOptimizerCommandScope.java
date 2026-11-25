@@ -8,6 +8,7 @@ import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.SessionDirectory;
+import com.holdmyspot.cat.common.InstalledCopies;
 import com.holdmyspot.cat.common.SessionHarness;
 import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.Waiting;
@@ -464,7 +465,7 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 				{
 					if (RequestServer.servedRequests(tools).isPresent())
 						yield Optional.empty();
-					yield Optional.of(RequestServer.missingServer(plugin()));
+					yield Optional.of(RequestServer.missingServer(plugin(), installedCopies().find()));
 				}
 			}
 			case LaunchRoute.Forward _, LaunchRoute.Refused _, LaunchRoute.Bounded _ ->
@@ -492,7 +493,7 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 		{
 			if (RequestServer.servedRequests(tools).isPresent())
 				return Optional.empty();
-			return Optional.of(RequestServer.missingWorktreeServer(plugin()));
+			return Optional.of(RequestServer.missingWorktreeServer(plugin(), installedCopies().find()));
 		}
 	}
 
@@ -520,7 +521,8 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 				{
 					Optional<Path> requests = RequestServer.servedRequests(tools);
 					if (requests.isEmpty())
-						throw new WorktreeRefusedException(RequestServer.missingWorktreeServer(plugin()));
+						throw new WorktreeRefusedException(RequestServer.missingWorktreeServer(plugin(),
+							installedCopies().find()));
 					yield Optional.of(new ServerChannel(requests.get()));
 				}
 			}
@@ -556,6 +558,14 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	 * @throws IllegalStateException if this scope is closed
 	 */
 	protected abstract Path plugin();
+
+	/**
+	 * Returns what finds the installed copies of CAT in the host harness's configuration.
+	 *
+	 * @return what finds the installed copies
+	 * @throws IllegalStateException if this scope is closed
+	 */
+	protected abstract InstalledCopies installedCopies();
 
 	@Override
 	protected final RandomGenerator random()

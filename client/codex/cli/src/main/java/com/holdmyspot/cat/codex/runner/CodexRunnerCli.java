@@ -7,7 +7,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.codex.CodexSessionHarness;
 import com.holdmyspot.cat.codex.layout.CodexInstallation;
-import com.holdmyspot.cat.codex.optimizer.InstalledPlugins;
+import com.holdmyspot.cat.codex.optimizer.CodexInstalledCopies;
 import com.holdmyspot.cat.codex.optimizer.CodexHookProcess;
 import com.holdmyspot.cat.codex.secrets.CodexRunnerCliSecrets;
 import com.holdmyspot.cat.common.CommandLineArguments;
@@ -33,7 +33,7 @@ import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
 import com.holdmyspot.cat.common.runner.HookComparisonLaunch;
 import com.holdmyspot.cat.common.runner.HookComparisonRequest;
 import com.holdmyspot.cat.common.runner.HookComparisonResult;
-import com.holdmyspot.cat.common.runner.InstalledCopies;
+import com.holdmyspot.cat.common.InstalledCopies;
 import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
 import com.holdmyspot.cat.common.runner.LaunchRoute;
 import com.holdmyspot.cat.common.runner.MainHarnessRunnerScope;
@@ -347,7 +347,7 @@ public final class CodexRunnerCli
 	public static InstalledCopies installedCopies(Map<String, String> environment)
 	{
 		requireThat(environment, "environment").isNotNull();
-		return () -> InstalledPlugins.of(CodexInstallation.resolveHome(environment), "cat@cat");
+		return () -> CodexInstalledCopies.in(CodexInstallation.resolveHome(environment)).find();
 	}
 
 	/**

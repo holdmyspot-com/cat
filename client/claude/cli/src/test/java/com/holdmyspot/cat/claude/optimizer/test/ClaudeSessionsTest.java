@@ -1813,6 +1813,47 @@ public final class ClaudeSessionsTest
 	}
 
 	/**
+	 * Verifies that when Claude Code runs the command from a copy of CAT that is not the installed plugin, and no request
+	 * server serves the session, the refusal names the installed plugin's request server, because only the installed
+	 * plugin's has the sandbox exception.
+	 *
+	 * @throws IOException          if a fixture cannot be created
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException   if the session cannot determine a result
+	 * @throws TimeoutException     if the session does not finish
+	 */
+	@Test(timeOut = 120_000)
+	public void refusalNamesInstalledServer()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-installed-")).toRealPath();
+			Path source = Files.createDirectories(home.resolve("source"));
+			Path installed = Files.createDirectories(home.resolve("installed/.claude-plugin"));
+			Files.writeString(installed.resolve("plugin.json"), "{}");
+			Path records = Files.createDirectories(home.resolve("plugins")).resolve("installed_plugins.json");
+			Files.writeString(records, "{\"version\": 2, \"plugins\": {\"cat@cat\": [{\"installPath\": \"" +
+				installed.getParent() + "\"}]}}");
+			Map<String, String> environment = new HashMap<>(Map.of("CLAUDECODE", "1"));
+			environment.put("PATH", "");
+			environment.put(Platform.current().homeVariable(), home.toString());
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, home, home.resolve("results"), List::of,
+				false, environment, home, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+
+			SessionResult result = await(new ClaudeSessions(settings).start(new SessionRequest(SessionRole.JUDGE,
+				partOf(SessionRole.JUDGE), source, List.of("brief"), List.of(), LIMIT, SESSION_PROFILE, TestWorkspace.NONE,
+				List.of())));
+
+			requireThat(result, "result").isInstanceOf(SessionResult.LaunchRefused.class);
+			requireThat(((SessionResult.LaunchRefused) result).reason(), "reason").
+				contains(installed.getParent().resolve("bin/request-server").toString()).
+				doesNotContain(home.resolve("bin/request-server").toString());
+		}
+	}
+
+	/**
 	 * Verifies that a session is refused when no harness runs the optimizer, whatever the
 	 * session needs.
 	 *

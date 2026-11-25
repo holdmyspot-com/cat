@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.claude.optimizer;
 
+import com.holdmyspot.cat.common.InstalledCopies;
 import com.holdmyspot.cat.common.JvmScope;
 
 import static com.holdmyspot.cat.claude.ClaudePluginInfo.HARNESS_ID;
@@ -190,6 +191,13 @@ public final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 	{
 		ensureOpen();
 		return artifact;
+	}
+
+	@Override
+	protected InstalledCopies installedCopies()
+	{
+		ensureOpen();
+		return ClaudeInstalledCopies.in(configurationDirectory);
 	}
 
 	@Override

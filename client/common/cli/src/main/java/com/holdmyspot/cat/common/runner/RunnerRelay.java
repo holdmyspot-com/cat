@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.runner;
 
+import com.holdmyspot.cat.common.InstalledCopies;
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.Waiting;

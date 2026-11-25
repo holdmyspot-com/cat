@@ -6,7 +6,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.claude.ClaudeConfiguration;
-import com.holdmyspot.cat.claude.optimizer.InstalledPlugins;
+import com.holdmyspot.cat.claude.optimizer.ClaudeInstalledCopies;
 import com.holdmyspot.cat.common.CommandLineArguments;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.JvmScope;
@@ -25,7 +25,7 @@ import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
-import com.holdmyspot.cat.common.runner.InstalledCopies;
+import com.holdmyspot.cat.common.InstalledCopies;
 import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
 import com.holdmyspot.cat.common.runner.LaunchRoute;
 import com.holdmyspot.cat.common.runner.MainHarnessRunnerScope;
@@ -297,12 +297,8 @@ public final class ClaudeRunnerCli
 	public static InstalledCopies installedCopies(Map<String, String> environment)
 	{
 		requireThat(environment, "environment").isNotNull();
-		return () ->
-		{
-			Path configuration = ClaudeConfiguration.resolveDirectory(Platform.current().homeDirectory(environment),
-				environment.get("CLAUDE_CONFIG_DIR"));
-			return InstalledPlugins.of(configuration, "cat@cat", JsonMapper.builder().build());
-		};
+		return () -> ClaudeInstalledCopies.in(ClaudeConfiguration.resolveDirectory(
+			Platform.current().homeDirectory(environment), environment.get("CLAUDE_CONFIG_DIR"))).find();
 	}
 
 	/**
