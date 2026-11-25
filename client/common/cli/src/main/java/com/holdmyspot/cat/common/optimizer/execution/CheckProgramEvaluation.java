@@ -36,6 +36,17 @@ public interface CheckProgramEvaluation
 	};
 
 	/**
+	 * Identifies the input format and the Java runtime with which this evaluation runs check programs, so that a
+	 * measurement or pilot outcome from another version is not reused.
+	 *
+	 * @return the measurement version
+	 */
+	default String version()
+	{
+		return CheckProgram.version();
+	}
+
+	/**
 	 * Creates an evaluator that uses the owner's authenticated sandbox launch.
 	 *
 	 * @param launch        the executable paths and read policy

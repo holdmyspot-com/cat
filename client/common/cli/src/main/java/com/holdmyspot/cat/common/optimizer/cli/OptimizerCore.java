@@ -65,7 +65,6 @@ import com.holdmyspot.cat.common.optimizer.execution.Cleanup;
 import com.holdmyspot.cat.common.optimizer.execution.DeliveryReport;
 import com.holdmyspot.cat.common.optimizer.execution.Driver;
 import com.holdmyspot.cat.common.optimizer.execution.DriverContext;
-import com.holdmyspot.cat.common.optimizer.execution.CheckProgram;
 import com.holdmyspot.cat.common.optimizer.execution.GuardPilot;
 import com.holdmyspot.cat.common.optimizer.execution.LeftoverNestedSessions;
 import com.holdmyspot.cat.common.optimizer.execution.PilotResult;
@@ -3151,7 +3150,7 @@ public final class OptimizerCore implements Core
 	 * @return the status
 	 * @throws IOException if a prompt file cannot be read
 	 */
-	private static CertificationStatus certificationStatus(CertificationHistory history, Entries files,
+	private CertificationStatus certificationStatus(CertificationHistory history, Entries files,
 		MeasurementIdentity known, Function<CertificationRecord, BigDecimal> minimumPassRate) throws IOException
 	{
 		Map<Path, Sha256> promptFiles = new TreeMap<>();
@@ -5896,7 +5895,7 @@ public final class OptimizerCore implements Core
 	 * @param contract the contract to measure
 	 * @return the check-program condition, or an empty identity for a contract without check programs
 	 */
-	private static MeasurementIdentity checkProgramEnvironment(Contract contract)
+	private MeasurementIdentity checkProgramEnvironment(Contract contract)
 	{
 		if (contract.tests().stream().noneMatch(PromptTest::hasCheckProgram))
 			return MeasurementIdentity.EMPTY;
@@ -5908,9 +5907,10 @@ public final class OptimizerCore implements Core
 	 *
 	 * @return the check-program condition
 	 */
-	private static MeasurementIdentity checkProgramEnvironment()
+	private MeasurementIdentity checkProgramEnvironment()
 	{
-		return new MeasurementIdentity(Map.of(MeasurementCondition.CHECK_PROGRAM_VERSION, CheckProgram.version()));
+		return new MeasurementIdentity(Map.of(MeasurementCondition.CHECK_PROGRAM_VERSION,
+			scope.checkPrograms().version()));
 	}
 
 	/**

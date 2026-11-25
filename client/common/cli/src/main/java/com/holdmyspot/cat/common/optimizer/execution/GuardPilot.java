@@ -1287,7 +1287,7 @@ public final class GuardPilot
 				values()));
 		}
 		if (usesCheckProgram)
-			conditions.append("\ncheck program version ").append(CheckProgram.version());
+			conditions.append("\ncheck program version ").append(checkPrograms.version());
 		return Sha256.of(conditions.toString().getBytes(UTF_8));
 	}
 
