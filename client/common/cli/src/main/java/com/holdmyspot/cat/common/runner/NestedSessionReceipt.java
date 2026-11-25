@@ -265,7 +265,8 @@ public final class NestedSessionReceipt
 		if (!sessions.isArray())
 			throw new IOException("Harness receipt requested_sessions must be an array: " + source);
 		Set<String> fields = Set.of("id", "harness", "status", "session_id", "response");
-		Set<String> statuses = Set.of("completed", "failed", "refused", "capacity", "stopped");
+		Set<String> statuses = Set.of("completed", "failed", "refused", "capacity", "stopped",
+			SessionRequestBroker.SUSPENDED, SessionRequestBroker.UNRESUMABLE);
 		for (JsonNode session : sessions)
 		{
 			if (!session.isObject() || !session.propertyNames().equals(fields))

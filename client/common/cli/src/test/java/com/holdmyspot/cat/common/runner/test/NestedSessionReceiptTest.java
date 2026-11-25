@@ -217,6 +217,43 @@ public final class NestedSessionReceiptTest
 	}
 
 	/**
+	 * Verifies that a receipt lists a requested session whose response records any status that the session request
+	 * broker can record, including a session that stopped between turns, so that ending the requesting session still
+	 * leaves its results copy.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void readsEveryRequestedSessionStatus() throws IOException
+	{
+		FileLocks fileLocks = new FileLocks();
+		// Requirement: R-I9
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "receipt-statuses-"));
+			NestedSession nestedSession = new NestedSessionManager(fileLocks, root,
+				Clock.systemUTC(), Yielding.fileReplacer()).create("harness");
+			Path response = Files.writeString(nestedSession.directory().resolve("artifacts/response.txt"),
+				"completed response");
+			List<String> statuses = List.of("completed", "failed", "refused", "capacity", "stopped", "suspended",
+				"unresumable");
+			for (String status : statuses)
+			{
+				Path child = Files.createDirectories(nestedSession.directory().resolve("responses/" + status)).
+					resolve("response.json");
+				ObjectNode result = scope.json().createObjectNode().put("id", status).put("harness", "harness").
+					put("status", status).put("session_id", "child-session");
+				scope.json().writeValue(child.toFile(), result);
+			}
+			Path receipt = root.resolve("receipt.json");
+
+			NestedSessionReceipt.write(scope.json(), Yielding.fileReplacer(), receipt, nestedSession, response, List.of());
+
+			NestedSessionReceipt.read(scope.json(), receipt, nestedSession.directory().resolve("project"));
+		}
+	}
+
+	/**
 	 * Verifies a nested session whose responses folder also holds the limits file still gets a receipt that lists only
 	 * its requested sessions.
 	 *
