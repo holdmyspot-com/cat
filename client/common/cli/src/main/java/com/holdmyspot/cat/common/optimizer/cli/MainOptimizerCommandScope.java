@@ -299,7 +299,7 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	@Override
 	protected final CheckProgramEvaluation checkPrograms()
 	{
-		return (test, testCase, record) ->
+		return (test, testCase, record, runs) ->
 		{
 			try
 			{
@@ -308,7 +308,8 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 				Path heldOutResults = RunnerSessions.Settings.heldOutResultsFolder(resultsFolder());
 				heldOut.add(Files.createDirectories(heldOutResults).toRealPath());
 				CheckProgram.Launch launch = CheckProgram.ownerLaunch(Platform.current(), environment, policies, heldOut);
-				return CheckProgramEvaluation.isolated(launch, json(), temporaryDirectory()).decide(test, testCase, record);
+				return CheckProgramEvaluation.isolated(launch, json(), temporaryDirectory()).run(test, testCase, record,
+					runs);
 			}
 			catch (PolicyRefusal e)
 			{

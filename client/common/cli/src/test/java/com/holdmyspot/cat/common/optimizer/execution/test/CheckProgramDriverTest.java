@@ -37,6 +37,8 @@ import com.holdmyspot.cat.common.optimizer.contract.UndecidableToolException;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
 import com.holdmyspot.cat.common.optimizer.execution.CheckProgram.Launch;
+import com.holdmyspot.cat.common.optimizer.execution.CheckProgram.Outcome;
+import com.holdmyspot.cat.common.optimizer.execution.CheckProgram.Result;
 import com.holdmyspot.cat.common.optimizer.execution.CheckProgramEvaluation;
 import com.holdmyspot.cat.common.optimizer.execution.Driver;
 import com.holdmyspot.cat.common.optimizer.execution.DriverContext;
@@ -180,10 +182,11 @@ public final class CheckProgramDriverTest
 			CountDownLatch finish = new CountDownLatch(1);
 			AtomicInteger checkRuns = new AtomicInteger();
 			Thread driverThread = Thread.currentThread();
-			CheckProgramEvaluation check = (test, testCase, evidence) ->
+			CheckProgramEvaluation check = (test, testCase, evidence, runs) ->
 			{
 				requireThat(Thread.currentThread() == driverThread, "ranOnDriverThread").isFalse();
 				requireThat(checkRuns.incrementAndGet(), "checkRuns").isEqualTo(1);
+				requireThat(runs, "runs").isEqualTo(1);
 				started.countDown();
 				if (!finish.await(WAIT.toSeconds(), TimeUnit.SECONDS))
 					throw new AssertionError("The test did not release the check.");
@@ -195,7 +198,7 @@ public final class CheckProgramDriverTest
 				requireThat(evidence.effects(), "effects").isEqualTo(finalResult.effects());
 				requireThat(Files.readString(evidence.initialProject().resolve("service.txt")), "initial").isEqualTo("old");
 				requireThat(Files.readString(evidence.effects().resolve("service.txt")), "final").isEqualTo("new");
-				return decisions(test, testCase, evidence, programError, observed);
+				return checkRun(test, testCase, programError, observed);
 			};
 			DriverContext context = withCheck(harness.context(harness.sessions(),
 				Map.of(OWNER, harness.sessions(), PEER, peer), Map.of()), check);
@@ -314,6 +317,52 @@ public final class CheckProgramDriverTest
 	}
 
 	/**
+	 * Runs each check program as many times as requested on one staged copy of the evidence, each run seeing the same
+	 * input, and leaves no staging behind.
+	 *
+	 * @throws IOException          if the fixture cannot be staged or the sandbox cannot launch
+	 * @throws InterruptedException if the check is interrupted
+	 */
+	@Test
+	public void runsEachProgramRequestedTimes() throws IOException, InterruptedException
+	{
+		// Requirement: R-L22
+		Launch launch = CheckProgramTest.nativeLaunch();
+		try (TestJvmScope scope = new TestJvmScope(); TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "check-program-runs"));
+			Path project = Files.createDirectory(root.resolve("project"));
+			Path staging = Files.createDirectory(root.resolve("staging"));
+			Contract contract = contract(OnToolFailure.FAIL);
+			PromptTest test = contract.findTest(TEST).orElseThrow();
+			TestCase testCase = test.testCases().getFirst();
+			Campaign campaign = assigned(contract, project, OWNER);
+			DriverHarness harness = new DriverHarness(root, campaign, InventoryScanner.scan(project, Set.of()), project);
+			SessionResult.Completed completed = harness.completed("pass", DriverHarness.MODEL);
+			Files.writeString(completed.initialProject().resolve("service.txt"), "before");
+			Files.writeString(completed.effects().resolve("service.txt"), "after");
+			TrialRecord record = TrialEvidence.read(harness.sessions(), completed);
+
+			Map<String, List<Result>> runs = CheckProgramEvaluation.isolated(launch, scope.json(), staging).
+				run(test, testCase, record, 2);
+
+			requireThat(runs.keySet(), "assertions").containsExactly(Set.of(CHECK));
+			List<Result> checkRuns = runs.get(CHECK);
+			requireThat(checkRuns, "checkRuns").size().isEqualTo(2);
+			String expected = PromptTest.textByName(testCase).get("tone") + " before after";
+			for (Result run : checkRuns)
+			{
+				requireThat(run.outcome(), "outcome").isEqualTo(Outcome.FAIL);
+				requireThat(run.observed(), "observed").contains(expected);
+			}
+			try (Stream<Path> entries = Files.list(staging))
+			{
+				requireThat(entries.findAny(), "remainingStaging").isEmpty();
+			}
+		}
+	}
+
+	/**
 	 * Writes files a delivered test would have in the base project, where trial staging must exclude them.
 	 *
 	 * @param directory the test's directory
@@ -400,19 +449,16 @@ public final class CheckProgramDriverTest
 	}
 
 	/**
-	 * Checks the program inputs and returns a fake program result beside the ordinary reply-tool result.
+	 * Checks the program inputs and returns one fake run of the program, which fails or errs.
 	 *
-	 * @param test the confirmed test
-	 * @param testCase the actual trial's values
-	 * @param evidence the trial record
+	 * @param test         the confirmed test
+	 * @param testCase     the actual trial's values
 	 * @param programError whether the program errored
-	 * @param observed the program output
-	 * @return the results in assertion order
-	 * @throws IOException if the evidence cannot be read
-	 * @throws UndecidableToolException if the reply tool cannot decide
+	 * @param observed     the program output
+	 * @return the run, keyed by the check-program assertion's ID
 	 */
-	private static List<BuiltInToolResult> decisions(PromptTest test, TestCase testCase, TrialRecord evidence,
-		boolean programError, String observed) throws IOException, UndecidableToolException
+	private static Map<String, List<Result>> checkRun(PromptTest test, TestCase testCase, boolean programError,
+		String observed)
 	{
 		Assertion assertion = test.assertions().getFirst().assertion();
 		BuiltInTool.CheckProgram program = (BuiltInTool.CheckProgram) assertion.builtInTool().orElseThrow();
@@ -421,14 +467,10 @@ public final class CheckProgramDriverTest
 		requireThat(draft.checkFiles(), "confirmedCheckFiles").isEqualTo(Map.of("Check.java", PROGRAM));
 		Map<String, String> values = PromptTest.textByName(testCase);
 		requireThat(program.filledArguments(values), "arguments").isEqualTo(List.of(values.get("tone")));
-		Assertion expected = test.expectedOutcome();
-		BuiltInTool.Decision expectedDecision = expected.builtInTool().orElseThrow().decide(evidence, values);
-		BuiltInToolResult check;
+		Outcome outcome = Outcome.FAIL;
 		if (programError)
-			check = BuiltInToolResult.programError(assertion, observed);
-		else
-			check = new BuiltInToolResult(assertion, false, observed);
-		return List.of(check, new BuiltInToolResult(expected, expectedDecision.passed(), expectedDecision.observed()));
+			outcome = Outcome.ERROR;
+		return Map.of(assertion.id(), List.of(new Result(outcome, observed, Duration.ofSeconds(1))));
 	}
 
 	/**

@@ -141,6 +141,11 @@ public final class GuardPilot
 	 */
 	private static final String HOST_INTERRUPTED = "The host interrupted the command that ran the pilot";
 	private static final TurnObserver.Progress NO_PROGRESS = new TurnObserver.Progress(0, Map.of(), false);
+	/**
+	 * The number of times that the pilot runs each check program on a trial, so that a program that does not decide
+	 * the same input the same way shows before confirmation.
+	 */
+	private static final int CHECK_RUNS = 2;
 	private static final PilotTrialRecovery NO_RECOVERY =
 		new PilotTrialRecovery(Optional.empty(), NO_PROGRESS, List.of(), Optional.empty());
 	private final SessionPort sessions;
@@ -153,6 +158,7 @@ public final class GuardPilot
 	private final ProposalSchema schema;
 	private final JsonMapper json;
 	private final int ceiling;
+	private final CheckProgramEvaluation checkPrograms;
 
 	/**
 	 * Creates a guard pilot.
@@ -195,7 +201,32 @@ public final class GuardPilot
 		Path target, JudgeProtocol judge, VerdictRecords verdicts, ProposalSchema schema, JsonMapper json, int ceiling)
 	{
 		this(sessions, evaluators, workspace, target, judge, verdicts, schema, json, ceiling,
-			TemporaryDirectories::deleteRecursively);
+			CheckProgramEvaluation.UNAVAILABLE);
+	}
+
+	/**
+	 * Creates a guard pilot that runs the check programs of the tests that declare them.
+	 *
+	 * @param sessions      starts the owner judge and settles broker launches for removed evaluators
+	 * @param evaluators    starts trial sessions for each selected evaluator
+	 * @param workspace     stages the control source that the trials work in
+	 * @param target        the normalized relative path of the target prompt
+	 * @param judge         writes the judge requests and reads their verdicts
+	 * @param verdicts      the campaign's stored verdicts, which the pilot's trials take and write as any trial does
+	 * @param schema        writes the definition of each prompt test
+	 * @param json          reads and writes the hook configurations from which control trials remove the target's
+	 *   dependents
+	 * @param ceiling       the maximum number of sessions that run at the same time
+	 * @param checkPrograms runs each check program of a completed trial in the campaign owner's sandbox
+	 * @throws NullPointerException     if any argument or evaluator entry is null
+	 * @throws IllegalArgumentException if {@code target} is absolute or {@code ceiling} is not positive
+	 */
+	public GuardPilot(SessionPort sessions, Map<Harness, SessionPort> evaluators, WorkspacePort workspace,
+		Path target, JudgeProtocol judge, VerdictRecords verdicts, ProposalSchema schema, JsonMapper json, int ceiling,
+		CheckProgramEvaluation checkPrograms)
+	{
+		this(sessions, evaluators, workspace, target, judge, verdicts, schema, json, ceiling,
+			TemporaryDirectories::deleteRecursively, checkPrograms);
 	}
 
 	/**
@@ -217,26 +248,28 @@ public final class GuardPilot
 	private GuardPilot(SessionPort sessions, WorkspacePort workspace, Path target, JudgeProtocol judge,
 		VerdictRecords verdicts, ProposalSchema schema, JsonMapper json, int ceiling, DirectoryRemoval directoryRemoval)
 	{
-		this(sessions, Map.of(), workspace, target, judge, verdicts, schema, json, ceiling, directoryRemoval);
+		this(sessions, Map.of(), workspace, target, judge, verdicts, schema, json, ceiling, directoryRemoval,
+			CheckProgramEvaluation.UNAVAILABLE);
 	}
 
 	/**
 	 * Creates a guard pilot with evaluator sessions and a supplied project-directory remover.
 	 *
-	 * @param sessions starts the owner judge and provides the default trial sessions
-	 * @param evaluators starts trial sessions for the selected evaluators
-	 * @param workspace stages the control source that the trials work in
-	 * @param target the normalized relative path of the target prompt
-	 * @param judge writes the judge requests and reads their verdicts
-	 * @param verdicts the campaign's stored verdicts, which the pilot's trials take and write as any trial does
-	 * @param schema writes the definition of each prompt test
-	 * @param json reads and writes the control hook configurations
-	 * @param ceiling the maximum number of sessions that run at the same time
+	 * @param sessions         starts the owner judge and provides the default trial sessions
+	 * @param evaluators       starts trial sessions for the selected evaluators
+	 * @param workspace        stages the control source that the trials work in
+	 * @param target           the normalized relative path of the target prompt
+	 * @param judge            writes the judge requests and reads their verdicts
+	 * @param verdicts         the campaign's stored verdicts, which the pilot's trials take and write as any trial does
+	 * @param schema           writes the definition of each prompt test
+	 * @param json             reads and writes the control hook configurations
+	 * @param ceiling          the maximum number of sessions that run at the same time
 	 * @param directoryRemoval deletes project directories of passing trials
+	 * @param checkPrograms    runs each check program of a completed trial
 	 */
 	private GuardPilot(SessionPort sessions, Map<Harness, SessionPort> evaluators, WorkspacePort workspace,
 		Path target, JudgeProtocol judge, VerdictRecords verdicts, ProposalSchema schema, JsonMapper json, int ceiling,
-		DirectoryRemoval directoryRemoval)
+		DirectoryRemoval directoryRemoval, CheckProgramEvaluation checkPrograms)
 	{
 		requireThat(sessions, "sessions").isNotNull();
 		requireThat(workspace, "workspace").isNotNull();
@@ -248,6 +281,7 @@ public final class GuardPilot
 		requireThat(schema, "schema").isNotNull();
 		requireThat(json, "json").isNotNull();
 		requireThat(ceiling, "ceiling").isPositive();
+		requireThat(checkPrograms, "checkPrograms").isNotNull();
 		this.sessions = sessions;
 		this.evaluators = Map.copyOf(evaluators);
 		this.workspace = workspace;
@@ -258,6 +292,7 @@ public final class GuardPilot
 		this.schema = schema;
 		this.json = json;
 		this.ceiling = ceiling;
+		this.checkPrograms = checkPrograms;
 	}
 
 	/**
@@ -674,9 +709,9 @@ public final class GuardPilot
 		PilotConditions conditions, PilotResult earlier, RandomGenerator random)
 	{
 		if (earlier == null)
-			return new Pilot(test, classes, trialCount, conditions, random.nextLong(), List.of(), Map.of());
+			return new Pilot(test, classes, trialCount, conditions, random.nextLong(), List.of(), List.of(), Map.of());
 		Pilot pilot = new Pilot(test, classes, trialCount, conditions, earlier.seed(), earlier.trials(),
-			earlier.pendingTrials());
+			earlier.checkProgramProblems(), earlier.pendingTrials());
 		pilot.stopReason = retainedPause(earlier);
 		pilot.paused = pilot.stopReason != null;
 		return pilot;
@@ -712,7 +747,8 @@ public final class GuardPilot
 			if (!pilot.paused() && !resetPositions)
 				return pilot;
 			return new PilotResult(pilot.testId(), pilot.definition(), pilot.cellId(), pilot.control(), pilot.seed(),
-				pilot.trials(), pilot.failedTrials(), UNFINISHED, false, recovery, pilot.evaluator(), pilot.trialCount());
+				pilot.trials(), pilot.failedTrials(), pilot.checkProgramProblems(), UNFINISHED, false, recovery,
+				pilot.evaluator(), pilot.trialCount());
 		});
 		return reset;
 	}
@@ -930,6 +966,10 @@ public final class GuardPilot
 		 */
 		private final Map<Integer, PilotTrialRecovery> recovery = new LinkedHashMap<>();
 		private final List<String> failedTrials = new ArrayList<>();
+		/**
+		 * The check-program problems of the trials that they kept from a decision, in the order that the trials ended.
+		 */
+		private final List<CheckProgramProblem> checkProgramProblems = new ArrayList<>();
 		private int finished;
 		private String stopReason;
 		private boolean paused;
@@ -937,16 +977,18 @@ public final class GuardPilot
 		/**
 		 * Creates a pilot.
 		 *
-		 * @param test the prompt test
-		 * @param classes the boundary classes that the pilot samples
-		 * @param trialCount the number of trials that the pilot draws
-		 * @param conditions the current conditions of the control trials
-		 * @param seed the seed of the test's development stream
-		 * @param kept the trials that an earlier run of this pilot decided, which this pilot keeps
-		 * @param undecided the earlier pilot's undecided trials, by draw position
+		 * @param test         the prompt test
+		 * @param classes      the boundary classes that the pilot samples
+		 * @param trialCount   the number of trials that the pilot draws
+		 * @param conditions   the current conditions of the control trials
+		 * @param seed         the seed of the test's development stream
+		 * @param kept         the trials that an earlier run of this pilot decided, which this pilot keeps
+		 * @param keptProblems the check-program problems that an earlier run of this pilot found, which this pilot
+		 *   keeps without running their trials again
+		 * @param undecided    the earlier pilot's undecided trials, by draw position
 		 */
 		Pilot(PromptTest test, List<String> classes, int trialCount, PilotConditions conditions, long seed,
-			List<PilotTrial> kept, Map<Integer, PilotTrialRecovery> undecided)
+			List<PilotTrial> kept, List<CheckProgramProblem> keptProblems, Map<Integer, PilotTrialRecovery> undecided)
 		{
 			this.test = test;
 			this.classes = classes;
@@ -960,6 +1002,8 @@ public final class GuardPilot
 				trials[trial.position()] = trial;
 				++finished;
 			}
+			checkProgramProblems.addAll(keptProblems);
+			finished += (int) keptProblems.stream().mapToInt(CheckProgramProblem::position).distinct().count();
 		}
 
 		/**
@@ -999,6 +1043,20 @@ public final class GuardPilot
 		boolean isDecided(int position)
 		{
 			return trials[position] != null;
+		}
+
+		/**
+		 * Indicates whether a trial ended with a check-program problem.
+		 *
+		 * @param position the trial's draw position
+		 * @return {@code true} if a check program of the trial disagreed with itself or took too long
+		 */
+		boolean hasProblem(int position)
+		{
+			synchronized (stateLock)
+			{
+				return checkProgramProblems.stream().anyMatch(problem -> problem.position() == position);
+			}
 		}
 
 		/**
@@ -1144,6 +1202,22 @@ public final class GuardPilot
 		}
 
 		/**
+		 * Records a trial that its check programs kept from a decision.
+		 *
+		 * @param position the trial's draw position
+		 * @param problems the trial's check-program problems, at least one
+		 */
+		void problems(int position, List<CheckProgramProblem> problems)
+		{
+			synchronized (stateLock)
+			{
+				recovery.remove(position);
+				checkProgramProblems.addAll(problems);
+				++finished;
+			}
+		}
+
+		/**
 		 * Returns the pilot's result.
 		 *
 		 * @return the result, whose trials are in draw order
@@ -1185,7 +1259,7 @@ public final class GuardPilot
 					decided.add(trial);
 			}
 			return new PilotResult(test.id(), conditions.definition(), conditions.cell().id(), conditions.control(), seed,
-				decided, failedTrials, reason, pause, recovery, conditions.evaluator(), trialCount);
+				decided, failedTrials, checkProgramProblems, reason, pause, recovery, conditions.evaluator(), trialCount);
 		}
 	}
 
@@ -1493,7 +1567,7 @@ public final class GuardPilot
 				{
 					// A kept trial still draws, so that every later trial keeps its test case
 					DrawnTestCase drawn = generator.markTargeted(pilot.draw(generator, position, stream));
-					if (!pilot.isDecided(position))
+					if (!pilot.isDecided(position) && !pilot.hasProblem(position))
 						queue.add(new TrialJob(pilot, position, drawn, Optional.empty()));
 				}
 			}
@@ -1976,9 +2050,11 @@ public final class GuardPilot
 		 * @param trial the trial
 		 * @param result the session's result, or {@code null} if the session failed with an exception
 		 * @param failure the exception, or {@code null}
-		 * @throws IOException if the checkpoint fails or the original launch has not settled
+		 * @throws IOException          if the checkpoint fails or the original launch has not settled
+		 * @throws InterruptedException if the thread is interrupted while a check program runs
 		 */
-		private void trialEnded(TrialJob trial, SessionResult result, Throwable failure) throws IOException
+		private void trialEnded(TrialJob trial, SessionResult result, Throwable failure)
+			throws IOException, InterruptedException
 		{
 			switch (result)
 			{
@@ -2009,12 +2085,19 @@ public final class GuardPilot
 		 * A trial whose
 		 * tools decide every assertion starts no judge. A tool that the trial's record cannot decide makes the trial a
 		 * failed trial with a recorded reason. Unreadable or unrenderable evidence makes it an infrastructure attempt.
+		 * <p>
+		 * Each check program runs twice on one staged copy of the trial's evidence. A program whose runs have different
+		 * outcomes, or of which a run takes longer than {@link CheckProgramProblem#LONGEST_RUN}, gives the trial a
+		 * check-program problem in place of a decision: it starts no judge and keeps its projects. Otherwise the first
+		 * run decides the program's assertion.
 		 *
-		 * @param trial the trial
+		 * @param trial     the trial
 		 * @param completed the trial session's result
-		 * @throws IOException if the checkpoint fails or the original launch has not settled
+		 * @throws IOException          if the checkpoint fails or the original launch has not settled
+		 * @throws InterruptedException if the thread is interrupted while a check program runs
 		 */
-		private void decideTools(TrialJob trial, SessionResult.Completed completed) throws IOException
+		private void decideTools(TrialJob trial, SessionResult.Completed completed)
+			throws IOException, InterruptedException
 		{
 			Pilot pilot = trial.pilot();
 			DrawnTestCase testCase = trial.testCase();
@@ -2023,7 +2106,22 @@ public final class GuardPilot
 			try
 			{
 				TrialEvidence evidence = TrialEvidence.read(pilot.conditions.trialSessions(), completed);
-				results = pilot.test.decide(testCase.testCase(), evidence);
+				if (pilot.test.hasCheckProgram())
+				{
+					Map<String, List<CheckProgram.Result>> runs = checkPrograms.run(pilot.test, testCase.testCase(),
+						evidence, CHECK_RUNS);
+					List<CheckProgramProblem> problems = CheckProgramProblem.find(trial.position(), runs);
+					if (!problems.isEmpty())
+					{
+						// A program that cannot be trusted decides nothing, so the trial waits for a revision
+						pilot.problems(trial.position(), problems);
+						return;
+					}
+					results = pilot.test.decide(testCase.testCase(), evidence,
+						CheckProgramEvaluation.toolResults(pilot.test, runs));
+				}
+				else
+					results = pilot.test.decide(testCase.testCase(), evidence);
 				if (contract.judge().prompt().contains("{{evidence}}"))
 					section = evidence.render();
 			}

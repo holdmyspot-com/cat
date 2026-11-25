@@ -4524,7 +4524,7 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
-	 * Binds the pilot to the owning judge and each selected evaluator's trial port.
+	 * Binds the pilot to the owning judge, each selected evaluator's trial port and the owner's check programs.
 	 *
 	 * @param campaign the campaign
 	 * @param fork the proposal's frozen sources
@@ -4537,7 +4537,7 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
-	 * Binds a pilot to the evaluator reports verified for its proposed lineage.
+	 * Binds a pilot to the evaluator reports verified for its proposed lineage and to the owner's check programs.
 	 *
 	 * @param campaign the campaign
 	 * @param fork the frozen sources
@@ -4562,7 +4562,7 @@ public final class OptimizerCore implements Core
 		VerdictRecords verdicts = new VerdictRecords(store, campaign.header().id(), campaign.header().harness(),
 			owner.judgeVersion());
 		return new GuardPilot(owner, trialSessions(campaign, owner, evaluators), fork.workspace(), relativeTarget(campaign),
-			judgePrompt(campaign), verdicts, schema, scope.json(), campaign.ceiling());
+			judgePrompt(campaign), verdicts, schema, scope.json(), campaign.ceiling(), scope.checkPrograms());
 	}
 
 	/**

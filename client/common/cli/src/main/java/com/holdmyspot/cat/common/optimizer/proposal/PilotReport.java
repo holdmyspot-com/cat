@@ -9,6 +9,8 @@ import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.Part;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfiles;
+import com.holdmyspot.cat.common.optimizer.execution.CheckProgram;
+import com.holdmyspot.cat.common.optimizer.execution.CheckProgramProblem;
 import com.holdmyspot.cat.common.optimizer.execution.GuardPilot;
 import com.holdmyspot.cat.common.optimizer.execution.PilotResult;
 import com.holdmyspot.cat.common.optimizer.execution.PilotTrial;
@@ -130,7 +132,7 @@ final class PilotReport
 			infrastructureAttempts += trial.infrastructureAttempts().size();
 		text.append("\n### `").append(test.id()).append("` in cell `").append(pilot.cellId()).append("`\n\n").
 			append(count(pilot.trials().size(), "trial", "trials")).append(" decided, ").
-			append(pilot.failedTrials().size()).append(" ended without a decision");
+			append(pilot.failedTrials().size() + pilot.problemTrials()).append(" ended without a decision");
 		if (infrastructureAttempts > 0)
 		{
 			text.append(", ").append(count(infrastructureAttempts, "infrastructure attempt", "infrastructure attempts")).
@@ -171,6 +173,7 @@ final class PilotReport
 			text.append('\n');
 			failuresByClass(text, pilot, id);
 		}
+		checkProgramProblems(text, pilot);
 		if (pilot.failedTrials().isEmpty())
 			return;
 		// Each distinct reason once, in the order the trials ended
@@ -210,6 +213,52 @@ final class PilotReport
 			text.append(": ").append(failures.getValue()).append(" of ").append(count(decided.get(boundaryClass), "trial",
 				"trials")).append(" failed it\n");
 		}
+	}
+
+	/**
+	 * Appends the check programs whose two runs on a pilot trial had different outcomes or took too long, with the
+	 * outcome, time and output of both runs, so that the user and the contract author can see why the program cannot be
+	 * trusted.
+	 *
+	 * @param text  the text to append to
+	 * @param pilot the test's pilot
+	 */
+	private static void checkProgramProblems(StringBuilder text, PilotResult pilot)
+	{
+		if (pilot.checkProgramProblems().isEmpty())
+			return;
+		text.append("\nCheck programs that cannot be trusted, which block confirmation until a revision fixes them\n\n");
+		for (CheckProgramProblem problem : pilot.checkProgramProblems())
+		{
+			text.append("- ").append(problem.describe()).append('\n');
+			run(text, 1, problem.first());
+			run(text, 2, problem.second());
+		}
+	}
+
+	/**
+	 * Appends one run of a check program as a nested list item, with its output in a code block.
+	 *
+	 * @param text   the text to append to
+	 * @param number the run's number, starting at 1
+	 * @param run    the run
+	 */
+	private static void run(StringBuilder text, int number, CheckProgram.Result run)
+	{
+		text.append("  - Run ").append(number).append(": ").append(CheckProgramProblem.outcomeName(run.outcome())).
+			append(" after ").append(CheckProgramProblem.seconds(run.elapsed()));
+		String output = run.observed();
+		if (output.isEmpty())
+		{
+			text.append(", with no output\n");
+			return;
+		}
+		text.append(", with this output:\n\n");
+		String fence = "`".repeat(Math.max(3, Markdown.longestBacktickRun(output) + 1));
+		text.append("    ").append(fence).append('\n');
+		for (String line : output.split("\n", -1))
+			text.append("    ").append(line).append('\n');
+		text.append("    ").append(fence).append("\n\n");
 	}
 
 	/**

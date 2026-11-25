@@ -9,9 +9,11 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
+import com.holdmyspot.cat.common.optimizer.campaign.test.Builder;
 import com.holdmyspot.cat.common.optimizer.contract.Assertion;
 import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
 import com.holdmyspot.cat.common.optimizer.contract.BuiltInToolResult;
+import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
 import com.holdmyspot.cat.common.optimizer.contract.EvidenceScope;
@@ -33,6 +35,7 @@ import com.holdmyspot.cat.common.optimizer.execution.AssertionVerdict;
 import com.holdmyspot.cat.common.optimizer.execution.CheckProgram.Outcome;
 import com.holdmyspot.cat.common.optimizer.execution.CheckProgram.Result;
 import com.holdmyspot.cat.common.optimizer.execution.CheckProgramEvaluation;
+import com.holdmyspot.cat.common.optimizer.execution.CheckProgramProblem;
 import com.holdmyspot.cat.common.optimizer.execution.Driver;
 import com.holdmyspot.cat.common.optimizer.execution.GuardPilot;
 import com.holdmyspot.cat.common.optimizer.execution.SnapshotMismatchException;
@@ -46,11 +49,13 @@ import com.holdmyspot.cat.common.optimizer.execution.VerdictKey;
 import com.holdmyspot.cat.common.optimizer.execution.VerdictRecord;
 import com.holdmyspot.cat.common.optimizer.execution.VerdictRecords;
 import com.holdmyspot.cat.common.optimizer.execution.prompt.JudgePrompt;
+import com.holdmyspot.cat.common.optimizer.inventory.Authority;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
 import com.holdmyspot.cat.common.optimizer.inventory.InventoryScanner;
 import com.holdmyspot.cat.common.optimizer.inventory.Overlay;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
+import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.port.PluginRemovals;
 import com.holdmyspot.cat.common.optimizer.port.SessionHandle;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
@@ -61,7 +66,11 @@ import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeHostInterruptSignal;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort.FakeSession;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeWorkspacePort;
+import com.holdmyspot.cat.common.optimizer.proposal.DerivedProposal;
+import com.holdmyspot.cat.common.optimizer.proposal.DraftChange;
+import com.holdmyspot.cat.common.optimizer.proposal.Proposal;
 import com.holdmyspot.cat.common.optimizer.store.test.InMemoryCampaignStore;
+import com.holdmyspot.cat.common.optimizer.workspace.LinkReport;
 import com.holdmyspot.cat.common.secrets.GuardPilotSecrets;
 import com.holdmyspot.cat.common.runner.HarnessCapacity.Hold;
 import com.holdmyspot.cat.common.runner.RetainedTrialClaim;
@@ -91,6 +100,7 @@ import java.util.Collections;
 import java.util.Deque;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -1108,50 +1118,129 @@ public final class GuardPilotTest
 	}
 
 	/**
-	 * Supplies disagreements and overlong runs with otherwise stable results.
+	 * Supplies a second run whose outcome differs from the first and a second run that takes longer than half the time
+	 * limit, each with the text that the pilot's problem must hold.
 	 *
-	 * @return the second outcome, second runtime and expected diagnostic
+	 * @return the second run's outcome and elapsed time, and the expected description
 	 */
 	@DataProvider
 	public static Object[][] checkProgramProblems()
 	{
 		return new Object[][]{
-			{Outcome.FAIL, Duration.ofSeconds(1), "different outcomes"},
-			{Outcome.PASS, Duration.ofSeconds(31), "half the time limit"}
+			{Outcome.FAIL, Duration.ofSeconds(1), "its two runs had different outcomes (pass, then fail)"},
+			{Outcome.PASS, Duration.ofMillis(30_001),
+				"a run took longer than half the time limit of 60 s (1 s, then 30.001 s)"}
 		};
 	}
 
 	/**
-	 * Records a check-program problem as a pilot failure with both check outputs before judging the trial.
+	 * A check program whose two runs on a pilot trial differ in outcome, or of which a run takes longer than half the
+	 * time limit, keeps the trial from a decision and starts no judge for it. The proposal shows the problem with both
+	 * outputs and refuses confirmation, and a later pilot under the same definition keeps the problem rather than
+	 * running the trial again.
 	 *
-	 * @param secondOutcome the outcome of the repeated check
-	 * @param secondElapsed its elapsed time
-	 * @param expectedReason the diagnostic that will prevent confirmation
-	 * @throws IOException if the test directory cannot be used
+	 * @param secondOutcome  the outcome of the second run
+	 * @param secondElapsed  the elapsed time of the second run
+	 * @param expectedReason what the problem says is wrong
+	 * @throws IOException          if the test directory cannot be used
 	 * @throws InterruptedException if the pilot is interrupted
 	 */
 	@Test(dataProvider = "checkProgramProblems")
 	public void checkProgramProblemBlocksPilot(Outcome secondOutcome, Duration secondElapsed, String expectedReason)
 		throws IOException, InterruptedException
 	{
-		// Requirement: R-L21
+		// Requirement: R-L22
 		String assertion = "records_state";
-		String reply = "CHECKED";
-		Contract tiered = TierFixtures.tieredContract();
-		MappedAssertion check = new MappedAssertion(new Assertion(assertion, AssertionKind.EFFECT,
-			"check-program checks/Check.java", "The project records the requested state."), "r2");
-		Contract contract = withSafety(tiered, List.of(check), Optional.of(new ExpectedOutcomeTool("exact-text " +
-			reply)));
+		String reply = SAFE;
+		Contract contract = checkProgramContract(assertion);
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-check-agreement"));
-			SessionScript sessions = new SessionScript(directory, request -> isSafety(request) ? reply : "pass");
-			CheckProgramEvaluation checkPrograms = (test, testCase, evidence) ->
+			SessionScript sessions = new SessionScript(directory, request ->
 			{
-				Result first = new Result(Outcome.PASS, "first output", Duration.ofSeconds(1));
-				Result second = new Result(secondOutcome, "second output", secondElapsed);
-				CheckProgramEvaluation.requireAgreement(test.id(), assertion, first, second);
-				return test.decide(testCase, evidence);
+				if (isSafety(request))
+					return reply;
+				return "pass";
+			});
+			AtomicInteger evaluations = new AtomicInteger();
+			CheckProgramEvaluation checkPrograms = (test, _, _, runs) ->
+			{
+				requireThat(test.id(), "test").isEqualTo("safety");
+				requireThat(runs, "runs").isEqualTo(2);
+				evaluations.incrementAndGet();
+				return Map.of(assertion, List.of(new Result(Outcome.PASS, "first output", Duration.ofSeconds(1)),
+					new Result(secondOutcome, "second output", secondElapsed)));
+			};
+			GuardPilot pilot = new GuardPilot(sessions.port(), Map.of(), workspace(directory), PROMPT, sessions.judge(),
+				verdicts(new InMemoryCampaignStore()), new ProposalSchema(json), json, 4, checkPrograms);
+
+			Map<String, PilotResult> pilots = pilot.run(contract, List.of(), control(), Set.of(), SELECTION, Map.of(),
+				new SplittableRandom(3));
+
+			PilotResult safety = pilots.get("safety");
+			requireThat(safety.trials(), "decidedTrials").isEmpty();
+			requireThat(safety.failedTrials(), "failedTrials").isEmpty();
+			requireThat(evaluations.get(), "evaluations").isEqualTo(safety.trialCount());
+			List<CheckProgramProblem> problems = safety.checkProgramProblems();
+			requireThat(problems.stream().map(CheckProgramProblem::position).distinct().count(), "problemTrials").
+				isEqualTo((long) safety.trialCount());
+			for (CheckProgramProblem problem : problems)
+			{
+				requireThat(problem.assertionId(), "assertion").isEqualTo(assertion);
+				requireThat(problem.describe(), "problem").contains("Pilot trial " + (problem.position() + 1)).
+					contains("`" + assertion + "`").contains(expectedReason);
+			}
+			requireThat(sessions.judgedReplies(), "judgedReplies").doesNotContain(reply);
+
+			Map<String, DraftChange> changes = new LinkedHashMap<>();
+			for (PromptTest test : contract.tests())
+				changes.put(test.id(), new DraftChange(DraftChange.Kind.CREATED, "", false));
+			Proposal proposal = Proposal.of(new DerivedProposal(contract, List.of(), List.of(), List.of(), "none", "{}",
+					Path.of("draft"), changes, List.of()), new Builder().build(), noLinks(), PROMPT, HostLogin.API_KEY,
+				new FixedCalibrator(FixedCalibrator.STANDARD_CAP), new ProposalSchema(json), null, pilots);
+			requireThat(proposal.render(), "proposal").contains(problems.getFirst().describe()).
+				contains("first output").contains("second output");
+			requireThat(proposal.isConfirmable(CertificationScope.WEAKEST_CELL), "confirmable").isFalse();
+			requireThat(proposal.confirmationRefusal(CertificationScope.WEAKEST_CELL), "refusal").
+				contains("The guard pilot of the test `safety` found check programs that cannot be trusted").
+				contains("`" + assertion + "`");
+
+			Map<String, PilotResult> rerun = pilot.run(contract, List.of(), control(), Set.of(), SELECTION, pilots,
+				new SplittableRandom(4));
+
+			requireThat(evaluations.get(), "evaluationsAfterRerun").isEqualTo(safety.trialCount());
+			requireThat(rerun.get("safety").checkProgramProblems(), "keptProblems").isEqualTo(problems);
+		}
+	}
+
+	/**
+	 * A check program whose two runs on each pilot trial agree, one of them taking exactly half the time limit,
+	 * decides the trials from its first run without a judge and records no problem.
+	 *
+	 * @throws IOException          if the test directory cannot be used
+	 * @throws InterruptedException if the pilot is interrupted
+	 */
+	@Test
+	public void agreeingCheckProgramDecidesPilot() throws IOException, InterruptedException
+	{
+		// Requirement: R-L22
+		String assertion = "records_state";
+		String reply = SAFE;
+		Contract contract = checkProgramContract(assertion);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-check-agreement"));
+			SessionScript sessions = new SessionScript(directory, request ->
+			{
+				if (isSafety(request))
+					return reply;
+				return "pass";
+			});
+			CheckProgramEvaluation checkPrograms = (_, _, _, runs) ->
+			{
+				requireThat(runs, "runs").isEqualTo(2);
+				return Map.of(assertion, List.of(new Result(Outcome.FAIL, "missing state", Duration.ofSeconds(1)),
+					new Result(Outcome.FAIL, "missing state", CheckProgramProblem.LONGEST_RUN)));
 			};
 			GuardPilot pilot = new GuardPilot(sessions.port(), Map.of(), workspace(directory), PROMPT, sessions.judge(),
 				verdicts(new InMemoryCampaignStore()), new ProposalSchema(json), json, 4, checkPrograms);
@@ -1159,13 +1248,12 @@ public final class GuardPilotTest
 			PilotResult safety = pilot.run(contract, List.of(), control(), Set.of(), SELECTION, Map.of(),
 				new SplittableRandom(3)).get("safety");
 
-			requireThat(safety.trials(), "decidedTrials").isEmpty();
-			requireThat(safety.failedTrials(), "failedTrials").size().isEqualTo(GuardPilot.TRIALS);
-			for (String failure : safety.failedTrials())
-			{
-				requireThat(failure, "failure").contains("safety").contains(assertion).contains(expectedReason).
-					contains("first output").contains("second output");
-			}
+			requireThat(safety.checkProgramProblems(), "problems").isEmpty();
+			requireThat(safety.failedTrials(), "failedTrials").isEmpty();
+			requireThat(safety.trials(), "decidedTrials").size().isEqualTo(safety.trialCount());
+			requireThat(safety.passes(assertion), "checkPasses").isEqualTo(0);
+			requireThat(safety.passes("safe_reply"), "safeReplyPasses").isEqualTo(safety.trialCount());
+			requireThat(safety.trials().getFirst().record(), "record").contains("missing state");
 			requireThat(sessions.judgedReplies(), "judgedReplies").doesNotContain(reply);
 		}
 	}
@@ -2846,6 +2934,31 @@ public final class GuardPilotTest
 		}
 		return new Contract(contract.requirements(), tests, contract.profiles(), contract.judge(),
 			contract.limitations(), contract.minimumPassRate(), contract.salt());
+	}
+
+	/**
+	 * Returns the tiered contract whose {@code safety} test decides an effect with a check program and its reply with
+	 * {@code exact-text} {@value #SAFE}, so that its built-in tools decide every assertion.
+	 *
+	 * @param assertion the check-program assertion
+	 * @return the contract
+	 */
+	private static Contract checkProgramContract(String assertion)
+	{
+		MappedAssertion check = new MappedAssertion(new Assertion(assertion, AssertionKind.EFFECT,
+			"check-program checks/Check.java", "The project records the requested state."), "r2");
+		return withSafety(TierFixtures.tieredContract(), List.of(check, exactSafeReply(OnToolFailure.FAIL)));
+	}
+
+	/**
+	 * Returns a report of a project without symbolic links.
+	 *
+	 * @return the report
+	 */
+	private static LinkReport noLinks()
+	{
+		FileInventory inventory = new FileInventory(Path.of("/project").toAbsolutePath(), Map.of());
+		return LinkReport.of(inventory, new Authority(Set.of(PROMPT), Set.of(), inventory));
 	}
 
 	/**

@@ -19,6 +19,8 @@ import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfiles;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveredTest;
 import com.holdmyspot.cat.common.optimizer.execution.CapCalibrator;
+import com.holdmyspot.cat.common.optimizer.execution.CheckProgram;
+import com.holdmyspot.cat.common.optimizer.execution.CheckProgramProblem;
 import com.holdmyspot.cat.common.optimizer.execution.PilotResult;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.report.CertificationStatus;
@@ -37,6 +39,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.StringJoiner;
+import java.util.TreeSet;
 
 /**
  * The contract proposal that the user confirms or answers with feedback.
@@ -545,8 +548,9 @@ public final class Proposal
 	/**
 	 * Returns the reason confirmation with a certification scope is refused, listing blocking links, conflicting
 	 * requirements, dependents that the control source cannot remove, referenced files that a candidate may edit,
-	 * tests with too few distinct expected outcomes in a part, a guard pilot that stopped before it finished,
-	 * unranked models and a described scope without described cells, in that order.
+	 * tests with too few distinct expected outcomes in a part, a guard pilot that stopped before it finished, check
+	 * programs that a guard pilot found untrustworthy, unranked models and a described scope without described cells,
+	 * in that order.
 	 *
 	 * @param scope the certification scope that the user chose
 	 * @return the refusal message, or an empty string if confirmation is allowed
@@ -570,6 +574,9 @@ public final class Proposal
 				reasons.add("The guard pilot of the test `" + entry.getKey() + "` did not finish (" + stopReason +
 					"). Run `start` again to finish it.");
 			}
+			List<CheckProgramProblem> problems = entry.getValue().checkProgramProblems();
+			if (!problems.isEmpty())
+				reasons.add(checkProgramRefusal(entry.getKey(), problems));
 		}
 		TrialProfiles profiles = contract.profiles();
 		List<String> unranked = profiles.unranked();
@@ -595,6 +602,55 @@ public final class Proposal
 				refusal.add(reason);
 		}
 		return refusal.toString();
+	}
+
+	/**
+	 * Returns why the check programs that a guard pilot found untrustworthy block confirmation.
+	 *
+	 * @param pilotKey the key of the pilot, which names its prompt test
+	 * @param problems the pilot's check-program problems, at least one
+	 * @return the reason, which names each assertion and the pilot trials of each kind of problem
+	 */
+	private static String checkProgramRefusal(String pilotKey, List<CheckProgramProblem> problems)
+	{
+		// Each assertion's trials, once per kind of problem, in the order that its first problem ended
+		Map<String, Set<Integer>> differing = new LinkedHashMap<>();
+		Map<String, Set<Integer>> slow = new LinkedHashMap<>();
+		for (CheckProgramProblem problem : problems)
+		{
+			if (problem.outcomesDiffer())
+				differing.computeIfAbsent(problem.assertionId(), _ -> new TreeSet<>()).add(problem.position() + 1);
+			if (problem.tookTooLong())
+				slow.computeIfAbsent(problem.assertionId(), _ -> new TreeSet<>()).add(problem.position() + 1);
+		}
+		StringJoiner found = new StringJoiner("; ");
+		for (Map.Entry<String, Set<Integer>> entry : differing.entrySet())
+		{
+			found.add("the check program of `" + entry.getKey() + "` gave different outcomes in its two runs on " +
+				pilotTrials(entry.getValue()));
+		}
+		for (Map.Entry<String, Set<Integer>> entry : slow.entrySet())
+		{
+			found.add("a run of the check program of `" + entry.getKey() + "` took longer than half its time limit of " +
+				CheckProgramProblem.seconds(CheckProgram.TIME_LIMIT) + " on " + pilotTrials(entry.getValue()));
+		}
+		return "The guard pilot of the test `" + pilotKey + "` found check programs that cannot be trusted: " + found +
+			". Run `request-changes` with feedback that makes each program give the same outcome in both runs of a " +
+			"trial, each within half its time limit.";
+	}
+
+	/**
+	 * Returns pilot trial numbers as a phrase.
+	 *
+	 * @param numbers the trial numbers, starting at 1, in ascending order
+	 * @return text such as {@code pilot trial 3} or {@code pilot trials 1, 4 and 7}
+	 */
+	private static String pilotTrials(Set<Integer> numbers)
+	{
+		List<String> text = numbers.stream().map(String::valueOf).toList();
+		if (text.size() == 1)
+			return "pilot trial " + text.getFirst();
+		return "pilot trials " + String.join(", ", text.subList(0, text.size() - 1)) + " and " + text.getLast();
 	}
 
 	/**

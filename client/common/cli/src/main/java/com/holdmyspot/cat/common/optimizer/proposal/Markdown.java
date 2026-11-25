@@ -620,7 +620,7 @@ public final class Markdown
 	 * @param value the text
 	 * @return the number of backticks in the longest run, or {@code 0} if there are none
 	 */
-	private static int longestBacktickRun(String value)
+	static int longestBacktickRun(String value)
 	{
 		int longest = 0;
 		int run = 0;

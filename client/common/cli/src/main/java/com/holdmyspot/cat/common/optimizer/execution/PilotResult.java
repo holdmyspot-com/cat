@@ -19,49 +19,60 @@ import java.util.Set;
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  *
- * @param testId the prompt test
- * @param definition the identity of the prompt test and the requirements that it checks when the pilot ran; a pilot
- *   whose test has another identity no longer applies
- * @param cellId the cell that the trials ran in
- * @param control the identity of the conditions that the trials ran in: the control source's files, the session
- *   environment version and the judge version
- * @param seed the seed of the development stream that draws the trials' test cases, which a resumed pilot draws again
- * @param trials the trials that the proposed built-in tools or judge decided, in draw order
- * @param failedTrials why each trial that the proposed built-in tools could not decide ended, one entry per trial
- * @param stopReason why the pilot stopped before running every trial, or {@code null} if it ran every trial
- * @param paused {@code true} if the pilot stopped because one of its trials ended without an outcome too many times,
- *   which the user answers by choosing to retry or to stop; {@code false} if the pilot ran every trial or stopped for
- *   another reason
- * @param pendingTrials recovery and earlier infrastructure attempts of each undecided trial, by draw position
- * @param evaluator the evaluator that qualifies a shared result, or {@code null} for a single evaluator
- * @param trialCount the number of trials that the pilot draws: at least {@value GuardPilot#TRIALS}, and more when the
- *   test has more boundary classes than that number allows 2 trials each
+ * @param testId               the prompt test
+ * @param definition           the identity of the prompt test and the requirements that it checks when the pilot ran; a
+ *   pilot whose test has another identity no longer applies
+ * @param cellId               the cell that the trials ran in
+ * @param control              the identity of the conditions that the trials ran in: the control source's files, the
+ *   session environment version and the judge version
+ * @param seed                 the seed of the development stream that draws the trials' test cases, which a resumed
+ *   pilot draws again
+ * @param trials               the trials that the proposed built-in tools or judge decided, in draw order
+ * @param failedTrials         why each trial that the proposed built-in tools could not decide ended, one entry per
+ *   trial
+ * @param checkProgramProblems the check programs whose two runs on a trial disagreed or took too long, by trial in the
+ *   order that the trials ended; such a trial is neither decided nor failed, and the problems block confirmation
+ * @param stopReason           why the pilot stopped before running every trial, or {@code null} if it ran every trial
+ * @param paused               {@code true} if the pilot stopped because one of its trials ended without an outcome too
+ *   many times, which the user answers by choosing to retry or to stop; {@code false} if the pilot ran every trial or
+ *   stopped for another reason
+ * @param pendingTrials        recovery and earlier infrastructure attempts of each undecided trial, by draw position
+ * @param evaluator            the evaluator that qualifies a shared result, or {@code null} for a single evaluator
+ * @param trialCount           the number of trials that the pilot draws: at least {@value GuardPilot#TRIALS}, and more
+ *   when the test has more boundary classes than that number allows 2 trials each
  */
 public record PilotResult(String testId, Sha256 definition, String cellId, Sha256 control, long seed,
-	List<PilotTrial> trials, List<String> failedTrials, String stopReason, boolean paused,
-	Map<Integer, PilotTrialRecovery> pendingTrials, Harness evaluator, int trialCount)
+	List<PilotTrial> trials, List<String> failedTrials, List<CheckProgramProblem> checkProgramProblems,
+	String stopReason, boolean paused, Map<Integer, PilotTrialRecovery> pendingTrials, Harness evaluator,
+	int trialCount)
 {
 	/**
 	 * Creates a pilot result.
 	 *
-	 * @param testId the prompt test
-	 * @param definition the identity of the prompt test and the requirements that it checks when the pilot ran
-	 * @param cellId the cell that the trials ran in
-	 * @param control the identity of the conditions that the trials ran in
-	 * @param seed the seed of the development stream that draws the trials' test cases
-	 * @param trials the trials that the proposed built-in tools or judge decided, in draw order
-	 * @param failedTrials why each trial that the proposed built-in tools could not decide ended, one entry per trial
-	 * @param stopReason why the pilot stopped before running every trial, or {@code null} if it ran every trial
-	 * @param paused {@code true} if the pilot stopped because one of its trials ended without an outcome too many times
-	 * @param pendingTrials recovery of undecided trials, by draw position
-	 * @param evaluator the evaluator that qualifies a shared result, or {@code null} for a single evaluator
-	 * @param trialCount the number of trials that the pilot draws
-	 * @throws NullPointerException if a required argument, trial, failure, pending position or pending state is null
-	 * @throws IllegalArgumentException if {@code testId}, {@code cellId}, a reason in {@code failedTrials} or a non-null
-	 *   {@code stopReason} are blank, {@code trialCount} is less than {@value GuardPilot#TRIALS}, a trial's position
-	 *   is outside the pilot, two trials hold one position, or {@code paused} is {@code true} and {@code stopReason}
-	 *   is null, a pending position is already decided or outside the pilot, or a shared cell's evaluator does not
-	 *   match the result's evaluator
+	 * @param testId               the prompt test
+	 * @param definition           the identity of the prompt test and the requirements that it checks when the pilot
+	 *   ran
+	 * @param cellId               the cell that the trials ran in
+	 * @param control              the identity of the conditions that the trials ran in
+	 * @param seed                 the seed of the development stream that draws the trials' test cases
+	 * @param trials               the trials that the proposed built-in tools or judge decided, in draw order
+	 * @param failedTrials         why each trial that the proposed built-in tools could not decide ended, one entry per
+	 *   trial
+	 * @param checkProgramProblems the check programs whose two runs on a trial disagreed or took too long
+	 * @param stopReason           why the pilot stopped before running every trial, or {@code null} if it ran every
+	 *   trial
+	 * @param paused               {@code true} if the pilot stopped because one of its trials ended without an outcome
+	 *   too many times
+	 * @param pendingTrials        recovery of undecided trials, by draw position
+	 * @param evaluator            the evaluator that qualifies a shared result, or {@code null} for a single evaluator
+	 * @param trialCount           the number of trials that the pilot draws
+	 * @throws NullPointerException     if a required argument, trial, failure, problem, pending position or pending
+	 *   state is null
+	 * @throws IllegalArgumentException if {@code testId}, {@code cellId}, a reason in {@code failedTrials} or a
+	 *   non-null {@code stopReason} are blank, {@code trialCount} is less than {@value GuardPilot#TRIALS}, a trial's
+	 *   position is outside the pilot, two trials hold one position, or {@code paused} is {@code true} and {@code
+	 *   stopReason} is null, a pending or problem position is already decided or outside the pilot, a problem position
+	 *   is pending, or a shared cell's evaluator does not match the result's evaluator
 	 */
 	public PilotResult
 	{
@@ -90,6 +101,13 @@ public record PilotResult(String testId, Sha256 definition, String cellId, Sha25
 		failedTrials = List.copyOf(failedTrials);
 		for (String reason : failedTrials)
 			requireThat(reason, "reason").isNotBlank();
+		checkProgramProblems = List.copyOf(checkProgramProblems);
+		for (CheckProgramProblem problem : checkProgramProblems)
+		{
+			int position = problem.position();
+			if (position >= trialCount || positions.contains(position) || pendingTrials.containsKey(position))
+				throw new IllegalArgumentException("Invalid check-program problem position " + position);
+		}
 		if (stopReason != null)
 			requireThat(stopReason, "stopReason").isNotBlank();
 		else if (paused)
@@ -120,8 +138,8 @@ public record PilotResult(String testId, Sha256 definition, String cellId, Sha25
 		List<PilotTrial> trials, List<String> failedTrials, String stopReason, boolean paused,
 		Map<Integer, PilotTrialRecovery> pendingTrials, Harness evaluator)
 	{
-		this(testId, definition, cellId, control, seed, trials, failedTrials, stopReason, paused, pendingTrials,
-			evaluator, GuardPilot.TRIALS);
+		this(testId, definition, cellId, control, seed, trials, failedTrials, List.of(), stopReason, paused,
+			pendingTrials, evaluator, GuardPilot.TRIALS);
 	}
 
 	/**
@@ -195,6 +213,19 @@ public record PilotResult(String testId, Sha256 definition, String cellId, Sha25
 		if (evaluator == null)
 			return testId;
 		return evaluator.commandName() + ":" + testId;
+	}
+
+	/**
+	 * Returns the number of trials that a check-program problem kept from a decision.
+	 *
+	 * @return the number of distinct trials that hold a problem
+	 */
+	public int problemTrials()
+	{
+		Set<Integer> positions = new HashSet<>();
+		for (CheckProgramProblem problem : checkProgramProblems)
+			positions.add(problem.position());
+		return positions.size();
 	}
 
 	/**

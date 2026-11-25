@@ -4,6 +4,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
+import com.holdmyspot.cat.common.optimizer.execution.CheckProgram;
+import com.holdmyspot.cat.common.optimizer.execution.CheckProgramProblem;
 import com.holdmyspot.cat.common.optimizer.execution.GuardPilot;
 import com.holdmyspot.cat.common.optimizer.execution.PilotResult;
 import com.holdmyspot.cat.common.optimizer.execution.PilotTrial;
@@ -11,6 +13,7 @@ import com.holdmyspot.cat.common.optimizer.execution.PilotTrialRecovery;
 import com.holdmyspot.cat.common.optimizer.execution.PilotTrialRecovery.Discard;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.port.TurnObserver;
+import com.holdmyspot.cat.common.optimizer.report.EnumNames;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
@@ -20,6 +23,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -63,6 +67,11 @@ final class PilotFile
 	 * The property that holds the boundary class of a trial's test case, which a trial of an untagged test case omits.
 	 */
 	private static final String BOUNDARY_CLASS = "boundary_class";
+	/**
+	 * The property that holds the check programs whose two runs on a trial disagreed or took too long. A pilot stored
+	 * without it found no such problem.
+	 */
+	private static final String CHECK_PROGRAM_PROBLEMS = "check_program_problems";
 	/**
 	 * The first version to store unfinished trials.
 	 */
@@ -119,6 +128,19 @@ final class PilotFile
 			test.put("paused", pilot.paused());
 			ArrayNode failedTrials = test.putArray("failed_trials");
 			pilot.failedTrials().forEach(failedTrials::add);
+			ArrayNode problems = test.putArray(CHECK_PROGRAM_PROBLEMS);
+			for (CheckProgramProblem problem : pilot.checkProgramProblems())
+			{
+				ObjectNode node = problems.addObject();
+				node.put("assertion", problem.assertionId());
+				node.put("position", problem.position());
+				ArrayNode runs = node.putArray("runs");
+				for (CheckProgram.Result run : List.of(problem.first(), problem.second()))
+				{
+					runs.addObject().put("outcome", EnumNames.lowerCase(run.outcome())).put("output", run.observed()).
+						put("elapsed_ms", run.elapsed().toMillis());
+				}
+			}
 			if (pilot.stopReason() == null)
 				test.putNull("stop_reason");
 			else
@@ -265,6 +287,7 @@ final class PilotFile
 		List<String> failedTrials = new ArrayList<>();
 		for (JsonNode reason : failures)
 			failedTrials.add(text(reason));
+		List<CheckProgramProblem> problems = checkProgramProblems(test);
 		if (!test.path("seed").isIntegralNumber())
 			throw new IllegalArgumentException("\"seed\" must be an integer: " + test);
 		if (!test.path("paused").isBoolean())
@@ -292,7 +315,51 @@ final class PilotFile
 		}
 		return new PilotResult(text(test.path("test")), new Sha256(text(test.path("definition"))),
 			text(test.path("cell")), new Sha256(text(test.path("control"))), test.get("seed").asLong(), trials,
-			failedTrials, stopReason, test.get("paused").asBoolean(), pending, evaluator, trialCount);
+			failedTrials, problems, stopReason, test.get("paused").asBoolean(), pending, evaluator, trialCount);
+	}
+
+	/**
+	 * Reads the check-program problems of one prompt test's pilot.
+	 *
+	 * @param test the stored pilot
+	 * @return the problems, or an empty list if the pilot was stored without them
+	 * @throws IllegalArgumentException if a problem is invalid
+	 */
+	private static List<CheckProgramProblem> checkProgramProblems(JsonNode test)
+	{
+		List<CheckProgramProblem> problems = new ArrayList<>();
+		if (!test.has(CHECK_PROGRAM_PROBLEMS))
+			return problems;
+		JsonNode stored = test.get(CHECK_PROGRAM_PROBLEMS);
+		if (!stored.isArray())
+			throw new IllegalArgumentException("\"" + CHECK_PROGRAM_PROBLEMS + "\" must be an array: " + test);
+		for (JsonNode node : stored)
+		{
+			JsonNode runs = node.path("runs");
+			if (!node.path("position").isInt() || !runs.isArray() || runs.size() != 2)
+			{
+				throw new IllegalArgumentException("A check-program problem needs an integer \"position\" and two " +
+					"\"runs\": " + node);
+			}
+			problems.add(new CheckProgramProblem(text(node.path("assertion")), node.get("position").asInt(),
+				checkRun(runs.get(0)), checkRun(runs.get(1))));
+		}
+		return problems;
+	}
+
+	/**
+	 * Reads one run of a check program.
+	 *
+	 * @param node the stored run
+	 * @return the run
+	 * @throws IllegalArgumentException if the run is invalid
+	 */
+	private static CheckProgram.Result checkRun(JsonNode node)
+	{
+		if (!node.path("elapsed_ms").isIntegralNumber() || node.get("elapsed_ms").asLong() < 0)
+			throw new IllegalArgumentException("A check-program run needs a non-negative \"elapsed_ms\": " + node);
+		return new CheckProgram.Result(EnumNames.parse(text(node.path("outcome")), CheckProgram.Outcome.class),
+			text(node.path("output")), Duration.ofMillis(node.get("elapsed_ms").asLong()));
 	}
 
 	/**

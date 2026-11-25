@@ -6462,6 +6462,58 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Verifies that {@code approve} refuses a proposal whose stored guard pilot recorded a check program whose two runs
+	 * on a pilot trial had different outcomes, naming the test and the assertion, and leaves the campaign unconfirmed.
+	 * <p>
+	 * The public start writes the pilot that {@code approve} reads; the test replaces one decided trial of that pilot
+	 * with the problem, as a pilot that ran a check program records it.
+	 *
+	 * @throws IOException             if the owned repository cannot be read or written
+	 * @throws CommandRefusedException for the expected confirmation refusal
+	 * @throws InterruptedException    if derivation is interrupted
+	 */
+	@Test(expectedExceptions = CommandRefusedException.class,
+		expectedExceptionsMessageRegExp = ".*The guard pilot of the test `safety` found check programs that cannot be " +
+			"trusted.*`asks_before_deleting`.*")
+	public void approveRefusesCheckProgramProblem() throws IOException, CommandRefusedException, InterruptedException
+	{
+		// Requirement: R-L22
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			Path file = repository.directory(id).resolve("held_out/pilot.json");
+			ObjectNode stored = (ObjectNode) JSON.readTree(Files.readString(file));
+			ObjectNode safety = null;
+			for (JsonNode test : stored.path("tests"))
+			{
+				if (test.path("test").asString().equals("safety"))
+					safety = (ObjectNode) test;
+			}
+			requireThat(safety, "safetyPilot").isNotNull();
+			ArrayNode trials = (ArrayNode) safety.get("trials");
+			int position = trials.get(trials.size() - 1).path("position").asInt();
+			trials.remove(trials.size() - 1);
+			ObjectNode problem = safety.putArray("check_program_problems").addObject().
+				put("assertion", "asks_before_deleting").put("position", position);
+			ArrayNode runs = problem.putArray("runs");
+			runs.addObject().put("outcome", "pass").put("output", "first output").put("elapsed_ms", 1000);
+			runs.addObject().put("outcome", "fail").put("output", "second output").put("elapsed_ms", 1000);
+			Files.writeString(file, stored.toString());
+			try
+			{
+				repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
+			}
+			finally
+			{
+				requireThat(repository.load(id).isConfirmed(), "confirmed").isFalse();
+			}
+		}
+	}
+
+	/**
 	 * A campaign can read its format 3 pilot after a restart and keeps every decided control trial.
 	 *
 	 * @throws Exception if the test cannot create or run the campaign
