@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.campaign.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
+import com.holdmyspot.cat.common.optimizer.campaign.CampaignEvent;
 import com.holdmyspot.cat.common.optimizer.campaign.CellCounts;
 import com.holdmyspot.cat.common.optimizer.campaign.Diagnosis;
 import com.holdmyspot.cat.common.optimizer.campaign.FailedAssertion;
@@ -11,9 +12,12 @@ import com.holdmyspot.cat.common.optimizer.campaign.FailureGroup;
 import com.holdmyspot.cat.common.optimizer.campaign.Lifecycle;
 import com.holdmyspot.cat.common.optimizer.campaign.Outcome;
 import com.holdmyspot.cat.common.optimizer.campaign.PendingDecision;
+import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.CommitGate;
 import com.holdmyspot.cat.common.optimizer.campaign.ReproductionRound;
 import com.holdmyspot.cat.common.optimizer.campaign.Round;
+import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
+import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.DrawStream;
@@ -253,6 +257,58 @@ public final class CommitGateTest
 		requireThat(CommitGate.isCommitDue(claudeShort), "claudeShort").isFalse();
 		requireThat(CommitGate.isCommitDue(codexShort), "codexShort").isFalse();
 		requireThat(CommitGate.isCommitDue(complete), "complete").isTrue();
+	}
+
+	/**
+	 * Verifies that one evaluator's development regression keeps the shared candidate from being committed although the
+	 * other evaluator passes it.
+	 */
+	@Test
+	public void sharedRegressionBlocksCommit()
+	{
+		// Requirement: R-L8
+		Builder shared = CommitTest.readyShared();
+		Campaign codexRegressed = shared.development("claude:safety", 100, 0).development("codex:safety", 100, 3).
+			build();
+		Campaign claudeRegressed = shared.development("claude:safety", 100, 3).development("codex:safety", 100, 0).
+			build();
+		requireThat(CommitGate.isCommitDue(codexRegressed), "codexRegressed").isFalse();
+		requireThat(CommitGate.isCommitDue(claudeRegressed), "claudeRegressed").isFalse();
+	}
+
+	/**
+	 * Verifies that a development outcome measured on a shared candidate's predecessor, or in the other evaluator,
+	 * does not count toward the commit gate of an evaluator's cell.
+	 */
+	@Test
+	public void sharedGateCountsWorkingCellOnly()
+	{
+		// Requirement: R-L8
+		Campaign previous = CommitTest.readyShared().development("codex:safety", 99, 0).build();
+		previous = TransitionSteps.assign(previous, Purpose.DEVELOPMENT, "codex:safety");
+		TrialKey old = TransitionSteps.last(previous);
+		previous = Transitions.apply(previous, new CampaignEvent.Start(old));
+
+		Campaign replaced = CommitTest.readyShared().working(2).series(2).development("codex:safety", 99, 0).
+			trial(previous.trials().getFirst()).build();
+		replaced = TransitionSteps.complete(replaced, old, Verdict.PASS);
+		requireThat(replaced.development().count("codex:safety"), "codexAfterOldPass").
+			isEqualTo(Builder.counts(99, 0));
+		requireThat(CommitGate.isCommitDue(replaced), "oldSnapshotPass").isFalse();
+
+		replaced = TransitionSteps.assign(replaced, Purpose.DEVELOPMENT, "claude:safety");
+		replaced = TransitionSteps.run(replaced, TransitionSteps.last(replaced), Verdict.PASS);
+		requireThat(replaced.development().count("claude:safety"), "claudeAfterPass").
+			isEqualTo(Builder.counts(101, 0));
+		requireThat(replaced.development().count("codex:safety"), "codexAfterClaudePass").
+			isEqualTo(Builder.counts(99, 0));
+		requireThat(CommitGate.isCommitDue(replaced), "otherEvaluatorPass").isFalse();
+
+		replaced = TransitionSteps.assign(replaced, Purpose.DEVELOPMENT, "codex:safety");
+		replaced = TransitionSteps.run(replaced, TransitionSteps.last(replaced), Verdict.PASS);
+		requireThat(replaced.development().count("codex:safety"), "codexAfterPass").
+			isEqualTo(Builder.counts(100, 0));
+		requireThat(CommitGate.isCommitDue(replaced), "bothOnWorkingSnapshot").isTrue();
 	}
 
 	/**

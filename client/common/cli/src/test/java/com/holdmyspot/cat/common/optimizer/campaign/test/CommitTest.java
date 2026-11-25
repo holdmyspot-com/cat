@@ -364,4 +364,30 @@ public final class CommitTest
 			"codexSafetyComparison").isEqualTo(Comparison.freeze(50, 0, incumbent, improvement,
 			Contract.DEFAULT_MINIMUM_PASS_RATE));
 	}
+
+	/**
+	 * A new shared candidate that enters certification gets the next attempt index and the next attempt's budget, and
+	 * the formal passes that one evaluator recorded for the previous candidate's ended attempt do not count toward it.
+	 */
+	@Test
+	public void newSharedCandidateStartsEmptyAttempt()
+	{
+		// Requirement: R-L9
+		Candidate previous = new Candidate(1, Builder.snapshot("candidate-1"));
+		Campaign before = readyShared().working(2).series(2).certificationAttempt(1).candidate(previous).
+			cell("claude:safety", 40, 0).cell("codex:safety", 3, 0).outcome(Outcome.INCONCLUSIVE).build();
+		Campaign after = Transitions.apply(before, new CampaignEvent.Commit(calibration(2), 43, Builder.CONTROL));
+		requireThat(after.attempts().size(), "attempts").isEqualTo(2);
+		requireThat(after.attempt(1), "previousAttempt").isEqualTo(before.attempt(1));
+		CertificationAttempt attempt = after.attempt(2);
+		requireThat(attempt.index(), "index").isEqualTo(2);
+		requireThat(attempt.isRunning(), "running").isTrue();
+		requireThat(attempt.candidate(), "frozenCandidate").isEqualTo(before.development().working());
+		requireThat(attempt.candidate().snapshot(), "frozenSnapshot").isNotEqualTo(previous.snapshot());
+		requireThat(attempt.procedure().boundaries().level(), "certificationLevel").
+			isEqualTo(ErrorBudget.certificationLevel(2));
+		for (String cell : attempt.procedure().cells())
+			requireThat(attempt.count(cell), cell).isEqualTo(Builder.counts(0, 0));
+		requireThat(attempt.procedure().cells(), "cells").containsAll(List.of("claude:safety", "codex:safety"));
+	}
 }

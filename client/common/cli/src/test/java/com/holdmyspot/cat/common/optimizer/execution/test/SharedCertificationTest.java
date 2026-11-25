@@ -42,6 +42,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -153,11 +155,98 @@ public final class SharedCertificationTest
 	}
 
 	/**
+	 * Formal failures in one evaluator end the joint attempt uncertified although the other evaluator's cell has already
+	 * certified the same frozen candidate, and nothing is delivered or certified.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test
+	public void oneEvaluatorBelowMinimumBlocksDelivery() throws IOException
+	{
+		// Requirement: R-L9
+		DecisionBoundaries boundaries = Boundaries.standard(2);
+		Campaign initial = attempt(boundaries, certifyingPasses(boundaries), 0);
+		Sha256 snapshot = initial.attempt(1).candidate().snapshot();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("shared-certificate-"));
+			Path project = Files.createDirectory(root.resolve("base"));
+			Files.writeString(project.resolve(DriverHarness.PROMPT), "fork", UTF_8);
+			DriverHarness harness = new DriverHarness(root.resolve("driver"), initial,
+				InventoryScanner.scan(project, Set.of()), project);
+			List<Sha256> codex = new ArrayList<>();
+			List<Sha256> claude = new ArrayList<>();
+			Set<SessionRequest> claudeRequests = Collections.newSetFromMap(new IdentityHashMap<>());
+			harness.trials(request ->
+			{
+				if (claudeRequests.contains(request))
+					return harness.failed();
+				return harness.passed();
+			});
+			DriverContext context = harness.context(harness.sessions(), Map.of(Harness.CODEX, evaluator(harness, codex),
+				Harness.CLAUDE, evaluator(harness, claude, claudeRequests)), LOADER_CONDITIONS);
+			Campaign ended;
+			try (Driver driver = Driver.open(context, initial.header().id()).orElseThrow())
+			{
+				ended = harness.runUntil(driver, state -> !state.attempt(1).isRunning());
+			}
+
+			CertificationAttempt attempt = ended.attempt(1);
+			requireThat(DecisionTable.cellDecision(attempt, CODEX_CELL), "codexDecision").
+				isEqualTo(DecisionTable.CellDecision.CERTIFIED);
+			requireThat(Set.of(DecisionTable.CellDecision.CLEARLY_BELOW, DecisionTable.CellDecision.OUT_OF_REACH),
+				"uncertifiableDecisions").contains(DecisionTable.cellDecision(attempt, CLAUDE_CELL));
+			requireThat(Set.of(Outcome.BELOW_MINIMUM, Outcome.INCONCLUSIVE), "uncertifiedOutcomes").
+				contains(attempt.outcome());
+			requireThat(attempt.count(CLAUDE_CELL).passes(), "claudePasses").isEqualTo(0);
+			requireThat(claude, "claudeSnapshots").isNotEmpty();
+			for (Sha256 measured : claude)
+				requireThat(measured, "claudeSnapshot").isEqualTo(snapshot);
+			requireThat(codex, "codexSnapshots").isEmpty();
+			requireThat(ended.outcome(), "campaignOutcome").isNotEqualTo(Outcome.CERTIFIED);
+			requireThat(ended.attempts().size(), "attempts").isEqualTo(1);
+			Path history = project.resolve(PromptTestLocations.certificationHistory(DriverHarness.PROMPT));
+			requireThat(Files.exists(history), "historyExists").isFalse();
+			requireThat(Files.readString(project.resolve(DriverHarness.PROMPT), UTF_8), "deliveredPrompt").
+				isEqualTo("fork");
+		}
+	}
+
+	/**
+	 * Returns the fewest passes that certify a cell with no failures.
+	 *
+	 * @param boundaries the attempt's decision boundaries
+	 * @return the passes
+	 */
+	private static int certifyingPasses(DecisionBoundaries boundaries)
+	{
+		int passes = 1;
+		while (!boundaries.certifies(passes, 0))
+			++passes;
+		return passes;
+	}
+
+	/**
 	 * Returns a two-evaluator attempt that needs one more formal pass per cell.
 	 *
 	 * @return the campaign
 	 */
 	private static Campaign onePassShort()
+	{
+		DecisionBoundaries boundaries = Boundaries.standard(2);
+		int passes = certifyingPasses(boundaries);
+		return attempt(boundaries, passes - 1, passes - 1);
+	}
+
+	/**
+	 * Returns a running two-evaluator attempt on one frozen candidate with no formal failures.
+	 *
+	 * @param boundaries   the attempt's decision boundaries
+	 * @param codexPasses  the Codex cell's adopted formal passes
+	 * @param claudePasses the Claude Code cell's adopted formal passes
+	 * @return the campaign
+	 */
+	private static Campaign attempt(DecisionBoundaries boundaries, int codexPasses, int claudePasses)
 	{
 		Contract fixture = ContractFixtures.contract();
 		List<PromptTest> tests = List.of(fixture.testOf(fixture.findCell("safety").orElseThrow()));
@@ -171,14 +260,10 @@ public final class SharedCertificationTest
 		Header old = new Builder().build().header();
 		Header header = new Header(old.id(), old.root(), old.target(), Harness.CODEX, old.lifecycle(), old.goal(),
 			old.extraPermissions(), Set.of(Harness.CODEX, Harness.CLAUDE));
-		DecisionBoundaries boundaries = Boundaries.standard(2);
-		int passes = 1;
-		while (!boundaries.certifies(passes, 0))
-			++passes;
 		return new Builder().header(header).confirmed(contract, 1).working(1).readyBaseline().
 			ceiling(1).window(1).identity(new MeasurementIdentity(Map.of(), LOADER_CONDITIONS)).
 			certificationAttempt(1).boundaries(boundaries).
-			cell(CODEX_CELL, passes - 1, 0).cell(CLAUDE_CELL, passes - 1, 0).build();
+			cell(CODEX_CELL, codexPasses, 0).cell(CLAUDE_CELL, claudePasses, 0).build();
 	}
 
 	/**
@@ -190,11 +275,25 @@ public final class SharedCertificationTest
 	 */
 	private static SessionPort evaluator(DriverHarness harness, List<Sha256> snapshots)
 	{
+		return evaluator(harness, snapshots, Collections.newSetFromMap(new IdentityHashMap<>()));
+	}
+
+	/**
+	 * Records the staged snapshot and the request of each session routed to an evaluator.
+	 *
+	 * @param harness the driver fixture
+	 * @param snapshots the snapshots recorded in this evaluator
+	 * @param requests the requests recorded in this evaluator
+	 * @return the evaluator's fake session port
+	 */
+	private static SessionPort evaluator(DriverHarness harness, List<Sha256> snapshots, Set<SessionRequest> requests)
+	{
 		return new FakeSessionPort()
 		{
 			@Override
 			public SessionHandle start(SessionRequest request) throws IOException
 			{
+				requests.add(request);
 				snapshots.add(harness.snapshot(request));
 				return harness.sessions().start(request);
 			}
