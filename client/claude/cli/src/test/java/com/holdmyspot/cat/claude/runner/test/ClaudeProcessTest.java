@@ -10,6 +10,7 @@ import com.holdmyspot.cat.claude.runner.ClaudeProcess;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessProcessResult;
 import com.holdmyspot.cat.common.runner.HarnessSessionTranscripts;
+import com.holdmyspot.cat.common.runner.TerminalHarnessTurnFailure;
 import com.holdmyspot.cat.common.runner.TurnMode;
 import com.holdmyspot.cat.common.runner.fakes.test.FakeHarnessCli;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
@@ -147,7 +148,20 @@ public final class ClaudeProcessTest
 	 */
 	private static List<String> recorded(String name) throws IOException
 	{
-		try (InputStream stream = ClaudeProcessTest.class.getResourceAsStream("/runner/turn-boundary/" + name))
+		return recorded("turn-boundary", name);
+	}
+
+	/**
+	 * Reads a recorded timeline.
+	 *
+	 * @param directory the directory below {@code runner} that holds the recording
+	 * @param name      the file name in {@code directory}
+	 * @return the timeline's lines in the order Claude printed them
+	 * @throws IOException if the resource cannot be read
+	 */
+	private static List<String> recorded(String directory, String name) throws IOException
+	{
+		try (InputStream stream = ClaudeProcessTest.class.getResourceAsStream("/runner/" + directory + "/" + name))
 		{
 			requireThat(stream, "resource").isNotNull();
 			return new String(stream.readAllBytes(), UTF_8).lines().toList();
@@ -988,5 +1002,227 @@ public final class ClaudeProcessTest
 
 		requireThat(claude.isAlive(), "claude.isAlive()").isFalse();
 		requireThat(claude.terminationRequests(), "terminationRequests").isGreaterThan(0);
+	}
+
+	/**
+	 * Returns the recorded sessions whose first Bash result is Claude Code's report that its command sandbox failed to
+	 * start. The two reports have the same frame and different reasons, and each is recorded twice: once with nothing
+	 * stopping the session, so the results of later Bash calls follow the report, and once with the session stopped
+	 * as soon as the report was read, so the stream ends after it.
+	 *
+	 * @return the recording, the report in its first Bash result, and whether the recording holds a later Bash result
+	 */
+	@DataProvider
+	public static Object[][] sandboxStartReports()
+	{
+		String frameEnd = ". Sandboxing is disabled for the rest of this session; restart to retry.";
+		String bridgeSockets = "Sandbox is enabled but failed to initialize: Failed to create bridge sockets after 5 " +
+			"attempts" + frameEnd;
+		String socketListen = "Sandbox is enabled but failed to initialize: EPERM: operation not permitted, listen " +
+			"'<tmp>/srt-mux-16-2.sock'" + frameEnd;
+		return new Object[][]{
+			{"bridge-sockets-report-then-commands-ran.jsonl", bridgeSockets, true},
+			{"bridge-sockets-report-stopped.jsonl", bridgeSockets, false},
+			{"socket-listen-report-then-commands-ran.jsonl", socketListen, true},
+			{"socket-listen-report-stopped.jsonl", socketListen, false}};
+	}
+
+	/**
+	 * Verifies that a turn whose first Bash result is Claude Code's report that its command sandbox failed to start
+	 * ends as an infrastructure failure instead of waiting for the session's reply: the runner stops the Claude process,
+	 * writes it no input after the turn's user message, and gives a reason that quotes the report and says whether a Bash
+	 * result followed it.
+	 *
+	 * @param recording      the recorded session
+	 * @param report         the report in the session's first Bash result
+	 * @param resultFollowed whether the recording holds a Bash result after the report
+	 * @throws IOException if the recording cannot be read or the process cannot be closed
+	 */
+	// Requirement: R-I16
+	@Test(timeOut = 10_000, dataProvider = "sandboxStartReports")
+	public void endsTurnAtSandboxStartReport(String recording, String report, boolean resultFollowed)
+		throws IOException
+	{
+		FakeHarnessCli claude = new FakeHarnessCli(_ ->
+		{
+		});
+		try (ClaudeProcess process = new ClaudeProcess(new TestHarnessRunnerScope(), claude))
+		{
+			claude.emit(STATE_RUNNING);
+			claude.emit(recorded("sandbox-start", recording).toArray(String[]::new));
+
+			TerminalHarnessTurnFailure failure = expectThrows(TerminalHarnessTurnFailure.class,
+				() -> process.sendTurn("Run four commands."));
+
+			requireThat(failure.getMessage(), "reason").contains(report);
+			if (resultFollowed)
+			{
+				requireThat(failure.getMessage(), "reason").contains("A Bash result followed the report").
+					doesNotContain("No Bash result");
+			}
+			else
+			{
+				requireThat(failure.getMessage(), "reason").contains("No Bash result followed the report").
+					doesNotContain("A Bash result");
+			}
+			HarnessProcessResult result = failure.result();
+			requireThat(result.completed(), "completed").isFalse();
+			requireThat(result.terminal(), "terminal").isTrue();
+			requireThat(result.standardOutput(), "standardOutput").contains(report);
+			requireThat(claude.terminationRequests(), "terminationRequests").isGreaterThan(0);
+			requireThat(claude.isAlive(), "claude.isAlive()").isFalse();
+			requireThat(claude.requests().size(), "requests").isEqualTo(1);
+		}
+	}
+
+	/**
+	 * Verifies that a turn of a session whose sandbox started ends as before: the recorded session runs four Bash
+	 * commands inside Claude Code's sandbox, and the runner neither stops it nor reports a failure.
+	 *
+	 * @throws IOException if the recording cannot be read or the turn fails
+	 */
+	// Requirement: R-I16
+	@Test(timeOut = 10_000)
+	public void completesTurnWhenSandboxStarted() throws IOException
+	{
+		FakeHarnessCli claude = new FakeHarnessCli(_ ->
+		{
+		});
+		try (ClaudeProcess process = new ClaudeProcess(new TestHarnessRunnerScope(), claude))
+		{
+			claude.emit(STATE_RUNNING);
+			claude.emit(recorded("sandbox-start", "sandbox-started.jsonl").toArray(String[]::new));
+			claude.emit(STATE_IDLE);
+
+			HarnessProcessResult result = process.sendTurn("Run four commands.");
+
+			requireThat(result.completed(), "completed").isTrue();
+			requireThat(result.standardError(), "standardError").isEmpty();
+			requireThat(claude.terminationRequests(), "terminationRequests").isEqualTo(0);
+			requireThat(claude.isAlive(), "claude.isAlive()").isTrue();
+		}
+	}
+
+	/**
+	 * Returns Bash results that are not Claude Code's report of a sandbox that failed to start, although some print its
+	 * words: a denied permission, a command that exits with status 1, the report's text in a later result, in a result
+	 * that is not an error and after other text.
+	 *
+	 * @return the session's Bash results, in the order Claude prints them
+	 */
+	@DataProvider
+	public static Object[][] bashResultsWithoutSandboxReport()
+	{
+		String report = "Sandbox is enabled but failed to initialize: Failed to create bridge sockets after 5 attempts. " +
+			"Sandboxing is disabled for the rest of this session; restart to retry.";
+		return new Object[][]{
+			// Claude Code refuses a Bash call that no permission rule allows
+			{List.of(new BashResult("\"Claude requested permissions to use Bash, but you haven't granted it yet.\"",
+				true))},
+			// A command that fails
+			{List.of(new BashResult("\"Exit code 1\\nfalse\"", true))},
+			// The report is recognized in the session's first Bash result only; a later result may repeat its words
+			{List.of(new BashResult("\"MARKER_ALPHA\"", false), new BashResult("\"" + report + "\"", true))},
+			// A command that prints the report's words has not failed to start the sandbox
+			{List.of(new BashResult("\"" + report + "\"", false))},
+			// The report is Claude Code's whole result, so words after other text are a command's own output
+			{List.of(new BashResult("\"Exit code 1\\n" + report + "\"", true))}};
+	}
+
+	/**
+	 * Verifies that a turn whose Bash results fail for other reasons, or that only print the words of the sandbox report,
+	 * ends as before: it completes with the session's reply, and the runner does not stop the process.
+	 *
+	 * @param results the session's Bash results
+	 * @throws IOException if the turn fails
+	 */
+	// Requirement: R-I16
+	@Test(timeOut = 10_000, dataProvider = "bashResultsWithoutSandboxReport")
+	public void completesTurnWithoutSandboxReport(List<BashResult> results) throws IOException
+	{
+		FakeHarnessCli claude = new FakeHarnessCli(_ ->
+		{
+		});
+		try (ClaudeProcess process = new ClaudeProcess(new TestHarnessRunnerScope(), claude))
+		{
+			claude.emit(STATE_RUNNING, INIT);
+			for (int i = 0; i < results.size(); ++i)
+				claude.emit(bashCall("toolu_" + i), bashResult("toolu_" + i, results.get(i)));
+			claude.emit(ROOT_REPLY, ROOT_RESULT, STATE_IDLE);
+
+			HarnessProcessResult result = process.sendTurn("Run the commands.");
+
+			requireThat(result.completed(), "completed").isTrue();
+			requireThat(result.assistantResponse(), "assistantResponse").isEqualTo("LAUNCHED");
+			requireThat(claude.terminationRequests(), "terminationRequests").isEqualTo(0);
+		}
+	}
+
+	/**
+	 * Verifies that the report is recognized when Claude prints the result's content as a list of text blocks, and in the
+	 * first Bash result of a later turn of the same process, since the process starts one sandbox for all its turns.
+	 *
+	 * @throws IOException if a turn fails unexpectedly
+	 */
+	// Requirement: R-I16
+	@Test(timeOut = 10_000)
+	public void endsLaterTurnAtReportInTextBlocks() throws IOException
+	{
+		String report = "Sandbox is enabled but failed to initialize: Failed to create bridge sockets after 5 attempts. " +
+			"Sandboxing is disabled for the rest of this session; restart to retry.";
+		FakeHarnessCli claude = new FakeHarnessCli(_ ->
+		{
+		});
+		try (ClaudeProcess process = new ClaudeProcess(new TestHarnessRunnerScope(), claude))
+		{
+			claude.emit(STATE_RUNNING, INIT, ROOT_REPLY, ROOT_RESULT, STATE_IDLE);
+			process.sendTurn("Reply LAUNCHED.");
+
+			claude.emit(STATE_RUNNING, INIT, bashCall("toolu_1"), bashResult("toolu_1",
+				new BashResult("[{\"type\":\"text\",\"text\":\"" + report + "\"}]", true)), ROOT_REPLY, ROOT_RESULT,
+				STATE_IDLE);
+			TerminalHarnessTurnFailure failure = expectThrows(TerminalHarnessTurnFailure.class,
+				() -> process.sendTurn("Run a command."));
+
+			requireThat(failure.getMessage(), "reason").contains(report);
+			requireThat(claude.terminationRequests(), "terminationRequests").isGreaterThan(0);
+		}
+	}
+
+	/**
+	 * A Bash result as Claude Code 2.1.332 prints it in a {@code tool_result} block.
+	 *
+	 * @param content the block's {@code content} as JSON text
+	 * @param error   whether the block reports an error
+	 */
+	private record BashResult(String content, boolean error)
+	{
+	}
+
+	/**
+	 * Returns the line in which the root agent calls Bash, shaped like the recorded ones.
+	 *
+	 * @param id the call's identifier
+	 * @return the line
+	 */
+	private static String bashCall(String id)
+	{
+		return "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"tool_use\",\"id\":\"" +
+			id + "\",\"name\":\"Bash\",\"input\":{\"command\":\"true\"}}]},\"parent_tool_use_id\":null," +
+			"\"session_id\":\"s\"}";
+	}
+
+	/**
+	 * Returns the line that holds a Bash call's result, shaped like the recorded ones.
+	 *
+	 * @param id     the identifier of the call
+	 * @param result the result
+	 * @return the line
+	 */
+	private static String bashResult(String id, BashResult result)
+	{
+		return "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"tool_use_id\":\"" + id +
+			"\",\"type\":\"tool_result\",\"content\":" + result.content() + ",\"is_error\":" + result.error() +
+			"}]},\"parent_tool_use_id\":null,\"session_id\":\"s\"}";
 	}
 }

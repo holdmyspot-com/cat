@@ -49,6 +49,12 @@ public final class ClaudeProcess implements HarnessProcess
 	 */
 	private static final Duration STOP_GRACE = Duration.ofSeconds(10);
 	/**
+	 * How long a turn waits, after it has stopped Claude, for the output that Claude printed before it stopped. The
+	 * output ends as soon as the process tree is gone, so this bounds only a descendant that outlives it and holds the
+	 * output open.
+	 */
+	private static final Duration DRAIN_TIMEOUT = Duration.ofSeconds(5);
+	/**
 	 * Reports that a turn's output began with a follow-up reply that Claude finished for an earlier turn.
 	 */
 	public static final String LATE_FOLLOW_UP = "Claude finished a follow-up reply to a background task's " +
@@ -63,6 +69,11 @@ public final class ClaudeProcess implements HarnessProcess
 	 */
 	private final BlockingQueue<OutputLine> output = new LinkedBlockingQueue<>();
 	private final HarnessStandardError standardError;
+	/**
+	 * Finds Claude Code's report that its command sandbox failed to start. One sandbox serves all of the process's turns,
+	 * so the report is looked for in the first Bash result of the process, not of each turn.
+	 */
+	private final SandboxStartReport sandboxStartReport;
 	/**
 	 * Guards {@link #turnActive}, {@link #turnPrepared}, {@link #interruptPending} and {@link #interruptsSent} so an
 	 * interrupt is requested only while a turn is in progress, and only after the turn's user message.
@@ -168,6 +179,7 @@ public final class ClaudeProcess implements HarnessProcess
 		this.transcripts = transcripts;
 		input = new OutputStreamWriter(process.getOutputStream(), UTF_8);
 		standardError = new HarnessStandardError(process.getErrorStream());
+		sandboxStartReport = new SandboxStartReport(scope.json());
 		// The output reader thread owns Claude's standard output and closes it when the stream ends.
 		Thread.ofVirtual().start(() -> readOutput(process.getInputStream()));
 	}
@@ -226,10 +238,15 @@ public final class ClaudeProcess implements HarnessProcess
 	 * <p>
 	 * When the turn's last root result reports an error, as when Claude could not reach the model service, the turn
 	 * fails instead of completing with Claude's error text as its reply.
+	 * <p>
+	 * When the result of the process's first Bash call is Claude Code's report that its command sandbox failed to start,
+	 * the turn fails at once: Claude Code runs every later command without the sandbox, so the runner stops the process
+	 * tree, writes it no further input and reports the failure with the report and whether a Bash result followed it.
 	 *
 	 * @param request the non-blank user prompt
 	 * @return the captured event stream for the turn
-	 * @throws IOException if input or output fails, or if the turn's last root result reports an error
+	 * @throws IOException if input or output fails, if the turn's last root result reports an error, or if the sandbox
+	 *   failed to start
 	 */
 	@Override
 	public HarnessProcessResult sendTurn(String request) throws IOException
@@ -283,6 +300,9 @@ public final class ClaudeProcess implements HarnessProcess
 				String line = next.line();
 				events.append(line).append('\n');
 				listener.accept(line);
+				Optional<String> sandboxReport = sandboxStartReport.accept(line);
+				if (sandboxReport.isPresent())
+					throw sandboxStartFailure(sandboxReport.get(), events, listener);
 				if (turnInterrupted)
 					boundary.interrupted();
 				LineEffect effect = boundary.accept(line);
@@ -335,6 +355,60 @@ public final class ClaudeProcess implements HarnessProcess
 	}
 
 	/**
+	 * Stops Claude after it reported that its command sandbox failed to start, and describes the failure. Claude Code
+	 * runs every command after that report without the sandbox, so the process tree is terminated before anything else
+	 * is read or written; the runner writes no input to a process that it has stopped. The output that Claude printed
+	 * before it stopped is read afterwards, to tell whether a Bash result followed the report.
+	 *
+	 * @param report the report in the result of the process's first Bash call
+	 * @param events the turn's output lines so far, which receive the lines that Claude printed before it stopped
+	 * @param listener receives each of those lines
+	 * @return the terminal failure that ends the turn
+	 * @throws IOException if the process tree cannot be confirmed stopped, or the wait for its output is interrupted
+	 */
+	private TerminalHarnessTurnFailure sandboxStartFailure(String report, StringBuilder events,
+		HarnessEventListener listener) throws IOException
+	{
+		assert report != null;
+		assert events != null;
+		assert listener != null;
+		HarnessProcessTermination.terminate(process, "Claude");
+		OutputLine next = nextLine(DRAIN_TIMEOUT);
+		while (next != null && next.line() != null)
+		{
+			events.append(next.line()).append('\n');
+			listener.accept(next.line());
+			sandboxStartReport.accept(next.line());
+			next = nextLine(DRAIN_TIMEOUT);
+		}
+		// Keep the end-of-stream entry so a later turn also observes that Claude's output has ended.
+		if (next != null)
+			output.add(next);
+		return new TerminalHarnessTurnFailure(new HarnessProcessResult(1, events.toString(),
+			sandboxStartFailed(report, sandboxStartReport.bashResultFollowed()), false, true));
+	}
+
+	/**
+	 * Explains why a turn failed because Claude Code's command sandbox did not start.
+	 *
+	 * @param report the report in the result of the process's first Bash call
+	 * @param bashResultFollowed whether a Bash result followed the report, which shows that a command ran after Claude
+	 *   Code disabled its sandbox
+	 * @return the diagnostic
+	 */
+	private static String sandboxStartFailed(String report, boolean bashResultFollowed)
+	{
+		assert report != null;
+		String followed;
+		if (bashResultFollowed)
+			followed = "A Bash result followed the report, so a command may have run outside the sandbox.";
+		else
+			followed = "No Bash result followed the report.";
+		return "Claude Code's command sandbox failed to start: " + report + " The runner stopped the Claude process " +
+			"and sent it no further input. " + followed;
+	}
+
+	/**
 	 * Returns the next entry of Claude's standard output, waiting for it as long as it takes.
 	 *
 	 * @return the next output entry
@@ -345,6 +419,26 @@ public final class ClaudeProcess implements HarnessProcess
 		try
 		{
 			return output.take();
+		}
+		catch (InterruptedException e)
+		{
+			Thread.currentThread().interrupt();
+			throw new IOException("Interrupted while waiting for Claude output", e);
+		}
+	}
+
+	/**
+	 * Returns the next entry of Claude's standard output, waiting for it up to a limit.
+	 *
+	 * @param timeout how long to wait for the entry
+	 * @return the next output entry, or {@code null} if none arrived within {@code timeout}
+	 * @throws IOException if the thread is interrupted while waiting
+	 */
+	private OutputLine nextLine(Duration timeout) throws IOException
+	{
+		try
+		{
+			return output.poll(timeout.toMillis(), TimeUnit.MILLISECONDS);
 		}
 		catch (InterruptedException e)
 		{
