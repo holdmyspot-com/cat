@@ -614,4 +614,30 @@ public final class ChildPolicyTest
 				isEqualTo(List.of(holder, secret));
 		}
 	}
+
+	/**
+	 * Verifies that denying writes adds the paths inside the write roots to the write denials, once, and leaves out a
+	 * path that no write root holds, which the commands cannot write anyway.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void deniesWritesInsideWriteRootsOnly() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-policy-deny-writes-")).toRealPath();
+			Path home = Files.createDirectories(root.resolve("home"));
+			Path plugins = Files.createDirectories(home.resolve(".claude/plugins"));
+			Path elsewhere = Files.createDirectories(root.resolve("elsewhere"));
+			ChildPolicy policy = new ChildPolicy(List.of(home), List.of(), List.of(), List.of(), Set.of(), false);
+
+			ChildPolicy denied = policy.denyingWrites(List.of(plugins, elsewhere));
+
+			requireThat(denied.writeDenials(), "writeDenials").isEqualTo(List.of(plugins));
+			requireThat(denied.writeRoots(), "writeRoots").isEqualTo(policy.writeRoots());
+			requireThat(denied.denyingWrites(List.of(plugins)), "again").isEqualTo(denied);
+			requireThat(policy.denyingWrites(List.of(elsewhere)), "outsideOnly").isEqualTo(policy);
+		}
+	}
 }

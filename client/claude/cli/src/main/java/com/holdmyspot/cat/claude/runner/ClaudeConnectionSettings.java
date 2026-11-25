@@ -593,6 +593,15 @@ public final class ClaudeConnectionSettings
 			implicitWrites.add(project);
 		ChildPolicy policy = childPolicy(bound, sessionFolder, claudeHome, sessionWrites, implicitWrites, deniedReads,
 			extraPermissions, modelHost);
+		if (sandboxed)
+		{
+			// The commands of a sandboxed session may not change the plugins that the runner installs into its
+			// configuration directory: Claude Code keeps the directory read-only to them, and the settings and the
+			// reported policy say so too. The folder exists before the sandbox is applied, because a denied path that
+			// is missing is not one that the sandbox can protect.
+			Path plugins = Files.createDirectories(destination.getParent().resolve("plugins"));
+			policy = policy.denyingWrites(List.of(plugins));
+		}
 
 		JsonMapper mapper = scope.json();
 		ObjectNode settings = mapper.createObjectNode();

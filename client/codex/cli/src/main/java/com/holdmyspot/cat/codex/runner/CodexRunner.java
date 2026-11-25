@@ -237,7 +237,8 @@ public final class CodexRunner
 			// The session's commands may reach only the host that its own Codex sends model requests to
 			String modelHost = authentication.modelHost();
 			ChildPolicy policy = sessionPolicy(bound, new ChildNeeds(nestedSession.directory().toAbsolutePath(),
-				caches.directories(), List.of(), Set.of(modelHost)).with(extraPermissions), requestAccess);
+				caches.directories(), List.of(), Set.of(modelHost)).with(extraPermissions), requestAccess,
+				codexFolder);
 			boolean pluginsInstalled = installCat || !trialPlugins.isEmpty();
 			List<String> appServer = appServerCommand(executable, pluginsInstalled);
 			Path worktree = nestedSession.directory().resolve("project");
@@ -856,6 +857,28 @@ public final class CodexRunner
 		if (requestAccess == null)
 			return policy;
 		return policy.leavingReadable(List.of(requestAccess.responses()));
+	}
+
+	/**
+	 * Returns the policy of a session, as {@link #sessionPolicy(ParentPolicy, ChildNeeds, SessionRequestAccess)}
+	 * returns it, that also reports the plugin folder that the session's profile keeps read-only inside its Codex
+	 * folder, and with it the CAT plugin that the runner installs there.
+	 *
+	 * @param bound         the policy that bounds the session's
+	 * @param needs         the session's needs
+	 * @param requestAccess the session's access to requested sessions, or {@code null} if it may request none
+	 * @param codexFolder   the session's Codex folder
+	 * @return the session's policy
+	 * @throws NullPointerException    if any argument other than {@code requestAccess} is null
+	 * @throws SessionRefusedException if the bound does not allow what the session needs
+	 * @throws IOException             if a path of the policy cannot be resolved or listed
+	 */
+	public static ChildPolicy sessionPolicy(ParentPolicy bound, ChildNeeds needs, SessionRequestAccess requestAccess,
+		Path codexFolder) throws IOException
+	{
+		requireThat(codexFolder, "codexFolder").isNotNull();
+		// The session's profile keeps this folder read-only to its commands, whatever the session installs into it
+		return sessionPolicy(bound, needs, requestAccess).denyingWrites(List.of(codexFolder.resolve("plugins")));
 	}
 
 	/**

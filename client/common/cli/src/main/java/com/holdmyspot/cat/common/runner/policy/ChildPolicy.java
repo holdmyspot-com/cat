@@ -231,6 +231,33 @@ public record ChildPolicy(List<Path> writeRoots, List<Path> writeDenials, List<P
 	}
 
 	/**
+	 * Returns this policy with some paths that its session's harness already keeps from the session's commands added to
+	 * its write denials, so that the policy reports the paths that the commands cannot write. A path that lies outside
+	 * the write roots is already unwritable and is left out.
+	 *
+	 * @param paths the absolute paths that the commands may not write
+	 * @return a policy that differs from this one only in its write denials, or this policy if no path lies inside a
+	 *         write root
+	 * @throws NullPointerException     if {@code paths} is null or contains null
+	 * @throws IllegalArgumentException if a path is not absolute
+	 * @throws IOException              if a symbolic link in a path cannot be read, or a path follows more than 40
+	 *                                  links
+	 */
+	public ChildPolicy denyingWrites(List<Path> paths) throws IOException
+	{
+		List<Path> resolved = RealPaths.resolveAll(ParentPolicy.absolutePaths(paths, "paths"));
+		Set<Path> denials = new LinkedHashSet<>(writeDenials);
+		for (Path path : resolved)
+		{
+			if (RealPaths.isInsideAny(path, writeRoots))
+				denials.add(path);
+		}
+		if (denials.size() == writeDenials.size())
+			return this;
+		return new ChildPolicy(writeRoots, List.copyOf(denials), readDenials, readReallowances, hosts, allowLocalBinding);
+	}
+
+	/**
 	 * Returns this policy as the policy of a parent, so that a session that the child requests in turn gets nothing
 	 * that this policy does not give: {@link #intersect(ParentPolicy, ChildNeeds) intersecting} the requested
 	 * session's needs with it refuses a need that this policy does not allow.

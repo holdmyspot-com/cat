@@ -12,6 +12,8 @@ import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.runner.policy.MissingPermissionsException;
+import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
+import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -322,6 +324,45 @@ public final class ClaudeConnectionSettingsTest
 			isFalse();
 			requireThat(strings(result.path("sandbox").path("network").path("allowedDomains")), "allowedDomains").
 				isEqualTo(List.of("api.anthropic.com"));
+		}
+	}
+
+	/**
+	 * Verifies that the policy that a nested session's runner reports for a session that installs CAT keeps the
+	 * installed plugin out of the session's writable paths, and that its sandbox settings deny the commands writing
+	 * there, so that a check program that the session's driver starts runs on a runtime that the session cannot
+	 * change, and that the rest of the session's home stays writable.
+	 *
+	 * @throws IOException   if fixture I/O fails
+	 * @throws PolicyRefusal if the policy would let the session change the runtime
+	 */
+	@Test
+	public void keepsInstalledPluginUnwritable() throws IOException, PolicyRefusal
+	{
+		// Requirement: R-L21
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-plugin-policy-")).toRealPath();
+			Path home = Files.createDirectories(root.resolve("session/home"));
+			Path configuration = Files.createDirectories(home.resolve(".claude"));
+			Path plugin = configuration.resolve("plugins/cat-marketplace/plugins/cat");
+			Path runtime = Files.createDirectories(plugin.resolve("bin/runtime"));
+			Path scratch = Files.createDirectories(home.resolve("scratch"));
+			Path destination = configuration.resolve("settings.json");
+
+			Path session = root.resolve("session");
+			ChildPolicy policy = ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"),
+				destination, session.resolve("claude"), home, List.of(), session, List.of(), "", null, null, session,
+				null, ExtraPermissions.NONE, "api.example");
+
+			ParentPolicy owner = policy.asParentPolicy();
+			requireThat(owner.mayWrite(runtime), "mayWriteRuntime").isFalse();
+			requireThat(owner.mayWrite(scratch), "mayWriteScratch").isTrue();
+			owner.requireTrustedTree(runtime);
+			List<String> denied = strings(scope.json().readTree(Files.readString(destination)).path("sandbox").
+				path("filesystem").path("denyWrite"));
+			requireThat(denied, "denyWrite").contains(configuration.resolve("plugins").toString());
 		}
 	}
 

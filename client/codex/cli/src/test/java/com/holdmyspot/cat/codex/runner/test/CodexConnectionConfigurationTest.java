@@ -21,6 +21,7 @@ import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.runner.policy.HostAccess;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
+import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -250,6 +251,39 @@ public final class CodexConnectionConfigurationTest
 			}
 			requireThat(covers(denied, responses), "deniesOwnResponses").withContext(denied, "denied").isFalse();
 			requireThat(covers(denied, sibling), "deniesSibling").withContext(denied, "denied").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that the policy that a nested session's runner reports for a session that installs CAT keeps the
+	 * installed plugin out of the session's writable paths, as the session's profile does, so that a check program
+	 * that the session's driver starts runs on a runtime that the session cannot change, and that the rest of the
+	 * session's home stays writable.
+	 *
+	 * @throws IOException   if fixture I/O fails
+	 * @throws PolicyRefusal if the policy would let the session change the runtime
+	 */
+	@Test
+	public void reportsInstalledPluginUnwritable() throws IOException, PolicyRefusal
+	{
+		// Requirement: R-L21
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-plugin-policy-")).toRealPath();
+			Path session = Files.createDirectories(root.resolve("session"));
+			Path codexFolder = Files.createDirectories(session.resolve("home/.codex"));
+			Path runtime = Files.createDirectories(codexFolder.resolve("plugins/cache/cat/cat/1.0/bin/runtime"));
+			Path scratch = Files.createDirectories(session.resolve("home/scratch"));
+			ParentPolicy bound = new ParentPolicy(true, List.of(root), List.of(), List.of(), List.of(),
+				HostAccess.listed(Set.of("model.example")), false, List.of());
+
+			ChildPolicy policy = CodexRunner.sessionPolicy(bound, new ChildNeeds(session, List.of(), List.of(),
+				Set.of("model.example")), null, codexFolder);
+
+			ParentPolicy owner = policy.asParentPolicy();
+			requireThat(owner.mayWrite(runtime), "mayWriteRuntime").isFalse();
+			requireThat(owner.mayWrite(scratch), "mayWriteScratch").isTrue();
+			owner.requireTrustedTree(runtime);
 		}
 	}
 
