@@ -34,7 +34,7 @@ import java.util.stream.Stream;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Holds a prompt test's scenario, workspace files, assertion examples and test cases.
+ * Holds a prompt test's scenario, workspace files, assertion examples, check files and test cases.
  *
  * @param root               the test root, which holds the prompt test directory or is that directory
  * @param directory          the prompt test directory
@@ -49,10 +49,13 @@ import tools.jackson.databind.json.JsonMapper;
  *                           separators, sorted by path
  * @param exampleDirectories the paths of all directories below {@value #EXAMPLES}, including empty ones and those
  *                           that {@value ExamplesFile#NAME} lists, with {@code /} separators, sorted by path
+ * @param checkSources       each check file, keyed by its path below {@value #CHECKS} with {@code /} separators,
+ *                           sorted by path
  */
 public record PromptTestFiles(Path root, Path directory, Scenario scenario,
 	List<PromptTestFiles.WorkspaceEntry> workspaceFiles, Map<String, Path> sources, Map<String, String> copiedLinks,
-	List<TestCase> testCases, Map<String, Path> exampleSources, Set<String> exampleDirectories)
+	List<TestCase> testCases, Map<String, Path> exampleSources, Set<String> exampleDirectories,
+	Map<String, Path> checkSources)
 {
 	/**
 	 * The scenario's file name.
@@ -66,6 +69,14 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario,
 	 * The name of the directory that holds the prompt test's assertion examples.
 	 */
 	public static final String EXAMPLES = "examples";
+	/**
+	 * The name of the directory that holds the prompt test's check files.
+	 */
+	public static final String CHECKS = "checks";
+	/**
+	 * The prefix of a program path relative to its prompt test.
+	 */
+	static final String CHECKS_PREFIX = CHECKS + "/";
 	/**
 	 * The characters that a file name segment may not contain on some operating system.
 	 */
@@ -143,6 +154,7 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario,
 	 *                           separators
 	 * @param exampleDirectories the paths of all directories below {@value #EXAMPLES}, including empty ones, with
 	 *                           {@code /} separators
+	 * @param checkSources each check file by its path below {@value #CHECKS} with {@code /} separators
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code directory} does not lie at or below {@code root}, or {@code sources}
 	 *                                  does not name exactly the workspace files' paths
@@ -165,6 +177,30 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario,
 		testCases = List.copyOf(testCases);
 		exampleSources = Collections.unmodifiableMap(new TreeMap<>(Map.copyOf(exampleSources)));
 		exampleDirectories = Collections.unmodifiableSet(new TreeSet<>(exampleDirectories));
+		checkSources = Collections.unmodifiableMap(new TreeMap<>(Map.copyOf(checkSources)));
+	}
+
+	/**
+	 * Creates the files of a prompt test with no check files.
+	 *
+	 * @param root the test root
+	 * @param directory the prompt test directory
+	 * @param scenario the parsed scenario
+	 * @param workspaceFiles the workspace files, sorted by path
+	 * @param sources each workspace file's source
+	 * @param copiedLinks the target of each workspace link copied to the trial, by workspace path
+	 * @param testCases the test cases
+	 * @param exampleSources the example files by path below {@value #EXAMPLES}
+	 * @param exampleDirectories the directories by path below {@value #EXAMPLES}
+	 * @throws NullPointerException if any argument is null
+	 * @throws IllegalArgumentException if the directory leaves the root or the workspace sources do not match
+	 */
+	public PromptTestFiles(Path root, Path directory, Scenario scenario, List<WorkspaceEntry> workspaceFiles,
+		Map<String, Path> sources, Map<String, String> copiedLinks, List<TestCase> testCases,
+		Map<String, Path> exampleSources, Set<String> exampleDirectories)
+	{
+		this(root, directory, scenario, workspaceFiles, sources, copiedLinks, testCases, exampleSources,
+			exampleDirectories, Map.of());
 	}
 
 	/**
@@ -208,11 +244,11 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario,
 	 *                                  {@value #WORKSPACE} holds a special file or a link that is absolute, whose
 	 *                                  target is missing or lies outside the project, whose target directory holds
 	 *                                  the link, that forms a cycle or that reaches a prompt test directory,
-	 *                                  {@value #EXAMPLES} is a link or a non-directory entry, it holds a link or a
-	 *                                  special file, {@value ExamplesFile#NAME} is not a regular file that follows its
-	 *                                  format or lists a path that leaves {@value #EXAMPLES}, names a file or names a
-	 *                                  directory that holds an entry, or a committed test case is not valid for the
-	 *                                  prompt test
+	 *                                  {@value #EXAMPLES} or {@value #CHECKS} is a link or a non-directory entry, it
+	 *                                  holds a link or a special file, a check program is missing,
+	 *                                  {@value ExamplesFile#NAME} is not a regular file that follows its format or
+	 *                                  lists a path that leaves {@value #EXAMPLES}, names a file or names a directory
+	 *                                  that holds an entry, or a committed test case is not valid for the prompt test
 	 */
 	public static PromptTestFiles read(JsonMapper json, Path project, Path root, Path directory)
 		throws IOException, ScenarioFormatException
@@ -288,7 +324,7 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario,
 			}
 		}
 		return new PromptTestFiles(root, directory, files.scenario(), files.workspaceFiles(), files.sources(),
-			files.copiedLinks(), testCases, files.exampleSources(), exampleDirectories);
+			files.copiedLinks(), testCases, files.exampleSources(), exampleDirectories, files.checkSources());
 	}
 
 	/**
@@ -316,7 +352,7 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario,
 		requireThat(directory, "directory").isNotNull();
 		Map<String, Path> exampleSources = new HashMap<>();
 		Set<String> exampleDirectories = new HashSet<>();
-		readExamples(project, directory.resolve(EXAMPLES), exampleSources, exampleDirectories);
+		readRegularTree(project, directory.resolve(EXAMPLES), exampleSources, exampleDirectories);
 		return Collections.unmodifiableSortedSet(new TreeSet<>(readExamplesFile(json, project, directory,
 			exampleSources, exampleDirectories)));
 	}
@@ -412,7 +448,7 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario,
 	}
 
 	/**
-	 * Reads the scenario, {@value #WORKSPACE} directory and {@value #EXAMPLES} directory of a prompt test directory
+	 * Reads the scenario and the {@value #WORKSPACE}, {@value #EXAMPLES} and {@value #CHECKS} directories
 	 * of the project, leaving out its values file, whose test cases the caller reads.
 	 *
 	 * @param project   the project, which problems name files relative to, with {@code /} between names
@@ -424,8 +460,8 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario,
 	 *                                  does not lie at or below {@code project}
 	 * @throws IOException              if a file cannot be read
 	 * @throws ScenarioFormatException  if the scenario does not follow the format, or {@value #WORKSPACE} holds a
-	 *                                  special file or a link that is refused, or {@value #EXAMPLES} has an invalid
-	 *                                  file or directory
+	 *                                  special file or a link that is refused, {@value #EXAMPLES} or
+	 *                                  {@value #CHECKS} has an invalid entry, or a check program is missing
 	 * @see #read(JsonMapper, Path, Path, Path)
 	 */
 	public static PromptTestFiles readScenario(Path project, Path root, Path directory)
@@ -435,7 +471,7 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario,
 	}
 
 	/**
-	 * Reads the scenario, {@value #WORKSPACE} directory and {@value #EXAMPLES} directory of a prompt test directory,
+	 * Reads the scenario and the {@value #WORKSPACE}, {@value #EXAMPLES} and {@value #CHECKS} directories,
 	 * leaving out its values file, whose test cases the caller reads. The prompt test lies in a tree that holds files
 	 * at their paths relative to the project, such as a draft directory. A workspace link resolves at the path where
 	 * it lies relative to the tree. The reader gets a target that the tree holds from that tree and any other target
@@ -452,8 +488,8 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario,
 	 *                                  does not lie at or below {@code tree}
 	 * @throws IOException              if a file cannot be read
 	 * @throws ScenarioFormatException  if the scenario does not follow the format, or {@value #WORKSPACE} holds a
-	 *                                  special file or a link that is refused, or {@value #EXAMPLES} has an invalid
-	 *                                  file or directory
+	 *                                  special file or a link that is refused, {@value #EXAMPLES} or
+	 *                                  {@value #CHECKS} has an invalid entry, or a check program is missing
 	 * @see #read(JsonMapper, Path, Path, Path)
 	 */
 	public static PromptTestFiles readScenario(Path project, Path tree, Path root, Path directory)
@@ -527,9 +563,20 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario,
 		reader.read(directory);
 		Map<String, Path> exampleSources = new HashMap<>();
 		Set<String> exampleDirectories = new HashSet<>();
-		readExamples(project, directory.resolve(EXAMPLES), exampleSources, exampleDirectories);
+		readRegularTree(project, directory.resolve(EXAMPLES), exampleSources, exampleDirectories);
+		Map<String, Path> checkSources = new HashMap<>();
+		readRegularTree(project, directory.resolve(CHECKS), checkSources, new HashSet<>());
+		for (Assertion assertion : scenario.assertions())
+		{
+			if (assertion.builtInTool().orElse(null) instanceof BuiltInTool.CheckProgram check &&
+				!checkSources.containsKey(check.program().substring(CHECKS_PREFIX.length())))
+			{
+				throw new ScenarioFormatException(location + "assertion " + assertion.id() +
+					" names a missing check program " + check.program() + ". Supply it as a regular file.");
+			}
+		}
 		return new PromptTestFiles(root, directory, scenario, reader.workspaceFiles(), reader.sources(),
-			reader.copiedLinks(), List.of(), exampleSources, exampleDirectories);
+			reader.copiedLinks(), List.of(), exampleSources, exampleDirectories, checkSources);
 	}
 
 	/**
@@ -835,22 +882,22 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario,
 	}
 
 	/**
-	 * Collects example files and directories if the examples directory exists.
+	 * Collects directories and regular files if the tree root exists.
 	 *
 	 * @param project            the directory that problems name paths relative to
-	 * @param examples           where the prompt test's examples directory belongs
-	 * @param exampleSources     receives each example file by its path relative to {@code examples}
-	 * @param exampleDirectories receives the paths of directories below {@code examples}
+	 * @param treeRoot           the directory at the root of the tree
+	 * @param files     receives each file by its path relative to the tree root
+	 * @param directories receives the paths of directories below the tree root
 	 * @throws IOException             if an entry cannot be read
 	 * @throws ScenarioFormatException if the root or an entry inside it is a link or of the wrong kind
 	 */
-	private static void readExamples(Path project, Path examples, Map<String, Path> exampleSources,
-		Set<String> exampleDirectories) throws IOException, ScenarioFormatException
+	private static void readRegularTree(Path project, Path treeRoot, Map<String, Path> files,
+		Set<String> directories) throws IOException, ScenarioFormatException
 	{
 		BasicFileAttributes attributes;
 		try
 		{
-			attributes = Files.readAttributes(examples, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+			attributes = Files.readAttributes(treeRoot, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
 		}
 		catch (NoSuchFileException _)
 		{
@@ -858,26 +905,26 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario,
 		}
 		if (!attributes.isDirectory())
 		{
-			throw new ScenarioFormatException(display(project, examples) +
-				": Replace this entry with a directory for the assertion examples.");
+			throw new ScenarioFormatException(display(project, treeRoot) +
+				": Replace this entry with a directory.");
 		}
 
-		readExampleEntries(project, examples, examples, exampleSources, exampleDirectories);
+		readRegularEntries(project, treeRoot, treeRoot, files, directories);
 	}
 
 	/**
-	 * Collects the entries of one directory under the examples root, including empty directories.
+	 * Collects the entries of one directory, including empty directories.
 	 *
 	 * @param project            the directory that problems name paths relative to
-	 * @param examples           the prompt test's examples directory
-	 * @param directory          the directory to read at or below {@code examples}
-	 * @param exampleSources     receives each example file by its path relative to {@code examples}
-	 * @param exampleDirectories receives the paths of directories below {@code examples}
+	 * @param treeRoot           the directory at the root of the tree
+	 * @param directory          the directory to read at or below the tree root
+	 * @param files     receives each file by its path relative to the tree root
+	 * @param directories receives the paths of directories below the tree root
 	 * @throws IOException             if an entry cannot be read
 	 * @throws ScenarioFormatException if an entry is a link or a special file
 	 */
-	private static void readExampleEntries(Path project, Path examples, Path directory, Map<String, Path> exampleSources,
-		Set<String> exampleDirectories) throws IOException, ScenarioFormatException
+	private static void readRegularEntries(Path project, Path treeRoot, Path directory, Map<String, Path> files,
+		Set<String> directories) throws IOException, ScenarioFormatException
 	{
 		List<Path> ordered;
 		try (Stream<Path> entries = Files.list(directory))
@@ -890,20 +937,20 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario,
 		}
 		for (Path entry : ordered)
 		{
-			String path = PortablePaths.text(examples.relativize(entry));
+			String path = PortablePaths.text(treeRoot.relativize(entry));
 			BasicFileAttributes attributes = Files.readAttributes(entry, BasicFileAttributes.class,
 				LinkOption.NOFOLLOW_LINKS);
 			if (attributes.isDirectory())
 			{
-				exampleDirectories.add(path);
-				readExampleEntries(project, examples, entry, exampleSources, exampleDirectories);
+				directories.add(path);
+				readRegularEntries(project, treeRoot, entry, files, directories);
 			}
 			else if (attributes.isRegularFile())
-				exampleSources.put(path, entry);
+				files.put(path, entry);
 			else
 			{
 				throw new ScenarioFormatException(display(project, entry) +
-					": Assertion examples may contain only directories and regular files. Replace or remove this entry.");
+					": Replace this entry with a regular file or directory, or remove it.");
 			}
 		}
 	}

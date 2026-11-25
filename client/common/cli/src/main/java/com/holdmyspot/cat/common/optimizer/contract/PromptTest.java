@@ -76,9 +76,11 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 	 *                           {@code /} separators
 	 * @param exampleDirectories the explicitly recorded example evidence directories, each relative to
 	 *                           {@code examples}, using {@code /} separators; parent directories are implicit
+	 * @param checkFiles the program and supporting files by their path relative to {@code checks}, with
+	 *                   {@code /} separators
 	 */
 	public record Draft(Path directory, String scenario, Map<String, String> copiedLinks,
-		Map<String, FileContent> exampleFiles, Set<String> exampleDirectories)
+		Map<String, FileContent> exampleFiles, Set<String> exampleDirectories, Map<String, FileContent> checkFiles)
 	{
 		private static final Pattern RESERVED_PATH_CHARACTERS = Pattern.compile("[\\p{Cntrl}\\\\:*?\"<>|]");
 
@@ -92,10 +94,11 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 		 *                           {@value PromptTestFiles#WORKSPACE}
 		 * @param exampleFiles       the example evidence files by their path relative to {@code examples}
 		 * @param exampleDirectories the explicitly recorded directories relative to {@code examples}
-		 * @throws NullPointerException     if any of the arguments or example data is null
+		 * @param checkFiles each program or supporting file by its path below {@code checks}
+		 * @throws NullPointerException     if any of the arguments or file data is null
 		 * @throws IllegalArgumentException if {@code directory} is absolute, empty or not normalized or
-		 *                                  leaves the draft directory, {@code scenario} is blank, an example path
-		 *                                  is malformed, or an example file occupies a directory's path
+		 *                                  leaves the draft directory, {@code scenario} is blank, an example or check path
+		 *                                  is malformed, or a file occupies a directory's path
 		 */
 		public Draft
 		{
@@ -109,13 +112,33 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 			exampleFiles = Collections.unmodifiableMap(new TreeMap<>(Map.copyOf(exampleFiles)));
 			exampleDirectories = Collections.unmodifiableSet(new TreeSet<>(exampleDirectories));
 			for (String path : exampleFiles.keySet())
-				checkExamplePath(path, exampleFiles);
+				requireDraftPath(path, exampleFiles, "example");
 			for (String path : exampleDirectories)
 			{
-				checkExamplePath(path, exampleFiles);
+				requireDraftPath(path, exampleFiles, "example");
 				if (exampleFiles.containsKey(path))
 					throw new IllegalArgumentException("The example path '" + path + "' is both a file and a directory.");
 			}
+			checkFiles = Collections.unmodifiableMap(new TreeMap<>(Map.copyOf(checkFiles)));
+			for (String path : checkFiles.keySet())
+				requireDraftPath(path, checkFiles, "check file");
+		}
+
+		/**
+		 * Creates a draft of a prompt test with examples and no check files.
+		 *
+		 * @param directory the draft's relative directory
+		 * @param scenario the scenario text
+		 * @param copiedLinks the workspace's copied links, keyed by path
+		 * @param exampleFiles the example files by path below {@code examples}
+		 * @param exampleDirectories the directories by path below {@code examples}
+		 * @throws NullPointerException if any argument is null
+		 * @throws IllegalArgumentException if a path is invalid or the scenario is blank
+		 */
+		public Draft(Path directory, String scenario, Map<String, String> copiedLinks,
+			Map<String, FileContent> exampleFiles, Set<String> exampleDirectories)
+		{
+			this(directory, scenario, copiedLinks, exampleFiles, exampleDirectories, Map.of());
 		}
 
 		/**
@@ -152,29 +175,30 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 		}
 
 		/**
-		 * Checks an example path and the implicit directories it needs.
+		 * Checks a file or directory path and the implicit directories it needs.
 		 *
-		 * @param path         the example path
-		 * @param exampleFiles the example files by relative path
+		 * @param path the relative path
+		 * @param files the files by relative path
+		 * @param kind the kind of file or directory named in a diagnostic
 		 * @throws IllegalArgumentException if the path is malformed or a parent is a file
 		 */
-		private static void checkExamplePath(String path, Map<String, FileContent> exampleFiles)
+		private static void requireDraftPath(String path, Map<String, FileContent> files, String kind)
 		{
 			for (String segment : path.split("/", -1))
 			{
 				if (segment.isEmpty() || segment.equals(".") || segment.equals("..") ||
 					RESERVED_PATH_CHARACTERS.matcher(segment).find())
 				{
-					throw new IllegalArgumentException("The example path '" + path + "' must be a portable relative path.");
+					throw new IllegalArgumentException("The " + kind + " path '" + path + "' must be a portable relative path.");
 				}
 			}
 			for (int slash = path.indexOf('/'); slash != -1; slash = path.indexOf('/', slash + 1))
 			{
 				String parent = path.substring(0, slash);
-				if (exampleFiles.containsKey(parent))
+				if (files.containsKey(parent))
 				{
-					throw new IllegalArgumentException("The example path '" + parent + "' is a file but '" + path +
-						"' uses it as a directory.");
+					throw new IllegalArgumentException("The " + kind + " path '" + parent + "' is a file but '" +
+						path + "' uses it as a directory.");
 				}
 			}
 		}
@@ -783,6 +807,17 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 	}
 
 	/**
+	 * Indicates whether a tool must run a program after the last trial turn.
+	 *
+	 * @return {@code true} if an assertion declares a check program
+	 */
+	public boolean hasCheckProgram()
+	{
+		return allAssertions().stream().map(Assertion::builtInTool).flatMap(Optional::stream).
+			anyMatch(BuiltInTool.CheckProgram.class::isInstance);
+	}
+
+	/**
 	 * Runs the built-in tool of every assertion that has a {@code tool} on a trial's record.
 	 *
 	 * @param testCase the test case that the trial ran
@@ -795,7 +830,25 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 	public List<BuiltInToolResult> decide(TestCase testCase, TrialRecord record)
 		throws IOException, UndecidableToolException
 	{
+		return decide(testCase, record, Map.of());
+	}
+
+	/**
+	 * Combines completed check programs with built-in tools that decide directly from the trial record.
+	 *
+	 * @param testCase the test case that the trial ran
+	 * @param record the trial's record
+	 * @param checkResults the owner's completed check results keyed by assertion ID
+	 * @return one result per built-in tool, in assertion order
+	 * @throws NullPointerException if any argument is null
+	 * @throws IOException if the record cannot be read
+	 * @throws UndecidableToolException if the record or the completed results lack what a tool observes
+	 */
+	public List<BuiltInToolResult> decide(TestCase testCase, TrialRecord record,
+		Map<String, BuiltInToolResult> checkResults) throws IOException, UndecidableToolException
+	{
 		requireThat(record, "record").isNotNull();
+		requireThat(checkResults, "checkResults").isNotNull();
 		Map<String, String> textByName = textByName(testCase);
 		List<BuiltInToolResult> results = new ArrayList<>();
 		for (Assertion assertion : allAssertions())
@@ -803,7 +856,13 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 			Optional<BuiltInTool> builtInTool = assertion.builtInTool();
 			if (builtInTool.isEmpty())
 				continue;
-			BuiltInTool.Decision decision = builtInTool.get().decide(record, textByName);
+			BuiltInTool tool = builtInTool.get();
+			if (tool instanceof BuiltInTool.CheckProgram && checkResults.containsKey(assertion.id()))
+			{
+				results.add(checkResults.get(assertion.id()));
+				continue;
+			}
+			BuiltInTool.Decision decision = tool.decide(record, textByName);
 			results.add(new BuiltInToolResult(assertion, decision.passed(), decision.observed()));
 		}
 		return results;

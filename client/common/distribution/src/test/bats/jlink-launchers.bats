@@ -7,11 +7,33 @@
 # supplies, passes a set, non-empty TMPDIR as java.io.tmpdir, and refuses an unusable binding with one line naming it
 # and exit status 3. A launcher starts Java from the plugin's startup cache bin/aot/session-start.aot when that file
 # exists, Java accepts a cache trained through the plugin's java wrapper, and a cache that Java cannot use changes
-# nothing that the program's caller sees.
+# nothing that the program's caller sees. The runtime bundled with each plugin runs Java source files.
 
 bats_require_minimum_version 1.5.0
 
 load bootstrap-helpers
+
+@test "both generated CAT runtimes run a Java source file" {
+	source="${TEST_ROOT}/Check.java"
+	cat > "${source}" <<'JAVA'
+import java.lang.module.ModuleFinder;
+
+class Check {
+	public static void main(String[] args) {
+		System.out.println(ModuleFinder.ofSystem().find("jdk.compiler").orElseThrow().descriptor().name());
+	}
+}
+JAVA
+
+	for harness in claude codex; do
+		runtime="${GENERATED_RUNTIME_DIRECTORY}/${harness}/bin/runtime"
+		run env -u JAVA_TOOL_OPTIONS -u JDK_JAVA_OPTIONS -u _JAVA_OPTIONS -u CLASSPATH \
+			"${runtime}/bin/java" -XX:+PerfDisableSharedMem "${source}"
+
+		[ "${status}" -eq 0 ]
+		[ "${output}" = "jdk.compiler" ]
+	done
+}
 
 @test "generated launchers run their programs from a path with spaces where bwrap fails and name non-ASCII files in the C locale" {
 	runtime="${TEST_ROOT}/generated runtime"

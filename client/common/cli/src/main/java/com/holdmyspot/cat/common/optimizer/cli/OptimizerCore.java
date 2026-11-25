@@ -65,6 +65,7 @@ import com.holdmyspot.cat.common.optimizer.execution.Cleanup;
 import com.holdmyspot.cat.common.optimizer.execution.DeliveryReport;
 import com.holdmyspot.cat.common.optimizer.execution.Driver;
 import com.holdmyspot.cat.common.optimizer.execution.DriverContext;
+import com.holdmyspot.cat.common.optimizer.execution.CheckProgram;
 import com.holdmyspot.cat.common.optimizer.execution.GuardPilot;
 import com.holdmyspot.cat.common.optimizer.execution.LeftoverNestedSessions;
 import com.holdmyspot.cat.common.optimizer.execution.PilotResult;
@@ -3160,7 +3161,8 @@ public final class OptimizerCore implements Core
 					promptFiles.put(path, file.contentHash());
 			}
 		}
-		return CertificationStatus.of(history, promptFiles, known, minimumPassRate);
+		MeasurementIdentity observed = known.replaceWith(checkProgramEnvironment());
+		return CertificationStatus.of(history, promptFiles, observed, minimumPassRate);
 	}
 
 	/**
@@ -5024,8 +5026,6 @@ public final class OptimizerCore implements Core
 		boolean migratingExamples) throws IOException
 	{
 		List<CampaignEvent> events = proposal.confirmation(certificationScope, scope.random().nextLong());
-		if (evaluators.isEmpty() && !migratingExamples)
-			return events;
 		List<CampaignEvent> scoped = new ArrayList<>();
 		for (CampaignEvent event : events)
 		{
@@ -5034,8 +5034,12 @@ public final class OptimizerCore implements Core
 				MeasurementIdentity environment;
 				if (evaluators.isEmpty())
 				{
-					environment = new MeasurementIdentity(Map.of(MeasurementCondition.JUDGE,
-						String.valueOf(scope.sessions().judgeVersion())));
+					environment = checkProgramEnvironment(confirm.contract());
+					if (migratingExamples)
+					{
+						environment = environment.extendWith(new MeasurementIdentity(Map.of(MeasurementCondition.JUDGE,
+							String.valueOf(scope.sessions().judgeVersion()))));
+					}
 				}
 				else
 					environment = evaluatorEnvironment(confirm.contract(), evaluators, evaluatorPlugins(campaign), workspace);
@@ -5806,7 +5810,7 @@ public final class OptimizerCore implements Core
 			promptSources, known, lockFile(campaign.header().id()), scope.random(),
 			runSettings(), scope.json(), scope.profiles().candidateJudgeProfiles(), scope.judgeRecords(),
 			evaluators,
-			scope.temporaryDirectory());
+			scope.temporaryDirectory(), scope.checkPrograms());
 	}
 
 	/**
@@ -5820,7 +5824,12 @@ public final class OptimizerCore implements Core
 	private MeasurementIdentity driverEnvironment(Campaign campaign, ForkView fork) throws IOException
 	{
 		if (campaign.header().evaluationHarnesses().equals(Set.of(campaign.header().harness())))
-			return environment(fork.inventory()::entry);
+		{
+			MeasurementIdentity known = environment(fork.inventory()::entry);
+			if (campaign.isConfirmed())
+				known = known.extendWith(checkProgramEnvironment(campaign.contract()));
+			return known;
+		}
 		if (!campaign.isConfirmed())
 			return campaignEnvironment();
 		Map<Harness, EvaluatorMetadata> evaluators = reports(campaign);
@@ -5875,7 +5884,30 @@ public final class OptimizerCore implements Core
 		Map<MeasurementCondition, String> shared = new EnumMap<>(campaignEnvironment().values());
 		shared.put(MeasurementCondition.JUDGE_HARNESS, scope.harness().commandName());
 		shared.put(MeasurementCondition.JUDGE, String.valueOf(scope.sessions().judgeVersion()));
-		return new MeasurementIdentity(shared, cells);
+		return new MeasurementIdentity(shared, cells).extendWith(checkProgramEnvironment(contract));
+	}
+
+	/**
+	 * Returns the check-program version when the confirmed contract uses it.
+	 *
+	 * @param contract the contract to measure
+	 * @return the check-program condition, or an empty identity for a contract without check programs
+	 */
+	private static MeasurementIdentity checkProgramEnvironment(Contract contract)
+	{
+		if (contract.tests().stream().noneMatch(PromptTest::hasCheckProgram))
+			return MeasurementIdentity.EMPTY;
+		return checkProgramEnvironment();
+	}
+
+	/**
+	 * Returns the currently observable runtime condition for a check program.
+	 *
+	 * @return the check-program condition
+	 */
+	private static MeasurementIdentity checkProgramEnvironment()
+	{
+		return new MeasurementIdentity(Map.of(MeasurementCondition.CHECK_PROGRAM_VERSION, CheckProgram.version()));
 	}
 
 	/**

@@ -6,9 +6,11 @@ import com.holdmyspot.cat.common.optimizer.contract.BuiltInTool;
 import com.holdmyspot.cat.common.optimizer.contract.BuiltInTool.Decision;
 import com.holdmyspot.cat.common.optimizer.contract.TrialRecord;
 import com.holdmyspot.cat.common.optimizer.contract.UndecidableToolException;
+import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.Tool;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -51,6 +53,24 @@ public final class BuiltInToolTest
 	private record Recorded(List<List<String>> replies, List<Tool> tools, Map<String, String> after,
 		Map<String, String> initial, List<String> received) implements TrialRecord
 	{
+		@Override
+		public Path initialProject()
+		{
+			throw new AssertionError("This fixture holds initial files in memory");
+		}
+
+		@Override
+		public Path effects()
+		{
+			throw new AssertionError("This fixture holds final files in memory");
+		}
+
+		@Override
+		public SessionEvidence activity()
+		{
+			throw new AssertionError("This fixture holds only the evidence its tools read");
+		}
+
 		@Override
 		public List<String> changedPaths()
 		{
@@ -345,6 +365,27 @@ public final class BuiltInToolTest
 			isTrue();
 		requireThat(BuiltInTool.parse("forbidden-text \"${{ github.token }}\"").placeholders(), "notAPlaceholder").
 			isEmpty();
+	}
+
+	/**
+	 * Verifies the check program's declaration and the boundaries of the arguments that may receive case values.
+	 */
+	@Test
+	public void declaresCheckProgramArguments()
+	{
+		BuiltInTool tool = BuiltInTool.parse("check-program checks/Check.java {{service}}");
+		requireThat(tool.name(), "name").isEqualTo("check-program");
+		requireThat(tool.behavior(), "behavior").isEqualTo("check_program_failed");
+		requireThat(tool.templates(), "templates").isEqualTo(List.of("{{service}}"));
+		requireThat(tool.placeholders(), "placeholders").isEqualTo(Set.of("service"));
+
+		BuiltInTool withQuotedArgument = BuiltInTool.parse("check-program checks/Check.java \"{{service}} status\" ok");
+		requireThat(withQuotedArgument.templates(), "quotedArgument").isEqualTo(List.of("{{service}} status", "ok"));
+		BuiltInTool.CheckProgram check = (BuiltInTool.CheckProgram) withQuotedArgument;
+		Map<String, String> values = Map.of("service", "main worker");
+		requireThat(check.filledArguments(values), "filledArguments").isEqualTo(List.of("main worker status", "ok"));
+		BuiltInTool noArguments = BuiltInTool.parse("check-program checks/Check.java");
+		requireThat(noArguments.templates(), "noArguments").isEmpty();
 	}
 
 	/**

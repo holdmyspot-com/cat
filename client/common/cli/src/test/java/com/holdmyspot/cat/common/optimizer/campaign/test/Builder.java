@@ -182,8 +182,8 @@ public final class Builder
 	}
 
 	/**
-	 * Returns a complete set of observed conditions, other than the contract, the generator and the tool-output token
-	 * limit that only a cell under such a limit records, with the given model.
+	 * Returns the observed conditions for a fixture with the given model and no check program or tool-output token
+	 * limit. Confirmation adds the contract and generator.
 	 *
 	 * @param model the observed model
 	 * @return the identity
@@ -196,6 +196,7 @@ public final class Builder
 		values.remove(MeasurementCondition.CONTRACT);
 		values.remove(MeasurementCondition.GENERATOR);
 		values.remove(MeasurementCondition.TOOL_OUTPUT_LIMIT);
+		values.remove(MeasurementCondition.CHECK_PROGRAM_VERSION);
 		values.put(MeasurementCondition.MODEL, model);
 		return new MeasurementIdentity(values);
 	}

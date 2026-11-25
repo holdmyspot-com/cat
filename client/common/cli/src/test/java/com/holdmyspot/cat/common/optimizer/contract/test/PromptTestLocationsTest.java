@@ -9,6 +9,10 @@ import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.PromptConfiguration;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestLocations;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestLocations.Location;
+import com.holdmyspot.cat.common.optimizer.inventory.Overlay;
+import com.holdmyspot.cat.common.optimizer.workspace.ForkTree;
+import com.holdmyspot.cat.common.optimizer.workspace.Workspace;
+import com.holdmyspot.cat.common.optimizer.workspace.test.PlainWorktreeLinks;
 import com.holdmyspot.cat.common.test.RootedPaths;
 
 import org.testng.annotations.Test;
@@ -125,6 +129,42 @@ public final class PromptTestLocationsTest
 					Path.of(".cat/tests/shared/a.md"), PromptConfiguration.location(TARGET),
 					PromptTestLocations.certificationHistory(TARGET)));
 			}
+		}
+	}
+
+	/**
+	 * Verifies that a staged trial receives ordinary project files and none of a prompt test's files.
+	 *
+	 * @throws IOException if the recorded fork or trial source cannot be written
+	 */
+	@Test
+	public void excludesCheckFilesFromTrialSource() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope(); TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "check-source-"));
+			Path project = Files.createDirectory(root.resolve("project"));
+			Path testDirectory = Path.of(".cat/tests/main/tone_kept");
+			Path scenario = testDirectory.resolve("scenario.md");
+			Path check = testDirectory.resolve("checks/Check.java");
+			Path example = testDirectory.resolve("examples/tone/pass_unchanged/replies.json");
+			for (Path file : List.of(TARGET, check, example))
+			{
+				Path resolved = project.resolve(file);
+				Files.createDirectories(resolved.getParent());
+				Files.writeString(resolved, "recorded file");
+			}
+			Files.writeString(project.resolve(scenario), "# Tone kept\n");
+			Contract contract = ContractFixtures.citing(ContractFixtures.contract(),
+				Map.of("formatting", List.of(".cat/tests/main/tone_kept/scenario.md")));
+			Path storage = root.resolve("campaign");
+			ForkTree fork = ForkTree.record(project, storage, Set.of(TARGET, scenario, check, example));
+			Workspace workspace = new Workspace(fork, storage, root.resolve("worktree"), PlainWorktreeLinks.INSTANCE);
+			Set<Path> excluded = PromptTestLocations.excluded(contract, TARGET, project);
+			Path trial = workspace.stage(Overlay.of(fork.inventory()), excluded);
+
+			requireThat(Files.isRegularFile(trial.resolve(TARGET)), "stagedTarget").isTrue();
+			requireThat(Files.exists(trial.resolve(testDirectory)), "stagedPromptTest").isFalse();
 		}
 	}
 

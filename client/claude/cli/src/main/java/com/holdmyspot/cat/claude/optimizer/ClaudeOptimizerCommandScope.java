@@ -22,9 +22,13 @@ import com.holdmyspot.cat.common.optimizer.port.HostInterruptSignal;
 import com.holdmyspot.cat.common.optimizer.port.ProfileInventory;
 import com.holdmyspot.cat.common.optimizer.port.SessionPort;
 import com.holdmyspot.cat.common.runner.AuthenticationOptions;
+import com.holdmyspot.cat.common.runner.RequestServer;
+import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
+import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.claude.runner.ClaudeConnectionSettings;
 import com.holdmyspot.cat.claude.runner.ClaudeRunnerCli;
+import com.holdmyspot.cat.claude.runner.ClaudeServedSession;
 import com.holdmyspot.cat.claude.secrets.ClaudeOptimizerCommandScopeAccess;
 import com.holdmyspot.cat.claude.ClaudeSessionHarness;
 import com.holdmyspot.cat.claude.secrets.ClaudeOptimizerCommandScopeSecrets;
@@ -76,6 +80,11 @@ public final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 	private final ProfileInventory profiles;
 	private final Path home;
 	private SessionPort sessions;
+	private final Object checkProgramOwnerLock = new Object();
+	/**
+	 * The authenticated owner and its policy source, guarded by {@link #checkProgramOwnerLock}.
+	 */
+	private RequestServer.Session checkProgramOwner;
 
 	/**
 	 * Creates the scope of the running process: its environment, its home directory, its working directory and the
@@ -144,6 +153,24 @@ public final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 				this::heldOutDirectories, clock(), fileReplacer());
 		}
 		return sessions;
+	}
+
+	@Override
+	protected List<ParentPolicy> checkProgramPolicies() throws IOException, PolicyRefusal
+	{
+		RequestServer.Session owner;
+		synchronized (checkProgramOwnerLock)
+		{
+			owner = checkProgramOwner;
+			if (owner == null)
+			{
+				owner = ClaudeServedSession.sessions(environment).find();
+				if (!directory().toRealPath().startsWith(owner.project().toRealPath()))
+					throw new IOException("The optimizer's working directory is outside its host session's project.");
+				checkProgramOwner = owner;
+			}
+		}
+		return owner.policy().readings(owner.askingThread());
 	}
 
 	@Override

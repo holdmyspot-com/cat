@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.contract;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 
@@ -14,6 +15,27 @@ import java.util.Optional;
  */
 public interface TrialRecord
 {
+	/**
+	 * Returns the project as it was before the first turn.
+	 *
+	 * @return the initial snapshot directory
+	 */
+	Path initialProject();
+
+	/**
+	 * Returns the project with the trial's file effects.
+	 *
+	 * @return the final snapshot directory
+	 */
+	Path effects();
+
+	/**
+	 * Returns the normalized activity of the main agent and its children.
+	 *
+	 * @return activity in recorded order, including the results agents received
+	 */
+	SessionEvidence activity();
+
 	/**
 	 * Returns every turn's reply.
 	 *

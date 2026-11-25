@@ -6,6 +6,16 @@
 	"additionalProperties": false,
 	"required": ["requirements", "tests", "trial_profiles", "judge", "limitations", "minimum_pass_rate", "salt"],
 	"$defs": {
+		"draft_file": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["path", "sha256", "content"],
+			"properties": {
+				"path": {"description": "The file's path relative to its file directory in the prompt test, using / as the separator.", "type": "string", "pattern": "\\S"},
+				"sha256": {"description": "The SHA-256 digest of the file's raw bytes.", "type": "string", "pattern": "^[0-9a-f]{64}$"},
+				"content": {"description": "The file's raw bytes encoded as Base64.", "type": "string"}
+			}
+		},
 		"near_misses": {
 			"description": "The replies that the contract author wrote for one assertion that the judge decides: exactly two that only just satisfy it and exactly two that only just fail it. A reply is the final assistant message of a trial. It may contain {{name}} placeholders for the test's variables and for expected_outcome.",
 			"type": "object",
@@ -117,16 +127,12 @@
 							"example_files": {
 								"description": "The assertion example files as they were at confirmation.",
 								"type": "array",
-								"items": {
-									"type": "object",
-									"additionalProperties": false,
-									"required": ["path", "sha256", "content"],
-									"properties": {
-										"path": {"description": "The file's path relative to examples, using / as the separator.", "type": "string", "pattern": "\\S"},
-										"sha256": {"description": "The SHA-256 digest of the file's raw bytes.", "type": "string", "pattern": "^[0-9a-f]{64}$"},
-										"content": {"description": "The file's raw bytes encoded as Base64.", "type": "string"}
-									}
-								}
+								"items": {"$ref": "#/$defs/draft_file"}
+							},
+							"check_files": {
+								"description": "The files from checks as they were at confirmation.",
+								"type": "array",
+								"items": {"$ref": "#/$defs/draft_file"}
 							},
 							"example_directories": {
 								"description": "Explicit assertion example directories relative to examples, using / as the separator. Parent directories are implicit.",

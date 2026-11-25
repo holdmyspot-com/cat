@@ -23,16 +23,31 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * A nested session that a {@link Driver} started and that has not ended yet.
+ * A nested session or check evaluation that a {@link Driver} started and that has not ended yet.
  */
 sealed interface InFlight
 {
+	/** A nested session with its own harness completion and interruption protocol. */
+	sealed interface Session extends InFlight
+	{
+		/**
+		 * Returns the session.
+		 *
+		 * @return the session's handle
+		 */
+		SessionHandle handle();
+	}
+
 	/**
-	 * Returns the session.
+	 * An owner-side check evaluation of a trial that already ended.
 	 *
-	 * @return the session's handle
+	 * @param trial the ended trial
+	 * @param completed the retained final trial result
+	 * @param worker the interruptible evaluation thread
 	 */
-	SessionHandle handle();
+	record Checks(Trial trial, SessionResult.Completed completed, Thread worker) implements InFlight
+	{
+	}
 
 	/**
 	 * A trial session.
@@ -45,7 +60,7 @@ sealed interface InFlight
 	 * @param claim the retained checkpoint this session continued, or null for a fresh launch
 	 */
 	record Trial(TrialKey key, DrawnTestCase testCase, Instant startedAt, int concurrency, SessionHandle handle,
-		RetainedTrialClaim claim) implements InFlight
+		RetainedTrialClaim claim) implements Session
 	{
 	}
 
@@ -55,7 +70,7 @@ sealed interface InFlight
 	 * @param judging the completed trial whose evidence the judge evaluates
 	 * @param handle the session
 	 */
-	record Judge(Judging judging, SessionHandle handle) implements InFlight
+	record Judge(Judging judging, SessionHandle handle) implements Session
 	{
 	}
 
@@ -65,7 +80,7 @@ sealed interface InFlight
 	 * @param job the reply that the judge decides
 	 * @param handle the session
 	 */
-	record NearMiss(NearMissJob job, SessionHandle handle) implements InFlight
+	record NearMiss(NearMissJob job, SessionHandle handle) implements Session
 	{
 	}
 
@@ -75,7 +90,7 @@ sealed interface InFlight
 	 * @param triaging the failed development trial whose impact the triage decides
 	 * @param handle the session
 	 */
-	record Triage(Triaging triaging, SessionHandle handle) implements InFlight
+	record Triage(Triaging triaging, SessionHandle handle) implements Session
 	{
 	}
 
@@ -88,7 +103,7 @@ sealed interface InFlight
 	 * @param handle  the session
 	 */
 	record Ranking(String cell, SessionRequest request, int attempt,
-		SessionHandle handle) implements InFlight
+		SessionHandle handle) implements Session
 	{
 	}
 
@@ -106,7 +121,7 @@ sealed interface InFlight
 	 * @param handle the session
 	 */
 	record PromptAuthor(int number, int lineage, String cell, Candidate working, Overlay overlay, Path copy,
-		FileInventory before, PromptAuthorBrief brief, SessionHandle handle) implements InFlight
+		FileInventory before, PromptAuthorBrief brief, SessionHandle handle) implements Session
 	{
 	}
 
@@ -117,7 +132,7 @@ sealed interface InFlight
 	 * @param group the group's 1-based position in the attempt's groups
 	 * @param handle the session
 	 */
-	record Values(int attempt, int group, SessionHandle handle) implements InFlight
+	record Values(int attempt, int group, SessionHandle handle) implements Session
 	{
 	}
 

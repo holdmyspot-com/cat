@@ -423,6 +423,9 @@ public final class Delivery
 						expandedLinks.add(own.resolve(path));
 					}
 				}
+				Path checks = directory.resolve(PromptTestFiles.CHECKS);
+				for (Entry<String, FileContent> check : draft.checkFiles().entrySet())
+					files.put(checks.resolve(check.getKey()), check.getValue());
 				Path examples = directory.resolve(PromptTestFiles.EXAMPLES);
 				for (Entry<String, FileContent> example : draft.exampleFiles().entrySet())
 					files.put(examples.resolve(example.getKey()), example.getValue());

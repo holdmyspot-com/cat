@@ -1084,10 +1084,10 @@ public final class DeliveryTest
 
 	/**
 	 * A prompt test that the contract author wrote as files in its draft directory is delivered as the draft holds it:
-	 * at its directory there, keeping its declared assertions and example files and omitting the retired assertion.
-	 * Each workspace fixture stays at its file in the draft, even a new one a link reaches in a shared directory.
-	 * Delivery edits a recorded test's directory, creates any other directory and deletes omitted regular example files
-	 * from the fork. It preserves a base-only example, a link, and a file outside the example tree.
+	 * at its directory there, keeping its declared assertions, example files and check files and omitting the retired
+	 * assertion. Each workspace fixture stays at its file in the draft, even a new one a link reaches in a shared
+	 * directory. Delivery edits a recorded test's directory, creates any other directory and deletes omitted regular
+	 * example files from the fork. It preserves a base-only example, a link, and a file outside the example tree.
 	 *
 	 * @throws IOException             if the fixture or delivery fails
 	 * @throws ScenarioFormatException if a delivered values file cannot be read back
@@ -1112,6 +1112,9 @@ public final class DeliveryTest
 			String evidencePath = "read/fail_missing_notes/project/notes.bin";
 			Path editedReplies = EDITED_SCENARIO.resolveSibling(PromptTestFiles.EXAMPLES).resolve(repliesPath);
 			Path createdEvidence = TESTS.resolve("release_dates").resolve(PromptTestFiles.EXAMPLES).resolve(evidencePath);
+			String checkName = "inspect/Check.java";
+			Path createdCheck = TESTS.resolve("release_dates").resolve(PromptTestFiles.CHECKS).resolve(checkName);
+			String checkSource = "class Check {}\n";
 			Path obsoleteExample = editedReplies.resolveSibling("activity.json");
 			Path baseOnlyExample = editedReplies.resolveSibling("base-only.txt");
 			Path exampleLink = editedReplies.resolveSibling("legacy-link");
@@ -1132,7 +1135,8 @@ public final class DeliveryTest
 					Map.of(repliesPath, content(revisedReplies)), Set.of())));
 			promptTests.set(1, withDraft(second, List.of(), List.of(own),
 				new PromptTest.Draft(TESTS.resolve("release_dates"), createdScenario, Map.of(),
-					Map.of(evidencePath, new FileContent(evidence)), Set.of())));
+					Map.of(evidencePath, new FileContent(evidence)), Set.of(),
+					Map.of(checkName, content(checkSource)))));
 			Contract contract = new Contract(fixtureContract.requirements(), promptTests, fixtureContract.profiles(),
 				fixtureContract.judge(), fixtureContract.limitations(),
 				fixtureContract.minimumPassRate(), fixtureContract.salt());
@@ -1166,12 +1170,14 @@ public final class DeliveryTest
 			requireThat(Files.readSymbolicLink(fixture.resolve(exampleLink)), "exampleLink").
 				isEqualTo(editedReplies.getFileName());
 			requireThat(read(fixture.resolve(otherTestFile)), "otherTestFile").isEqualTo("Keep these notes.\n");
-			requireThat(patchedPaths(delivered), "patchedPaths").contains(editedReplies).contains(createdEvidence);
+			requireThat(patchedPaths(delivered), "patchedPaths").contains(editedReplies).contains(createdEvidence).
+				contains(createdCheck);
 			requireThat(read(fixture.resolve(EDITED_SCENARIO)), "editedScenario").isEqualTo(editedScenario);
 			requireThat(read(fixture.resolve(TESTS.resolve("release_dates").resolve(PromptTestFiles.SCENARIO))),
 				"createdScenario").isEqualTo(createdScenario);
 			requireThat(read(fixture.resolve(editedReplies)), "editedReplies").isEqualTo(revisedReplies);
 			requireThat(Files.readAllBytes(fixture.resolve(createdEvidence)), "createdEvidence").isEqualTo(evidence);
+			requireThat(read(fixture.resolve(createdCheck)), "createdCheck").isEqualTo(checkSource);
 			requireThat(read(fixture.resolve(Path.of(shared.source()))), "shared").isEqualTo(shared.content());
 			requireThat(Files.notExists(fixture.resolve(EDITED_SCENARIO.resolveSibling(PromptTestFiles.WORKSPACE))),
 				"noOwnCopy").isTrue();

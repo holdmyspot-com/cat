@@ -243,14 +243,14 @@ public final class DistributionMain
 
 		List<Path> applicationModules = append(append(append(append(append(sharedRuntimeModules, packagedClaudeCli),
 			packagedCodexCli), layoutModules), installerModules), jsonRuntimeModules);
-		// Each plugin also runs the installer from its own modules
-		Set<String> installerRoots = Set.of("com.holdmyspot.cat.common.installer",
+		// Each plugin runs its own installer and needs the compiler to run check programs from source
+		Set<String> sharedRoots = Set.of("com.holdmyspot.cat.common.installer",
 			"com.holdmyspot.cat.claude.installer", "com.holdmyspot.cat.codex.installer", "com.holdmyspot.cat.common.cli",
-			"java.net.http", "org.slf4j.nop");
+			"java.net.http", "jdk.compiler", "org.slf4j.nop");
 		ApplicationModules claudeApplication = ApplicationModules.resolve(applicationModules,
-			roots(withRoot(installerRoots, "com.holdmyspot.cat.claude.cli"), claudeLaunchers()));
+			roots(withRoot(sharedRoots, "com.holdmyspot.cat.claude.cli"), claudeLaunchers()));
 		ApplicationModules codexApplication = ApplicationModules.resolve(applicationModules,
-			roots(withRoot(installerRoots, "com.holdmyspot.cat.codex.cli"), codexLaunchers()));
+			roots(withRoot(sharedRoots, "com.holdmyspot.cat.codex.cli"), codexLaunchers()));
 		Set<String> runtimeModules = new TreeSet<>(claudeApplication.systemModules());
 		runtimeModules.addAll(codexApplication.systemModules());
 		Path releaseRuntime = new JlinkImageBuilder().build(runtimeModules, runtimeDirectory.resolve("java"),

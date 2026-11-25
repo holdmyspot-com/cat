@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.optimizer.port.HookPair;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.PluginManifest;
 import com.holdmyspot.cat.common.runner.TrialPluginInput;
+import com.holdmyspot.cat.common.runner.policy.BubblewrapReadView;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 
@@ -151,9 +152,9 @@ public final class CodexStartupHookComparison
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path scratch = cleanup.add(Files.createTempDirectory(home, ".hook-install-")).toRealPath();
-			List<String> confined = CodexHookInspection.readOnlyView(sandbox);
+			List<String> confined = BubblewrapReadView.readOnlyView(sandbox);
 			confined.addAll(List.of("--bind", home.toString(), home.toString()));
-			CodexHookInspection.applyReadDenials(confined, policy, scratch);
+			BubblewrapReadView.applyReadDenials(confined, policy, scratch, "Codex", "hook inspection");
 			confined.addAll(List.of("--clearenv", "--setenv", "PATH", "/usr/bin:/bin", "--setenv", "HOME",
 				home.toString(), "--setenv", CODEX_HOME, home.toString(), "--setenv", "TMPDIR", home.toString(), "--chdir",
 				project.toString(), "--"));

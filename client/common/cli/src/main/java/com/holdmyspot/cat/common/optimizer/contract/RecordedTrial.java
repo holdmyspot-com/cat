@@ -53,31 +53,19 @@ public class RecordedTrial implements TrialRecord
 		this.effects = effects;
 	}
 
-	/**
-	 * Returns the normalized activity available to the judge.
-	 *
-	 * @return the normalized activity
-	 */
+	@Override
 	public final SessionEvidence activity()
 	{
 		return activity;
 	}
 
-	/**
-	 * Returns the path of the project's initial snapshot.
-	 *
-	 * @return the snapshot path
-	 */
+	@Override
 	public final Path initialProject()
 	{
 		return initialProject;
 	}
 
-	/**
-	 * Returns the path of the project's final snapshot.
-	 *
-	 * @return the snapshot path
-	 */
+	@Override
 	public final Path effects()
 	{
 		return effects;

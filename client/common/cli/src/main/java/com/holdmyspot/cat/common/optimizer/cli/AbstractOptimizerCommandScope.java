@@ -14,6 +14,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.Lifecycle;
 import com.holdmyspot.cat.common.optimizer.campaign.LogicalTrial;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialState;
 import com.holdmyspot.cat.common.optimizer.execution.CapCalibrator;
+import com.holdmyspot.cat.common.optimizer.execution.CheckProgramEvaluation;
 import com.holdmyspot.cat.common.optimizer.execution.SliceSettings;
 import com.holdmyspot.cat.common.optimizer.port.HostInterruptSignal;
 import com.holdmyspot.cat.common.optimizer.port.PluginBase;
@@ -519,6 +520,16 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 	 * @throws IllegalStateException if this scope is closed
 	 */
 	protected abstract CapCalibrator calibrator();
+
+	/**
+	 * Returns the owner-side checker for completed trials.
+	 *
+	 * @return the evaluator, which reports that the owner cannot launch checks if this scope has no launcher
+	 */
+	protected CheckProgramEvaluation checkPrograms()
+	{
+		return CheckProgramEvaluation.UNAVAILABLE;
+	}
 
 	/**
 	 * Validates the inputs of a launcher that runs outside its host sandbox.

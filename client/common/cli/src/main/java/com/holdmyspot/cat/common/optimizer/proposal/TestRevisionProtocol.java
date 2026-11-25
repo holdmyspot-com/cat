@@ -234,7 +234,7 @@ public final class TestRevisionProtocol
 		DerivedProposal confirmed = examined.confirmed();
 		ArrayNode tests = confirmedTests(confirmed);
 		for (JsonNode test : tests)
-			ProposalSchema.omitExamples((ObjectNode) test);
+			ProposalSchema.omitPrivateTestFiles((ObjectNode) test);
 		return new ContractContext.Revision(examined.request().test(), confirmedProposalFile(confirmed),
 			tests, sharedFiles);
 	}

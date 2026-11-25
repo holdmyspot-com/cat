@@ -83,7 +83,9 @@ import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult;
 import com.holdmyspot.cat.common.optimizer.execution.InFlight.Judging;
 import com.holdmyspot.cat.common.optimizer.execution.InFlight.Pending;
 import com.holdmyspot.cat.common.optimizer.execution.InFlight.Triaging;
+import com.holdmyspot.cat.common.optimizer.execution.SessionEvents.ChecksEnded;
 import com.holdmyspot.cat.common.optimizer.execution.SessionEvents.Event;
+import com.holdmyspot.cat.common.optimizer.execution.SessionEvents.SessionEnded;
 import com.holdmyspot.cat.common.optimizer.execution.prompt.ValuesPrompt;
 import com.holdmyspot.cat.common.optimizer.inventory.AttemptReview;
 import com.holdmyspot.cat.common.optimizer.inventory.Authority;
@@ -185,6 +187,8 @@ public final class Driver implements AutoCloseable
 	private static final String UNRECEIVED_FILE_ROUTE = "To give trials such a file, run `request-changes` with " +
 		"feedback that names it, so that the contract declares it as a referenced file.";
 	private static final Duration RETAINED_STATUS_RECHECK = Duration.ofSeconds(1);
+	/** The time allowed for an interrupted check to release its process and scratch files. */
+	private static final Duration CHECK_CLEANUP_LIMIT = Duration.ofSeconds(10);
 	private final DriverContext context;
 	private final CampaignLock lock;
 	private final String campaignId;
@@ -849,7 +853,7 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Consumes the end of a session.
+	 * Consumes the end of a session or check evaluation.
 	 *
 	 * @param event the event
 	 * @param now the current time
@@ -857,10 +861,27 @@ public final class Driver implements AutoCloseable
 	 */
 	private void handle(Event event, Instant now) throws IOException
 	{
-		InFlight session = inFlight.remove(event.token());
-		// A cancelled session's late result is ignored
-		if (session == null)
+		InFlight work = inFlight.remove(event.token());
+		// A cancelled operation's late result is ignored.
+		if (work == null)
 			return;
+		switch (event)
+		{
+			case ChecksEnded ended -> checksEnded((InFlight.Checks) work, ended, now);
+			case SessionEnded ended -> sessionEnded((InFlight.Session) work, ended, now);
+		}
+	}
+
+	/**
+	 * Records a nested session's usage and dispatches its result to the corresponding campaign operation.
+	 *
+	 * @param session the completed session
+	 * @param event the session's result or failure
+	 * @param now the current time
+	 * @throws IOException if campaign state or session evidence cannot be read or written
+	 */
+	private void sessionEnded(InFlight.Session session, SessionEnded event, Instant now) throws IOException
+	{
 		SessionResult result = event.result();
 		observeUsage(session, result);
 
@@ -931,7 +952,7 @@ public final class Driver implements AutoCloseable
 	 * @param result the session's result, or {@code null} if it failed with an exception
 	 * @throws IOException if campaign evidence cannot be written
 	 */
-	private void observeUsage(InFlight session, SessionResult result) throws IOException
+	private void observeUsage(InFlight.Session session, SessionResult result) throws IOException
 	{
 		if (!(result instanceof SessionResult.Completed completed) || completed.usage() == null)
 			return;
@@ -1052,6 +1073,11 @@ public final class Driver implements AutoCloseable
 		PromptTest test = campaign.contract().findTest(testCase.testId()).orElseThrow();
 		new Generator(campaign.contract(), campaign.developmentTestCases()).validate(testCase);
 		TrialEvidence evidence = TrialEvidence.read(trialPort(trial.key().cell()), completed);
+		if (test.hasCheckProgram())
+		{
+			startChecks(trial, completed, test, evidence);
+			return;
+		}
 		List<BuiltInToolResult> results;
 		try
 		{
@@ -1063,6 +1089,75 @@ public final class Driver implements AutoCloseable
 				describe(e), now);
 			return;
 		}
+		useToolResults(trial, completed, test, results, now);
+	}
+
+	/**
+	 * Runs the check programs and other built-in tools for a finished trial beside the in-flight judge sessions.
+	 *
+	 * @param trial the ended trial
+	 * @param completed the final trial result
+	 * @param test the confirmed prompt test
+	 * @param evidence the completed trial's normalized record
+	 */
+	private void startChecks(InFlight.Trial trial, SessionResult.Completed completed, PromptTest test,
+		TrialEvidence evidence)
+	{
+		long token = nextToken;
+		++nextToken;
+		Thread worker = Thread.ofVirtual().
+			uncaughtExceptionHandler((_, failure) -> events.post(new ChecksEnded(token, null, failure))).unstarted(() ->
+		{
+			try
+			{
+				List<BuiltInToolResult> results = context.checkPrograms().decide(test, trial.testCase().testCase(), evidence);
+				events.post(new ChecksEnded(token, results, null));
+			}
+			catch (IOException | UndecidableToolException | InterruptedException e)
+			{
+				events.post(new ChecksEnded(token, null, e));
+			}
+		});
+		inFlight.put(token, new InFlight.Checks(trial, completed, worker));
+		worker.start();
+	}
+
+	/**
+	 * Continues trial scoring when its check-program evaluation ends.
+	 *
+	 * @param work the ended evaluation
+	 * @param event its results or host failure
+	 * @param now the current time
+	 * @throws IOException if campaign state or trial evidence cannot be read or written
+	 */
+	private void checksEnded(InFlight.Checks work, ChecksEnded event, Instant now) throws IOException
+	{
+		InFlight.Trial trial = work.trial();
+		if (findRunningTrial(trial.key()).isEmpty())
+			return;
+		if (event.failure() != null)
+		{
+			fail(trial.key(), TrialAttemptFailure.INFRASTRUCTURE, "The built-in tools could not be decided: " +
+				describe(event.failure()), now);
+			return;
+		}
+		PromptTest test = campaign.contract().findTest(trial.testCase().testId()).orElseThrow();
+		useToolResults(trial, work.completed(), test, event.results(), now);
+	}
+
+	/**
+	 * Sends unsettled assertions to a judge, or scores a trial whose built-in tools settled every assertion.
+	 *
+	 * @param trial the ended trial
+	 * @param completed the final trial result
+	 * @param test the confirmed prompt test
+	 * @param results the trial's built-in results
+	 * @param now the current time
+	 * @throws IOException if campaign state or trial evidence cannot be read or written
+	 */
+	private void useToolResults(InFlight.Trial trial, SessionResult.Completed completed, PromptTest test,
+		List<BuiltInToolResult> results, Instant now) throws IOException
+	{
 		List<JudgedAssertion> judged = JudgedAssertion.of(test, campaign.contract().requirements(), results);
 		if (judged.isEmpty())
 		{
@@ -1077,7 +1172,7 @@ public final class Driver implements AutoCloseable
 				return;
 			section = rendered.get();
 		}
-		queueJudging(new Pending(trial.key(), testCase, completed, section, judged, results, trial.concurrency()),
+		queueJudging(new Pending(trial.key(), trial.testCase(), completed, section, judged, results, trial.concurrency()),
 			now);
 	}
 
@@ -3450,13 +3545,13 @@ public final class Driver implements AutoCloseable
 	 *
 	 * @param session the session
 	 */
-	private void register(InFlight session)
+	private void register(InFlight.Session session)
 	{
 		long token = nextToken;
 		++nextToken;
 		inFlight.put(token, session);
 		session.handle().completion().whenComplete((result, failure) ->
-			events.post(new Event(token, result, failure)));
+			events.post(new SessionEnded(token, result, failure)));
 	}
 
 	/**
@@ -3546,6 +3641,7 @@ public final class Driver implements AutoCloseable
 					if (!trialRequests.containsKey(trial.key()))
 						abandoned.add(trial.key());
 				}
+				case InFlight.Checks checks -> abandoned.add(checks.trial().key());
 				case InFlight.Judge judge ->
 				{
 					abandoned.add(judge.judging().key());
@@ -3618,6 +3714,7 @@ public final class Driver implements AutoCloseable
 			TrialKey key = switch (session)
 			{
 				case InFlight.Trial trial -> trial.key();
+				case InFlight.Checks checks -> checks.trial().key();
 				case InFlight.Judge judge -> judge.judging().key();
 				case InFlight.Triage triage -> triage.triaging().key();
 				case InFlight.PromptAuthor _, InFlight.Values _, InFlight.Ranking _, InFlight.NearMiss _ -> null;
@@ -3680,6 +3777,11 @@ public final class Driver implements AutoCloseable
 	 */
 	private void interrupt(InFlight session) throws IOException
 	{
+		if (session instanceof InFlight.Checks checks)
+		{
+			interruptChecks(checks.worker());
+			return;
+		}
 		if (session instanceof InFlight.PromptAuthor promptAuthor)
 		{
 			Closeable cleanup = () -> context.workspace().deleteAuthoringCopy(promptAuthor.copy());
@@ -3689,7 +3791,28 @@ public final class Driver implements AutoCloseable
 			}
 			return;
 		}
-		session.handle().interrupt();
+		((InFlight.Session) session).handle().interrupt();
+	}
+
+	/**
+	 * Interrupts a check evaluation and lets its worker remove the sandbox and its temporary files.
+	 *
+	 * @param worker the evaluation thread
+	 * @throws IOException if the worker cannot be joined
+	 */
+	private static void interruptChecks(Thread worker) throws IOException
+	{
+		worker.interrupt();
+		try
+		{
+			if (!worker.join(CHECK_CLEANUP_LIMIT))
+				throw new IOException("The interrupted check program evaluation did not stop");
+		}
+		catch (InterruptedException e)
+		{
+			Thread.currentThread().interrupt();
+			throw new IOException("Interrupted while stopping a check program evaluation", e);
+		}
 	}
 
 	/**

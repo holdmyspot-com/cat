@@ -239,6 +239,16 @@ public final class Transitions
 			draft.identity = new MeasurementIdentity(draft.identity.values()).
 				replaceWith(confirm.environment());
 		}
+		String checkProgramVersion = confirm.environment().values().get(MeasurementCondition.CHECK_PROGRAM_VERSION);
+		if (checkProgramVersion != null)
+			contractValues.put(MeasurementCondition.CHECK_PROGRAM_VERSION, checkProgramVersion);
+		else if (draft.identity.values().containsKey(MeasurementCondition.CHECK_PROGRAM_VERSION))
+		{
+			Map<MeasurementCondition, String> values = new EnumMap<>(MeasurementCondition.class);
+			values.putAll(draft.identity.values());
+			values.remove(MeasurementCondition.CHECK_PROGRAM_VERSION);
+			draft.identity = new MeasurementIdentity(values, draft.identity.cells(), draft.identity.acceptedChanges());
+		}
 		MeasurementIdentity updated = draft.identity.replaceWith(new MeasurementIdentity(contractValues));
 		if (globalEnvironment)
 			updated = new MeasurementIdentity(updated.values(), updated.cells(), draft.identity.acceptedChanges());

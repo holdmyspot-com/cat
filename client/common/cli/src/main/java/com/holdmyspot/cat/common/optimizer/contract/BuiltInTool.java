@@ -852,6 +852,73 @@ public sealed interface BuiltInTool
 	}
 
 	/**
+	 * Checks a trial with a program supplied by its prompt test.
+	 *
+	 * @param program the path of the program under the prompt test's {@code checks/} directory
+	 * @param arguments the program arguments, which can contain placeholders
+	 */
+	record CheckProgram(String program, List<String> arguments) implements BuiltInTool
+	{
+		/**
+		 * Creates a program declaration.
+		 *
+		 * @param program the path of the program under the prompt test's {@code checks/} directory
+		 * @param arguments the program arguments, which can contain placeholders
+		 * @throws NullPointerException if any argument is null
+		 * @throws IllegalArgumentException if the path is blank, is outside {@code checks/}, holds a placeholder,
+		 *   or does not end in {@code .java}
+		 */
+		public CheckProgram
+		{
+			ToolSupport.requireText(program, "check-program path");
+			if (!Placeholders.scenarioNames(program).isEmpty())
+				throw new IllegalArgumentException("The check-program path cannot hold a placeholder");
+			if (!program.startsWith(PromptTestFiles.CHECKS_PREFIX) || !ProjectPaths.isNormalized(program))
+				throw new IllegalArgumentException("The check-program path must be relative and name a file in checks/");
+			if (!program.endsWith(".java"))
+				throw new IllegalArgumentException("The check-program path must end in .java");
+			arguments = List.copyOf(arguments);
+		}
+
+		@Override
+		public String name()
+		{
+			return "check-program";
+		}
+
+		@Override
+		public String behavior()
+		{
+			return "check_program_failed";
+		}
+
+		@Override
+		public List<String> templates()
+		{
+			return arguments;
+		}
+
+		/**
+		 * Replaces placeholders without changing the number of arguments.
+		 *
+		 * @param textByName the values of the test case's placeholders
+		 * @return the program arguments in declaration order
+		 * @throws NullPointerException if {@code textByName} is null
+		 */
+		public List<String> filledArguments(Map<String, String> textByName)
+		{
+			requireThat(textByName, "textByName").isNotNull();
+			return arguments.stream().map(argument -> Placeholders.fillScenario(argument, textByName)).toList();
+		}
+
+		@Override
+		public Decision decide(TrialRecord record, Map<String, String> textByName) throws UndecidableToolException
+		{
+			throw new UndecidableToolException("The trial record has no check-program result");
+		}
+	}
+
+	/**
 	 * The trial made no tool call.
 	 */
 	record NoToolCall() implements BuiltInTool

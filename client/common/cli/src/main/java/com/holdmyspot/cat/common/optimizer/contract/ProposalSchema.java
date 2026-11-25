@@ -80,6 +80,11 @@ public final class ProposalSchema
 	 */
 	public static final String COPIED_LINKS = "copied_links";
 	private static final String EXAMPLE_FILES = "example_files";
+
+	/**
+	 * The draft field holding the raw files under the prompt test's checks directory.
+	 */
+	private static final String CHECK_FILES = "check_files";
 	private static final String EXAMPLE_DIRECTORIES = "example_directories";
 	/**
 	 * The property of a test that holds the test cases that an earlier campaign committed, which CAT reads rather than
@@ -891,17 +896,8 @@ public final class ProposalSchema
 			for (Map.Entry<String, String> link : draft.copiedLinks().entrySet())
 				links.addObject().put("path", link.getKey()).put("target", link.getValue());
 		}
-		if (!draft.exampleFiles().isEmpty())
-		{
-			ArrayNode files = node.putArray(EXAMPLE_FILES);
-			Base64.Encoder encoder = Base64.getEncoder();
-			for (Map.Entry<String, FileContent> file : draft.exampleFiles().entrySet())
-			{
-				FileContent content = file.getValue();
-				files.addObject().put("path", file.getKey()).put("sha256", content.hash().hex()).
-					put("content", encoder.encodeToString(content.bytes()));
-			}
-		}
+		writeDraftFiles(node, EXAMPLE_FILES, draft.exampleFiles());
+		writeDraftFiles(node, CHECK_FILES, draft.checkFiles());
 		if (!draft.exampleDirectories().isEmpty())
 		{
 			ArrayNode directories = node.putArray(EXAMPLE_DIRECTORIES);
@@ -910,16 +906,38 @@ public final class ProposalSchema
 	}
 
 	/**
-	 * Removes assertion example evidence from a serialized prompt test for a role that cannot see it.
+	 * Writes raw draft files and their content hashes when the draft holds any.
+	 *
+	 * @param draft the draft object
+	 * @param field the field that stores files of this kind
+	 * @param contentByPath each file's content by path
+	 */
+	private static void writeDraftFiles(ObjectNode draft, String field, Map<String, FileContent> contentByPath)
+	{
+		if (contentByPath.isEmpty())
+			return;
+
+		ArrayNode files = draft.putArray(field);
+		Base64.Encoder encoder = Base64.getEncoder();
+		for (Map.Entry<String, FileContent> file : contentByPath.entrySet())
+		{
+			FileContent content = file.getValue();
+			files.addObject().put("path", file.getKey()).put("sha256", content.hash().hex()).
+				put("content", encoder.encodeToString(content.bytes()));
+		}
+	}
+
+	/**
+	 * Removes example evidence and check program files from a serialized prompt test.
 	 *
 	 * @param test the serialized test
 	 * @throws NullPointerException if {@code test} is null
 	 */
-	public static void omitExamples(ObjectNode test)
+	public static void omitPrivateTestFiles(ObjectNode test)
 	{
 		requireThat(test, "test").isNotNull();
 		if (test.get(DRAFT) instanceof ObjectNode draft)
-			draft.remove(List.of(EXAMPLE_FILES, EXAMPLE_DIRECTORIES));
+			draft.remove(List.of(EXAMPLE_FILES, EXAMPLE_DIRECTORIES, CHECK_FILES));
 	}
 
 	/**
@@ -1380,8 +1398,30 @@ public final class ProposalSchema
 			Map<String, String> copiedLinks = new HashMap<>();
 			for (JsonNode link : node.path(COPIED_LINKS))
 				copiedLinks.put(text(link, "path"), text(link, "target"));
-			Map<String, FileContent> exampleFiles = new HashMap<>();
-			for (JsonNode file : node.path(EXAMPLE_FILES))
+			Set<String> exampleDirectories = new HashSet<>();
+			for (JsonNode directory : node.path(EXAMPLE_DIRECTORIES))
+			{
+				String path = directory.asString();
+				if (!exampleDirectories.add(path))
+					throw new IllegalArgumentException("The example directory '" + path + "' appears more than once.");
+			}
+			return new PromptTest.Draft(Path.of(text(node, "directory")), text(node, "scenario"), copiedLinks,
+				readDraftFiles(node.path(EXAMPLE_FILES), "example file"), exampleDirectories,
+				readDraftFiles(node.path(CHECK_FILES), "check file"));
+		}
+
+		/**
+		 * Reads each raw draft file and verifies its recorded hash before accepting the bytes.
+		 *
+		 * @param files the input array, or a missing node for an older draft without this field
+		 * @param kind the kind of file to name in a diagnostic
+		 * @return the verified content by path
+		 * @throws IllegalArgumentException if the bytes, digest or path are invalid
+		 */
+		private static Map<String, FileContent> readDraftFiles(JsonNode files, String kind)
+		{
+			Map<String, FileContent> result = new HashMap<>();
+			for (JsonNode file : files)
 			{
 				String path = text(file, "path");
 				FileContent content;
@@ -1391,24 +1431,17 @@ public final class ProposalSchema
 				}
 				catch (IllegalArgumentException e)
 				{
-					throw new IllegalArgumentException("The example file '" + path + "' has invalid Base64 content.", e);
+					throw new IllegalArgumentException("The " + kind + " '" + path + "' has invalid Base64 content.", e);
 				}
 				if (!content.hash().hex().equals(text(file, "sha256")))
 				{
-					throw new IllegalArgumentException("The example file '" + path + "' does not match its SHA-256 digest.");
+					throw new IllegalArgumentException("The " + kind + " '" + path +
+					"' does not match its SHA-256 digest.");
 				}
-				if (exampleFiles.putIfAbsent(path, content) != null)
-					throw new IllegalArgumentException("The example file '" + path + "' appears more than once.");
+				if (result.putIfAbsent(path, content) != null)
+					throw new IllegalArgumentException("The " + kind + " '" + path + "' appears more than once.");
 			}
-			Set<String> exampleDirectories = new HashSet<>();
-			for (JsonNode directory : node.path(EXAMPLE_DIRECTORIES))
-			{
-				String path = directory.asString();
-				if (!exampleDirectories.add(path))
-					throw new IllegalArgumentException("The example directory '" + path + "' appears more than once.");
-			}
-			return new PromptTest.Draft(Path.of(text(node, "directory")), text(node, "scenario"), copiedLinks,
-				exampleFiles, exampleDirectories);
+			return result;
 		}
 
 		/**

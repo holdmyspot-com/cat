@@ -14,6 +14,7 @@ import com.holdmyspot.cat.common.optimizer.contract.ScenarioFormatException;
 import com.holdmyspot.cat.common.optimizer.contract.ScenarioParser;
 import com.holdmyspot.cat.common.optimizer.contract.VariableDeclaration;
 
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import java.time.Duration;
@@ -407,6 +408,77 @@ public final class ScenarioTest
 			- **description**: The reply quotes the command.
 			""");
 		requireThat(scenario.assertions().getFirst().tool(), "tool").isEqualTo("exact-text \"Run `make`.\"");
+	}
+
+	/**
+	 * Builds a scenario with one assertion whose check program receives the declared service.
+	 *
+	 * @param program the scenario-relative program path in the tool declaration
+	 * @return the scenario text
+	 */
+	private static String checkProgramScenario(String program)
+	{
+		return """
+			## Variables
+
+			- **service**: The service the configuration should name
+
+			## Scenario
+
+			Configure {{service}}.
+
+			## Assertions
+
+			### service_configured
+
+			- **kind**: effect
+			- **tool**: `check-program %s {{service}}`
+			- **description**: The configuration names the requested service.
+			""".formatted(program);
+	}
+
+	/**
+	 * Verifies that a scenario preserves a relative check program and its variable argument when rendered.
+	 *
+	 * @throws ScenarioFormatException if the scenario is refused
+	 */
+	@Test
+	public void parsesCheckProgram() throws ScenarioFormatException
+	{
+		Scenario scenario = Scenario.parse(checkProgramScenario("checks/Check.java"));
+		Assertion assertion = scenario.assertions().getFirst();
+		requireThat(assertion.tool(), "tool").isEqualTo("check-program checks/Check.java {{service}}");
+		requireThat(assertion.evidenceScope(), "evidenceScope").isNull();
+		requireThat(Scenario.parse(scenario.render()), "roundTrip").isEqualTo(scenario);
+	}
+
+	/**
+	 * Returns check program paths that a scenario must refuse.
+	 *
+	 * @return each invalid path and a phrase identifying its refusal
+	 */
+	@DataProvider
+	public static Object[][] invalidCheckProgramPaths()
+	{
+		return new Object[][]
+			{
+				{"/tmp/Check.java", "relative"},
+				{"checks/../Check.java", "checks/"},
+				{"checks/{{service}}.java", "placeholder"},
+				{"checks/Check.class", ".java"}
+			};
+	}
+
+	/**
+	 * Verifies that the scenario reports each invalid program path at the tool declaration.
+	 *
+	 * @param program the rejected path
+	 * @param reason a phrase identifying the violated path rule
+	 */
+	@Test(dataProvider = "invalidCheckProgramPaths")
+	public void refusesInvalidCheckProgramPath(String program, String reason)
+	{
+		requireThat(refusal(checkProgramScenario(program)), "refusal").startsWith("Line 14:").contains(reason);
 	}
 
 	/**

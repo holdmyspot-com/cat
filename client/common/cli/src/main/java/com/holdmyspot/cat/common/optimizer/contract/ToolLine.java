@@ -44,6 +44,8 @@ final class ToolLine
 		Map.entry("tool-unused", new Parser(false, 2,
 			line -> new BuiltInTool.ToolUnused(line.text(0), line.optionalText(1)))),
 		Map.entry("changed-only", new Parser(false, -1, line -> new BuiltInTool.ChangedOnly(line.allArguments()))),
+		Map.entry("check-program", new Parser(false, -1, line -> new BuiltInTool.CheckProgram(line.text(0),
+			line.allArguments().subList(1, line.allArguments().size())))),
 		Map.entry("no-tool-call", new Parser(false, 0, _ -> new BuiltInTool.NoToolCall())),
 		Map.entry("read-in-full", new Parser(false, 1, line -> new BuiltInTool.ReadInFull(line.text(0)))),
 		Map.entry("read-at-most", new Parser(false, 2, ToolLine::readAtMost)));
@@ -192,6 +194,8 @@ final class ToolLine
 			wrongArgumentCount = remaining.size() != parser.arguments();
 		if (wrongArgumentCount)
 		{
+			if (parser.arguments() < 0)
+				throw new IllegalArgumentException(name + " needs at least one argument");
 			String noun = "arguments";
 			if (parser.arguments() == 1)
 				noun = "argument";

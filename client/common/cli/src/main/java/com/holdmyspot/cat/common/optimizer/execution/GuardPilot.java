@@ -656,7 +656,7 @@ public final class GuardPilot
 		if (shared)
 			pilotEvaluator = evaluator;
 		return new PilotConditions(cell, pilotEvaluator, trials, definition,
-			controlIdentity(files, selection, trials, evaluator, plugins), plugins);
+			controlIdentity(files, selection, trials, evaluator, plugins, test.hasCheckProgram()), plugins);
 	}
 
 	/**
@@ -1198,16 +1198,23 @@ public final class GuardPilot
 	 * @param trials the trial sessions of the selected evaluator
 	 * @param evaluator the assigned evaluator, or null for an unassigned singleton
 	 * @param plugins the selected trial plugins
+	 * @param usesCheckProgram whether the test uses a check program
 	 * @return the identity
 	 */
 	private Sha256 controlIdentity(Sha256 files, SourceSelection selection, SessionPort trials, Harness evaluator,
-		List<TrialPlugin> plugins)
+		List<TrialPlugin> plugins, boolean usesCheckProgram)
 	{
-		String conditions = files.hex() + "\nselection\n" + selection.describe() + "\nsession environment version " +
-			trials.sessionEnvironmentVersion() + "\njudge version " + sessions.judgeVersion();
+		StringBuilder conditions = new StringBuilder(files.hex()).append("\nselection\n").append(selection.describe()).
+			append("\nsession environment version ").append(trials.sessionEnvironmentVersion()).
+			append("\njudge version ").append(sessions.judgeVersion());
 		if (evaluator != null && !plugins.isEmpty())
-			conditions += "\ntrial plugins " + new TreeMap<>(MeasurementIdentity.ofPlugins(plugins, Map.of()).values());
-		return Sha256.of(conditions.getBytes(UTF_8));
+		{
+			conditions.append("\ntrial plugins ").append(new TreeMap<>(MeasurementIdentity.ofPlugins(plugins, Map.of()).
+				values()));
+		}
+		if (usesCheckProgram)
+			conditions.append("\ncheck program version ").append(CheckProgram.version());
+		return Sha256.of(conditions.toString().getBytes(UTF_8));
 	}
 
 	/**

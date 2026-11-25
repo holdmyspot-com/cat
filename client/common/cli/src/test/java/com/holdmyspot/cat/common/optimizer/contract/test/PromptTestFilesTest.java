@@ -25,7 +25,7 @@ import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Tests reading prompt test scenarios and their example files.
+ * Tests reading prompt test scenarios, their example files and their check-program files.
  */
 public final class PromptTestFilesTest
 {
@@ -202,11 +202,91 @@ public final class PromptTestFilesTest
 	public void refusesSpecialExampleFile() throws IOException, InterruptedException, ScenarioFormatException
 	{
 		// Requirement: R-L15
+		readWithSpecialFile("examples");
+	}
+
+	/**
+	 * Verifies that a nested program and its supporting files are retained separately from workspace inputs.
+	 *
+	 * @throws IOException if the fixture cannot be written or read
+	 * @throws ScenarioFormatException if the declared program is refused
+	 */
+	@Test
+	public void readsCheckFilesSeparateFromWorkspace() throws IOException, ScenarioFormatException
+	{
 		try (TestJvmScope jvm = new TestJvmScope(); TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = promptTest(jvm.temporaryDirectory(), cleanup);
-			Path examples = Files.createDirectory(directory.resolve("examples"));
-			Path special = examples.resolve("special");
+			Path checks = Files.createDirectories(directory.resolve(PromptTestFiles.CHECKS).resolve("lib"));
+			Path check = Files.writeString(checks.resolve("ArrivalCheck.java"), "class ArrivalCheck {}");
+			Path data = Files.writeString(checks.resolve("input.txt"), "Monday");
+			Files.writeString(directory.resolve(PromptTestFiles.SCENARIO),
+				SCENARIO + "- **tool**: `check-program checks/lib/ArrivalCheck.java`\n");
+			JsonMapper json = JsonMapper.builder().build();
+			try (BufferedWriter writer = Files.newBufferedWriter(directory.resolve(ValuesFile.NAME)))
+			{
+				ValuesFile.write(json, List.of(), writer);
+			}
+
+			PromptTestFiles files = PromptTestFiles.read(json, directory, directory, directory);
+			requireThat(files.checkSources(), "checkSources").
+				isEqualTo(Map.of("lib/ArrivalCheck.java", check, "lib/input.txt", data));
+			requireThat(files.sources(), "workspaceSources").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that a link in {@code checks/} is refused even when it points to a regular file in that directory.
+	 *
+	 * @throws IOException             if the fixture cannot be written or read
+	 * @throws ScenarioFormatException if the linked check program is refused
+	 */
+	@Test(expectedExceptions = ScenarioFormatException.class, expectedExceptionsMessageRegExp =
+		".*checks/Check[.]java.*")
+	public void refusesLinkedCheckProgram() throws IOException, ScenarioFormatException
+	{
+		// Requirement: R-L21
+		try (TestJvmScope jvm = new TestJvmScope(); TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = promptTest(jvm.temporaryDirectory(), cleanup);
+			Path checks = Files.createDirectory(directory.resolve("checks"));
+			Path target = Files.createFile(checks.resolve("Original.java"));
+			Files.createSymbolicLink(checks.resolve("Check.java"), target.getFileName());
+
+			PromptTestFiles.readScenario(directory, directory, directory);
+		}
+	}
+
+	/**
+	 * Verifies that {@code checks/} refuses a special file without opening it.
+	 *
+	 * @throws IOException             if the fixture cannot be written or read
+	 * @throws InterruptedException    if interrupted while creating the pipe
+	 * @throws ScenarioFormatException if the special file is refused
+	 */
+	@Test(expectedExceptions = ScenarioFormatException.class, expectedExceptionsMessageRegExp =
+		".*checks/special.*regular file.*")
+	public void refusesSpecialCheckEntry() throws IOException, InterruptedException, ScenarioFormatException
+	{
+		// Requirement: R-L21
+		readWithSpecialFile("checks");
+	}
+
+	/**
+	 * Reads a draft with a special file in the selected evidence directory.
+	 *
+	 * @param evidenceDirectory the evidence directory that contains the special file
+	 * @throws IOException if the fixture cannot be written or read
+	 * @throws InterruptedException if interrupted while creating the pipe
+	 * @throws ScenarioFormatException if the draft is refused
+	 */
+	private static void readWithSpecialFile(String evidenceDirectory)
+		throws IOException, InterruptedException, ScenarioFormatException
+	{
+		try (TestJvmScope jvm = new TestJvmScope(); TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = promptTest(jvm.temporaryDirectory(), cleanup);
+			Path special = Files.createDirectory(directory.resolve(evidenceDirectory)).resolve("special");
 			// Windows has no named pipe entries in its filesystem.
 			if (Platform.current().isWindows())
 			{
@@ -367,6 +447,29 @@ public final class PromptTestFilesTest
 			Files.createSymbolicLink(directory.resolve(ExamplesFile.NAME), Path.of("listing.json"));
 
 			PromptTestFiles.read(JSON, directory, directory, directory);
+		}
+	}
+
+	/**
+	 * Verifies that a check-program declaration names a file present in {@code checks/}.
+	 *
+	 * @throws IOException             if the fixture cannot be written or read
+	 * @throws ScenarioFormatException if the declared program is absent
+	 */
+	@Test(expectedExceptions = ScenarioFormatException.class, expectedExceptionsMessageRegExp =
+		"(?is)(?=.*checks/ArrivalCheck[.]java).*(?:missing|absent|does not|regular file).*")
+	public void refusesMissingCheckProgram() throws IOException, ScenarioFormatException
+	{
+		// Requirement: R-L21
+		try (TestJvmScope jvm = new TestJvmScope(); TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = promptTest(jvm.temporaryDirectory(), cleanup);
+			Path checks = Files.createDirectory(directory.resolve("checks"));
+			Files.createFile(checks.resolve("OtherCheck.java"));
+			Files.writeString(directory.resolve(PromptTestFiles.SCENARIO),
+				SCENARIO + "- **tool**: `check-program checks/ArrivalCheck.java`\n");
+
+			PromptTestFiles.readScenario(directory, directory, directory);
 		}
 	}
 

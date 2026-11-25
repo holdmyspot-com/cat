@@ -26,8 +26,8 @@ final class DevelopmentContract
 	}
 
 	/**
-	 * Writes the confirmed contract for development. Keeps the development cases and leaves out the salt and assertion
-	 * examples.
+	 * Writes the confirmed contract for development. Keeps the development cases and leaves out the salt, assertion
+	 * examples and check program files.
 	 *
 	 * @param json the operation-owned JSON mapper
 	 * @param schema writes the contract in the proposal schema
@@ -44,7 +44,7 @@ final class DevelopmentContract
 		{
 			ObjectNode test = (ObjectNode) testNodes.get(i);
 			omitHeldOutTestCases(contract.tests().get(i), test, split);
-			ProposalSchema.omitExamples(test);
+			ProposalSchema.omitPrivateTestFiles(test);
 		}
 		return root;
 	}

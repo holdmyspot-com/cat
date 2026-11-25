@@ -355,6 +355,32 @@ public final class ApplicabilityTest
 	}
 
 	/**
+	 * A known check-program version change makes its certification historical. An earlier certification without a
+	 * check program stays current under the same observation.
+	 */
+	@Test
+	public void checkProgramVersionChangesApplicability()
+	{
+		// Requirement: R-L21
+		CertificationRecord earlier = record();
+		CertificationRecord recorded = record("claude",
+			Map.of(MeasurementCondition.CHECK_PROGRAM_VERSION, "input-1-java-25"));
+		MeasurementIdentity known = earlier.identity().extendWith(new MeasurementIdentity(
+			Map.of(MeasurementCondition.CHECK_PROGRAM_VERSION, "input-1-java-26")));
+
+		Applicability changed = recorded.applicability(recorded.promptFiles(), known,
+			Contract.DEFAULT_MINIMUM_PASS_RATE);
+		Applicability unchanged = earlier.applicability(earlier.promptFiles(), known, Contract.DEFAULT_MINIMUM_PASS_RATE);
+
+		requireThat(changed.status(), "changedStatus").isEqualTo(Applicability.Status.HISTORICAL);
+		requireThat(changed.changed(), "changedConditions").
+			containsExactly(List.of(MeasurementCondition.CHECK_PROGRAM_VERSION));
+		requireThat(unchanged.status(), "earlierStatus").isEqualTo(Applicability.Status.CURRENT);
+		requireThat(unchanged.changed(), "earlierChanges").isEmpty();
+		requireThat(unchanged.unchecked(), "earlierUnchecked").isEmpty();
+	}
+
+	/**
 	 * A certification record of another harness is compared with the prompt files alone: the harness's own conditions
 	 * are unchecked rather than changed, so the record stays current until a prompt file changes, and the history that
 	 * keeps one latest record per harness can tell each harness whether its own record applies.
@@ -406,11 +432,24 @@ public final class ApplicabilityTest
 	 */
 	private static CertificationRecord record(String harness)
 	{
+		return record(harness, Map.of());
+	}
+
+	/**
+	 * Returns the certification record with additional measured conditions.
+	 *
+	 * @param harness the model provider that the record names
+	 * @param conditions the additional recorded measurement conditions
+	 * @return the record
+	 */
+	private static CertificationRecord record(String harness, Map<MeasurementCondition, String> conditions)
+	{
 		Map<MeasurementCondition, String> recorded = new EnumMap<>(MeasurementCondition.class);
 		recorded.put(MeasurementCondition.PROVIDER, harness);
 		recorded.put(MeasurementCondition.JUDGE, "judge-1");
 		recorded.put(MeasurementCondition.SESSION_ENVIRONMENT_VERSION, "environment-1");
 		recorded.put(MeasurementCondition.MODEL, "model-a");
+		recorded.putAll(conditions);
 		return new CertificationRecord(Path.of("CLAUDE.md"), 1, CertificationScope.LATEST_VERSIONS,
 			CertificationParameters.current(1, Contract.DEFAULT_MINIMUM_PASS_RATE),
 			List.of(new CertificationRecord.CellResult("formatting", "formatting",

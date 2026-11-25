@@ -180,6 +180,12 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	}
 
 	@Override
+	protected List<ParentPolicy> checkProgramPolicies() throws IOException, PolicyRefusal
+	{
+		return boundary.checkProgramPolicies();
+	}
+
+	@Override
 	protected Process startHookProcess(ProcessBuilder builder, Path scratch, Optional<Path> trialHome)
 		throws IOException
 	{

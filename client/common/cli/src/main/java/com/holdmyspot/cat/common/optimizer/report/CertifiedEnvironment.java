@@ -151,6 +151,11 @@ public record CertifiedEnvironment(MeasurementIdentity identity, List<String> ce
 			sharedLines(lines);
 		else
 			singletonLines(lines);
+		String checkProgramVersion = identity.values().get(MeasurementCondition.CHECK_PROGRAM_VERSION);
+		if (checkProgramVersion != null)
+		{
+			lines.add(checked("Check program: " + checkProgramVersion, MeasurementCondition.CHECK_PROGRAM_VERSION));
+		}
 		lines.addAll(acceptedChangeLines(identity));
 		lines.add("");
 		lines.add(MACHINE_LIMITATION);

@@ -16,6 +16,8 @@ import com.holdmyspot.cat.common.optimizer.adapter.Bridge;
 import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.execution.CapCalibrator;
+import com.holdmyspot.cat.common.optimizer.execution.CheckProgram;
+import com.holdmyspot.cat.common.optimizer.execution.CheckProgramEvaluation;
 import com.holdmyspot.cat.common.optimizer.port.SessionPort;
 import com.holdmyspot.cat.common.optimizer.statistics.CapCalibration;
 import com.holdmyspot.cat.common.optimizer.workspace.Forks;
@@ -36,13 +38,17 @@ import com.holdmyspot.cat.common.runner.RetainedTrialResponse;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
 import com.holdmyspot.cat.common.runner.WorktreeRequestClient;
+import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
+import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import io.github.cowwoc.pouch10.core.LazyReference;
 import io.github.cowwoc.pouch10.core.Reference;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -280,6 +286,36 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	 * @return the native optimizer adapter
 	 */
 	protected abstract SessionPort evaluatorSessions(RunnerSessions.Settings settings, Bridge bridge);
+
+	/**
+	 * Reads the policies of the authenticated owner that starts this optimizer command.
+	 *
+	 * @return the initial and current policy readings used to bound its check programs
+	 * @throws IOException if the owner or its policy cannot be read
+	 * @throws PolicyRefusal if the owner or its policy cannot be authenticated
+	 */
+	protected abstract List<ParentPolicy> checkProgramPolicies() throws IOException, PolicyRefusal;
+
+	@Override
+	protected final CheckProgramEvaluation checkPrograms()
+	{
+		return (test, testCase, record) ->
+		{
+			try
+			{
+				List<ParentPolicy> policies = checkProgramPolicies();
+				List<Path> heldOut = new ArrayList<>(heldOutDirectories());
+				Path heldOutResults = RunnerSessions.Settings.heldOutResultsFolder(resultsFolder());
+				heldOut.add(Files.createDirectories(heldOutResults).toRealPath());
+				CheckProgram.Launch launch = CheckProgram.ownerLaunch(Platform.current(), environment, policies, heldOut);
+				return CheckProgramEvaluation.isolated(launch, json(), temporaryDirectory()).decide(test, testCase, record);
+			}
+			catch (PolicyRefusal e)
+			{
+				throw new IOException(e.messageFor(harness.productName()), e);
+			}
+		};
+	}
 
 	/**
 	 * Returns the ID of the host session that the harness's session variable names.

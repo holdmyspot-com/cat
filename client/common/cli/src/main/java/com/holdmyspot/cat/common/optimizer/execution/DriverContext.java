@@ -64,6 +64,7 @@ import tools.jackson.databind.json.JsonMapper;
  * @param evaluationSessions the selected evaluation harnesses' session ports
  * @param temporaryDirectory the directory under which the driver creates its temporary directories; the process
  *   temporary directory of the command that runs the driver
+ * @param checkPrograms the owner's check-program evaluation for completed trials
  */
 public record DriverContext(FileLocks fileLocks, CampaignStore store, SessionPort sessions, WorkspacePort workspace,
 	HostInterruptSignal interrupts, Clock clock, CandidateOverlays overlays, JudgeProtocol judge,
@@ -72,7 +73,7 @@ public record DriverContext(FileLocks fileLocks, CampaignStore store, SessionPor
 	CapCalibrator calibrator, ProcessTerminator terminator, LeftoverNestedSessions leftoverSessions, Authority authority,
 	Set<Path> promptSources, MeasurementIdentity environment, Path lockFile, RandomGenerator random,
 	SliceSettings settings, JsonMapper json, List<TrialProfile> candidateJudges, DevelopmentJudgeRecords judgeRecords,
-	Map<Harness, SessionPort> evaluationSessions, Path temporaryDirectory)
+	Map<Harness, SessionPort> evaluationSessions, Path temporaryDirectory, CheckProgramEvaluation checkPrograms)
 {
 	/**
 	 * Creates a context.
@@ -107,6 +108,7 @@ public record DriverContext(FileLocks fileLocks, CampaignStore store, SessionPor
 	 * @param judgeRecords the development judges that earlier campaigns on the same project and target qualified
 	 * @param evaluationSessions the selected evaluation harnesses' session ports
 	 * @param temporaryDirectory the directory under which the driver creates its temporary directories
+	 * @param checkPrograms the owner's check-program evaluation for completed trials
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code environment} records a condition that only sessions observe
 	 */
@@ -146,9 +148,58 @@ public record DriverContext(FileLocks fileLocks, CampaignStore store, SessionPor
 		requireThat(candidateJudges, "candidateJudges").isNotNull();
 		requireThat(judgeRecords, "judgeRecords").isNotNull();
 		requireThat(temporaryDirectory, "temporaryDirectory").isNotNull();
+		requireThat(checkPrograms, "checkPrograms").isNotNull();
 		promptSources = Set.copyOf(promptSources);
 		candidateJudges = List.copyOf(candidateJudges);
 		evaluationSessions = Map.copyOf(evaluationSessions);
+	}
+
+	/**
+	 * Creates a context without a check-program launcher.
+	 *
+	 * @param fileLocks the process-owned lock coordinator
+	 * @param store the campaign store
+	 * @param sessions starts nested sessions
+	 * @param workspace stages candidates, prepares author copies and accesses the optimization worktree
+	 * @param interrupts reports whether the host interrupted the run
+	 * @param clock the clock
+	 * @param overlays the candidates' overlays
+	 * @param judge builds judge requests and reads their verdicts
+	 * @param triage builds triage requests and reads failure impacts
+	 * @param ranking builds and validates approach rankings
+	 * @param promptAuthor builds prompt author requests and reads their reports
+	 * @param values builds requests for additional development test cases
+	 * @param deliverer delivers the candidate that the campaign selects
+	 * @param calibrator calibrates the cap of a certification attempt
+	 * @param terminator stops processes that an earlier driver left running
+	 * @param leftoverSessions finds those earlier sessions
+	 * @param authority the confirmed edit authority
+	 * @param promptSources the project-relative prompt sources
+	 * @param environment the measurement conditions observed outside trials
+	 * @param lockFile the campaign's write-lock file
+	 * @param random the source of certification draw seeds
+	 * @param settings the time limits for one driver slice
+	 * @param json reads and writes hook configuration
+	 * @param candidateJudges the development judge profiles
+	 * @param judgeRecords the development judges qualified by earlier campaigns
+	 * @param evaluationSessions the selected evaluation harnesses' session ports
+	 * @param temporaryDirectory the root for the driver's temporary directories
+	 * @throws NullPointerException if any argument is null
+	 * @throws IllegalArgumentException if {@code environment} records a condition that only sessions observe
+	 */
+	public DriverContext(FileLocks fileLocks, CampaignStore store, SessionPort sessions, WorkspacePort workspace,
+		HostInterruptSignal interrupts, Clock clock, CandidateOverlays overlays, JudgeProtocol judge, TriageProtocol triage,
+		ApproachRankingProtocol ranking, PromptAuthorProtocol promptAuthor, ValuesProtocol values, Deliverer deliverer,
+		CapCalibrator calibrator, ProcessTerminator terminator, LeftoverNestedSessions leftoverSessions,
+		Authority authority, Set<Path> promptSources, MeasurementIdentity environment, Path lockFile,
+		RandomGenerator random, SliceSettings settings, JsonMapper json, List<TrialProfile> candidateJudges,
+		DevelopmentJudgeRecords judgeRecords,
+		Map<Harness, SessionPort> evaluationSessions, Path temporaryDirectory)
+	{
+		this(fileLocks, store, sessions, workspace, interrupts, clock, overlays, judge, triage, ranking, promptAuthor,
+			values, deliverer, calibrator, terminator, leftoverSessions, authority, promptSources, environment, lockFile,
+			random, settings, json, candidateJudges, judgeRecords, evaluationSessions, temporaryDirectory,
+			CheckProgramEvaluation.UNAVAILABLE);
 	}
 
 	/**

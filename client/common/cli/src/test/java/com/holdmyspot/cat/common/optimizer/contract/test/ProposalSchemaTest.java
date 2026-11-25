@@ -207,7 +207,7 @@ public final class ProposalSchemaTest
 	{
 		ProposalSchema schema = schema();
 		ObjectNode stored = contractWithExample("arrives/pass_same_day/initial/result.dat");
-		ProposalSchema.omitExamples((ObjectNode) stored.at("/tests/0"));
+		ProposalSchema.omitPrivateTestFiles((ObjectNode) stored.at("/tests/0"));
 
 		Contract loaded = schema.parse(json.writeValueAsString(stored));
 
@@ -290,6 +290,64 @@ public final class ProposalSchemaTest
 		byte[] bytes = {(byte) 0xff, 0};
 		draft.putArray("example_files").addObject().put("path", path).put("sha256", Sha256.of(bytes).hex()).
 			put("content", Base64.getEncoder().encodeToString(bytes));
+		return stored;
+	}
+
+	/**
+	 * Verifies that a check file's path, digest and bytes survive a round trip and that editing the file changes
+	 * the confirmed contract's identity.
+	 *
+	 * @throws InvalidProposalException if the stored contract is rejected
+	 */
+	@Test
+	public void storesCheckFiles() throws InvalidProposalException
+	{
+		// Requirement: R-L21
+		ProposalSchema schema = schema();
+		ObjectNode stored = contractWithCheckFile(new byte[] {(byte) 0xff, 0});
+
+		Contract loaded = schema.parse(json.writeValueAsString(stored));
+		Contract changed = schema.parse(json.writeValueAsString(contractWithCheckFile(new byte[] {(byte) 0xff, 1})));
+
+		requireThat(json.readTree(schema.toJson(loaded)), "roundTrip").isEqualTo(stored);
+		requireThat(ContractIdentity.of(schema, changed), "changedIdentity").
+			isNotEqualTo(ContractIdentity.of(schema, loaded));
+
+		ObjectNode projected = (ObjectNode) json.readTree(schema.toJson(loaded));
+		ObjectNode firstTest = (ObjectNode) projected.at("/tests/0");
+		ProposalSchema.omitPrivateTestFiles(firstTest);
+		requireThat(firstTest.path("draft").has("check_files"), "projectedCheckFiles").isFalse();
+	}
+
+	/**
+	 * Verifies that a stored check file's bytes must match its digest.
+	 */
+	@Test
+	public void refusesChangedCheckContent()
+	{
+		ObjectNode stored = contractWithCheckFile(new byte[] {(byte) 0xff, 0});
+		ObjectNode file = (ObjectNode) stored.at("/tests/0/draft/check_files/0");
+		file.put("content", "AA==");
+
+		InvalidProposalException rejected = rejection(json.writeValueAsString(stored));
+
+		requireThat(String.join(" | ", rejected.problems()), "digestRejection").
+			contains("inspect/signature.dat").contains("SHA-256");
+	}
+
+	/**
+	 * Supplies a stored draft with one check file.
+	 *
+	 * @param bytes the bytes of the check file
+	 * @return a stored contract with the check file
+	 */
+	private ObjectNode contractWithCheckFile(byte[] bytes)
+	{
+		ObjectNode stored = (ObjectNode) json.readTree(schema().toJson(ContractFixtures.contract()));
+		ObjectNode draft = ((ObjectNode) stored.get("tests").get(0)).putObject("draft");
+		draft.put("directory", ".cat/tests/guidance/formatting").put("scenario", "# Formatting test");
+		draft.putArray("check_files").addObject().put("path", "inspect/signature.dat").
+			put("sha256", Sha256.of(bytes).hex()).put("content", Base64.getEncoder().encodeToString(bytes));
 		return stored;
 	}
 

@@ -1330,7 +1330,7 @@ public final class ProposalCheck
 			PromptTest.Draft storedDraft;
 			try
 			{
-				storedDraft = draftWithExamples(directory, content, files);
+				storedDraft = captureDraft(directory, content, files);
 			}
 			catch (IllegalArgumentException e)
 			{
@@ -1362,29 +1362,42 @@ public final class ProposalCheck
 		}
 
 		/**
-		 * Captures the test's draft and the raw bytes of its assertion examples.
+		 * Captures the test's draft and the bytes of its examples and check files.
 		 *
 		 * @param directory the test's directory relative to the draft
 		 * @param scenario the scenario text
 		 * @param files the source files of the test
 		 * @return the immutable copy used in the confirmed contract
-		 * @throws UncheckedIOException if an example cannot be read
+		 * @throws UncheckedIOException if an example or check file cannot be read
 		 */
-		private static PromptTest.Draft draftWithExamples(Path directory, String scenario, PromptTestFiles files)
+		private static PromptTest.Draft captureDraft(Path directory, String scenario, PromptTestFiles files)
 		{
-			Map<String, FileContent> examples = new LinkedHashMap<>();
-			for (Map.Entry<String, Path> example : files.exampleSources().entrySet())
+			return new PromptTest.Draft(directory, scenario, files.copiedLinks(), readDraftFiles(files.exampleSources()),
+				files.exampleDirectories(), readDraftFiles(files.checkSources()));
+		}
+
+		/**
+		 * Reads the bytes of each discovered regular draft file.
+		 *
+		 * @param sources the source files by relative path
+		 * @return the file content by relative path
+		 * @throws UncheckedIOException if a file cannot be read
+		 */
+		private static Map<String, FileContent> readDraftFiles(Map<String, Path> sources)
+		{
+			Map<String, FileContent> content = new LinkedHashMap<>();
+			for (Map.Entry<String, Path> source : sources.entrySet())
 			{
-				try (InputStream input = Files.newInputStream(example.getValue(), LinkOption.NOFOLLOW_LINKS))
+				try (InputStream input = Files.newInputStream(source.getValue(), LinkOption.NOFOLLOW_LINKS))
 				{
-					examples.put(example.getKey(), new FileContent(input.readAllBytes()));
+					content.put(source.getKey(), new FileContent(input.readAllBytes()));
 				}
 				catch (IOException e)
 				{
 					throw new UncheckedIOException(e);
 				}
 			}
-			return new PromptTest.Draft(directory, scenario, files.copiedLinks(), examples, files.exampleDirectories());
+			return content;
 		}
 
 		/**

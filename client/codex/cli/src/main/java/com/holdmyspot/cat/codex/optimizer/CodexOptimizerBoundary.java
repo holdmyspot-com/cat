@@ -7,6 +7,8 @@ import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -177,7 +179,7 @@ public final class CodexOptimizerBoundary
 			if (name.startsWith("GIT_") && !disablesGitPager)
 				throw new IOException("The optimizer refuses inherited Git override " + name + ".");
 		}
-		for (String name : java.util.List.of(CodexOptimizerCommandScope.HOME_VARIABLE, "CODEX_HOME", "TMPDIR", "TMP",
+		for (String name : List.of(CodexOptimizerCommandScope.HOME_VARIABLE, "CODEX_HOME", "TMPDIR", "TMP",
 			"TEMP"))
 		{
 			String value = environment.get(name);
@@ -195,7 +197,7 @@ public final class CodexOptimizerBoundary
 		}
 		if (environment.containsKey("PATH"))
 		{
-			for (String program : java.util.List.of("git", "codex"))
+			for (String program : List.of("git", "codex"))
 			{
 				Path executable = Path.of(Platform.current().findProgram(program, environment));
 				if (!executable.isAbsolute())
@@ -216,6 +218,26 @@ public final class CodexOptimizerBoundary
 		if (session == null)
 			throw new IOException("The optimizer has no validated host session for its exit notice.");
 		return session;
+	}
+
+	/**
+	 * Reads the authenticated owner's policies before running a check program.
+	 *
+	 * @return the initial policy when available and the current readings, before intersection
+	 * @throws IOException if the session or its policy cannot be read
+	 * @throws PolicyRefusal if the owner or its policy cannot be authenticated
+	 */
+	List<ParentPolicy> checkProgramPolicies() throws IOException, PolicyRefusal
+	{
+		RequestServer.Session owner = session;
+		if (owner == null)
+			owner = sessions.find();
+		List<ParentPolicy> policies = new ArrayList<>(owner.policy().readings(owner.askingThread()));
+		if (validatedPolicy != null)
+			policies.addFirst(validatedPolicy);
+		for (ParentPolicy policy : policies)
+			validateOwner(owner, policy);
+		return List.copyOf(policies);
 	}
 
 	/**

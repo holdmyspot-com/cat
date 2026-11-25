@@ -22,6 +22,10 @@ public enum MeasurementCondition
 	 */
 	GENERATOR,
 	/**
+	 * The input format and the owning Java runtime's feature version that decide check-program assertions.
+	 */
+	CHECK_PROGRAM_VERSION,
+	/**
 	 * The version of the judge that the harness's sessions run, which stands for the judge's role profile, prompt,
 	 * rubric, decision rule and result schema, and the evidence section rendered for the same harness events.
 	 */
@@ -116,6 +120,7 @@ public enum MeasurementCondition
 		{
 			case CONTRACT -> "contract";
 			case GENERATOR -> "generator";
+			case CHECK_PROGRAM_VERSION -> "check-program version";
 			case JUDGE -> "judge version";
 			case JUDGE_HARNESS -> "judge harness";
 			case MODEL -> "trial model";

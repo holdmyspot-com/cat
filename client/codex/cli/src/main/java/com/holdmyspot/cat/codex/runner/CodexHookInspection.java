@@ -3,18 +3,14 @@ package com.holdmyspot.cat.codex.runner;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessProcessStarter;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.policy.BubblewrapReadView;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
-import com.holdmyspot.cat.common.runner.policy.RealPaths;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
@@ -98,13 +94,13 @@ final class CodexHookInspection
 			Path temporary = Files.createDirectory(scratch.resolve("tmp"));
 			Path db = Files.createDirectory(scratch.resolve("state"));
 			Path logs = Files.createDirectory(scratch.resolve("logs"));
-			List<String> command = readOnlyView(bubblewrap);
+			List<String> command = BubblewrapReadView.readOnlyView(bubblewrap);
 			if (trialHome)
 				command.addAll(List.of("--bind", nativeHome.toString(), nativeHome.toString()));
 			else
 				command.addAll(ownerOverlays(nativeHome, scratch, policy));
 			command.addAll(List.of("--bind", scratch.toString(), scratch.toString()));
-			applyReadDenials(command, policy, scratch);
+			BubblewrapReadView.applyReadDenials(command, policy, scratch, "Codex", "hook inspection");
 			command.addAll(List.of("--clearenv", "--setenv", "PATH", "/usr/bin:/bin",
 				"--setenv", "HOME", scratch.toString(),
 				"--setenv", "TMPDIR", temporary.toString(), "--setenv", "CODEX_HOME", nativeHome.toString(),
@@ -149,18 +145,6 @@ final class CodexHookInspection
 	}
 
 	/**
-	 * Returns the common isolated filesystem and network view for inspection and installation.
-	 *
-	 * @param bubblewrap the protected native sandbox launcher
-	 * @return a mutable command prefix to which callers add their writable overlays
-	 */
-	static List<String> readOnlyView(Path bubblewrap)
-	{
-		return new ArrayList<>(List.of(bubblewrap.toString(), "--die-with-parent", "--unshare-net", "--unshare-pid",
-			"--ro-bind", "/", "/", "--proc", "/proc", "--dev", "/dev"));
-	}
-
-	/**
 	 * Checks both native launch executables before either can run.
 	 *
 	 * @param policy the authenticated owner's filesystem policy
@@ -175,69 +159,6 @@ final class CodexHookInspection
 			if (!policy.mayRead(path))
 				throw new IOException("The owner cannot read a Codex hook inspection executable: " + path);
 		}
-	}
-
-	/**
-	 * Masks owner-denied reads after the writable overlays are mounted. An exception covering a denial leaves
-	 * nothing to mask. Partial exceptions or a path that cannot be masked make inspection unavailable.
-	 *
-	 * @param command the sandbox command after its writable overlays
-	 * @param policy the authenticated owner's filesystem policy
-	 * @param scratch where private mask files can be created
-	 * @throws IOException if the view cannot enforce the read policy
-	 */
-	static void applyReadDenials(List<String> command, ParentPolicy policy, Path scratch) throws IOException
-	{
-		if (!policy.sandboxed())
-			return;
-		List<Path> exceptions = RealPaths.resolveAll(policy.readReallowances());
-		List<Path> masked = new ArrayList<>();
-		List<Path> denied = RealPaths.resolveAll(policy.readDenials()).stream().
-			sorted(Comparator.comparingInt(Path::getNameCount)).toList();
-		for (Path path : denied)
-		{
-			if (RealPaths.isInsideAny(path, exceptions) || RealPaths.isInsideAny(path, masked))
-				continue;
-			if (path.getParent() == null || path.startsWith("/proc") || path.startsWith("/dev") ||
-				exceptions.stream().anyMatch(exception -> exception.startsWith(path)))
-			{
-				throw new IOException("Codex cannot represent the owner's read restriction during hook inspection: " +
-					path);
-			}
-			mask(command, path, scratch);
-			masked.add(path);
-		}
-	}
-
-	/**
-	 * Replaces the denied filesystem object with an empty read-only object.
-	 *
-	 * @param command the sandbox command
-	 * @param denied the canonical denied path
-	 * @param scratch where a private empty file can be created
-	 * @throws IOException if the denied path cannot be masked
-	 */
-	private static void mask(List<String> command, Path denied, Path scratch) throws IOException
-	{
-		BasicFileAttributes attributes;
-		try
-		{
-			attributes = Files.readAttributes(denied, BasicFileAttributes.class);
-		}
-		catch (IOException e)
-		{
-			throw new IOException("Codex cannot mask the owner's denied read during hook inspection: " + denied, e);
-		}
-		if (attributes.isDirectory())
-			command.addAll(List.of("--tmpfs", denied.toString(), "--remount-ro", denied.toString()));
-		else if (attributes.isRegularFile())
-		{
-			Path empty = Files.createTempFile(scratch, "denied-read-", ".empty",
-				PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("---------")));
-			command.addAll(List.of("--ro-bind", empty.toString(), denied.toString()));
-		}
-		else
-			throw new IOException("Codex cannot mask the owner's denied read during hook inspection: " + denied);
 	}
 
 	/**

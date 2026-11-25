@@ -8276,6 +8276,36 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Reports the certification as historical when it used a different check-program runtime.
+	 *
+	 * @throws Exception if the record cannot be created or the status command fails
+	 */
+	@Test
+	public void statusExplainsCheckProgramDrift() throws Exception
+	{
+		// Requirement: R-L21
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String prompt = "Be brief.\n";
+			Files.writeString(repository.root().resolve("CLAUDE.md"), prompt);
+			writeRecord(repository, prompt, values ->
+				values.put(MeasurementCondition.CHECK_PROGRAM_VERSION, "input-1-java-1"));
+
+			ObjectNode status = output(repository, List.of("status", "CLAUDE.md"));
+
+			JsonNode applicability = status.get("latest").get(0).get("applicability");
+			requireThat(applicability.get("status").asString(), "applicability").isEqualTo("historical");
+			requireThat(applicability.get("prompt_content_changed").asBoolean(), "promptContentChanged").isFalse();
+			requireThat(applicability.get("changed").get(0).asString(), "changed").isEqualTo("check_program_version");
+			requireThat(status.get("summary").asString(), "summary").contains("Check program: input-1-java-1");
+			requireThat(repository.sessions().roles(), "roles").isEmpty();
+		}
+	}
+
+	/**
 	 * Verifies that {@code status} of a target that has no campaign but a history of certifications by two harnesses
 	 * reports the latest record of each harness with its applicability, in the order of the history, and lists the
 	 * records that a later record of the same harness followed as earlier history.

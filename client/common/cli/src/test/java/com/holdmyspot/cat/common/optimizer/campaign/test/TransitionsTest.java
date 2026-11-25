@@ -29,6 +29,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.CommitGate;
 import com.holdmyspot.cat.common.optimizer.campaign.Round;
 import com.holdmyspot.cat.common.optimizer.campaign.Scheduler;
+import com.holdmyspot.cat.common.optimizer.campaign.TestRevision;
 import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialAttemptFailure;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
@@ -324,6 +325,55 @@ public final class TransitionsTest
 		requireThat(campaign.identity(), "identity").isEqualTo(Builder.confirmedIdentity("model-a"));
 		requireThat(campaign.development().series(), "series").isEqualTo(1);
 		requireThat(Scheduler.plan(campaign, NOW, 8).isEmpty(), "confirmed").isFalse();
+	}
+
+	/**
+	 * A confirmation with owner-wide conditions records the check-program version before the baseline starts.
+	 */
+	@Test
+	public void confirmationRecordsCheckProgramVersion()
+	{
+		// Requirement: R-L21
+		Campaign campaign = Campaign.start(new Builder().build().header(), 8, Builder.INCUMBENT,
+			Builder.OBSERVED);
+		MeasurementIdentity environment = new MeasurementIdentity(
+			Map.of(MeasurementCondition.CHECK_PROGRAM_VERSION, "input-1-java-25"));
+
+		Campaign confirmed = Transitions.apply(campaign,
+			new CampaignEvent.Confirm(scopedContract(), Builder.contractHash(), 17, environment));
+
+		requireThat(confirmed.identity().values().get(MeasurementCondition.CHECK_PROGRAM_VERSION),
+			"checkProgramVersion").isEqualTo("input-1-java-25");
+		requireThat(confirmed.baseline().identity().values().get(MeasurementCondition.CHECK_PROGRAM_VERSION),
+			"baselineCheckProgramVersion").isEqualTo("input-1-java-25");
+	}
+
+	/**
+	 * Confirming a test revision that removed the last check program drops its version from the new lineage.
+	 */
+	@Test
+	public void testRevisionDropsCheckProgramVersion()
+	{
+		// Requirement: R-L21
+		MeasurementIdentity environment = new MeasurementIdentity(
+			Map.of(MeasurementCondition.CHECK_PROGRAM_VERSION, "input-1-java-25"));
+		MeasurementIdentity recorded = Builder.confirmedIdentity("model-a").extendWith(environment);
+		Campaign campaign = new Builder().confirmed().identity(recorded).build();
+		requireThat(campaign.identity().values().get(MeasurementCondition.CHECK_PROGRAM_VERSION),
+			"initialCheckProgramVersion").isEqualTo("input-1-java-25");
+		TestRevision revision = new TestRevision(1, "safety", "check-program", "built-in tool",
+			"The built-in tool can decide the assertion.");
+		Campaign awaitingConfirmation = Transitions.apply(campaign, new CampaignEvent.ReviseTests(List.of(revision)));
+
+		Sha256 revisedHash = Builder.snapshot("without-check-program");
+		Campaign revised = Transitions.apply(awaitingConfirmation,
+			new CampaignEvent.Confirm(scopedContract(), revisedHash, 17, MeasurementIdentity.EMPTY));
+
+		requireThat(revised.lineage().number(), "lineage").isEqualTo(2);
+		requireThat(revised.identity().values().get(MeasurementCondition.CHECK_PROGRAM_VERSION),
+			"checkProgramVersion").isNull();
+		requireThat(revised.baseline().identity().values().get(MeasurementCondition.CHECK_PROGRAM_VERSION),
+			"baselineCheckProgramVersion").isNull();
 	}
 
 	/**
@@ -943,7 +993,8 @@ public final class TransitionsTest
 	{
 		// Requirement: R-M3, R-M5
 		MeasurementIdentity initial = Builder.confirmedIdentity("model-a").extendWith(new MeasurementIdentity(
-			Map.of(MeasurementCondition.TOOL_OUTPUT_LIMIT, "original-limit")));
+			Map.of(MeasurementCondition.TOOL_OUTPUT_LIMIT, "original-limit",
+				MeasurementCondition.CHECK_PROGRAM_VERSION, "input-1-java-25")));
 		Campaign before = new Builder().identity(initial).confirmed().working(1).development("safety", 7, 1).
 			baseline("safety", 9, 2).certificationAttempt(1).cell("safety", 30, 0).build();
 		before = TransitionSteps.assign(before, Purpose.FORMAL, "safety");

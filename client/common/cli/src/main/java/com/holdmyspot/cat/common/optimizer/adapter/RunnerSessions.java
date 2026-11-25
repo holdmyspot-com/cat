@@ -1883,6 +1883,19 @@ public abstract class RunnerSessions implements SessionPort
 		 */
 		public Path heldOutResultsFolder()
 		{
+			return heldOutResultsFolder(resultsFolder);
+		}
+
+		/**
+		 * Returns the held-out counterpart of a nested results directory.
+		 *
+		 * @param resultsFolder the development results directory
+		 * @return the sibling that holds held-out results
+		 * @throws NullPointerException if {@code resultsFolder} is null
+		 */
+		public static Path heldOutResultsFolder(Path resultsFolder)
+		{
+			requireThat(resultsFolder, "resultsFolder").isNotNull();
 			return resultsFolder.resolveSibling(resultsFolder.getFileName() + "-held_out");
 		}
 	}
