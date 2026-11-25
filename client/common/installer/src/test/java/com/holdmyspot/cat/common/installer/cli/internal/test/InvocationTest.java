@@ -657,7 +657,8 @@ public final class InvocationTest
 			installation.writePolicy(installation.trustPolicy());
 			Files.writeString(RecordingIntegration.registeredVersion(installation.home), "1.2");
 			RecordingIntegration integration = new RecordingIntegration();
-			String variable = Platform.current().homeVariable();
+			// Installation.run runs the installer as on Linux, which takes the user's home from HOME even on Windows
+			String variable = Platform.LINUX_X64.homeVariable();
 
 			Run run = installation.run(Map.of(variable, "relative-home"), List.of(new RegisteredProvider()),
 				integration, "uninstall");
