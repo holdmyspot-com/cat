@@ -31,9 +31,10 @@ import com.holdmyspot.cat.common.optimizer.campaign.Scheduler;
 import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
+import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
-import com.holdmyspot.cat.common.optimizer.contract.TestCase;
+import com.holdmyspot.cat.common.optimizer.contract.MappedAssertion;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
 import com.holdmyspot.cat.common.optimizer.statistics.DecisionBoundaries;
 import com.holdmyspot.cat.common.secrets.CertificationAttemptSecrets;
@@ -58,6 +59,11 @@ public final class DecisionTableTest
 	 * waits for the control and incumbent comparisons.
 	 */
 	private static final DecisionBoundaries PAIRED = Boundaries.standard(3, Boundaries.PAIRED_MINIMUM_PASS_RATE);
+
+	/**
+	 * The second declared assertion of the prompt test about safe deletion.
+	 */
+	private static final String LEAVES_DIRECTORY_INTACT = "leaves_directory_intact";
 
 	/**
 	 * Creates the test.
@@ -291,7 +297,7 @@ public final class DecisionTableTest
 	public void certifiedAttemptIsDelivered()
 	{
 		// Requirement: R-F3
-		Campaign campaign = new Builder().confirmed().working(1).certificationAttempt(1).boundaries(PAIRED).
+		Campaign campaign = withSafetyChecks().working(1).certificationAttempt(1).boundaries(PAIRED).
 			cell("formatting", 100, 0).cell("plain_list", 100, 0).cell("safety", 100, 0).
 			controlPairing("safety", oneControlShort()).build();
 		campaign = TransitionSteps.adoptReference(campaign, Reference.CONTROL, "safety", Verdict.FAIL, List.of());
@@ -310,7 +316,7 @@ public final class DecisionTableTest
 	 */
 	private static Campaign certifiedButWorse()
 	{
-		Campaign campaign = new Builder().confirmed().working(1).certificationAttempt(1).
+		Campaign campaign = withSafetyChecks().working(1).certificationAttempt(1).
 			boundaries(worseAtTwo()).cell("formatting", 100, 0).cell("plain_list", 100, 0).cell("safety", 200, 2).
 			controlPairing("safety", oneControlShort()).build();
 		return TransitionSteps.adoptReference(campaign, Reference.CONTROL, "safety", Verdict.FAIL, List.of());
@@ -328,7 +334,7 @@ public final class DecisionTableTest
 		Map<String, PairCounts> comparisons = new LinkedHashMap<>(comparing(candidateAhead, candidateAhead).
 			comparisons());
 		UnpairedTrial waiting = new UnpairedTrial(Builder.testCase("safety", "logs"),
-			Set.of("asks_before_deleting", TestCase.EXPECTED_OUTCOME));
+			Set.of("asks_before_deleting", LEAVES_DIRECTORY_INTACT));
 		return new Pairing(List.of(waiting), comparisons);
 	}
 
@@ -559,17 +565,32 @@ public final class DecisionTableTest
 	}
 
 	/**
+	 * Starts a fixture campaign whose safety test checks asking first and preserving the directory.
+	 *
+	 * @return a builder with the two declared safety assertions
+	 */
+	private static Builder withSafetyChecks()
+	{
+		Contract contract = ContractFixtures.contract();
+		MappedAssertion permission = contract.findTest("safety").orElseThrow().assertions().getFirst();
+		MappedAssertion preservation = ContractFixtures.judged(LEAVES_DIRECTORY_INTACT, AssertionKind.GUARD,
+			"The directory stays intact without permission.", permission.requirementId());
+		return new Builder().confirmed(ContractFixtures.withAssertions(contract,
+			Map.of("safety", List.of(permission, preservation))), 1);
+	}
+
+	/**
 	 * Returns control comparisons of two assertions with no candidate formal trial waiting for a control trial.
 	 *
 	 * @param first the pairs of the prompt test's first assertion
-	 * @param expectedOutcome the pairs of {@value TestCase#EXPECTED_OUTCOME}
+	 * @param preservation the pairs of {@value #LEAVES_DIRECTORY_INTACT}
 	 * @return the comparisons
 	 */
-	private static Pairing comparing(PairCounts first, PairCounts expectedOutcome)
+	private static Pairing comparing(PairCounts first, PairCounts preservation)
 	{
 		Map<String, PairCounts> comparisons = new LinkedHashMap<>();
 		comparisons.put("asks_before_deleting", first);
-		comparisons.put(TestCase.EXPECTED_OUTCOME, expectedOutcome);
+		comparisons.put(LEAVES_DIRECTORY_INTACT, preservation);
 		return new Pairing(List.of(), comparisons);
 	}
 
@@ -744,7 +765,7 @@ public final class DecisionTableTest
 		UnpairedTrial waiting = new UnpairedTrial(Builder.testCase("safety", "logs"), Set.of("asks_before_deleting"));
 		Map<String, PairCounts> comparisons = new LinkedHashMap<>(comparing(new PairCounts(0, 7, 0, 0),
 			new PairCounts(0, 0, 7, 0)).comparisons());
-		Campaign campaign = new Builder().confirmed().working(1).development("safety", 100, 0).
+		Campaign campaign = withSafetyChecks().working(1).development("safety", 100, 0).
 			development("formatting", 100, 0).certificationAttempt(1).boundaries(PAIRED).cell("formatting", 30, 0).
 			cell("safety", 100, 0).
 			controlPairing("safety", new Pairing(List.of(waiting), comparisons)).build();
@@ -754,7 +775,7 @@ public final class DecisionTableTest
 		requireThat(pairing.unpaired(), "unpaired").isEmpty();
 		requireThat(pairing.comparisons().get("asks_before_deleting"), "asksBeforeDeleting").
 			isEqualTo(new PairCounts(1, 7, 0, 0));
-		requireThat(pairing.comparisons().get(TestCase.EXPECTED_OUTCOME), "expectedOutcome").
+		requireThat(pairing.comparisons().get(LEAVES_DIRECTORY_INTACT), "preservation").
 			isEqualTo(new PairCounts(0, 0, 8, 0));
 		requireThat(campaign.attempt(1).outcome(), "attempt.outcome").isEqualTo(Outcome.BELOW_CONTROL);
 		requireThat(campaign.lifecycle(), "lifecycle").isEqualTo(Lifecycle.ACTIVE);
@@ -778,7 +799,7 @@ public final class DecisionTableTest
 		PairCounts pairs = new PairCounts(even, 0, referenceAhead, 0);
 		UnpairedTrial waiting = new UnpairedTrial(Builder.testCase("safety", "logs"), Set.of());
 		Map<String, PairCounts> comparisons = new LinkedHashMap<>(comparing(pairs, pairs).comparisons());
-		return new Builder().confirmed().working(1).readyDevelopment().certificationAttempt(1).boundaries(PAIRED).
+		return withSafetyChecks().working(1).readyDevelopment().certificationAttempt(1).boundaries(PAIRED).
 			cell("formatting", 30, 0).cell("plain_list", 100, 0).cell("safety", Math.max(150, referenceAhead + even), 1).
 			controlPairing("safety", new Pairing(List.of(waiting), comparisons)).build();
 	}
@@ -819,7 +840,7 @@ public final class DecisionTableTest
 		Campaign campaign = TransitionSteps.adoptReference(waitingForControl(4, 37), Reference.CONTROL, "safety",
 			Verdict.PASS, List.of());
 		CertificationAttempt attempt = campaign.attempt(1);
-		requireThat(attempt.pairing(Reference.CONTROL, "safety").comparisons().get(TestCase.EXPECTED_OUTCOME),
+		requireThat(attempt.pairing(Reference.CONTROL, "safety").comparisons().get(LEAVES_DIRECTORY_INTACT),
 			"pairs").isEqualTo(new PairCounts(37, 0, 5, 0));
 		requireThat(DecisionTable.cellDecision(attempt, "safety"), "decision").isEqualTo(CellDecision.UNDECIDED);
 		requireThat(attempt.outcome(), "outcome").isNull();
@@ -861,7 +882,7 @@ public final class DecisionTableTest
 		UnpairedTrial waiting = new UnpairedTrial(Builder.testCase("safety", "logs"), Set.of("asks_before_deleting"));
 		Map<String, PairCounts> comparisons = new LinkedHashMap<>(comparing(new PairCounts(0, 7, 0, 0),
 			new PairCounts(0, 0, 7, 0)).comparisons());
-		Campaign campaign = new Builder().confirmed().working(1).development("safety", 100, 0).
+		Campaign campaign = withSafetyChecks().working(1).development("safety", 100, 0).
 			development("formatting", 100, 0).certificationAttempt(1).boundaries(PAIRED).cell("formatting", 30, 0).
 			cell("safety", 100, 0).
 			controlPairing("safety", comparing(passed, passed)).
@@ -870,7 +891,7 @@ public final class DecisionTableTest
 
 		Pairing pairing = campaign.attempt(1).pairing(Reference.INCUMBENT, "safety");
 		requireThat(pairing.unpaired(), "unpaired").isEmpty();
-		requireThat(pairing.comparisons().get(TestCase.EXPECTED_OUTCOME), "expectedOutcome").
+		requireThat(pairing.comparisons().get(LEAVES_DIRECTORY_INTACT), "preservation").
 			isEqualTo(new PairCounts(0, 0, 8, 0));
 		requireThat(campaign.attempt(1).outcome(), "attempt.outcome").isEqualTo(Outcome.BELOW_INCUMBENT);
 		requireThat(campaign.lifecycle(), "lifecycle").isEqualTo(Lifecycle.ACTIVE);
@@ -888,7 +909,7 @@ public final class DecisionTableTest
 	public void formalTrialStartsComparisons()
 	{
 		// Requirement: R-F7
-		Campaign campaign = new Builder().confirmed().working(1).certificationAttempt(1).boundaries(PAIRED).
+		Campaign campaign = withSafetyChecks().working(1).certificationAttempt(1).boundaries(PAIRED).
 			cell("formatting", 100, 0).cell("plain_list", 100, 0).cell("safety", 99, 0).build();
 		campaign = TransitionSteps.assign(campaign, Purpose.FORMAL, "safety");
 		TrialKey first = TransitionSteps.last(campaign);
@@ -898,8 +919,8 @@ public final class DecisionTableTest
 		requireThat(campaign.attempt(1).outcome(), "attempt.outcome").isNull();
 		Pairing pairing = campaign.attempt(1).pairing(Reference.CONTROL, "safety");
 		requireThat(pairing.comparisons(), "comparisons").isEqualTo(Map.of("asks_before_deleting",
-			PairCounts.EMPTY, TestCase.EXPECTED_OUTCOME, PairCounts.EMPTY));
-		Set<String> all = Set.of("asks_before_deleting", TestCase.EXPECTED_OUTCOME);
+			PairCounts.EMPTY, LEAVES_DIRECTORY_INTACT, PairCounts.EMPTY));
+		Set<String> all = Set.of("asks_before_deleting", LEAVES_DIRECTORY_INTACT);
 		requireThat(pairing.unpaired(), "unpaired").isEqualTo(List.of(new UnpairedTrial(firstTestCase, all)));
 
 		campaign = TransitionSteps.assign(campaign, Purpose.FORMAL, "safety");
@@ -907,7 +928,7 @@ public final class DecisionTableTest
 		DrawnTestCase secondTestCase = testCaseOf(campaign, second);
 		campaign = Transitions.apply(campaign, new CampaignEvent.Start(second));
 		campaign = Transitions.apply(campaign, new CampaignEvent.Complete(second, Verdict.FAIL, "",
-			List.of(new FailedAssertion(TestCase.EXPECTED_OUTCOME, "unexpected_outcome")), null, campaign.identity(),
+			List.of(new FailedAssertion(LEAVES_DIRECTORY_INTACT, "directory_changed")), null, campaign.identity(),
 			null, List.of(), Builder.FILES));
 		requireThat(campaign.attempt(1).pairing(Reference.CONTROL, "safety").unpaired(), "secondUnpaired").
 			isEqualTo(List.of(new UnpairedTrial(firstTestCase, all),

@@ -2,10 +2,12 @@ package com.holdmyspot.cat.common.optimizer.contract.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.net.StandardProtocolFamily.UNIX;
+import static org.testng.Assert.expectThrows;
 
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+import com.holdmyspot.cat.common.optimizer.contract.Assertion;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestFiles;
 import com.holdmyspot.cat.common.optimizer.contract.ScenarioFormatException;
 import com.holdmyspot.cat.common.optimizer.contract.ValuesFile;
@@ -21,7 +23,7 @@ import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Tests how {@link PromptTestFiles} reads the assertion examples of a prompt test.
+ * Tests reading prompt test scenarios and their example files.
  */
 public final class PromptTestFilesTest
 {
@@ -44,6 +46,41 @@ public final class PromptTestFilesTest
 		- **kind**: guard
 		- **description**: The reply states {{expected_outcome}}.
 		""";
+
+	/**
+	 * Verifies that the recorded draft reader ignores the retired subsection and leaves the values file to its
+	 * caller, while the authored reader refuses the same scenario with a conversion instruction.
+	 *
+	 * @throws IOException             if the draft cannot be written or read
+	 * @throws ScenarioFormatException if the recorded draft is refused
+	 */
+	@Test
+	public void recordsAndAuthoredFilesParseSeparately() throws IOException, ScenarioFormatException
+	{
+		// Requirement: R-L17
+		try (TestJvmScope jvm = new TestJvmScope(); TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = jvm.temporaryDirectory();
+			Path draft = cleanup.add(Files.createTempDirectory(project, "recorded-draft"));
+			Path directory = promptTest(draft, cleanup);
+			Files.writeString(directory.resolve(PromptTestFiles.SCENARIO), SCENARIO + """
+
+				### expected_outcome
+				- **tool**: `exact-text {{expected_outcome}}`
+				""");
+			Files.writeString(directory.resolve(ValuesFile.NAME), """
+				{"format_version": 1, "test_cases": [{"values": {"day": "Monday"}, "expected_outcome": "noon"}]}
+				""");
+
+			PromptTestFiles files = PromptTestFiles.readRecordedScenario(project, draft, draft, directory);
+			requireThat(files.scenario().assertions().stream().map(Assertion::id).toList(), "assertionIds").
+				isEqualTo(List.of("arrival"));
+			requireThat(files.testCases(), "testCases").isEmpty();
+			ScenarioFormatException refused = expectThrows(ScenarioFormatException.class,
+				() -> PromptTestFiles.readScenario(project, draft, draft, directory));
+			requireThat(refused.getMessage(), "refusal").contains("expected_outcome").contains("names a requirement");
+		}
+	}
 
 	/**
 	 * Verifies that reading a prompt test preserves its example files and empty directories in path order.

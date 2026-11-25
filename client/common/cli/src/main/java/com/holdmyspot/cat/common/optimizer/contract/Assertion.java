@@ -26,12 +26,6 @@ public record Assertion(String id, AssertionKind kind, String tool, OnToolFailur
 	String judgeReason, EvidenceScope evidenceScope)
 {
 	/**
-	 * What the assertion that CAT adds to every prompt test requires.
-	 */
-	public static final String EXPECTED_OUTCOME_STATEMENT =
-		"The reply's result matches this test case's expected outcome.";
-
-	/**
 	 * Creates an assertion.
 	 *
 	 * @param id            the identifier that is unique within the scenario
@@ -129,53 +123,6 @@ public record Assertion(String id, AssertionKind kind, String tool, OnToolFailur
 	public Assertion(String id, AssertionKind kind, String tool, String statement)
 	{
 		this(id, kind, tool, OnToolFailure.FAIL, statement);
-	}
-
-	/**
-	 * Returns the assertion that CAT adds to every prompt test: that the reply's result matches the test case's
-	 * expected outcome. The judge decides it.
-	 *
-	 * @param kind {@link AssertionKind#GUARD} when every other assertion of the test is a guard, otherwise
-	 *             {@link AssertionKind#EFFECT}
-	 * @return the assertion
-	 * @throws NullPointerException if {@code kind} is null
-	 */
-	public static Assertion expectedOutcome(AssertionKind kind)
-	{
-		return expectedOutcome(kind, Optional.empty());
-	}
-
-	/**
-	 * Returns the assertion that CAT adds to every prompt test: that the reply's result matches the test case's
-	 * expected outcome. The judge decides it unless the test gives it a built-in tool.
-	 *
-	 * @param kind {@link AssertionKind#GUARD} when every other assertion of the test is a guard, otherwise
-	 *             {@link AssertionKind#EFFECT}
-	 * @param tool the built-in tool that the test gives the assertion, or empty if the judge decides it
-	 * @return the assertion
-	 * @throws NullPointerException if any argument is null
-	 */
-	public static Assertion expectedOutcome(AssertionKind kind, Optional<ExpectedOutcomeTool> tool)
-	{
-		return expectedOutcome(kind, tool, null);
-	}
-
-	/**
-	 * Returns the added assertion, including why the judge decides it when the contract author supplied a reason.
-	 *
-	 * @param kind whether it is an effect or guard
-	 * @param tool its built-in tool, if any
-	 * @param judgeReason why no built-in tool decides it, or {@code null} for a legacy contract
-	 * @return the expected outcome assertion
-	 */
-	public static Assertion expectedOutcome(AssertionKind kind, Optional<ExpectedOutcomeTool> tool, String judgeReason)
-	{
-		requireThat(tool, "tool").isNotNull();
-		if (tool.isEmpty())
-			return new Assertion(TestCase.EXPECTED_OUTCOME, kind, null, OnToolFailure.FAIL,
-				EXPECTED_OUTCOME_STATEMENT, judgeReason);
-		return new Assertion(TestCase.EXPECTED_OUTCOME, kind, tool.get().tool(), tool.get().onToolFailure(),
-			EXPECTED_OUTCOME_STATEMENT, judgeReason);
 	}
 
 	/**

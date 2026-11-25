@@ -165,7 +165,8 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 	 * {@code <module>/src/test/resources/<path>/<case>/scenario.md}. Other Markdown files hold workspace files.
 	 * <p>
 	 * A {@code <case>/scenario.md} that parses is a prompt test directory in the current format, read with its workspace
-	 * files and values file. Any other scenario is in an earlier format, kept with the reason for its conversion.
+	 * files and values file. Parsing skips the retired {@code expected_outcome} subsection. Any other scenario is in
+	 * an earlier format, kept with the reason for its conversion.
 	 *
 	 * @param json    the JSON mapper that reads values files
 	 * @param project the project root
@@ -411,7 +412,7 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 		{
 			try
 			{
-				PromptTestFiles files = PromptTestFiles.read(json, project, tests, file.getParent());
+				PromptTestFiles files = PromptTestFiles.readRecorded(json, project, tests, file.getParent());
 				List<WorkspaceFile> textWorkspaceFiles = new ArrayList<>();
 				for (PromptTestFiles.WorkspaceEntry workspaceFile : files.workspaceFiles())
 				{

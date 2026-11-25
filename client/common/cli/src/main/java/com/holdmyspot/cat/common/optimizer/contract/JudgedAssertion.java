@@ -15,8 +15,7 @@ import java.util.function.Predicate;
  * can fail it.
  *
  * @param assertion   the assertion, which has no {@code tool} or leaves a failure of its tool to the judge
- * @param requirement the requirement that the assertion checks, or {@code null} for
- *                    {@value TestCase#EXPECTED_OUTCOME}, which CAT adds
+ * @param requirement the requirement that the assertion checks
  */
 public record JudgedAssertion(Assertion assertion, Requirement requirement)
 {
@@ -24,25 +23,18 @@ public record JudgedAssertion(Assertion assertion, Requirement requirement)
 	 * Creates a judged assertion.
 	 *
 	 * @param assertion   the assertion, which has no {@code tool} or leaves a failure of its tool to the judge
-	 * @param requirement the requirement that the assertion checks, or {@code null} for
-	 *                    {@value TestCase#EXPECTED_OUTCOME}, which CAT adds
-	 * @throws NullPointerException     if {@code assertion} is null
-	 * @throws IllegalArgumentException if a failure of {@code assertion}'s {@code tool} fails the trial, or
-	 *                                  {@code requirement} is null for any assertion other than
-	 *                                  {@value TestCase#EXPECTED_OUTCOME}
+	 * @param requirement the requirement that the assertion checks
+	 * @throws NullPointerException     if any argument is null
+	 * @throws IllegalArgumentException if a failure of {@code assertion}'s {@code tool} fails the trial
 	 */
 	public JudgedAssertion
 	{
 		requireThat(assertion, "assertion").isNotNull();
+		requireThat(requirement, "requirement").isNotNull();
 		if (assertion.tool() != null && assertion.onToolFailure() == OnToolFailure.FAIL)
 		{
 			throw new IllegalArgumentException("The assertion '" + assertion.id() + "' has a tool whose failure fails " +
 				"the trial, so no judge decides it");
-		}
-		if (requirement == null && !assertion.id().equals(TestCase.EXPECTED_OUTCOME))
-		{
-			throw new IllegalArgumentException("The assertion '" + assertion.id() + "' checks no requirement, but only " +
-				"the assertion '" + TestCase.EXPECTED_OUTCOME + "' may");
 		}
 	}
 
@@ -53,8 +45,7 @@ public record JudgedAssertion(Assertion assertion, Requirement requirement)
 	 * @param requirements every requirement of the contract
 	 * @param results      the results of the trial's built-in tools
 	 * @return the test's assertions without a {@code tool} or whose result {@link BuiltInToolResult#leftToJudge()
-	 *   leaves them to the judge}, in the test's order, then {@value TestCase#EXPECTED_OUTCOME} unless its built-in tool
-	 *   passed or fails the trial; empty if built-in tools decided every assertion
+	 *   leaves them to the judge}, in the test's order, or empty if built-in tools decided every assertion
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if an assertion checks a requirement that {@code requirements} does not list
 	 */
@@ -99,7 +90,7 @@ public record JudgedAssertion(Assertion assertion, Requirement requirement)
 	 * @param test         the prompt test
 	 * @param requirements every requirement of the contract
 	 * @param decided      returns {@code true} for an assertion that the judge decides
-	 * @return the selected declared assertions in the test's order, then {@value TestCase#EXPECTED_OUTCOME} if selected
+	 * @return the selected assertions in the test's order
 	 * @throws IllegalArgumentException if a selected assertion checks a requirement that {@code requirements} does not
 	 *                                  list
 	 */
@@ -122,9 +113,6 @@ public record JudgedAssertion(Assertion assertion, Requirement requirement)
 			}
 			judged.add(new JudgedAssertion(mapped.assertion(), requirement));
 		}
-		Assertion expectedOutcome = test.expectedOutcome();
-		if (decided.test(expectedOutcome))
-			judged.add(new JudgedAssertion(expectedOutcome, null));
 		return judged;
 	}
 
@@ -132,8 +120,7 @@ public record JudgedAssertion(Assertion assertion, Requirement requirement)
 	 * Returns what the assertion's judge reads.
 	 *
 	 * @return the assertion's declared scope, or {@link EvidenceScope#ACTIONS} if it declares none: an assertion of a
-	 *   contract that predates the declaration, or {@value TestCase#EXPECTED_OUTCOME}, whose outcome can be a file's
-	 *   state
+	 *   contract that predates the declaration
 	 */
 	public EvidenceScope scope()
 	{
@@ -146,13 +133,10 @@ public record JudgedAssertion(Assertion assertion, Requirement requirement)
 	 * Returns the behaviors through which a trial can fail the assertion, besides
 	 * {@value Requirement#OTHER_BEHAVIOR}.
 	 *
-	 * @return the behaviors of the requirement, or {@value PromptTest#UNEXPECTED_OUTCOME} for
-	 *   {@value TestCase#EXPECTED_OUTCOME}
+	 * @return the behaviors of the requirement
 	 */
 	public List<String> behaviors()
 	{
-		if (requirement == null)
-			return List.of(PromptTest.UNEXPECTED_OUTCOME);
 		return requirement.behaviors();
 	}
 

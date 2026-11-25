@@ -340,17 +340,6 @@ public final class DraftFixtures
 				appendPair(text, "judge_reason", assertion.path("judge_reason").asString(FIXTURE_JUDGE_REASON));
 			}
 		}
-		JsonNode expectedOutcomeTool = test.get("expected_outcome_tool");
-		if (expectedOutcomeTool != null || !test.has("expected_outcome_judge_reason"))
-		{
-			text.append("\n### expected_outcome\n\n");
-			if (expectedOutcomeTool != null)
-				appendPair(text, "tool", "`" + expectedOutcomeTool.path("tool").asString() + "`");
-			if (expectedOutcomeTool != null && expectedOutcomeTool.path("on_tool_failure").asString().equals("judge"))
-				appendPair(text, "on_tool_failure", "judge");
-			if (expectedOutcomeTool == null || expectedOutcomeTool.path("on_tool_failure").asString().equals("judge"))
-				appendPair(text, "judge_reason", test.path("expected_outcome_judge_reason").asString(FIXTURE_JUDGE_REASON));
-		}
 		return text.toString();
 	}
 

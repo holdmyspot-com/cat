@@ -7422,6 +7422,141 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Removes the example set for the formatting test from a stored proposal, as in an earlier proposal.
+	 *
+	 * @param repository the campaign repository
+	 * @param id the campaign identifier
+	 * @throws IOException if the fixture cannot be written
+	 * @throws CommandRefusedException if the project cannot be opened
+	 */
+	private static void omitStoredFormattingExamples(Repository repository, String id)
+		throws IOException, CommandRefusedException
+	{
+		Path heldOut = repository.directory(id).resolve("held_out");
+		Path proposal = heldOut.resolve("proposal.json");
+		ObjectNode stored = (ObjectNode) JSON.readTree(Files.readString(proposal));
+		Path draft = heldOut.resolve(stored.get("draft").asString());
+		TemporaryDirectories.deleteRecursively(draft.resolve(".cat/tests/CLAUDE/formatting/examples"));
+		stored.remove(List.of("example_checks", "judged_assertion_reports"));
+		Files.writeString(proposal, JSON.writeValueAsString(stored));
+	}
+
+	/**
+	 * Persists a running certification on the confirmed campaign, leaving its formatting test without examples.
+	 *
+	 * @param repository the campaign repository
+	 * @param id the confirmed campaign identifier
+	 * @throws IOException if the fixture cannot be written
+	 * @throws CommandRefusedException if the project cannot be opened
+	 */
+	private static void storeEarlierRunningAttempt(Repository repository, String id)
+		throws IOException, CommandRefusedException
+	{
+		Campaign campaign = repository.load(id);
+		Campaign evidence = new Builder().confirmed(campaign.contract(), campaign.lineage().number()).
+			identity(campaign.identity()).working(campaign.incumbent()).certificationAttempt(1).build();
+		OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().store(repository.scope()).replaceSnapshot(
+			new Campaign(campaign.header(), campaign.ceiling(), campaign.lineages(), campaign.identity(),
+				campaign.incumbent(), campaign.candidates(), campaign.promptAuthorAttempts(), campaign.development(),
+				campaign.baseline(), evidence.attempts(), campaign.trials(), campaign.sequences(), campaign.evidenceRevision(),
+				campaign.windows(), campaign.throttle(), campaign.pendingDecisions(), campaign.revisionRequested(),
+				campaign.outcome(), campaign.delivery(), campaign.optimization(), campaign.answeredWarnings(),
+				campaign.testRevisions(), campaign.plugins()));
+		Path snapshot = repository.directory(id).resolve("held_out/campaign.json");
+		ObjectNode stored = (ObjectNode) JSON.readTree(Files.readString(snapshot));
+		for (JsonNode test : stored.get("lineages").get(0).get("contract").get("tests"))
+		{
+			if (test.get("id").asString().equals("formatting"))
+				((ObjectNode) test.get("draft")).remove(List.of("example_files", "example_directories"));
+		}
+		Files.writeString(snapshot, JSON.writeValueAsString(stored));
+		omitStoredFormattingExamples(repository, id);
+	}
+
+	/**
+	 * A confirmed campaign from before assertion examples revises the affected test before resuming certification.
+	 *
+	 * @throws Exception if the repository or command cannot be used
+	 */
+	@Test
+	public void continueRevisesEarlierContractFirst() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, count ->
+			{
+				if (count == 0)
+				{
+					return derivation(_ ->
+					{
+					});
+				}
+				return revisedFormatting(_ ->
+				{
+				});
+			});
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
+			storeEarlierRunningAttempt(repository, id);
+			Campaign earlier = repository.load(id);
+			requireThat(earlier.runningAttempt().isPresent(), "running").isTrue();
+			requireThat(earlier.awaitsTestRevision(), "alreadyRequested").isFalse();
+			requireThat(earlier.contract().findTest("formatting").orElseThrow().draft().orElseThrow().exampleDirectories(),
+				"storedExamples").isEmpty();
+			int prior = repository.sessions().requests().size();
+			FakeSessionPort sessions = repository.sessions().port();
+			int judgeVersion = sessions.judgeVersion() + 1;
+			sessions.judgeVersion(judgeVersion);
+
+			repository.core().continueCampaign(id);
+
+			List<SessionRequest> requests = repository.sessions().requests();
+			requireThat(requests.size(), "sessionCount").isGreaterThan(prior);
+			SessionRequest first = requests.get(prior);
+			requireThat(first.role(), "firstRole").isEqualTo(SessionRole.CONTRACT_AUTHOR);
+			String brief = first.turns().getFirst();
+			requireThat(brief.substring(brief.indexOf("### Test under examination"), brief.indexOf("### What to decide")),
+				"examinedTest").contains("`formatting`").contains("example");
+			Campaign revised = repository.load(id);
+			requireThat(revised.lineages().size(), "lineages").isEqualTo(2);
+			requireThat(revised.identity().values().get(MeasurementCondition.JUDGE), "judgeVersion").
+				isEqualTo(String.valueOf(judgeVersion));
+			requireThat(revised.attempts().getFirst().outcome(), "earlierAttempt").
+				isEqualTo(Outcome.STOPPED_FOR_TEST_REVISION);
+			requireThat(revised.testRevisions().revisions().stream().map(TestRevision::test).toList(), "revisedTests").
+				isEqualTo(List.of("formatting"));
+		}
+	}
+
+	/**
+	 * Approval reports missing examples in a stored earlier proposal, and feedback can regenerate it.
+	 *
+	 * @throws Exception if the repository or command cannot be used
+	 */
+	@Test
+	public void earlierProposalNeedsRegeneration() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, count -> derivation(output ->
+				((ArrayNode) output.get("limitations")).add("Revision number " + count + " limit.")));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			omitStoredFormattingExamples(repository, id);
+
+			CommandRefusedException refusal = expectThrows(CommandRefusedException.class,
+				() -> repository.core().approve(id, CertificationScope.LATEST_VERSIONS));
+
+			requireThat(refusal.getMessage(), "refusal").contains("`formatting`").contains("`uses_requested_tone`").
+				contains("`pass_casual_tone`");
+			requireThat(repository.load(id).isConfirmed(), "confirmed").isFalse();
+			CommandResult regenerated = repository.core().requestChanges(id, "Add examples of the requested tone.");
+			requireThat(proposalText(regenerated), "proposal").contains("Revision number 1 limit.");
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
+			requireThat(repository.load(id).isConfirmed(), "regeneratedConfirmed").isTrue();
+		}
+	}
+
+	/**
 	 * Verifies that {@code continue} answers a request for a test revision with a contract author session that receives
 	 * the test and the prompt author's fault, and that a revised test starts a new lineage under the revised contract
 	 * without the user's confirmation.

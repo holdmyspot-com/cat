@@ -30,7 +30,6 @@ import com.holdmyspot.cat.common.optimizer.contract.EvidenceScope;
 import com.holdmyspot.cat.common.optimizer.contract.NearMisses;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.ProposalSchema;
-import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
 import com.holdmyspot.cat.common.optimizer.execution.Driver;
@@ -876,8 +875,7 @@ public final class DevelopmentJudgeDriverTest
 	{
 		// Requirement: R-L19
 		// Requirement: R-L10
-		Contract contract = ContractFixtures.withNearMisses(ContractFixtures.withEvidenceScope(
-			ContractFixtures.contract(), EvidenceScope.RESPONSE));
+		Contract contract = ContractFixtures.withNearMisses(DriverTest.withMixedEvidenceScopes());
 		// Enough shadowed trials that development shadowing pays off, and too few for the run to qualify the candidate
 		int shadowedBefore = 275;
 		DevelopmentJudge shadowing = shadowingAt(contract, shadowedBefore, 0, List.of(), 0, 0);
@@ -927,8 +925,7 @@ public final class DevelopmentJudgeDriverTest
 	public void eitherSessionDisagrees(EvidenceScope scope) throws IOException
 	{
 		// Requirement: R-L19
-		Contract contract = ContractFixtures.withNearMisses(ContractFixtures.withEvidenceScope(
-			ContractFixtures.contract(), EvidenceScope.RESPONSE));
+		Contract contract = ContractFixtures.withNearMisses(DriverTest.withMixedEvidenceScopes());
 		// Enough shadowed trials that development shadowing pays off, and too few for the run to qualify the candidate
 		int shadowedBefore = 275;
 		DevelopmentJudge shadowing = shadowingAt(contract, shadowedBefore, 0, List.of(), 0, 0);
@@ -982,8 +979,7 @@ public final class DevelopmentJudgeDriverTest
 	public void nearMissUsesItsScopePrompt() throws IOException
 	{
 		// Requirement: R-L19
-		Contract contract = ContractFixtures.withNearMisses(ContractFixtures.withEvidenceScope(
-			ContractFixtures.contract(), EvidenceScope.RESPONSE));
+		Contract contract = ContractFixtures.withNearMisses(DriverTest.withMixedEvidenceScopes());
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("near-miss-scopes")),
@@ -1019,7 +1015,7 @@ public final class DevelopmentJudgeDriverTest
 				String id = assertions.get(0).get("id").asString();
 				decided.add(id);
 				String turn = request.turns().getFirst();
-				if (id.equals(TestCase.EXPECTED_OUTCOME))
+				if (id.equals(DriverTest.ACTIONS_ASSERTION))
 				{
 					requireThat(turn, "actionsTurn").startsWith("# Trial Judgment");
 					requireThat(request.readOnly(), "actionsReadOnly").isNotEmpty();
@@ -1030,7 +1026,7 @@ public final class DevelopmentJudgeDriverTest
 					requireThat(request.readOnly(), "responseReadOnly").isEmpty();
 				}
 			}
-			requireThat(decided, "decided").contains(TestCase.EXPECTED_OUTCOME);
+			requireThat(decided, "decided").contains(DriverTest.ACTIONS_ASSERTION);
 			requireThat(decided.size(), "decided.size()").isGreaterThan(1);
 		}
 	}
@@ -1204,7 +1200,7 @@ public final class DevelopmentJudgeDriverTest
 		 */
 		private static Use replyTrial(String turn)
 		{
-			int start = turn.indexOf("\n\n{", turn.indexOf("The test case, as JSON:")) + 2;
+			int start = turn.indexOf("\n\n{", turn.indexOf("### Replies")) + 2;
 			int end = turn.indexOf("\n\nThe trial agent's reply", start);
 			String test = JSON.readTree(turn.substring(start, end)).get("test").asString();
 			for (Purpose purpose : Purpose.values())

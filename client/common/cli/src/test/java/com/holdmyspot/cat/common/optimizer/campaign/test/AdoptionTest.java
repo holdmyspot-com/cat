@@ -177,7 +177,7 @@ public final class AdoptionTest
 		Pairing pairing = campaign.attempt(1).pairing(Reference.CONTROL, "formatting");
 		requireThat(pairing.unpaired().size(), "unpaired").isEqualTo(1);
 		requireThat(pairing.unpaired().getFirst().passed(), "passed").
-			isEqualTo(Set.of("uses_requested_tone", TestCase.EXPECTED_OUTCOME));
+			isEqualTo(Set.of("uses_requested_tone"));
 	}
 
 	/**

@@ -1049,10 +1049,10 @@ public final class DeliveryTest
 
 	/**
 	 * A prompt test that the contract author wrote as files in its draft directory is delivered as the draft holds it:
-	 * at its directory there, with the draft's {@value PromptTestFiles#SCENARIO} and example files unchanged and each
-	 * workspace fixture at its file in the draft, even a new one that a link reaches in a shared directory. A recorded
-	 * test's directory is edited, and any other directory is created. Delivery deletes an omitted regular example
-	 * file from the fork and preserves a base-only example, a link, and a file outside the example tree.
+	 * at its directory there, keeping its declared assertions and example files and omitting the retired assertion.
+	 * Each workspace fixture stays at its file in the draft, even a new one a link reaches in a shared directory.
+	 * Delivery edits a recorded test's directory, creates any other directory and deletes omitted regular example files
+	 * from the fork. It preserves a base-only example, a link, and a file outside the example tree.
 	 *
 	 * @throws IOException             if the fixture or delivery fails
 	 * @throws ScenarioFormatException if a delivered values file cannot be read back
@@ -1065,6 +1065,13 @@ public final class DeliveryTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			String editedScenario = RECORDED_SCENARIO.replace("Read `{{file}}`.", "Read `{{file}}` twice.");
+			String recordedDraft = editedScenario.replace("## Assertions\n", """
+				## Assertions
+
+				### expected_outcome
+				- tool: `reply-given`
+
+				""");
 			String createdScenario = RECORDED_SCENARIO.replace("# Release notes", "# Release dates");
 			String repliesPath = "read/pass_same_day/replies.json";
 			String evidencePath = "read/fail_missing_notes/project/notes.bin";
@@ -1086,7 +1093,7 @@ public final class DeliveryTest
 			PromptTest second = fixtureContract.tests().get(1);
 			List<PromptTest> promptTests = new ArrayList<>(fixtureContract.tests());
 			promptTests.set(0, withDraft(first, List.of(PortablePaths.text(EDITED_SCENARIO)), List.of(shared),
-				new PromptTest.Draft(EDITED_SCENARIO.getParent(), editedScenario, Map.of(),
+				new PromptTest.Draft(EDITED_SCENARIO.getParent(), recordedDraft, Map.of(),
 					Map.of(repliesPath, content(revisedReplies)), Set.of())));
 			promptTests.set(1, withDraft(second, List.of(), List.of(own),
 				new PromptTest.Draft(TESTS.resolve("release_dates"), createdScenario, Map.of(),

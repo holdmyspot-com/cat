@@ -34,6 +34,19 @@ import tools.jackson.databind.json.JsonMapper;
 public final class AssertionChecks
 {
 	/**
+	 * Lists the required assertion examples absent from a stored prompt test.
+	 *
+	 * @param test the prompt test
+	 * @return the missing example diagnostics
+	 * @throws NullPointerException if {@code test} is null
+	 */
+	public static List<String> missingExamples(PromptTest test)
+	{
+		requireThat(test, "test").isNotNull();
+		return ExampleChecks.missingExamples(test);
+	}
+
+	/**
 	 * An example from a mechanically valid test bound to the case that filled it.
 	 *
 	 * @param check the result of its mechanical check
@@ -105,7 +118,7 @@ public final class AssertionChecks
 		List<JudgedExample> selected = new ArrayList<>();
 		for (AssertionExampleCheck check : checks)
 		{
-			if (check.passed() || check.assertionId().equals(TestCase.EXPECTED_OUTCOME))
+			if (check.passed())
 				continue;
 			PromptTest test = contract.findTest(check.testId()).orElseThrow();
 			selectExample(test, requirements, check).ifPresent(selected::add);
@@ -129,7 +142,7 @@ public final class AssertionChecks
 		requireThat(test, "test").isNotNull();
 		requireThat(requirements, "requirements").isNotNull();
 		requireThat(check, "check").isNotNull();
-		if (check.passed() || check.assertionId().equals(TestCase.EXPECTED_OUTCOME))
+		if (check.passed())
 			return Optional.empty();
 		MappedAssertion mapped = test.assertions().stream().
 			filter(candidate -> candidate.assertion().id().equals(check.assertionId())).findFirst().orElseThrow();

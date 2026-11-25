@@ -71,7 +71,6 @@ import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.ProposalSchema;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestLocations;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
-import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TestWorkspace;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.contract.UndecidableToolException;
@@ -482,17 +481,18 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Applies a user's command, or the result of a test revision that a command ran, and persists the result.
+	 * Applies a user's command or a test revision event and persists the result.
 	 * Resuming after an unowned change restores the working candidate in the optimization worktree, so the change is
 	 * never incorporated.
 	 *
 	 * @param event a {@link CampaignEvent.Confirm}, {@link CampaignEvent.ExtendFork}, {@link CampaignEvent.Revise},
 	 *   {@link CampaignEvent.AwaitRevision}, {@link CampaignEvent.Choose},
 	 *   {@link CampaignEvent.ResolveConflict}, {@link CampaignEvent.Cancel}, {@link CampaignEvent.Close},
-	 *   {@link CampaignEvent.ReportUnavailable}, {@link CampaignEvent.ReviseTests},
-	 *   {@link CampaignEvent.ReportTestSound} or {@link CampaignEvent.BlockTestRevision}
+	 *   {@link CampaignEvent.ReportUnavailable}, {@link CampaignEvent.RequestTestRevision},
+	 *   {@link CampaignEvent.ReviseTests}, {@link CampaignEvent.ReportTestSound} or
+	 *   {@link CampaignEvent.BlockTestRevision}
 	 * @throws NullPointerException if {@code event} is null
-	 * @throws IllegalArgumentException if the event is neither a user's command nor a test revision's result, or
+	 * @throws IllegalArgumentException if the event is neither a user's command nor a test revision event, or
 	 *   names a choice, trial or attempt that the campaign does not offer
 	 * @throws IllegalStateException if the driver is closed, or the campaign's state does not permit the event
 	 * @throws IOException if the store or the worktree cannot be written
@@ -508,8 +508,9 @@ public final class Driver implements AutoCloseable
 				CampaignEvent.AwaitRevision _, CampaignEvent.Choose _,
 				CampaignEvent.ResolveConflict _, CampaignEvent.Cancel _, CampaignEvent.Close _,
 				CampaignEvent.ReportUnavailable _, CampaignEvent.PilotFailed _,
-				// A test revision's result, which the run command records before the slice starts
-				CampaignEvent.ReviseTests _, CampaignEvent.ReportTestSound _, CampaignEvent.BlockTestRevision _ ->
+				// The run command records test revision requests and results before the slice starts
+				CampaignEvent.RequestTestRevision _, CampaignEvent.ReviseTests _, CampaignEvent.ReportTestSound _,
+				CampaignEvent.BlockTestRevision _ ->
 			{
 			}
 			default -> throw new IllegalArgumentException("Only the driver applies " + event);
@@ -1033,8 +1034,7 @@ public final class Driver implements AutoCloseable
 	 * Runs a completed trial's built-in tools first. A failed tool whose {@code on_tool_failure} is {@code fail}
 	 * fails its own assertion and no other, so the trial waits for a judge of every assertion that no passing or
 	 * failing tool decided: the assertions without a {@code tool}, the assertions whose failed tool leaves them to the
-	 * judge, and the assertion {@value TestCase#EXPECTED_OUTCOME} unless the test gives it a built-in tool that passed
-	 * or failed. The judge receives the tool results as evidence. A trial whose tools decide every assertion starts no
+	 * judge. The judge receives the tool results as evidence. A trial whose tools decide every assertion starts no
 	 * judge: it passes with the record of its tools, or fails with the record of each failed tool, and a failed
 	 * development trial waits for its triage before the failure is recorded. A tool that the record cannot decide, or
 	 * evidence that cannot be rendered, makes the attempt an infrastructure failure. A failure to read required

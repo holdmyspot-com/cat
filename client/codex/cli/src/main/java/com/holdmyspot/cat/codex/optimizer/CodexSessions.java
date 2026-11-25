@@ -84,7 +84,7 @@ public final class CodexSessions extends RunnerSessions
 	 * profile, prompts, rubric, decision rule or result schema, or the evidence a judge receives for the same harness
 	 * events, and register the new version with the hash of the judge profile and the rendered evidence section.
 	 */
-	private static final int JUDGE_VERSION = 17;
+	private static final int JUDGE_VERSION = 18;
 
 	/**
 	 * Creates a port that runs sessions through the real Codex runner.

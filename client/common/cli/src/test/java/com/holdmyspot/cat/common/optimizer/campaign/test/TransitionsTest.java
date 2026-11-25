@@ -165,6 +165,28 @@ public final class TransitionsTest
 	}
 
 	/**
+	 * Confirms a new lineage with an updated judge while retaining other campaign-wide pins and acceptances.
+	 */
+	@Test
+	public void confirmsGlobalJudgeUpgrade()
+	{
+		MeasurementIdentity earlier = new MeasurementIdentity(Map.of(MeasurementCondition.JUDGE, "6",
+			MeasurementCondition.HARNESS_VERSION, "1.0"));
+		MeasurementIdentity accepted = new MeasurementIdentity(Map.of(MeasurementCondition.HARNESS_VERSION, "1.1"));
+		Campaign campaign = new Builder().confirmed().identity(earlier.acceptChanges(accepted)).build();
+		Campaign revising = Transitions.apply(campaign, new CampaignEvent.Revise());
+		MeasurementIdentity upgraded = new MeasurementIdentity(Map.of(MeasurementCondition.JUDGE, "7"));
+
+		Campaign confirmed = Transitions.apply(revising,
+			new CampaignEvent.Confirm(campaign.contract(), REVISED, 5L, upgraded));
+
+		requireThat(confirmed.identity().values().get(MeasurementCondition.JUDGE), "judge").isEqualTo("7");
+		requireThat(confirmed.identity().values().get(MeasurementCondition.HARNESS_VERSION), "harness").isEqualTo("1.0");
+		requireThat(confirmed.identity().acceptedChanges(), "accepted").isEqualTo(List.of(accepted));
+		requireThat(confirmed.lineages().size(), "lineages").isEqualTo(2);
+	}
+
+	/**
 	 * Verifies that a user can supply free-form feedback during a conflict pause.
 	 */
 	@Test

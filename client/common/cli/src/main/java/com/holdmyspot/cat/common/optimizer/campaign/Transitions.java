@@ -229,6 +229,9 @@ public final class Transitions
 			DrawStream.create(DrawStream.Kind.DEVELOPMENT, confirm.seed()).state(),
 			DrawStream.create(DrawStream.Kind.BASELINE, confirm.seed()).state(), List.of(), Set.of(), AddedTestCases.NONE));
 		Map<MeasurementCondition, String> contractValues = new EnumMap<>(MeasurementCondition.class);
+		boolean globalEnvironment = confirm.environment().cells().isEmpty() && !confirm.environment().values().isEmpty();
+		if (globalEnvironment)
+			contractValues.putAll(confirm.environment().values());
 		contractValues.put(MeasurementCondition.CONTRACT, confirm.contractHash().hex());
 		contractValues.put(MeasurementCondition.GENERATOR, Generator.IDENTITY);
 		if (!confirm.environment().cells().isEmpty())
@@ -236,7 +239,10 @@ public final class Transitions
 			draft.identity = new MeasurementIdentity(draft.identity.values()).
 				replaceWith(confirm.environment());
 		}
-		draft.identity = draft.identity.replaceWith(new MeasurementIdentity(contractValues));
+		MeasurementIdentity updated = draft.identity.replaceWith(new MeasurementIdentity(contractValues));
+		if (globalEnvironment)
+			updated = new MeasurementIdentity(updated.values(), updated.cells(), draft.identity.acceptedChanges());
+		draft.identity = updated;
 		draft.startBaseline();
 		draft.startDevelopment(draft.working);
 		draft.pendingDecisions.clear();

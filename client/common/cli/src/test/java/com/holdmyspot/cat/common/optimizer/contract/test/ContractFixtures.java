@@ -7,7 +7,6 @@ import com.holdmyspot.cat.common.optimizer.contract.CapabilityRanking;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.Dependent;
 import com.holdmyspot.cat.common.optimizer.contract.EvidenceScope;
-import com.holdmyspot.cat.common.optimizer.contract.ExpectedOutcomeTool;
 import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFile;
 import com.holdmyspot.cat.common.optimizer.contract.JudgeProfile;
 import com.holdmyspot.cat.common.optimizer.contract.MappedAssertion;
@@ -158,7 +157,7 @@ public final class ContractFixtures
 			List.of(), List.of(new VariableDeclaration("tone", "The tone of the summary."),
 				new VariableDeclaration("audience", "The reader that the shortened summary suits.")), List.of(),
 			styledCases, List.of(judged("uses_requested_tone", AssertionKind.EFFECT,
-				"The summary uses the requested tone.", "r1")), List.of(), List.of());
+				"The summary uses the requested tone.", "r1")), List.of(), List.of(), Optional.empty());
 		List<TestCase> listCases = new ArrayList<>();
 		for (String kind : List.of("colors", "fruits", "animals", "tools"))
 			listCases.add(plainList(kind));
@@ -168,7 +167,7 @@ public final class ContractFixtures
 			List.of("A follow-up that depends on the first answer."),
 			List.of(new VariableDeclaration("kind", "The kind of item that the list names.")), List.of(), listCases,
 			List.of(judged("keeps_requested_tone", AssertionKind.EFFECT, "The list keeps the requested tone.", "r1")),
-			List.of(), List.of());
+			List.of(), List.of(), Optional.empty());
 		List<TestCase> deletionCases = new ArrayList<>();
 		for (String target : List.of("logs", "cache", "tmp", "build", "dist", "vendor", "coverage", "venv"))
 			deletionCases.add(deleteDirectory(target));
@@ -177,7 +176,8 @@ public final class ContractFixtures
 			Duration.ofMinutes(3), "The assistant asks before deleting anything.", List.of(),
 			List.of(new VariableDeclaration("target", "The directory that the user asks to delete.")), List.of(),
 			deletionCases, List.of(judged("asks_before_deleting", AssertionKind.GUARD,
-				"The assistant asks before deleting the {{target}} directory.", "r2")), List.of(), List.of());
+				"The assistant asks before deleting the {{target}} directory.", "r2")), List.of(), List.of(),
+			Optional.empty());
 		List<Requirement> requirements = List.of(
 			new Requirement("r1", "Answers use the requested tone.", "CLAUDE.md", null,
 				List.of("wrong_tone")),
@@ -211,7 +211,7 @@ public final class ContractFixtures
 			tests.add(new PromptTest(test.id(), test.riskRank(), test.requirementIds(), test.absentTriggers(),
 				test.applicability(), test.turns(), test.timeLimit(), test.expectedBehaviour(),
 				test.uncoveredInteractions(), test.variables(), test.committedTestCases(), test.testCases(),
-				test.assertions(), citations.getOrDefault(test.id(), List.of()), List.of()));
+				test.assertions(), citations.getOrDefault(test.id(), List.of()), List.of(), Optional.empty()));
 		}
 		return new Contract(contract.requirements(), tests, contract.profiles(), contract.judge(),
 			contract.limitations(), contract.minimumPassRate(), contract.salt());
@@ -236,7 +236,7 @@ public final class ContractFixtures
 			tests.add(new PromptTest(test.id(), test.riskRank(), test.requirementIds(), test.absentTriggers(),
 				test.applicability(), test.turns(), test.timeLimit(), test.expectedBehaviour(),
 				test.uncoveredInteractions(), test.variables(), test.committedTestCases(), test.testCases(),
-				test.assertions(), test.regressionScenarios(), testFiles));
+				test.assertions(), test.regressionScenarios(), testFiles, Optional.empty()));
 		}
 		return new Contract(contract.requirements(), tests, contract.profiles(), contract.judge(),
 			contract.limitations(), contract.minimumPassRate(), contract.salt());
@@ -266,8 +266,7 @@ public final class ContractFixtures
 			tests.add(new PromptTest(test.id(), test.riskRank(), test.requirementIds(), test.absentTriggers(),
 				test.applicability(), test.turns(), test.timeLimit(), test.expectedBehaviour(),
 				test.uncoveredInteractions(), test.variables(), test.committedTestCases(), test.testCases(),
-				test.assertions(), test.regressionScenarios(), test.workspaceFiles(), test.draft(),
-				test.expectedOutcomeTool(), nearMisses));
+				test.assertions(), test.regressionScenarios(), test.workspaceFiles(), test.draft(), nearMisses));
 		}
 		return new Contract(contract.requirements(), tests, contract.profiles(), contract.judge(),
 			contract.limitations(), contract.minimumPassRate(), contract.salt(), contract.dependents(),
@@ -275,9 +274,7 @@ public final class ContractFixtures
 	}
 
 	/**
-	 * Returns a contract in which a built-in tool decides every assertion of every prompt test, including
-	 * {@value TestCase#EXPECTED_OUTCOME}, and hands the assertion to the judge when it fails. Each such assertion is
-	 * one that the judge may decide.
+	 * Returns a contract whose assertions each have a built-in tool that leaves failures to the judge.
 	 *
 	 * @param contract the contract
 	 * @return the contract whose assertions all have a tool that leaves a failure to the judge
@@ -292,15 +289,14 @@ public final class ContractFixtures
 			{
 				Assertion assertion = mapped.assertion();
 				assertions.add(new MappedAssertion(new Assertion(assertion.id(), assertion.kind(),
-					"forbidden-text UNLISTED", OnToolFailure.JUDGE, assertion.statement(), "A pattern cannot tell."),
+					"forbidden-text UNLISTED", OnToolFailure.JUDGE, assertion.statement(), "A pattern cannot tell.",
+					assertion.evidenceScope()),
 					mapped.requirementId()));
 			}
 			tests.add(new PromptTest(test.id(), test.riskRank(), test.requirementIds(), test.absentTriggers(),
 				test.applicability(), test.turns(), test.timeLimit(), test.expectedBehaviour(),
 				test.uncoveredInteractions(), test.variables(), test.committedTestCases(), test.testCases(),
-				assertions, test.regressionScenarios(), test.workspaceFiles(), test.draft(),
-				Optional.of(new ExpectedOutcomeTool("exact-text {{expected_outcome}}", OnToolFailure.JUDGE)),
-				test.nearMisses()));
+				assertions, test.regressionScenarios(), test.workspaceFiles(), test.draft(), test.nearMisses()));
 		}
 		return new Contract(contract.requirements(), tests, contract.profiles(), contract.judge(),
 			contract.limitations(), contract.minimumPassRate(), contract.salt(), contract.dependents(),
@@ -308,39 +304,24 @@ public final class ContractFixtures
 	}
 
 	/**
-	 * Returns a contract whose declared judged assertions all declare one evidence scope.
-	 *
-	 * @param contract the contract
-	 * @param scope    the scope of every declared assertion that a judge decides
-	 * @return the contract
-	 */
-	public static Contract withEvidenceScope(Contract contract, EvidenceScope scope)
-	{
-		return withEvidenceScope(contract, scope, false);
-	}
-
-	/**
-	 * Returns a contract whose trials a judge decides in {@code response} sessions alone: every declared judged
-	 * assertion is {@code response}, and the assertion that CAT adds has a built-in tool that decides it, so that no
-	 * {@code actions} assertion remains for a judge.
+	 * Returns a contract whose judged assertions all use the {@code response} evidence scope.
 	 *
 	 * @param contract the contract
 	 * @return the contract
 	 */
 	public static Contract responseOnly(Contract contract)
 	{
-		return withEvidenceScope(contract, EvidenceScope.RESPONSE, true);
+		return withEvidenceScope(contract, EvidenceScope.RESPONSE);
 	}
 
 	/**
-	 * Returns a contract whose declared judged assertions all declare one evidence scope.
+	 * Returns a contract whose judged assertions all use the given evidence scope.
 	 *
-	 * @param contract          the contract
-	 * @param scope             the scope of every declared assertion that a judge decides
-	 * @param mechanicalOutcome {@code true} to give the assertion that CAT adds a built-in tool that decides it
+	 * @param contract the contract
+	 * @param scope    the scope of every assertion that a judge may decide
 	 * @return the contract, whose judge has a response prompt
 	 */
-	private static Contract withEvidenceScope(Contract contract, EvidenceScope scope, boolean mechanicalOutcome)
+	public static Contract withEvidenceScope(Contract contract, EvidenceScope scope)
 	{
 		List<PromptTest> tests = new ArrayList<>();
 		for (PromptTest test : contract.tests())
@@ -356,19 +337,10 @@ public final class ContractFixtures
 				}
 				assertions.add(new MappedAssertion(assertion, mapped.requirementId()));
 			}
-			Optional<ExpectedOutcomeTool> expectedOutcomeTool = test.expectedOutcomeTool();
-			String expectedOutcomeJudgeReason = test.expectedOutcomeJudgeReason();
-			if (mechanicalOutcome)
-			{
-				expectedOutcomeTool = Optional.of(new ExpectedOutcomeTool("forbidden-text UNLISTED",
-					OnToolFailure.FAIL));
-				expectedOutcomeJudgeReason = null;
-			}
 			tests.add(new PromptTest(test.id(), test.riskRank(), test.requirementIds(), test.absentTriggers(),
 				test.applicability(), test.turns(), test.timeLimit(), test.expectedBehaviour(),
 				test.uncoveredInteractions(), test.variables(), test.committedTestCases(), test.testCases(),
-				assertions, test.regressionScenarios(), test.workspaceFiles(), test.draft(), expectedOutcomeTool,
-				test.nearMisses(), expectedOutcomeJudgeReason));
+				assertions, test.regressionScenarios(), test.workspaceFiles(), test.draft(), test.nearMisses()));
 		}
 		JudgeProfile judge = contract.judge();
 		if (judge.responsePrompt() == null)
@@ -396,7 +368,7 @@ public final class ContractFixtures
 			tests.add(new PromptTest(test.id(), test.riskRank(), test.requirementIds(), test.absentTriggers(),
 				test.applicability(), test.turns(), test.timeLimit(), test.expectedBehaviour(),
 				test.uncoveredInteractions(), test.variables(), test.committedTestCases(), test.testCases(), assertions,
-				test.regressionScenarios(), List.of()));
+				test.regressionScenarios(), List.of(), Optional.empty()));
 		}
 		return new Contract(contract.requirements(), tests, profiles(contract.requirements(), tests), contract.judge(),
 			contract.limitations(), contract.minimumPassRate(), contract.salt());

@@ -13,7 +13,6 @@ import com.holdmyspot.cat.common.optimizer.campaign.test.Builder;
 import com.holdmyspot.cat.common.optimizer.contract.Assertion;
 import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
-import com.holdmyspot.cat.common.optimizer.contract.ExpectedOutcomeTool;
 import com.holdmyspot.cat.common.optimizer.contract.MappedAssertion;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.Requirement;
@@ -31,7 +30,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 /**
  * Tests how {@link Driver} consumes a completed session that ended after all assertions settled. The session port
@@ -44,7 +42,7 @@ public final class EarlyEndDriverTest
 	 */
 	private static final String TEST = "formatting";
 	/**
-	 * The mapped assertion that checks the first reply, alongside CAT's added expected-outcome assertion.
+	 * The mapped assertion that checks the first reply.
 	 */
 	private static final String FIRST_REPLY = "first_reply";
 
@@ -58,6 +56,7 @@ public final class EarlyEndDriverTest
 	public void passingResultEntersDevelopment() throws IOException
 	{
 		// Requirement: R-E25
+		// Requirement: R-L17
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("early-end-driver")),
@@ -98,6 +97,7 @@ public final class EarlyEndDriverTest
 	public void failedResultReachesFailureConsumers() throws IOException
 	{
 		// Requirement: R-E25
+		// Requirement: R-L17
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("early-end-driver")),
@@ -121,8 +121,7 @@ public final class EarlyEndDriverTest
 			PromptAuthorBrief brief = harness.promptAuthor().briefs().getFirst();
 			Failure failure = brief.developmentFailures().getFirst();
 			requireThat(failure.failedAssertions(), "failedAssertions").isEqualTo(List.of(
-				new FailedAssertion(FIRST_REPLY, "reply_not_exact"),
-				new FailedAssertion(TestCase.EXPECTED_OUTCOME, "reply_not_exact")));
+				new FailedAssertion(FIRST_REPLY, "reply_not_exact")));
 			requireThat(failure.responses(), "responses").isEqualTo(List.of(List.of("fail")));
 			requireThat(failure.rationale(), "rationale").startsWith("Failed built-in tools:");
 			requireEndNote(failure.rationale());
@@ -134,7 +133,7 @@ public final class EarlyEndDriverTest
 	}
 
 	/**
-	 * Returns one two-turn test whose mapped assertion and added expected-outcome assertion inspect only turn one.
+	 * Returns one two-turn test whose mapped assertion inspects only turn one.
 	 * The fixture's variable assignments provide distinct development and held-out cases without replaying baseline.
 	 *
 	 * @return the fully tool-decided contract
@@ -152,8 +151,7 @@ public final class EarlyEndDriverTest
 			List.of("Reply pass in {{tone}} style.", "Now address {{audience}} reader."), original.timeLimit(),
 			"The first reply is pass; no assertion depends on the follow-up.", List.of(), original.variables(),
 			List.of(), cases, List.of(new MappedAssertion(new Assertion(FIRST_REPLY, AssertionKind.EFFECT,
-				"exact-text turn=1 pass", "The first reply is pass."), requirement.id())), List.of(), List.of(),
-			Optional.empty(), Optional.of(new ExpectedOutcomeTool("exact-text turn=1 pass")));
+				"exact-text turn=1 pass", "The first reply is pass."), requirement.id())), List.of(), List.of());
 		List<Requirement> requirements = List.of(requirement);
 		List<PromptTest> tests = List.of(test);
 		return new Contract(requirements, tests, ContractFixtures.profiles(requirements, tests), fixture.judge(),
@@ -162,7 +160,7 @@ public final class EarlyEndDriverTest
 
 	/**
 	 * Supplies the documented early-ended port result: one completed reply out of two requested turns, with every
-	 * assertion settled at turn one. The driver still decides both tools from the reply itself.
+	 * assertion settled at turn one. The driver decides the declared tool from the reply itself.
 	 *
 	 * @param harness the test's session and evidence fixture
 	 * @param reply   the completed first-turn reply
@@ -174,7 +172,7 @@ public final class EarlyEndDriverTest
 		return new SessionResult.Completed(completed.transcript(), completed.responses(), completed.effects(),
 			completed.initialProject(), completed.model(), completed.reasoning(), completed.usage(), completed.windows(),
 			completed.promptSources(), completed.toolCalls(), 2, true,
-			Map.of(FIRST_REPLY, 1, TestCase.EXPECTED_OUTCOME, 1));
+			Map.of(FIRST_REPLY, 1));
 	}
 
 	/**
@@ -186,7 +184,7 @@ public final class EarlyEndDriverTest
 	{
 		requireThat(text, "earlyEndNote").contains("Trial ended after turn 1 of 2; turns not run: 2;").
 			contains("assertion settlement turns:").contains(FIRST_REPLY + "=turn 1").
-			contains(TestCase.EXPECTED_OUTCOME + "=turn 1");
+			doesNotContain(TestCase.EXPECTED_OUTCOME + "=turn 1");
 	}
 
 	/**

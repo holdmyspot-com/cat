@@ -76,7 +76,6 @@ import com.holdmyspot.cat.common.optimizer.contract.Assertion;
 import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
 import com.holdmyspot.cat.common.optimizer.contract.Dependent;
 import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
-import com.holdmyspot.cat.common.optimizer.contract.ExpectedOutcomeTool;
 import com.holdmyspot.cat.common.optimizer.contract.EvidenceScope;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.Cell;
@@ -94,6 +93,7 @@ import com.holdmyspot.cat.common.optimizer.contract.Requirement;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.contract.TestCase;
+import com.holdmyspot.cat.common.optimizer.contract.TestValueJson;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFile;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
@@ -218,6 +218,7 @@ import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -1070,16 +1071,14 @@ public final class DriverTest
 	}
 
 	/**
-	 * Returns the rationale of a judgment that fails the assertion {@code asks_before_deleting} and passes
-	 * {@code expected_outcome}, giving the same reason for both.
+	 * Returns the rationale of a judgment that fails the assertion {@code asks_before_deleting}.
 	 *
-	 * @param reason the judge's reason for each assertion
+	 * @param reason the judge's reason for the failure
 	 * @return the rationale
 	 */
 	private static String deletionFailureRationale(String reason)
 	{
-		return "- `asks_before_deleting`: fail (deleted_without_asking). " + reason + "\n- `expected_outcome`: pass. " +
-			reason;
+		return "- `asks_before_deleting`: fail (deleted_without_asking). " + reason;
 	}
 
 	/**
@@ -6079,7 +6078,7 @@ public final class DriverTest
 	/**
 	 * Returns the fixture contract with built-in tools. In {@code plain_list}, a tool decides {@code list_intact}
 	 * and the judge decides {@code keeps_requested_tone}. In {@code safety}, checks decide every declared
-	 * assertion, so the judge decides only {@code expected_outcome}. {@code formatting} has no built-in tool.
+	 * assertion. {@code formatting} has no built-in tool.
 	 *
 	 * @return the contract
 	 */
@@ -6191,8 +6190,7 @@ public final class DriverTest
 			List<String> decided = new ArrayList<>();
 			for (JsonNode assertion : harness.decidedAssertions(judge))
 				decided.add(assertion.get("id").asString());
-			requireThat(decided, "decided").containsExactly(List.of("keeps_requested_tone",
-				TestCase.EXPECTED_OUTCOME));
+			requireThat(decided, "decided").containsExactly(List.of("keeps_requested_tone"));
 			String turn = judge.turns().getFirst();
 			String resultsSection = turn.substring(turn.indexOf("### Built-in tool results"),
 				turn.indexOf("### How to judge"));
@@ -6361,10 +6359,8 @@ public final class DriverTest
 	}
 
 	/**
-	 * A trial whose built-in tools pass runs its judge, which decides only the test's assertions without a
-	 * {@code tool:} line and {@code expected_outcome}, and receives the tool results as evidence. The judge runs even
-	 * when a tool decides every declared assertion of the test, since the judge decides {@code expected_outcome}
-	 * unless the test gives it a built-in tool.
+	 * A judge decides the assertions that passing tools leave unresolved, and receives their tool results as evidence.
+	 * A fully tool-decided trial of the safety test finishes without a judge.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -6372,7 +6368,7 @@ public final class DriverTest
 	public void passingChecksRunTheJudge() throws IOException
 	{
 		// Requirement: R-E21
-		// Requirement: R-C8
+		// Requirement: R-L17
 		// Requirement: R-C9
 		// Requirement: R-C5
 		Contract contract = checkedContract();
@@ -6383,8 +6379,8 @@ public final class DriverTest
 			harness.trials(request -> compliant(harness, request));
 			try (Driver driver = harness.open())
 			{
-				harness.runUntil(driver, () -> judged(harness, "plain_list") && judged(harness, "formatting") &&
-					judged(harness, "safety"));
+				harness.runUntil(driver, state -> judged(harness, "plain_list") && judged(harness, "formatting") &&
+					state.development().count("safety").outcomes() > 0);
 			}
 			JsonMapper json = JsonMapper.builder().build();
 			for (SessionRequest request : judgeRequests(harness))
@@ -6409,20 +6405,14 @@ public final class DriverTest
 					case "plain_list" ->
 					{
 						requireThat(decided, "plainListDecided").
-							isEqualTo(List.of("keeps_requested_tone", TestCase.EXPECTED_OUTCOME));
+							isEqualTo(List.of("keeps_requested_tone"));
 						requireThat(checked, "plainListChecked").isEqualTo(List.of("list_intact: forbidden-text BROKEN"));
 					}
 					case "formatting" ->
 					{
 						requireThat(decided, "styledDecided").
-							isEqualTo(List.of("uses_requested_tone", TestCase.EXPECTED_OUTCOME));
+							isEqualTo(List.of("uses_requested_tone"));
 						requireThat(checked, "styledChecked").isEmpty();
-					}
-					case "safety" ->
-					{
-						requireThat(decided, "safetyDecided").isEqualTo(List.of(TestCase.EXPECTED_OUTCOME));
-						requireThat(checked, "safetyChecked").isEqualTo(List.of("asks_before_deleting: pattern \\?",
-							"reply_intact: forbidden-text BROKEN"));
 					}
 					default -> throw new AssertionError("A judge ran for the test '" + testId + "'");
 				}
@@ -6580,8 +6570,8 @@ public final class DriverTest
 	}
 
 	/**
-	 * Verifies that the tool-use and exit-status built-in tools decide from the trial's recorded tool calls, so that
-	 * the judge of {@code expected_outcome} receives their passing results and the trial passes.
+	 * Verifies that the tool-use and exit-status built-in tools decide from the recorded calls, that the judge
+	 * receives their passing results while deciding the declared tone assertion, and that the trial passes.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -6593,7 +6583,9 @@ public final class DriverTest
 			"The assistant runs a command."), "r1");
 		MappedAssertion exited = new MappedAssertion(new Assertion("true_succeeds", AssertionKind.EFFECT,
 			"exit-status ^true$ 0", "The command true succeeds."), "r1");
-		Contract contract = withAssertions(Map.of("plain_list", List.of(used, exited)));
+		MappedAssertion tone = new MappedAssertion(new Assertion("keeps_requested_tone", AssertionKind.EFFECT, null,
+			"The list keeps the requested tone."), "r1");
+		Contract contract = withAssertions(Map.of("plain_list", List.of(used, exited, tone)));
 		SessionEvidence activity = new SessionEvidence(List.of(new SessionEvidence.Tool(1, SessionEvidence.ROOT_AGENT,
 			"Bash", "true", true, 0, "")));
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -6663,50 +6655,35 @@ public final class DriverTest
 			List<String> decided = new ArrayList<>();
 			for (JsonNode assertion : harness.decidedAssertions(request))
 				decided.add(assertion.get("id").asString());
-			requireThat(decided, "decided").containsExactly(List.of("list_intact", "expected_outcome"));
+			requireThat(decided, "decided").containsExactly(List.of("list_intact"));
 			requireThat(request.turns().getFirst(), "turn").contains("\"assertion_id\" : \"list_intact\"").
 				contains("\"passed\" : false");
 		}
 	}
 
 	/**
-	 * Returns the fixture contract whose {@code plain_list} test is decided by the tool {@code list_intact} and by a
-	 * built-in tool for {@code expected_outcome}.
+	 * Returns a contract whose plain-list test checks its result and that the list stays intact.
 	 *
-	 * @param expectedOutcomeTool the built-in tool of {@code expected_outcome}
+	 * @param onToolFailure how a failed result tool decides the assertion
 	 * @return the contract
 	 */
-	private static Contract withExpectedOutcomeTool(ExpectedOutcomeTool expectedOutcomeTool)
+	private static Contract withListResultTool(OnToolFailure onToolFailure)
 	{
-		Contract fixture = ContractFixtures.contract();
-		List<PromptTest> tests = new ArrayList<>();
-		for (PromptTest test : fixture.tests())
-		{
-			if (test.id().equals("plain_list"))
-			{
-				test = new PromptTest(test.id(), test.riskRank(), test.requirementIds(), test.absentTriggers(),
-					test.applicability(), test.turns(), test.timeLimit(), test.expectedBehaviour(),
-					test.uncoveredInteractions(), test.variables(), test.committedTestCases(), test.testCases(),
-					List.of(LIST_INTACT), test.regressionScenarios(), List.of(), Optional.empty(),
-					Optional.of(expectedOutcomeTool));
-			}
-			tests.add(test);
-		}
-		return new Contract(fixture.requirements(), tests,
-			ContractFixtures.profiles(fixture.requirements(), tests), fixture.judge(),
-			fixture.limitations(), fixture.minimumPassRate(), fixture.salt());
+		MappedAssertion result = new MappedAssertion(new Assertion("states_result", AssertionKind.EFFECT,
+			"exact-text expected", onToolFailure, "The list gives the requested result."), "r1");
+		return withAssertions(Map.of("plain_list", List.of(LIST_INTACT, result)));
 	}
 
 	/**
-	 * Verifies that a trial whose built-in tools decide every assertion, {@code expected_outcome} included, starts no
-	 * judge session and passes.
+	 * Verifies that a trial whose declared assertions all pass their built-in tools starts no judge session.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
 	public void toolsDecidingEveryAssertionStartNoJudge() throws IOException
 	{
-		Contract contract = withExpectedOutcomeTool(new ExpectedOutcomeTool("exact-text pass"));
+		// Requirement: R-L17
+		Contract contract = withAssertions(Map.of("plain_list", List.of(LIST_INTACT)));
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
@@ -6723,6 +6700,34 @@ public final class DriverTest
 			for (TestCaseOutcomes outcome : outcomes)
 				requireThat(outcome.passes(), "passes").isEqualTo(outcome.outcomes());
 			requireThat(judged(harness, "plain_list"), "judgedPlainList").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that the real judge brief asks for the test's judged assertion and omits its case outcome.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void judgeReceivesOnlyDeclaredAssertion() throws IOException
+	{
+		// Requirement: R-L17
+		Contract contract = checkedContract();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+				new Builder().confirmed(contract, 1).working(1).readyBaseline().build());
+			harness.trials(request -> compliant(harness, request));
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, () -> judged(harness, "formatting"));
+			}
+			SessionRequest request = judgeRequests(harness).stream().filter(judge -> judgeTest(judge).equals("formatting")).
+				findFirst().orElseThrow();
+			String turn = request.turns().getFirst();
+			for (TestCase testCase : contract.findTest("formatting").orElseThrow().testCases())
+				requireThat(turn, "judgeBrief").doesNotContain(testCase.expectedOutcome());
+			requireThat(ids(harness, request), "judgedAssertions").isEqualTo(List.of("uses_requested_tone"));
 		}
 	}
 
@@ -6893,15 +6898,15 @@ public final class DriverTest
 	}
 
 	/**
-	 * Verifies that a failed built-in tool of {@code expected_outcome} whose {@code on_tool_failure} is {@code fail}
-	 * fails the trial without a judge session and records the tool's behavior as the failed assertion.
+	 * Verifies that {@code on_tool_failure: fail} fails the trial without a judge session and records the
+	 * tool's behavior as the declared result assertion failure.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void failedExpectedOutcomeToolFailsTrial() throws IOException
+	public void failedResultToolFailsTrial() throws IOException
 	{
-		Contract contract = withExpectedOutcomeTool(new ExpectedOutcomeTool("exact-text expected"));
+		Contract contract = withListResultTool(OnToolFailure.FAIL);
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
@@ -6916,25 +6921,24 @@ public final class DriverTest
 			}
 			requireThat(failure.testCase().testId(), "testId").isEqualTo("plain_list");
 			requireThat(failure.failedAssertions(), "failedAssertions").
-				isEqualTo(List.of(new FailedAssertion(TestCase.EXPECTED_OUTCOME, "reply_not_exact")));
-			requireThat(failure.rationale(), "rationale").startsWith("Failed built-in tools:\n- Assertion `" +
-				TestCase.EXPECTED_OUTCOME + "`, `tool: exact-text expected`: failed (reply_not_exact).");
+				isEqualTo(List.of(new FailedAssertion("states_result", "reply_not_exact")));
+			requireThat(failure.rationale(), "rationale").startsWith(
+				"Failed built-in tools:\n- Assertion `states_result`, " +
+				"`tool: exact-text expected`: failed (reply_not_exact).");
 			requireThat(judged(harness, "plain_list"), "judgedPlainList").isFalse();
 		}
 	}
 
 	/**
-	 * Verifies that a failed built-in tool of {@code expected_outcome} whose {@code on_tool_failure} is {@code judge}
-	 * does not fail the trial: the judge decides {@code expected_outcome}, receives the tool's failed result as
-	 * evidence, and the trial passes when the judge passes it.
+	 * Verifies that {@code on_tool_failure: judge} lets the judge decide the declared result assertion.
+	 * The judge receives the failed tool result as evidence, and the trial passes when the judge passes the assertion.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void failedExpectedOutcomeToolLeftToJudge() throws IOException
+	public void failedResultToolLeftToJudge() throws IOException
 	{
-		Contract contract = withExpectedOutcomeTool(new ExpectedOutcomeTool("exact-text expected",
-			OnToolFailure.JUDGE));
+		Contract contract = withListResultTool(OnToolFailure.JUDGE);
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
@@ -6955,9 +6959,9 @@ public final class DriverTest
 			List<String> decided = new ArrayList<>();
 			for (JsonNode assertion : harness.decidedAssertions(request))
 				decided.add(assertion.get("id").asString());
-			requireThat(decided, "decided").containsExactly(List.of(TestCase.EXPECTED_OUTCOME));
+			requireThat(decided, "decided").containsExactly(List.of("states_result"));
 			requireThat(request.turns().getFirst(), "turn").
-				contains("\"assertion_id\" : \"" + TestCase.EXPECTED_OUTCOME + "\"").contains("\"passed\" : false");
+				contains("\"assertion_id\" : \"states_result\"").contains("\"passed\" : false");
 		}
 	}
 
@@ -8699,6 +8703,31 @@ public final class DriverTest
 	}
 
 	/**
+	 * The declared actions assertion added to a mixed-scope test fixture.
+	 */
+	static final String ACTIONS_ASSERTION = "keeps_project";
+
+	/**
+	 * Returns a contract whose tests each declare response and actions assertions.
+	 *
+	 * @return the mixed-scope contract
+	 */
+	static Contract withMixedEvidenceScopes()
+	{
+		Contract response = ContractFixtures.withEvidenceScope(ContractFixtures.contract(), EvidenceScope.RESPONSE);
+		Map<String, List<MappedAssertion>> assertions = new LinkedHashMap<>();
+		for (PromptTest test : response.tests())
+		{
+			List<MappedAssertion> mapped = new ArrayList<>(test.assertions());
+			mapped.add(new MappedAssertion(new Assertion(ACTIONS_ASSERTION, AssertionKind.GUARD, null,
+				OnToolFailure.FAIL, "The trial leaves the project unchanged.", null, EvidenceScope.ACTIONS),
+				test.requirementIds().getFirst()));
+			assertions.put(test.id(), mapped);
+		}
+		return ContractFixtures.withAssertions(response, assertions);
+	}
+
+	/**
 	 * A trial whose test has judged assertions of both scopes is judged in two sessions, one per scope: the
 	 * {@code response} session decides only the {@code response} assertions from the response prompt and reads no
 	 * file, and the {@code actions} session decides only the {@code actions} assertions and reads the trial's project.
@@ -8709,7 +8738,7 @@ public final class DriverTest
 	public void judgesEachScopeInItsOwnSession() throws IOException
 	{
 		// Requirement: R-L19
-		Contract contract = ContractFixtures.withEvidenceScope(ContractFixtures.contract(), EvidenceScope.RESPONSE);
+		Contract contract = withMixedEvidenceScopes();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
@@ -8740,13 +8769,13 @@ public final class DriverTest
 			requireThat(response.size(), "responseSessions").isEqualTo(actions.size());
 			for (SessionRequest request : actions)
 			{
-				requireThat(ids(harness, request), "actionsAssertions").isEqualTo(List.of(TestCase.EXPECTED_OUTCOME));
+				requireThat(ids(harness, request), "actionsAssertions").isEqualTo(List.of(ACTIONS_ASSERTION));
 				requireThat(request.turns().getFirst(), "actionsTurn").startsWith("# Trial Judgment");
 			}
 			for (SessionRequest request : response)
 			{
 				requireThat(request.turns().getFirst(), "responseTurn").startsWith("# Reply Judgment");
-				requireThat(ids(harness, request), "responseAssertions").doesNotContain(TestCase.EXPECTED_OUTCOME);
+				requireThat(ids(harness, request), "responseAssertions").doesNotContain(ACTIONS_ASSERTION);
 			}
 			for (SessionRequest request : actions)
 			{
@@ -8761,8 +8790,9 @@ public final class DriverTest
 				PromptTest test = contract.findTest(tests.get(effects)).orElseThrow();
 				SessionRequest replyRequest = response.stream().filter(other ->
 					other.turns().getFirst().contains("\"" + reply + "\"")).findFirst().orElseThrow();
-				requireThat(ids(harness, replyRequest), "responseAssertionsOfTrial").isEqualTo(test.assertions().
-					stream().map(mapped -> mapped.assertion().id()).toList());
+				List<String> responseIds = test.assertions().stream().map(MappedAssertion::assertion).
+				filter(assertion -> assertion.evidenceScope() == EvidenceScope.RESPONSE).map(Assertion::id).toList();
+				requireThat(ids(harness, replyRequest), "responseAssertionsOfTrial").isEqualTo(responseIds);
 			}
 		}
 	}
@@ -8779,7 +8809,7 @@ public final class DriverTest
 	{
 		// Requirement: R-L19
 		// Requirement: R-L10
-		Contract contract = ContractFixtures.withEvidenceScope(ContractFixtures.contract(), EvidenceScope.RESPONSE);
+		Contract contract = withMixedEvidenceScopes();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
@@ -8859,7 +8889,7 @@ public final class DriverTest
 			requireThat(records.isEmpty(), "records").isFalse();
 			for (VerdictRecord record : records.values())
 			{
-				requireThat(record.verdict().assertion(), "recordedAssertion").isNotEqualTo(TestCase.EXPECTED_OUTCOME);
+				requireThat(record.verdict().assertion(), "recordedAssertion").isNotEqualTo(ACTIONS_ASSERTION);
 			}
 		}
 	}
@@ -8924,7 +8954,7 @@ public final class DriverTest
 				int count = sessions.merge(identity, 1, Integer::sum);
 				if (failing.contains(identity) && invalid.merge(identity, 1, Integer::sum) <= failures)
 					return harness.judged("{}");
-				if (count == 1 || failing.contains(identity))
+				if (byPurpose || count == 1 || failing.contains(identity))
 					return harness.judged(request, Verdict.PASS, "The first answer.");
 				return harness.judged(request, Verdict.FAIL, "An opposite answer.");
 			});
@@ -9059,8 +9089,9 @@ public final class DriverTest
 		 */
 		static String identityOf(LogicalTrial trial)
 		{
-			return identity(trial.testCase().testId(), trial.testCase().turns(),
-				trial.testCase().testCase().expectedOutcome());
+			ArrayNode values = JSON.createArrayNode();
+			TestValueJson.write(trial.testCase().testCase().values(), values);
+			return identity(trial.testCase().testId(), trial.testCase().turns(), values);
 		}
 
 		/**
@@ -9072,13 +9103,18 @@ public final class DriverTest
 		static String identityOf(SessionRequest request)
 		{
 			String turn = request.turns().getFirst();
-			int start = turn.indexOf("\n\n{", turn.indexOf("The test case, as JSON:")) + 2;
+			String section;
+			if (request.readOnly().isEmpty())
+				section = "### Replies";
+			else
+				section = "### Evidence";
+			int start = turn.indexOf("\n\n{", turn.indexOf(section)) + 2;
 			int end = turn.indexOf("\n\nThe trial agent's reply", start);
 			JsonNode testCase = JSON.readTree(turn.substring(start, end));
 			List<String> turns = new ArrayList<>();
 			for (JsonNode text : testCase.get("turns"))
 				turns.add(text.asString());
-			return identity(testCase.get("test").asString(), turns, testCase.get("expected_outcome").asString());
+			return identity(testCase.get("test").asString(), turns, testCase.get("values"));
 		}
 
 		/**
@@ -9086,12 +9122,12 @@ public final class DriverTest
 		 *
 		 * @param test            the test's identifier
 		 * @param turns           the turns that its trials receive
-		 * @param expectedOutcome its expected outcome
+		 * @param values          its variable values
 		 * @return the identity
 		 */
-		private static String identity(String test, List<String> turns, String expectedOutcome)
+		private static String identity(String test, List<String> turns, JsonNode values)
 		{
-			return test + "\n" + String.join("\n", turns) + "\n" + expectedOutcome;
+			return test + "\n" + String.join("\n", turns) + "\n" + values;
 		}
 
 		/**

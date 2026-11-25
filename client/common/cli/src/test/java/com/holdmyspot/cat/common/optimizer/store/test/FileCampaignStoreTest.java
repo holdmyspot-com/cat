@@ -2502,8 +2502,9 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			running = Transitions.apply(running, new CampaignEvent.Start(trial.key()));
 			List<List<String>> responses = List.of(List.of("I'll inspect the directory.", "Should I delete it?"),
 				List.of("I'll keep it.", "The directory is unchanged."));
+			List<FailedAssertion> historical = List.of(new FailedAssertion("expected_outcome", "unexpected_outcome"));
 			CampaignEvent.Complete outcome = new CampaignEvent.Complete(trial.key(), Verdict.FAIL, "Unasked narration",
-				List.of(), null, running.identity(), null, responses, Builder.FILES);
+				historical, null, running.identity(), null, responses, Builder.FILES);
 			store.writeOutcome(ID, outcome);
 			store.replaceSnapshot(running);
 
@@ -2515,6 +2516,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			store.replaceSnapshot(judged);
 			Campaign loadedJudged = restarted.load(ID).orElseThrow();
 			requireThat(loadedJudged.trials().getLast().responses(), "loadedJudgedResponses").isEqualTo(responses);
+			requireThat(loadedJudged.trials().getLast().failedAssertions(), "historicalFailure").isEqualTo(historical);
 			Campaign adopted = Transitions.apply(loadedJudged, new CampaignEvent.Complete(earlier.key(),
 				Verdict.PASS, "Earlier trial passed", List.of(), null,
 				loadedJudged.identity(), null, List.of(), Builder.FILES));

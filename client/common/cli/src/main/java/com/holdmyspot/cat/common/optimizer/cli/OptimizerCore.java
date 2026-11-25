@@ -101,6 +101,7 @@ import com.holdmyspot.cat.common.optimizer.port.SourceSelection;
 import com.holdmyspot.cat.common.optimizer.port.UnreachableReference;
 import com.holdmyspot.cat.common.optimizer.port.WorkspacePort;
 import com.holdmyspot.cat.common.runner.TrialPluginInput;
+import com.holdmyspot.cat.common.optimizer.proposal.AssertionChecks;
 import com.holdmyspot.cat.common.optimizer.proposal.ContractAuthorProtocol;
 import com.holdmyspot.cat.common.optimizer.proposal.DerivedProposal;
 import com.holdmyspot.cat.common.optimizer.proposal.DraftDirectory;
@@ -2464,18 +2465,27 @@ public final class OptimizerCore implements Core
 		while (true)
 		{
 			Campaign loaded = require(scope.store(), id, true);
-			if (loaded.lifecycle() == Lifecycle.ACTIVE && !reports(loaded).isEmpty())
-				verifyEvaluatorConditions(root, loaded, openFork(root, loaded));
 			if (loaded.pending() instanceof PendingDecision.AssertionCheckFailure)
 				return report(root, loaded, null, assertionChecksPaused(loaded.header().id()));
+			Optional<PromptTest> missingExamples = testMissingExamples(loaded);
+			if (missingExamples.isPresent() && loaded.pendingDecisions().stream().
+				anyMatch(PendingDecision.TestRevisionBlocked.class::isInstance))
+				return report(root, loaded, null, null);
+			Map<Harness, EvaluatorMetadata> evaluators = Map.of();
+			if (loaded.lifecycle() == Lifecycle.ACTIVE && !reports(loaded).isEmpty())
+				evaluators = verifyEvaluatorConditions(root, loaded, openFork(root, loaded), missingExamples.isPresent());
+			if (missingExamples.isPresent())
+				loaded = requestExampleRevision(root, loaded, missingExamples.get(), lock);
 			if (loaded.lifecycle() == Lifecycle.ACTIVE && loaded.awaitsTestRevision() && !loaded.revisionRequested())
 			{
 				if (loaded.pending() instanceof PendingDecision.PilotFailure)
 					return report(root, loaded, null, pilotPausedNotice(loaded));
-				Optional<String> unfinished = reviseTests(root, loaded, lock, started);
+				Optional<String> unfinished = reviseTests(root, loaded, evaluators, lock, started);
 				loaded = require(scope.store(), id, true);
 				if (unfinished.isPresent())
 					return report(root, loaded, null, unfinished.get());
+				if (missingExamples.isPresent())
+					continue;
 			}
 			SliceResult result = SliceRunner.run(context(root, loaded, true), id, List.of(), lock.lend(), started);
 			loaded = require(scope.store(), id, true);
@@ -2483,6 +2493,60 @@ public final class OptimizerCore implements Core
 				loaded.revisionRequested() || loaded.pending() instanceof PendingDecision.TestRevisionBlocked)
 				return new CommandResult(result.status(), scope.harness(), null, result.delivery(), null);
 		}
+	}
+
+	/**
+	 * Returns the first earlier confirmed test that still needs assertion examples.
+	 *
+	 * @param campaign the campaign about to continue
+	 * @return the first test to migrate, or empty when regular work can continue
+	 */
+	private static Optional<PromptTest> testMissingExamples(Campaign campaign)
+	{
+		if (campaign.lifecycle() != Lifecycle.ACTIVE || !campaign.isConfirmed() || campaign.revisionRequested())
+			return Optional.empty();
+		return campaign.contract().tests().stream().
+			filter(test -> test.draft().isPresent() && !AssertionChecks.missingExamples(test).isEmpty()).findFirst();
+	}
+
+	/**
+	 * Queues one required revision, unless an earlier examination is already recovering.
+	 *
+	 * @param root the project root
+	 * @param campaign the confirmed campaign
+	 * @param test the first test missing its examples
+	 * @param lock the campaign write lock
+	 * @return the campaign with the request queued
+	 * @throws CommandRefusedException if the campaign cannot accept the request
+	 * @throws IOException if the request or an earlier progress record cannot be accessed
+	 */
+	private Campaign requestExampleRevision(Path root, Campaign campaign, PromptTest test, CampaignLock lock)
+		throws CommandRefusedException, IOException
+	{
+		String id = campaign.header().id();
+		if (campaign.awaitsTestRevision() && (exampleRevision(campaign).isPresent() ||
+			revisionFile(id).read().isPresent() || authorDraft(campaign).read().isPresent()))
+		{
+			return campaign;
+		}
+		if (!campaign.awaitsTestRevision())
+			discardRevision(id);
+		TestRevisionRequest request = new TestRevisionRequest(test.id(),
+			TestRevisionRequest.Trigger.MISSING_ASSERTION_EXAMPLES, List.of(), Map.of());
+		apply(root, campaign, List.of(new CampaignEvent.RequestTestRevision(request)), lock);
+		return require(scope.store(), id, true);
+	}
+
+	/**
+	 * Returns the single required example revision queued for the next lineage.
+	 *
+	 * @param campaign the campaign
+	 * @return the migration request if one is queued
+	 */
+	private static Optional<TestRevisionRequest> exampleRevision(Campaign campaign)
+	{
+		return campaign.testRevisions().requests().stream().
+			filter(request -> request.trigger() == TestRevisionRequest.Trigger.MISSING_ASSERTION_EXAMPLES).findFirst();
 	}
 
 	/**
@@ -2497,6 +2561,7 @@ public final class OptimizerCore implements Core
 	 *
 	 * @param root the project root
 	 * @param campaign the campaign, which awaits a test revision and no contract revision
+	 * @param evaluators the verified evaluator reports, including any judge upgrade for example migration
 	 * @param lock the campaign's write lock, which the caller holds
 	 * @param sliceStart when the command started, which bounds the guard pilot of the revised contract
 	 * @return a notice for the user if a session failed or its result is invalid, so that the remaining requests stay
@@ -2507,7 +2572,8 @@ public final class OptimizerCore implements Core
 	 * @throws IOException if the store, the workspace, the stored proposal or a session fails
 	 * @throws InterruptedException if the thread is interrupted while it waits for a session
 	 */
-	private Optional<String> reviseTests(Path root, Campaign campaign, CampaignLock lock, Instant sliceStart)
+	private Optional<String> reviseTests(Path root, Campaign campaign, Map<Harness, EvaluatorMetadata> evaluators,
+		CampaignLock lock, Instant sliceStart)
 		throws CommandRefusedException, IOException, InterruptedException
 	{
 		String id = campaign.header().id();
@@ -2526,7 +2592,9 @@ public final class OptimizerCore implements Core
 		else
 			examined = new Examined(restore(contractAuthor, stored), List.of(), List.of(), null);
 		Set<String> completed = examined.completedTests();
-		if (campaign.testRevisions().requests().stream().anyMatch(request -> !completed.contains(request.test())))
+		Optional<TestRevisionRequest> migration = exampleRevision(campaign);
+		List<TestRevisionRequest> requests = migration.map(List::of).orElseGet(campaign.testRevisions()::requests);
+		if (requests.stream().anyMatch(request -> !completed.contains(request.test())))
 		{
 			examined = examineTests(root, campaign, lock, contractAuthor, fork, stored, examined, sliceStart);
 			if (examined.notice() != null)
@@ -2537,8 +2605,11 @@ public final class OptimizerCore implements Core
 		List<CampaignEvent> events = new ArrayList<>();
 		if (!examined.revisions().isEmpty())
 		{
-			RevisedContract revised = revisedContract(root, campaign, fork, examined.current(), stored, examined.revisions(),
-				sliceStart);
+			Map<Harness, EvaluatorMetadata> revisedEvaluators = evaluators;
+			if (revisedEvaluators.isEmpty())
+				revisedEvaluators = stored.evaluators();
+			RevisedContract revised = revisedContract(root, campaign, fork, examined.current(), stored.profiles(),
+				revisedEvaluators, examined.revisions(), sliceStart);
 			// A blocked revision is examined again with the next run, which also continues the pilot
 			if (revised.unfinished() != null)
 				return Optional.of(revised.unfinished());
@@ -2548,6 +2619,15 @@ public final class OptimizerCore implements Core
 				return Optional.of(pilotPausedNotice(campaign));
 			}
 			events.addAll(revised.events());
+			if (migration.isPresent() && revised.events().getFirst() instanceof CampaignEvent.ReviseTests)
+			{
+				String revisedTest = migration.orElseThrow().test();
+				for (TestRevisionRequest request : campaign.testRevisions().requests())
+				{
+					if (!request.test().equals(revisedTest))
+						events.add(new CampaignEvent.RequestTestRevision(request));
+				}
+			}
 		}
 		// Confirming the revised contract clears pending decisions, so a blocked revision pauses the campaign after it
 		events.addAll(examined.blocked());
@@ -2588,7 +2668,9 @@ public final class OptimizerCore implements Core
 		List<CampaignEvent.BlockTestRevision> blocked = new ArrayList<>(examined.blocked());
 		Set<String> completedTests = examined.completedTests();
 		RevisionFile revisionFile = revisionFile(id);
-		for (TestRevisionRequest request : campaign.testRevisions().requests())
+		List<TestRevisionRequest> requests = exampleRevision(campaign).map(List::of).
+			orElseGet(campaign.testRevisions()::requests);
+		for (TestRevisionRequest request : requests)
 		{
 			if (completedTests.contains(request.test()))
 				continue;
@@ -2768,7 +2850,8 @@ public final class OptimizerCore implements Core
 	 * @param campaign the campaign
 	 * @param fork the campaign's fork
 	 * @param revised the confirmed proposal with the corrected tests
-	 * @param stored the confirmed proposal as it was stored
+	 * @param profiles the confirmed proposal's profile evidence
+	 * @param evaluators the evaluator reports to persist with the revised contract
 	 * @param revisions the changes, one per corrected test
 	 * @param sliceStart when the command started, which bounds the pilot
 	 * @return the events that start the lineage, or a notice that the slice ended before the pilot did
@@ -2778,7 +2861,8 @@ public final class OptimizerCore implements Core
 	 * @throws InterruptedException if the thread is interrupted while it waits for a pilot session
 	 */
 	private RevisedContract revisedContract(Path root, Campaign campaign, ForkView fork,
-		DerivedProposal revised, ProposalFile.Stored stored, List<TestRevision> revisions, Instant sliceStart)
+		DerivedProposal revised, ProfileEvidence profiles, Map<Harness, EvaluatorMetadata> evaluators,
+		List<TestRevision> revisions, Instant sliceStart)
 		throws CommandRefusedException, IOException, InterruptedException
 	{
 		Set<Path> participants = participants(root, revised);
@@ -2786,7 +2870,7 @@ public final class OptimizerCore implements Core
 			fork = fork.extend(root, participants);
 		PluginCheck plugin = pluginCheck(root, campaign, fork);
 		Map<String, PilotResult> pilots = pilot(root, campaign, fork, revised, plugin,
-			new PilotSlice(scope.clock(), runSettings(), runInterrupts(), sliceStart));
+			new PilotSlice(scope.clock(), runSettings(), runInterrupts(), sliceStart), evaluators);
 		if (background && stopRequested())
 			return new RevisedContract(List.of(new CampaignEvent.Cancel()), null);
 		Optional<String> pause = GuardPilot.pauseReason(pilots);
@@ -2806,12 +2890,14 @@ public final class OptimizerCore implements Core
 		requireParticipantsHeld(root, fork, revised, trialSelection(root, campaign, revised));
 		// The stored proposal changes only once nothing blocks confirming it, so it stays the confirmed contract's
 		new ProposalFile(heldOutDirectory(campaign.header().id()), scope.json(), scope.fileReplacer()).write(revised,
-			stored.profiles(), stored.evaluators());
+			profiles, evaluators);
 
 		List<CampaignEvent> events = new ArrayList<>();
 		events.add(revise);
 		events.addAll(moveOnto(campaign, fork));
-		events.addAll(confirmation(proposal, certificationScope, stored.evaluators(), campaign, fork.workspace()));
+		boolean migratingExamples = exampleRevision(campaign).isPresent();
+		events.addAll(confirmation(proposal, certificationScope, evaluators, campaign, fork.workspace(),
+			migratingExamples));
 		return new RevisedContract(events, null);
 	}
 
@@ -3143,6 +3229,15 @@ public final class OptimizerCore implements Core
 				revisionPausedNotice(loaded));
 		}
 		ForkView fork = openFork(root, loaded);
+		DerivedProposal derived = stored(root, loaded).orElseThrow(() -> new CommandRefusedException(
+			"Campaign " + campaign + " has no proposal to confirm. Run `request-changes` or `start` to derive one."));
+		List<String> missingExamples = derived.contract().tests().stream().
+			flatMap(test -> AssertionChecks.missingExamples(test).stream()).toList();
+		if (!missingExamples.isEmpty())
+		{
+			throw new CommandRefusedException(String.join("\n", missingExamples) +
+				"\nRun `request-changes` with feedback to regenerate the proposal.");
+		}
 		try
 		{
 			verifyEvaluatorConditions(root, loaded, fork);
@@ -3154,8 +3249,6 @@ public final class OptimizerCore implements Core
 			interrupted.initCause(e);
 			throw interrupted;
 		}
-		DerivedProposal derived = stored(root, loaded).orElseThrow(() -> new CommandRefusedException(
-			"Campaign " + campaign + " has no proposal to confirm. Run `request-changes` or `start` to derive one."));
 		// A revision after confirmation runs on the files that its presentation recorded beside the fork's
 		if (loaded.isConfirmed())
 			fork = fork.including(participants(root, derived));
@@ -3166,34 +3259,38 @@ public final class OptimizerCore implements Core
 			throw new CommandRefusedException(proposal.confirmationRefusal(certificationScope));
 		SourceSelection selection = trialSelection(root, loaded, derived);
 		requireParticipantsHeld(root, fork, derived, selection);
-		requireFreshPeerPilot(loaded, fork, derived, selection, pilots);
+		requireFreshPilot(loaded, fork, derived, selection, plugin, pilots);
 		List<CampaignEvent> events = new ArrayList<>(moveOnto(loaded, fork));
-		events.addAll(confirmation(proposal, certificationScope, reports(loaded), loaded, fork.workspace()));
+		events.addAll(confirmation(proposal, certificationScope, reports(loaded), loaded, fork.workspace(), false));
 		return apply(root, loaded, events, lock);
 	}
 
 	/**
-	 * Verifies that the first proposal evaluated by a sole peer still has evidence under the current owner judge.
-	 * The evaluator probe pins the peer conditions, but a sole peer does not exercise the owner's judge version.
+	 * Verifies that the first proposal's sole-evaluator pilot still matches the current judge and trial conditions.
+	 * The evaluator probe alone does not verify the owner judge version used by the pilot.
 	 *
 	 * @param campaign the campaign awaiting confirmation
 	 * @param fork the proposal's frozen sources
 	 * @param derived the proposal
 	 * @param selection the sources the trials receive
+	 * @param plugin the trial plugin check
 	 * @param pilots the displayed pilot results
 	 * @throws IOException if the frozen sources or trial ports cannot be read
 	 * @throws CommandRefusedException if the pilot's measurement conditions changed
 	 */
-	private void requireFreshPeerPilot(Campaign campaign, ForkView fork, DerivedProposal derived,
-		SourceSelection selection, Map<String, PilotResult> pilots) throws IOException, CommandRefusedException
+	private void requireFreshPilot(Campaign campaign, ForkView fork, DerivedProposal derived,
+		SourceSelection selection, PluginCheck plugin, Map<String, PilotResult> pilots)
+		throws IOException, CommandRefusedException
 	{
 		Set<Harness> evaluators = campaign.header().evaluationHarnesses();
-		if (campaign.isConfirmed() || evaluators.size() != 1 || evaluators.contains(campaign.header().harness()) ||
-			pilots.isEmpty())
+		if (campaign.isConfirmed() || evaluators.size() != 1 || pilots.isEmpty())
 			return;
 		Harness evaluator = evaluators.iterator().next();
-		if (!guardPilot(campaign, fork).matchesStored(derived.contract(), evaluator, evaluatorPlugins(campaign).
-			get(evaluator), pilotControl(campaign, fork, derived), selection, pilots))
+		List<TrialPlugin> plugins = plugin.plugins();
+		if (!plugin.byEvaluator().isEmpty())
+			plugins = evaluatorPlugins(campaign).get(evaluator);
+		if (!guardPilot(campaign, fork).matchesStored(derived.contract(), evaluator, plugins,
+			pilotControl(campaign, fork, derived), selection, pilots))
 		{
 			throw new CommandRefusedException("The guard pilot ran under measurement conditions that have changed. " +
 				"Run `start` for the same target to see the proposal with a refreshed guard pilot before confirming it.");
@@ -4359,6 +4456,27 @@ public final class OptimizerCore implements Core
 	private Map<String, PilotResult> pilot(Path root, Campaign campaign, ForkView fork, DerivedProposal derived,
 		PluginCheck plugin, PilotSlice slice) throws IOException, InterruptedException
 	{
+		return pilot(root, campaign, fork, derived, plugin, slice, reports(campaign));
+	}
+
+	/**
+	 * Runs the pilot under the evaluator reports verified for its proposed lineage.
+	 *
+	 * @param root the project root
+	 * @param campaign the campaign
+	 * @param fork the frozen sources
+	 * @param derived the proposal
+	 * @param plugin the trial plugin check
+	 * @param slice the command time bound, or null if unbounded
+	 * @param evaluators the verified evaluator reports
+	 * @return the pilot results by test
+	 * @throws IOException if the stored pilot or workspace cannot be accessed
+	 * @throws InterruptedException if waiting for a pilot session is interrupted
+	 */
+	private Map<String, PilotResult> pilot(Path root, Campaign campaign, ForkView fork, DerivedProposal derived,
+		PluginCheck plugin, PilotSlice slice, Map<Harness, EvaluatorMetadata> evaluators)
+		throws IOException, InterruptedException
+	{
 		boolean hasIneligibleTrialEffect = derived.scopeConditions().stream().
 			anyMatch(condition -> condition.outcome() == Outcome.INELIGIBLE_TRIAL_EFFECT);
 		if (hasIneligibleTrialEffect)
@@ -4368,7 +4486,7 @@ public final class OptimizerCore implements Core
 			return Map.of();
 		PilotFile file = pilotFile(campaign);
 		Overlay control = pilotControl(campaign, fork, derived);
-		GuardPilot pilot = guardPilot(campaign, fork);
+		GuardPilot pilot = guardPilot(campaign, fork, evaluators);
 		Set<Path> excluded = PromptTestLocations.excluded(derived.contract(), relativeTarget(campaign), root);
 		// Each decided trial is stored as soon as it is decided, so that a command that ends before the pilot does
 		// loses only the trials in flight
@@ -4413,6 +4531,21 @@ public final class OptimizerCore implements Core
 	 */
 	private GuardPilot guardPilot(Campaign campaign, ForkView fork) throws IOException
 	{
+		return guardPilot(campaign, fork, reports(campaign));
+	}
+
+	/**
+	 * Binds a pilot to the evaluator reports verified for its proposed lineage.
+	 *
+	 * @param campaign the campaign
+	 * @param fork the frozen sources
+	 * @param evaluators the verified evaluator reports
+	 * @return the guard pilot
+	 * @throws IOException if the trial ports or judge prompt cannot be read
+	 */
+	private GuardPilot guardPilot(Campaign campaign, ForkView fork, Map<Harness, EvaluatorMetadata> evaluators)
+		throws IOException
+	{
 		SessionPort owner = sessions(campaign);
 		CampaignStore store;
 		try
@@ -4426,7 +4559,7 @@ public final class OptimizerCore implements Core
 		}
 		VerdictRecords verdicts = new VerdictRecords(store, campaign.header().id(), campaign.header().harness(),
 			owner.judgeVersion());
-		return new GuardPilot(owner, trialSessions(campaign, owner), fork.workspace(), relativeTarget(campaign),
+		return new GuardPilot(owner, trialSessions(campaign, owner, evaluators), fork.workspace(), relativeTarget(campaign),
 			judgePrompt(campaign), verdicts, schema, scope.json(), campaign.ceiling());
 	}
 
@@ -4769,20 +4902,43 @@ public final class OptimizerCore implements Core
 	private void verifyEvaluatorConditions(Path root, Campaign campaign, ForkView fork)
 		throws CommandRefusedException, IOException, InterruptedException
 	{
+		verifyEvaluatorConditions(root, campaign, fork, false);
+	}
+
+	/**
+	 * Verifies the evaluator pins and allows only a newer judge version while migrating assertion examples.
+	 *
+	 * @param root the project root
+	 * @param campaign the campaign
+	 * @param fork the existing fork
+	 * @param migratingExamples whether the confirmed tests require example migration
+	 * @return the verified pins to use for a revised contract
+	 * @throws CommandRefusedException if an evaluator cannot launch or its observations changed
+	 * @throws IOException if the stored evidence or staged source cannot be read
+	 * @throws InterruptedException if the evaluator probe is interrupted
+	 */
+	private Map<Harness, EvaluatorMetadata> verifyEvaluatorConditions(Path root, Campaign campaign, ForkView fork,
+		boolean migratingExamples) throws CommandRefusedException, IOException, InterruptedException
+	{
 		Map<Harness, EvaluatorMetadata> pinned = reports(campaign);
 		if (pinned.isEmpty())
-			return;
+			return pinned;
 		Path directory = campaignDirectory(campaign.header().id());
 		Overlay incumbent = new FileCandidateOverlays(directory, fork.inventory(), fork::version, scope.json(),
 			scope.fileReplacer()).require(campaign.incumbent().snapshot());
 		Path staged = fork.workspace().stage(incumbent, Set.of());
 		Map<Harness, EvaluatorMetadata> current = evaluatorReports(root, staged, relativeTarget(campaign), pinned.keySet(),
 			evaluatorBases(evaluatorPlugins(campaign), fork.workspace()));
+		Map<Harness, EvaluatorMetadata> verified = new EnumMap<>(Harness.class);
 		for (Map.Entry<Harness, EvaluatorMetadata> entry : current.entrySet())
 		{
 			Harness evaluator = entry.getKey();
 			EvaluatorMetadata observed = entry.getValue();
-			if (!observed.matchesPinned(pinned.get(evaluator)))
+			EvaluatorMetadata expected = pinned.get(evaluator);
+			int judgeVersion = observed.runtime().judgeVersion();
+			if (migratingExamples && judgeVersion > expected.runtime().judgeVersion())
+				expected = expected.withJudgeVersion(judgeVersion);
+			if (!observed.matchesPinned(expected))
 			{
 				throw new CommandRefusedException(evaluator.productName() +
 					" no longer supplies the loader, profiles or runtime recorded in this proposal. Restore its " +
@@ -4791,7 +4947,9 @@ public final class OptimizerCore implements Core
 			}
 			if (evaluator != scope.harness())
 				requirePeerPort(observed);
+			verified.put(evaluator, expected);
 		}
+		return verified;
 	}
 
 	/**
@@ -4804,8 +4962,23 @@ public final class OptimizerCore implements Core
 	 */
 	private Map<Harness, SessionPort> trialSessions(Campaign campaign, SessionPort owner) throws IOException
 	{
+		return trialSessions(campaign, owner, reports(campaign));
+	}
+
+	/**
+	 * Returns trial ports bound to the specified evaluator metadata.
+	 *
+	 * @param campaign the campaign
+	 * @param owner the owner's session port
+	 * @param evaluators the verified evaluator reports
+	 * @return the evaluator trial ports, or empty for the ordinary owner-only route
+	 * @throws IOException if a required peer port cannot be built
+	 */
+	private Map<Harness, SessionPort> trialSessions(Campaign campaign, SessionPort owner,
+		Map<Harness, EvaluatorMetadata> evaluators) throws IOException
+	{
 		Map<Harness, SessionPort> sessions = new EnumMap<>(Harness.class);
-		for (EvaluatorMetadata metadata : reports(campaign).values())
+		for (EvaluatorMetadata metadata : evaluators.values())
 		{
 			Harness evaluator = metadata.harness();
 			SessionPort port = owner;
@@ -4842,22 +5015,31 @@ public final class OptimizerCore implements Core
 	 * @param evaluators the evaluator runtime and loader evidence
 	 * @param campaign the campaign with pinned trial plugins
 	 * @param workspace the frozen plugin bases
+	 * @param migratingExamples whether the new lineage incorporates the current judge version
 	 * @return the confirmation events
 	 * @throws IOException if a plugin manifest cannot be read
 	 */
 	private List<CampaignEvent> confirmation(Proposal proposal, CertificationScope certificationScope,
-		Map<Harness, EvaluatorMetadata> evaluators, Campaign campaign, WorkspacePort workspace) throws IOException
+		Map<Harness, EvaluatorMetadata> evaluators, Campaign campaign, WorkspacePort workspace,
+		boolean migratingExamples) throws IOException
 	{
 		List<CampaignEvent> events = proposal.confirmation(certificationScope, scope.random().nextLong());
-		if (evaluators.isEmpty())
+		if (evaluators.isEmpty() && !migratingExamples)
 			return events;
 		List<CampaignEvent> scoped = new ArrayList<>();
 		for (CampaignEvent event : events)
 		{
 			if (event instanceof CampaignEvent.Confirm confirm)
 			{
-				scoped.add(new CampaignEvent.Confirm(confirm.contract(), confirm.contractHash(), confirm.seed(),
-					evaluatorEnvironment(confirm.contract(), evaluators, evaluatorPlugins(campaign), workspace)));
+				MeasurementIdentity environment;
+				if (evaluators.isEmpty())
+				{
+					environment = new MeasurementIdentity(Map.of(MeasurementCondition.JUDGE,
+						String.valueOf(scope.sessions().judgeVersion())));
+				}
+				else
+					environment = evaluatorEnvironment(confirm.contract(), evaluators, evaluatorPlugins(campaign), workspace);
+				scoped.add(new CampaignEvent.Confirm(confirm.contract(), confirm.contractHash(), confirm.seed(), environment));
 			}
 			else
 				scoped.add(event);

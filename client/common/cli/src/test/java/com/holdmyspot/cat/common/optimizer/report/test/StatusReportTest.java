@@ -51,11 +51,12 @@ import com.holdmyspot.cat.common.optimizer.evidence.CommandSummary;
 import com.holdmyspot.cat.common.optimizer.contract.AddedTestCases;
 import com.holdmyspot.cat.common.optimizer.contract.CapabilityRanking;
 import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
+import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.DrawStream;
 import com.holdmyspot.cat.common.optimizer.contract.Generator;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
-import com.holdmyspot.cat.common.optimizer.contract.TestCase;
+import com.holdmyspot.cat.common.optimizer.contract.MappedAssertion;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfiles;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
@@ -1120,6 +1121,25 @@ public final class StatusReportTest
 	}
 
 	/**
+	 * Returns a confirmed campaign builder with two assertions in each test whose paired results are compared.
+	 *
+	 * @return the builder with ready baselines
+	 */
+	private static Builder confirmedWithComparisons()
+	{
+		Contract contract = ContractFixtures.contract();
+		MappedAssertion tone = contract.findTest("formatting").orElseThrow().assertions().getFirst();
+		MappedAssertion listTone = contract.findTest("plain_list").orElseThrow().assertions().getFirst();
+		MappedAssertion greeting = ContractFixtures.judged("uses_requested_greeting", AssertionKind.EFFECT,
+			"The requested greeting opens the reply.", tone.requirementId());
+		MappedAssertion order = ContractFixtures.judged("keeps_requested_order", AssertionKind.EFFECT,
+			"The list keeps the requested order.", listTone.requirementId());
+		Contract withComparisons = ContractFixtures.withAssertions(contract,
+			Map.of("formatting", List.of(tone, greeting), "plain_list", List.of(listTone, order)));
+		return new Builder().confirmed(withComparisons, 1).working(1).readyBaseline();
+	}
+
+	/**
 	 * Returns the report of a cell.
 	 *
 	 * @param report the report
@@ -1420,18 +1440,18 @@ public final class StatusReportTest
 		// Requirement: R-F7
 		// At alpha_1 = 1/50:
 		// formatting: S = 200, F = 2 certifies its minimum-pass-rate part (200 >= 100 + 50*2). uses_requested_tone
-		//             has 30 even and 7 candidate-ahead pairs and passed; expected_outcome has 35 even and 2
+		//             has 30 even and 7 candidate-ahead pairs and passed; uses_requested_greeting has 35 even and 2
 		//             control-ahead pairs and is undecided, so the cell is undecided.
 		// plain_list: S = 100, F = 0 certifies its minimum-pass-rate part. keeps_requested_tone has 8 control-ahead
 		//             pairs and is below control, so the cell is below control.
 		// safety:     S = 60, F = 1 is undecided, so its control comparisons have not run.
 		Map<String, PairCounts> formatting = new LinkedHashMap<>();
 		formatting.put("uses_requested_tone", new PairCounts(30, 7, 0, 0));
-		formatting.put(TestCase.EXPECTED_OUTCOME, new PairCounts(35, 0, 2, 0));
+		formatting.put("uses_requested_greeting", new PairCounts(35, 0, 2, 0));
 		Map<String, PairCounts> plainList = new LinkedHashMap<>();
 		plainList.put("keeps_requested_tone", new PairCounts(0, 0, 8, 0));
-		plainList.put(TestCase.EXPECTED_OUTCOME, new PairCounts(8, 0, 0, 0));
-		Campaign campaign = confirmed().certificationAttempt(1).boundaries(ReportBoundaries.paired()).
+		plainList.put("keeps_requested_order", new PairCounts(8, 0, 0, 0));
+		Campaign campaign = confirmedWithComparisons().certificationAttempt(1).boundaries(ReportBoundaries.paired()).
 			cell("formatting", 200, 2).controlPairing("formatting", new Pairing(List.of(), formatting)).
 			cell("plain_list", 100, 0).controlPairing("plain_list", new Pairing(List.of(), plainList)).
 			cell("safety", 60, 1).build();
@@ -1441,20 +1461,19 @@ public final class StatusReportTest
 		requireThat(formattingComparison.state(), "formattingState").isEqualTo("certified");
 		requireThat(formattingComparison.controls(), "formattingControls").isEqualTo(List.of(
 			new CellReport.PairedReport("uses_requested_tone", "passed", 37, 37, 30),
-			new CellReport.PairedReport(TestCase.EXPECTED_OUTCOME, "undecided", 37, 35, 37)));
+			new CellReport.PairedReport("uses_requested_greeting", "undecided", 37, 35, 37)));
 		requireThat(formattingComparison.cellState(), "formattingCell").isEqualTo("undecided");
 
 		CellReport.Threshold plainListComparison = cell(report, "plain_list").comparison();
 		requireThat(plainListComparison.controls(), "plainListControls").isEqualTo(List.of(
 			new CellReport.PairedReport("keeps_requested_tone", "below control", 8, 0, 8),
-			new CellReport.PairedReport(TestCase.EXPECTED_OUTCOME, "undecided", 8, 8, 8)));
+			new CellReport.PairedReport("keeps_requested_order", "undecided", 8, 8, 8)));
 		requireThat(plainListComparison.cellState(), "plainListCell").isEqualTo("below control");
 
 		CellReport.Threshold safetyComparison = cell(report, "safety").comparison();
 		requireThat(safetyComparison.state(), "safetyState").isEqualTo("undecided");
 		requireThat(safetyComparison.controls(), "safetyControls").isEqualTo(List.of(
-			new CellReport.PairedReport("asks_before_deleting", "not run", 0, 0, 0),
-			new CellReport.PairedReport(TestCase.EXPECTED_OUTCOME, "not run", 0, 0, 0)));
+			new CellReport.PairedReport("asks_before_deleting", "not run", 0, 0, 0)));
 		requireThat(safetyComparison.cellState(), "safetyCell").isEqualTo("undecided");
 
 		JsonNode json = report.toJson(JsonMapper.builder().build()).path("cells").path(0).path("comparison");
@@ -1487,7 +1506,7 @@ public final class StatusReportTest
 		// Requirement: R-F8
 		// At alpha_1 = 1/50, every control comparison passed:
 		// formatting: uses_requested_tone has 30 even and 7 candidate-ahead pairs with the incumbent and passed;
-		//             expected_outcome has 35 even and 2 incumbent-ahead pairs and is undecided, so the cell is
+		//             uses_requested_greeting has 35 even and 2 incumbent-ahead pairs and is undecided, so the cell is
 		//             undecided.
 		// plain_list: keeps_requested_tone has 8 incumbent-ahead pairs and is below incumbent, so the cell is below
 		//             incumbent.
@@ -1495,18 +1514,18 @@ public final class StatusReportTest
 		PairCounts formattingPassed = new PairCounts(30, 7, 0, 0);
 		Map<String, PairCounts> formattingControl = new LinkedHashMap<>();
 		formattingControl.put("uses_requested_tone", formattingPassed);
-		formattingControl.put(TestCase.EXPECTED_OUTCOME, formattingPassed);
+		formattingControl.put("uses_requested_greeting", formattingPassed);
 		Map<String, PairCounts> formattingIncumbent = new LinkedHashMap<>();
 		formattingIncumbent.put("uses_requested_tone", formattingPassed);
-		formattingIncumbent.put(TestCase.EXPECTED_OUTCOME, new PairCounts(35, 0, 2, 0));
+		formattingIncumbent.put("uses_requested_greeting", new PairCounts(35, 0, 2, 0));
 		PairCounts plainListPassed = new PairCounts(0, 8, 0, 0);
 		Map<String, PairCounts> plainListControl = new LinkedHashMap<>();
 		plainListControl.put("keeps_requested_tone", plainListPassed);
-		plainListControl.put(TestCase.EXPECTED_OUTCOME, plainListPassed);
+		plainListControl.put("keeps_requested_order", plainListPassed);
 		Map<String, PairCounts> plainListIncumbent = new LinkedHashMap<>();
 		plainListIncumbent.put("keeps_requested_tone", new PairCounts(0, 0, 8, 0));
-		plainListIncumbent.put(TestCase.EXPECTED_OUTCOME, new PairCounts(8, 0, 0, 0));
-		Campaign campaign = confirmed().certificationAttempt(1).boundaries(ReportBoundaries.paired()).
+		plainListIncumbent.put("keeps_requested_order", new PairCounts(8, 0, 0, 0));
+		Campaign campaign = confirmedWithComparisons().certificationAttempt(1).boundaries(ReportBoundaries.paired()).
 			cell("formatting", 200, 2).controlPairing("formatting", new Pairing(List.of(), formattingControl)).
 			incumbentPairing("formatting", new Pairing(List.of(), formattingIncumbent)).
 			cell("plain_list", 100, 0).controlPairing("plain_list", new Pairing(List.of(), plainListControl)).
@@ -1517,19 +1536,18 @@ public final class StatusReportTest
 		CellReport.Threshold formattingComparison = cell(report, "formatting").comparison();
 		requireThat(formattingComparison.incumbents(), "formattingIncumbents").isEqualTo(List.of(
 			new CellReport.PairedReport("uses_requested_tone", "passed", 37, 37, 30),
-			new CellReport.PairedReport(TestCase.EXPECTED_OUTCOME, "undecided", 37, 35, 37)));
+			new CellReport.PairedReport("uses_requested_greeting", "undecided", 37, 35, 37)));
 		requireThat(formattingComparison.cellState(), "formattingCell").isEqualTo("undecided");
 
 		CellReport.Threshold plainListComparison = cell(report, "plain_list").comparison();
 		requireThat(plainListComparison.incumbents(), "plainListIncumbents").isEqualTo(List.of(
 			new CellReport.PairedReport("keeps_requested_tone", "below incumbent", 8, 0, 8),
-			new CellReport.PairedReport(TestCase.EXPECTED_OUTCOME, "undecided", 8, 8, 8)));
+			new CellReport.PairedReport("keeps_requested_order", "undecided", 8, 8, 8)));
 		requireThat(plainListComparison.cellState(), "plainListCell").isEqualTo("below incumbent");
 
 		CellReport.Threshold safetyComparison = cell(report, "safety").comparison();
 		requireThat(safetyComparison.incumbents(), "safetyIncumbents").isEqualTo(List.of(
-			new CellReport.PairedReport("asks_before_deleting", "not run", 0, 0, 0),
-			new CellReport.PairedReport(TestCase.EXPECTED_OUTCOME, "not run", 0, 0, 0)));
+			new CellReport.PairedReport("asks_before_deleting", "not run", 0, 0, 0)));
 
 		JsonNode json = report.toJson(JsonMapper.builder().build()).path("cells").path(0).path("comparison");
 		JsonNode incumbent = json.path("incumbents").path(0);
@@ -1570,8 +1588,7 @@ public final class StatusReportTest
 
 		CellReport.Threshold formatting = cell(report, "formatting").comparison();
 		List<CellReport.PairedReport> implied = List.of(
-			new CellReport.PairedReport("uses_requested_tone", "implied by the minimum pass rate", 0, 0, 0),
-			new CellReport.PairedReport(TestCase.EXPECTED_OUTCOME, "implied by the minimum pass rate", 0, 0, 0));
+			new CellReport.PairedReport("uses_requested_tone", "implied by the minimum pass rate", 0, 0, 0));
 		requireThat(formatting.controls(), "formattingControls").isEqualTo(implied);
 		requireThat(formatting.incumbents(), "formattingIncumbents").isEqualTo(implied);
 		requireThat(formatting.cellState(), "formattingCell").isEqualTo("certified");

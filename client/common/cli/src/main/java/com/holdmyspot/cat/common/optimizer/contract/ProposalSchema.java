@@ -65,9 +65,10 @@ public final class ProposalSchema
 	 */
 	private static final String DRAFT = "draft";
 	/**
-	 * The property of a test that holds the built-in tool of the assertion that CAT adds.
+	 * Test properties retired when CAT stopped adding the expected outcome assertion.
 	 */
-	private static final String EXPECTED_OUTCOME_TOOL = "expected_outcome_tool";
+	private static final List<String> RETIRED_TEST_FIELDS = List.of("expected_outcome_tool",
+		"expected_outcome_judge_reason");
 	/**
 	 * The property of a test that holds, for each judged assertion, the replies that only just satisfy it and the
 	 * replies that only just fail it.
@@ -299,7 +300,56 @@ public final class ProposalSchema
 	public List<String> proposalFileViolations(JsonNode proposalFile)
 	{
 		requireThat(proposalFile, "proposalFile").isNotNull();
-		return proposalFileValidator.violations(proposalFile);
+		return authoredViolations(proposalFileValidator, proposalFile);
+	}
+
+	/**
+	 * Removes retired assertion data from a trusted copy of an earlier prompt test.
+	 *
+	 * @param test the recorded test to normalize in place
+	 */
+	public static void normalizeRecordedTest(ObjectNode test)
+	{
+		requireThat(test, "test").isNotNull();
+		test.remove(RETIRED_TEST_FIELDS);
+		if (!(test.get(NEAR_MISSES) instanceof ArrayNode nearMisses))
+			return;
+		for (int index = nearMisses.size() - 1; index >= 0; --index)
+		{
+			if (TestCase.EXPECTED_OUTCOME.equals(nearMisses.get(index).path("assertion_id").asString()))
+				nearMisses.remove(index);
+		}
+		if (nearMisses.isEmpty())
+			test.remove(NEAR_MISSES);
+	}
+
+	/**
+	 * Checks a new proposal, with specific repair instructions for retired test properties.
+	 *
+	 * @param schema the schema for this form of proposal
+	 * @param proposal the proposed contract
+	 * @return the validation problems
+	 */
+	private static List<String> authoredViolations(SchemaValidator schema, JsonNode proposal)
+	{
+		List<String> violations = schema.violations(proposal);
+		JsonNode tests = proposal.path("tests");
+		if (!tests.isArray())
+			return violations;
+		List<String> problems = new ArrayList<>();
+		for (int index = 0; index < tests.size(); ++index)
+		{
+			for (String field : RETIRED_TEST_FIELDS)
+			{
+				if (tests.get(index).has(field))
+				{
+					problems.add("$.tests[" + index + "]." + field + ": The expected outcome assertion was removed. " +
+						"Give its tool to an assertion of this test that names a requirement.");
+				}
+			}
+		}
+		problems.addAll(violations);
+		return problems;
 	}
 
 	/**
@@ -519,7 +569,18 @@ public final class ProposalSchema
 			if (root.path(TRIAL_PROFILES).has(EVALUATORS))
 				schema = evaluated;
 		}
-		List<String> violations = schema.violations(root);
+		List<String> violations;
+		if (evaluators.isEmpty())
+			violations = authoredViolations(schema, root);
+		else
+		{
+			for (JsonNode item : root.path("tests"))
+			{
+				if (item instanceof ObjectNode test)
+					normalizeRecordedTest(test);
+			}
+			violations = schema.violations(root);
+		}
 		if (!violations.isEmpty())
 			throw new InvalidProposalException(violations);
 
@@ -934,15 +995,6 @@ public final class ProposalSchema
 				assertionNode.put("evidence_scope", EnumNames.lowerCase(assertion.evidenceScope()));
 			assertionNode.put("requirement_id", mapped.requirementId());
 		}
-		// A test whose judge decides the assertion that CAT adds keeps the identity that it had before the property existed
-		test.expectedOutcomeTool().ifPresent(tool ->
-		{
-			ObjectNode toolNode = node.putObject(EXPECTED_OUTCOME_TOOL);
-			toolNode.put("tool", tool.tool());
-			toolNode.put("on_tool_failure", EnumNames.lowerCase(tool.onToolFailure()));
-		});
-		if (test.expectedOutcomeJudgeReason() != null)
-			node.put("expected_outcome_judge_reason", test.expectedOutcomeJudgeReason());
 		// A test without near misses keeps the identity that it had before the property existed
 		if (!test.nearMisses().isEmpty())
 		{
@@ -1292,9 +1344,6 @@ public final class ProposalSchema
 			List<TestCase> committed = committedTestCases;
 			Optional<PromptTest.Draft> draft = Optional.ofNullable(node.get(DRAFT)).
 				map(draftNode -> attempt(location + "." + DRAFT, () -> draft(draftNode)));
-			Optional<ExpectedOutcomeTool> expectedOutcomeTool = Optional.ofNullable(node.get(EXPECTED_OUTCOME_TOOL)).
-				map(toolNode -> attempt(location + "." + EXPECTED_OUTCOME_TOOL, () -> new ExpectedOutcomeTool(
-					text(toolNode, "tool"), EnumNames.parse(text(toolNode, "on_tool_failure"), OnToolFailure.class))));
 			List<NearMisses> nearMisses = List.of();
 			if (node.has(NEAR_MISSES))
 			{
@@ -1310,8 +1359,7 @@ public final class ProposalSchema
 				strings(node.get("absent_triggers")), text(node, "applicability"), strings(node.get("turns")),
 				Duration.ofSeconds(node.get("time_limit_seconds").asLong()), text(node, "expected_behavior"),
 				strings(node.get("uncovered_interactions")), variables, committed, testCases, assertions,
-				strings(node.get(REGRESSION_SCENARIOS)), workspaceFiles, draft, expectedOutcomeTool, described,
-				optionalText(node, "expected_outcome_judge_reason")));
+				strings(node.get(REGRESSION_SCENARIOS)), workspaceFiles, draft, described));
 			if (test == null)
 				return null;
 			// Delivery writes every prompt test as a scenario.md

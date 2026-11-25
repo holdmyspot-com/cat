@@ -11,7 +11,6 @@ import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.Dependent;
 import com.holdmyspot.cat.common.optimizer.contract.EvidenceScope;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
-import com.holdmyspot.cat.common.optimizer.contract.ExpectedOutcomeTool;
 import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFile;
 import com.holdmyspot.cat.common.optimizer.contract.InvalidProposalException;
 import com.holdmyspot.cat.common.optimizer.contract.JudgeProfile;
@@ -331,32 +330,49 @@ public final class ProposalSchemaTest
 	}
 
 	/**
-	 * Verifies that the built-in tool of the assertion that CAT adds survives writing the contract and reading it back,
-	 * that it is part of the contract's identity, that a contract without it writes no property for it, and that a tool
-	 * that names no built-in tool is rejected at the test's location.
+	 * Refuses both retired fields with directions to give a tool to a mapped assertion.
+	 */
+	@Test
+	public void refusesRetiredExpectedOutcomeFields()
+	{
+		ProposalSchema schema = schema();
+		ObjectNode proposal = (ObjectNode) json.readTree(schema.toJson(ContractFixtures.contract()));
+		ObjectNode test = (ObjectNode) proposal.get("tests").get(1);
+		test.putObject("expected_outcome_tool").put("tool", "pattern {{expected_outcome}}").
+			put("on_tool_failure", "judge");
+		test.put("expected_outcome_judge_reason", "The answer must express the expected outcome.");
+
+		String problems = String.join(" | ", rejection(json.writeValueAsString(proposal)).problems());
+
+		requireThat(problems, "problems").contains("$.tests[1].expected_outcome_tool").
+			contains("$.tests[1].expected_outcome_judge_reason").contains("assertion of this test that names a requirement");
+	}
+
+	/**
+	 * Reads the remaining test definition when a stored campaign includes retired assertion data.
 	 *
 	 * @throws InvalidProposalException if the stored contract is rejected
 	 */
 	@Test
-	public void expectedOutcomeToolIsStored() throws InvalidProposalException
+	public void readsRecordedLegacyAssertionData() throws InvalidProposalException
 	{
-		ObjectNode stored = (ObjectNode) json.readTree(schema().toJson(ContractFixtures.contract()));
-		requireThat(stored.get("tests").get(1).has("expected_outcome_tool"), "withoutTool").isFalse();
-		((ObjectNode) stored.get("tests").get(1)).putObject("expected_outcome_tool").
-			put("tool", "pattern {{expected_outcome}}").put("on_tool_failure", "judge");
-
-		Contract loaded = schema().parse(json.writeValueAsString(stored));
-
-		requireThat(loaded.findTest("plain_list").orElseThrow().expectedOutcomeTool(), "tool").isEqualTo(Optional.of(
-			new ExpectedOutcomeTool("pattern {{expected_outcome}}", OnToolFailure.JUDGE)));
-		requireThat(json.readTree(schema().toJson(loaded)), "roundTrip").isEqualTo(stored);
+		// Requirement: R-L17
 		ProposalSchema schema = schema();
-		requireThat(ContractIdentity.of(schema, loaded), "identity").
-			isNotEqualTo(ContractIdentity.of(schema, ContractFixtures.contract()));
+		Contract original = ContractFixtures.withNearMisses(ContractFixtures.contract());
+		ObjectNode stored = (ObjectNode) json.readTree(schema.toJson(original));
+		ObjectNode item = (ObjectNode) stored.get("tests").get(1);
+		item.putObject("expected_outcome_tool").put("tool", "pattern {{expected_outcome}}").
+			put("on_tool_failure", "judge");
+		item.put("expected_outcome_judge_reason", "The answer might use other words.");
+		ArrayNode nearMisses = (ArrayNode) item.get("near_misses");
+		ObjectNode historical = ((ObjectNode) nearMisses.get(0)).deepCopy();
+		nearMisses.add(historical.put("assertion_id", "expected_outcome"));
 
-		((ObjectNode) stored.get("tests").get(1).get("expected_outcome_tool")).put("tool", "no-such-check x");
-		requireThat(String.join(" | ", rejection(json.writeValueAsString(stored)).problems()), "unknownTool").
-			contains("$.tests[1].expected_outcome_tool").contains("There is no built-in tool named no-such-check");
+		Contract loaded = schema.parseRecorded(json.writeValueAsString(stored), Set.of(Harness.CLAUDE));
+
+		requireThat(loaded.tests(), "loadedTests").isEqualTo(original.tests());
+		requireThat(schema.toJson(loaded), "updatedProposal").doesNotContain("expected_outcome_tool").
+			doesNotContain("expected_outcome_judge_reason");
 	}
 
 	/**

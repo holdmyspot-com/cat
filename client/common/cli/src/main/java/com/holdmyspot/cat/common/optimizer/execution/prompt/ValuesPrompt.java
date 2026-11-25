@@ -10,7 +10,6 @@ import com.holdmyspot.cat.common.optimizer.contract.AddedTestCases;
 import com.holdmyspot.cat.common.optimizer.contract.Assertion;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.InvalidProposalException;
-import com.holdmyspot.cat.common.optimizer.contract.OnToolFailure;
 import com.holdmyspot.cat.common.optimizer.contract.Part;
 import com.holdmyspot.cat.common.optimizer.contract.ProposalSchema;
 import com.holdmyspot.cat.common.optimizer.contract.Requirement;
@@ -212,30 +211,15 @@ public final class ValuesPrompt implements ValuesProtocol
 		node.put("id", assertion.id());
 		node.put("statement", assertion.statement());
 		ArrayNode behaviors = json.createArrayNode();
-		Optional<String> requirementId = test.requirementId(assertion.id());
-		if (requirementId.isEmpty())
-		{
-			node.putNull("requirement");
-			// A tool whose failure fails the trial names the behavior of the failure; otherwise the judge decides
-			if (assertion.tool() != null && assertion.onToolFailure() == OnToolFailure.FAIL)
-				behaviors.add(assertion.builtInTool().orElseThrow().behavior());
-			else
-				behaviors.add(PromptTest.UNEXPECTED_OUTCOME);
-		}
+		String requirementId = test.requirementId(assertion.id());
+		Requirement requirement = contract.requirements().stream().
+			filter(candidate -> candidate.id().equals(requirementId)).findFirst().
+			orElseThrow(() -> new IllegalArgumentException("The contract has no requirement '" + requirementId + "'"));
+		node.putObject("requirement").put("id", requirement.id()).put("description", requirement.description());
+		if (assertion.tool() == null)
+			requirement.behaviors().forEach(behaviors::add);
 		else
-		{
-			Requirement requirement = contract.requirements().stream().
-				filter(candidate -> candidate.id().equals(requirementId.get())).findFirst().
-				orElseThrow(() -> new IllegalArgumentException("The contract has no requirement '" +
-					requirementId.get() + "'"));
-			node.putObject("requirement").
-				put("id", requirement.id()).
-				put("description", requirement.description());
-			if (assertion.tool() == null)
-				requirement.behaviors().forEach(behaviors::add);
-			else
-				behaviors.add(assertion.builtInTool().orElseThrow().behavior());
-		}
+			behaviors.add(assertion.builtInTool().orElseThrow().behavior());
 		node.set("behaviors", behaviors);
 	}
 

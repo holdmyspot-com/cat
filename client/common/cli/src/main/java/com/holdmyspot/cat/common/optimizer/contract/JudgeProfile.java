@@ -3,11 +3,10 @@ package com.holdmyspot.cat.common.optimizer.contract;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
- * The model, effort and instructions of the judge that decides a test's assertions that no built-in tool decides,
- * including the expected-outcome assertion that CAT adds to every test.
+ * The model, effort and instructions of the judge that decides a test's assertions that no built-in tool decides.
  * <p>
- * Built-in tools decide their assertions first; the judge receives their results as evidence but cannot override
- * them, and no judge runs when a tool failed.
+ * Built-in tools decide their assertions first. An actions judge receives their results as evidence and decides the
+ * assertions left to it.
  *
  * @param profile the role profile that the judge session runs under
  * @param prompt the instructions that the judge session receives

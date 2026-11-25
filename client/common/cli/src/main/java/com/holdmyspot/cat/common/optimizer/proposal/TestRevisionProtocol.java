@@ -170,6 +170,8 @@ public final class TestRevisionProtocol
 			case REVIEW_CHECKPOINT -> "A cell of the test reached its review checkpoint, and no test revision has " +
 				"examined the test since it last changed, so examine it against every rule even if no failure below " +
 				"points to a defect.";
+			case MISSING_ASSERTION_EXAMPLES -> "The confirmed test lacks required assertion examples. Return a " +
+				"revised test with the missing examples for its declared assertions.";
 		};
 		ArrayNode kinds = json.createArrayNode();
 		for (PromptAuthorKind kind : request.kinds())
@@ -396,7 +398,7 @@ public final class TestRevisionProtocol
 		String draftName = DraftDirectory.name(promptSystem);
 		DraftDirectory.restoreReturnedLinks(effects, draftName);
 		Path draft = effects.resolve(draftName);
-		return check.validate(output, effects, draft, confirmed.observedSources(), examined.profiles(),
+		Result outcome = check.validate(output, effects, draft, confirmed.observedSources(), examined.profiles(),
 			confirmed.contract().salt(), true, assessment ->
 			{
 				List<String> outside = outsideProblems(check, draft, draftName, confirmed.draft());
@@ -404,6 +406,13 @@ public final class TestRevisionProtocol
 					return outside;
 				return judged.apply(assessment);
 			});
+		if (outcome instanceof Result.Sound &&
+			examined.request().trigger() == TestRevisionRequest.Trigger.MISSING_ASSERTION_EXAMPLES)
+		{
+			throw new InvalidProposalException(List.of("Test `" + examined.request().test() +
+				"` still lacks required assertion examples. Return a revised test with its missing examples."));
+		}
+		return outcome;
 	}
 
 	/**

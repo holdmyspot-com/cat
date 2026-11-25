@@ -47,7 +47,7 @@ public record TestRevisionRequest(String test, Trigger trigger, List<PromptAutho
 	 * Returns a request that adds the kinds and failures of another request for the same test to this one's.
 	 *
 	 * @param other the other request
-	 * @return the merged request; it keeps this request's trigger unless the other one names a test defect
+	 * @return the merged request; missing examples take precedence over a defect, then a review checkpoint
 	 * @throws NullPointerException if {@code other} is null
 	 * @throws IllegalArgumentException if {@code other} names another test
 	 */
@@ -55,8 +55,11 @@ public record TestRevisionRequest(String test, Trigger trigger, List<PromptAutho
 	{
 		requireThat(other.test(), "other.test()").isEqualTo(test, "test");
 		Trigger merged = trigger;
-		if (other.trigger() == Trigger.TEST_DEFECT)
-			merged = Trigger.TEST_DEFECT;
+		if (other.trigger() == Trigger.MISSING_ASSERTION_EXAMPLES ||
+			(trigger == Trigger.REVIEW_CHECKPOINT && other.trigger() == Trigger.TEST_DEFECT))
+		{
+			merged = other.trigger();
+		}
 		List<PromptAuthorKind> mergedKinds = new ArrayList<>(kinds);
 		for (PromptAuthorKind kind : other.kinds())
 		{
@@ -81,6 +84,10 @@ public record TestRevisionRequest(String test, Trigger trigger, List<PromptAutho
 		 * A cell of the test reached its review checkpoint, and no test revision examined the test since it last
 		 * changed.
 		 */
-		REVIEW_CHECKPOINT
+		REVIEW_CHECKPOINT,
+		/**
+		 * The test was confirmed before examples were required for its declared assertions.
+		 */
+		MISSING_ASSERTION_EXAMPLES
 	}
 }

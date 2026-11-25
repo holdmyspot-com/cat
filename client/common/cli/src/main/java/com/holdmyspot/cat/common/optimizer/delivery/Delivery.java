@@ -425,7 +425,7 @@ public final class Delivery
 					files.put(examples.resolve(example.getKey()), example.getValue());
 				if (!test.location().created())
 					deletedFiles.addAll(obsoleteExampleFiles(selected.fork(), examples, draft));
-				files.put(scenarioPath, new FileContent(draft.scenario().getBytes(UTF_8)));
+				files.put(scenarioPath, new FileContent(test.scenarioFile(null).getBytes(UTF_8)));
 				continue;
 			}
 

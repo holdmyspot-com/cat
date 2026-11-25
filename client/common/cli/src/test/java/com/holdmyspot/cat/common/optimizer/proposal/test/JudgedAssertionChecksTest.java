@@ -72,7 +72,8 @@ public final class JudgedAssertionChecksTest
 		"AGENTS.md", null, List.of("unclear"));
 	private static final Map<String, Requirement> REQUIREMENTS = Map.of(REQUIREMENT.id(), REQUIREMENT);
 	private static final MappedAssertion RESPONSE = new MappedAssertion(new Assertion(ASSERTION_ID,
-		AssertionKind.EFFECT, null, OnToolFailure.FAIL, "The reply identifies the subject.", "Meaning needs a judge.",
+		AssertionKind.EFFECT, null, OnToolFailure.FAIL,
+		"The reply identifies the subject and gives this outcome. {{expected_outcome}}", "Meaning needs a judge.",
 		EvidenceScope.RESPONSE), REQUIREMENT.id());
 	private static final MappedAssertion ACTIONS = new MappedAssertion(new Assertion(ASSERTION_ID,
 		AssertionKind.EFFECT, null, OnToolFailure.FAIL, "The report contains the requested subject.",
@@ -128,7 +129,8 @@ public final class JudgedAssertionChecksTest
 					assertHeldOut(request);
 					requireThat(request.readOnly(), "readOnly").isEmpty();
 					requireThat(request.turns().getFirst(), "turn").contains("Find Budget.").contains(REPLY).
-						contains(EXPECTED_OUTCOME).doesNotContain(EXAMPLE_ID).doesNotContain("Report activity");
+						contains("The reply identifies the subject and gives this outcome. " + EXPECTED_OUTCOME).
+						doesNotContain(EXAMPLE_ID).doesNotContain("Report activity");
 					return completed(PASS);
 				});
 
@@ -354,8 +356,7 @@ public final class JudgedAssertionChecksTest
 		return new PromptTest(TEST_ID, new RiskRank(2), List.of(REQUIREMENT.id()), List.of(),
 			"The user asks about a report.", List.of("Find {{subject}}."), Duration.ofMinutes(1),
 			"Report the requested subject.", List.of(), List.of(new VariableDeclaration("subject", "The subject.")),
-			List.of(), List.of(CASE), assertions, List.of(), List.of(), Optional.of(draft), Optional.empty(), List.of(),
-			null);
+			List.of(), List.of(CASE), assertions, List.of(), List.of(), Optional.of(draft));
 	}
 
 	/**

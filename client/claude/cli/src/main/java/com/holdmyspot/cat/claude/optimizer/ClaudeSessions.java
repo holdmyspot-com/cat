@@ -89,7 +89,7 @@ public final class ClaudeSessions extends RunnerSessions
 	 * profile, prompts, rubric, decision rule or result schema, or the evidence a judge receives for the same harness
 	 * events, and register the new version with the hash of the judge profile and the rendered evidence section.
 	 */
-	private static final int JUDGE_VERSION = 15;
+	private static final int JUDGE_VERSION = 16;
 	/**
 	 * The managed settings files that an administrator installs on Linux and on macOS.
 	 */

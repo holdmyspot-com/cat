@@ -1998,8 +1998,8 @@ public final class GuardPilot
 		/**
 		 * Runs a completed trial's built-in tools, as {@link Driver} does for a campaign's trial: a tool that failed
 		 * under {@code on_tool_failure: fail} fails its own assertion and no other, so the trial still waits for a
-		 * judge of the assertions without a {@code tool}, the assertions whose failed tool leaves them to the judge,
-		 * and the assertion {@value TestCase#EXPECTED_OUTCOME} unless the test gives it a built-in tool. A trial whose
+		 * judge of the assertions without a {@code tool} and the assertions whose failed tool leaves them to the judge.
+		 * A trial whose
 		 * tools decide every assertion starts no judge. A tool that the trial's record cannot decide makes the trial a
 		 * failed trial with a recorded reason. Unreadable or unrenderable evidence makes it an infrastructure attempt.
 		 *

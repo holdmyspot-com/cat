@@ -12,8 +12,8 @@ import com.holdmyspot.cat.common.optimizer.port.TurnObserver;
 
 import java.io.IOException;
 import java.util.HashMap;
-import java.util.Map;
 import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
 
 /** Decides whether built-in assertions have fixed verdicts after a completed turn. */
@@ -41,9 +41,11 @@ public final class EarlyTrialEnd implements TurnObserver
 		this.test = test;
 		this.testCase = testCase;
 		this.sessions = sessions;
-		this.progress = progress;
 		this.receipt = receipt;
 		settledAssertions.putAll(progress.settledAssertions());
+		if (!settledAssertions.isEmpty())
+			settledAssertions.keySet().retainAll(test.allAssertions().stream().map(Assertion::id).toList());
+		this.progress = new TurnObserver.Progress(progress.completedTurn(), settledAssertions, progress.endedEarly());
 	}
 
 	/**

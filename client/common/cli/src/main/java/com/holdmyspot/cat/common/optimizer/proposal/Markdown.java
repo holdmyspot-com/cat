@@ -692,7 +692,7 @@ public final class Markdown
 
 	/**
 	 * Lists a test's requirements and its assertions: each declared one with its kind, the requirement it checks and
-	 * what decides it, the built-in tool, the judge or both, then the assertion that CAT adds.
+	 * what decides it, the built-in tool, the judge or both.
 	 *
 	 * @param test the prompt test
 	 * @param findings the findings about its judged assertions
@@ -711,11 +711,6 @@ public final class Markdown
 				append(assertion.statement()).append(' ');
 			decider(assertion);
 		}
-		Assertion expectedOutcome = test.expectedOutcome();
-		text.append("  - `").append(expectedOutcome.id()).append("` (").
-			append(EnumNames.lowerCase(expectedOutcome.kind())).append(", added by CAT): ").
-			append(expectedOutcome.statement()).append(' ');
-		decider(expectedOutcome);
 		text.append("- Judged assertions:\n");
 		boolean any = false;
 		for (MappedAssertion mapped : test.assertions())
@@ -737,18 +732,6 @@ public final class Markdown
 				findings.stream().filter(finding -> warnsAbout(finding, assertion)).forEach(this::reviewWarning);
 				any = true;
 			}
-		}
-		if (expectedOutcome.tool() == null || expectedOutcome.onToolFailure() == OnToolFailure.JUDGE)
-		{
-			// The outcome can be a file's state, so its judge reads what the agent did
-			text.append("  - `expected_outcome` (evidence scope `").append(EnumNames.lowerCase(EvidenceScope.ACTIONS)).
-				append("`): ");
-			if (test.expectedOutcomeJudgeReason() == null)
-				text.append("No built-in tool decides the expected outcome for this test.");
-			else
-				text.append(test.expectedOutcomeJudgeReason());
-			text.append('\n');
-			any = true;
 		}
 		if (!any)
 			text.append("  - None.\n");

@@ -63,15 +63,7 @@ final class ExampleChecks
 						"as `pass_<class>` or a failing example as `fail_<snake_case_name>`.");
 				}
 			}
-			if (!requiresExamples(assertion))
-				continue;
-			for (String id : passIds)
-			{
-				if (!ids.contains(id))
-					problems.add(prefix + " is missing example `" + id + "`.");
-			}
-			if (ids.stream().noneMatch(ExampleChecks::isFailingExample))
-				problems.add(prefix + " is missing a failing example named `fail_<snake_case_name>`.");
+			addMissingExamples(prefix, assertion, passIds, ids, problems);
 		}
 		for (String id : new TreeSet<>(examples.keySet()))
 			problems.add("Prompt test `" + testId + "` has assertion examples for undeclared assertion `" + id + "`.");
@@ -85,6 +77,52 @@ final class ExampleChecks
 			}
 		}
 		return problems;
+	}
+
+	/**
+	 * Checks the required example directory membership recorded with a prompt test.
+	 *
+	 * @param test the prompt test
+	 * @return each missing example, in test and boundary order
+	 */
+	static List<String> missingExamples(PromptTest test)
+	{
+		Set<String> directories = test.draft().map(PromptTest.Draft::exampleDirectories).orElseGet(Set::of);
+		Map<String, Set<String>> examples = exampleIds(directories);
+		Set<String> passIds = new TreeSet<>();
+		for (TestCase testCase : test.testCases())
+			passIds.add("pass_" + testCase.boundaryClass());
+		List<String> problems = new ArrayList<>();
+		for (MappedAssertion mapped : test.assertions())
+		{
+			Assertion assertion = mapped.assertion();
+			String prefix = "Prompt test `" + test.id() + "`, assertion `" + assertion.id() + "`";
+			addMissingExamples(prefix, assertion, passIds, examples.getOrDefault(assertion.id(), Set.of()), problems);
+		}
+		return List.copyOf(problems);
+	}
+
+	/**
+	 * Reports missing example directories for one declared assertion.
+	 *
+	 * @param prefix identifies the test and assertion
+	 * @param assertion the declared assertion
+	 * @param passIds the expected passing examples
+	 * @param ids the recorded example identifiers
+	 * @param problems receives diagnostics for missing examples
+	 */
+	private static void addMissingExamples(String prefix, Assertion assertion, Set<String> passIds, Set<String> ids,
+		List<String> problems)
+	{
+		if (!requiresExamples(assertion))
+			return;
+		for (String id : passIds)
+		{
+			if (!ids.contains(id))
+				problems.add(prefix + " is missing example `" + id + "`.");
+		}
+		if (ids.stream().noneMatch(ExampleChecks::isFailingExample))
+			problems.add(prefix + " is missing a failing example named `fail_<snake_case_name>`.");
 	}
 
 	/**

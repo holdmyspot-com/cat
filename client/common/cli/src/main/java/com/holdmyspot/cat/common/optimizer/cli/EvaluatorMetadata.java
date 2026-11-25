@@ -127,6 +127,20 @@ public record EvaluatorMetadata(Harness harness, ProfileEvidence profiles, Trial
 	}
 
 	/**
+	 * Returns the recorded metadata with a new judge version and the other runtime facts preserved.
+	 *
+	 * @param version the version observed during example migration
+	 * @return the updated metadata
+	 */
+	EvaluatorMetadata withJudgeVersion(int version)
+	{
+		EvaluatorRuntime updated = new EvaluatorRuntime(runtime.harnessVersion(), runtime.environmentVersion(),
+			runtime.environmentRelease(), version, runtime.reportsExitStatus(), runtime.login());
+		return new EvaluatorMetadata(harness, profiles, roleProfile, loaderFiles, loaderIdentity, loadedSources,
+			updated, refusal, observations, loaderPaths);
+	}
+
+	/**
 	 * Reads one complete report and closes its stream.
 	 *
 	 * @param json  the report mapper

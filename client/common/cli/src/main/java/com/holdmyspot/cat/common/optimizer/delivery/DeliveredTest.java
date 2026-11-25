@@ -13,6 +13,7 @@ import com.holdmyspot.cat.common.optimizer.contract.PromptTestFiles;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestLocations;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestLocations.Location;
 import com.holdmyspot.cat.common.optimizer.contract.Scenario;
+import com.holdmyspot.cat.common.optimizer.contract.ScenarioParser;
 import com.holdmyspot.cat.common.optimizer.contract.ScenarioFormatException;
 import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 
@@ -94,8 +95,8 @@ public record DeliveredTest(String id, Location location, Scenario scenario, Str
 
 	/**
 	 * Returns the {@value PromptTestFiles#SCENARIO} that delivery writes for this prompt test: the file of its draft
-	 * directory, if it has one; otherwise the recorded file rewritten when delivery edits a recorded scenario that the
-	 * scenario format reads, and a new file otherwise.
+	 * directory with the retired assertion omitted, if it has one. For an existing test without a draft, delivery
+	 * rewrites a recorded file that the scenario format reads. Otherwise, delivery writes a new file.
 	 *
 	 * @param recorded the content of the {@value PromptTestFiles#SCENARIO} recorded in this test's directory, or null
 	 *                 if there is none
@@ -104,7 +105,7 @@ public record DeliveredTest(String id, Location location, Scenario scenario, Str
 	public String scenarioFile(String recorded)
 	{
 		if (draft.isPresent())
-			return draft.get().scenario();
+			return ScenarioParser.withoutRetiredAssertion(draft.get().scenario());
 		if (!location.created() && recorded != null)
 		{
 			try

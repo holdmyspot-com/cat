@@ -9,11 +9,9 @@ import com.holdmyspot.cat.common.optimizer.contract.Cell;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.Dependent;
 import com.holdmyspot.cat.common.optimizer.contract.ExpectedBehavior;
-import com.holdmyspot.cat.common.optimizer.contract.ExpectedOutcomeTool;
 import com.holdmyspot.cat.common.optimizer.contract.JudgeProfile;
 import com.holdmyspot.cat.common.optimizer.contract.MappedAssertion;
 import com.holdmyspot.cat.common.optimizer.contract.NearMisses;
-import com.holdmyspot.cat.common.optimizer.contract.OnToolFailure;
 import com.holdmyspot.cat.common.optimizer.contract.ProfileCatalog;
 import com.holdmyspot.cat.common.optimizer.contract.Requirement;
 import com.holdmyspot.cat.common.optimizer.contract.RiskRank;
@@ -71,7 +69,8 @@ public final class ContractTest
 		List<TestCase> committedTestCases, List<TestCase> testCases)
 	{
 		return new PromptTest(id, new RiskRank(1), List.of("r1"), List.of(), "Always.", turns, Duration.ofMinutes(1),
-			"Complies.", List.of(), variables, committedTestCases, testCases, List.of(COMPLIES), List.of(), List.of());
+			"Complies.", List.of(), variables, committedTestCases, testCases, List.of(COMPLIES), List.of(), List.of(),
+			Optional.empty());
 	}
 
 	/**
@@ -176,10 +175,11 @@ public final class ContractTest
 		Requirement r1 = valid.requirements().get(0);
 		PromptTest orphaned = new PromptTest("orphaned", new RiskRank(1), List.of("r99"), List.of(), "Always.",
 			List.of("Hello."), Duration.ofMinutes(1), "Complies.", List.of(), List.of(), List.of(), List.of(),
-			List.of(ContractFixtures.judged("complies", AssertionKind.EFFECT, "Complies.", "r99")), List.of(), List.of());
+			List.of(ContractFixtures.judged("complies", AssertionKind.EFFECT, "Complies.", "r99")),
+			List.of(), List.of(), Optional.empty());
 		PromptTest duplicate = new PromptTest("formatting", new RiskRank(1), List.of("r1"), List.of(), "Always.",
 			List.of("Hello."), Duration.ofMinutes(1), "Complies.", List.of(), List.of(), List.of(), List.of(),
-			List.of(COMPLIES), List.of(), List.of());
+			List.of(COMPLIES), List.of(), List.of(), Optional.empty());
 		List<Runnable> inconsistent = List.of(
 			() -> new Contract(List.of(r1, r1, valid.requirements().get(1)), valid.tests(), valid.profiles(), valid.judge(),
 				valid.limitations(), valid.minimumPassRate(), valid.salt()),
@@ -292,18 +292,20 @@ public final class ContractTest
 			() -> test("t", List.of("Say {{tone}}."), List.of(tone), List.of(), List.of(new TestCase(
 				Map.of("tone", new TestValue.Generated("date", 1, 7L, Map.of())), "A reply."))),
 			() -> new PromptTest("t", new RiskRank(1), List.of("r1"), List.of(), "Always.", List.of("Hi."), Duration.ZERO,
-				"Complies.", List.of(), List.of(), List.of(), List.of(), List.of(COMPLIES), List.of(), List.of()),
+				"Complies.", List.of(), List.of(), List.of(), List.of(), List.of(COMPLIES), List.of(), List.of(),
+				Optional.empty()),
 			() -> new PromptTest("t", new RiskRank(1), List.of("r1"), List.of(), "Always.", List.of("Hi."),
 				Duration.ofMillis(1500), "Complies.", List.of(), List.of(), List.of(), List.of(), List.of(COMPLIES),
-				List.of(), List.of()),
+				List.of(), List.of(), Optional.empty()),
 			() -> new PromptTest("t", new RiskRank(1), List.of(), List.of(), "Always.", List.of("Hi."), Duration.ofMinutes(1),
-				"Complies.", List.of(), List.of(), List.of(), List.of(), List.of(COMPLIES), List.of(), List.of()),
+				"Complies.", List.of(), List.of(), List.of(), List.of(), List.of(COMPLIES), List.of(), List.of(),
+				Optional.empty()),
 			() -> new PromptTest("t", new RiskRank(1), List.of("r1"), List.of(), "", List.of("Hi."),
 				Duration.ofMinutes(1), "Complies.", List.of(), List.of(), List.of(), List.of(), List.of(COMPLIES),
-				List.of(), List.of()),
+				List.of(), List.of(), Optional.empty()),
 			() -> new PromptTest("t", new RiskRank(1), List.of("r1"), List.of(), "Always.", List.of("Hi."),
-				Duration.ofMinutes(1), "", List.of(), List.of(), List.of(), List.of(), List.of(COMPLIES), List.of(),
-				List.of()));
+				Duration.ofMinutes(1), "", List.of(), List.of(), List.of(), List.of(), List.of(COMPLIES),
+				List.of(), List.of(), Optional.empty()));
 		for (Runnable build : invalid)
 		{
 			boolean rejected = false;
@@ -331,7 +333,7 @@ public final class ContractTest
 		return new PromptTest("t", new RiskRank(1), List.of("r1", "r2"), List.of(), "Always.", List.of("Clean {{dir}}."),
 			Duration.ofMinutes(1), "Complies.", List.of(), List.of(new VariableDeclaration("dir", "The directory.")),
 			List.of(), List.of(ContractFixtures.testCase("cleans build", Map.of("dir", "build"))), assertions,
-			List.of(), List.of());
+			List.of(), List.of(), Optional.empty());
 	}
 
 	/**
@@ -358,7 +360,7 @@ public final class ContractTest
 	@Test
 	public void assertionsMustFitTheirTest()
 	{
-		// Requirement: R-C8
+		// Requirement: R-L17
 		MappedAssertion tone = mapped("tone", AssertionKind.EFFECT, null, "The reply keeps the tone.", "r1");
 		MappedAssertion kept = mapped("kept", AssertionKind.GUARD, "file-exists {{dir}}/keep.txt",
 			"The {{dir}} directory keeps keep.txt.", "r2");
@@ -376,7 +378,7 @@ public final class ContractTest
 				Duration.ofMinutes(1), "Complies.", List.of(),
 				List.of(new VariableDeclaration("dir", "The directory.")), List.of(),
 				List.of(ContractFixtures.testCase("cleans up", Map.of("dir", "../up"))), List.of(tone, kept),
-				List.of(), List.of()));
+				List.of(), List.of(), Optional.empty()));
 		for (Runnable build : invalid)
 		{
 			boolean rejected = false;
@@ -393,28 +395,22 @@ public final class ContractTest
 	}
 
 	/**
-	 * Verifies that CAT adds the expected-outcome assertion after a test's declared assertions, as a guard only when
-	 * every declared assertion is a guard, that the judge decides it with every declared assertion that has no
-	 * {@code tool:} line, and that it checks no requirement.
+	 * Verifies that each trial assertion is declared by its test and maps to the requirement it checks.
 	 */
 	@Test
-	public void expectedOutcomeIsAddedToEveryTest()
+	public void usesOnlyDeclaredMappedAssertions()
 	{
-		// Requirement: R-C8
+		// Requirement: R-L17
 		MappedAssertion tone = mapped("tone", AssertionKind.EFFECT, null, "The reply keeps the tone.", "r1");
 		MappedAssertion kept = mapped("kept", AssertionKind.GUARD, "file-exists {{dir}}/keep.txt",
 			"The {{dir}} directory keeps keep.txt.", "r2");
-		MappedAssertion asked = mapped("asked", AssertionKind.GUARD, null, "The reply asks first.", "r1");
 
-		PromptTest mixed = asserting(List.of(tone, kept));
-		requireThat(mixed.allAssertions(), "allAssertions").isEqualTo(List.of(tone.assertion(), kept.assertion(),
-			Assertion.expectedOutcome(AssertionKind.EFFECT)));
-		requireThat(mixed.judgedAssertions(), "judgedAssertions").isEqualTo(List.of(tone.assertion(),
-			Assertion.expectedOutcome(AssertionKind.EFFECT)));
-		requireThat(mixed.requirementId("kept").orElseThrow(), "kept").isEqualTo("r2");
-		requireThat(mixed.requirementId(TestCase.EXPECTED_OUTCOME), "expectedOutcome").isEmpty();
-		requireThat(asserting(List.of(asked, kept)).expectedOutcome().kind(), "guards").
-			isEqualTo(AssertionKind.GUARD);
+		PromptTest test = asserting(List.of(tone, kept));
+
+		requireThat(test.allAssertions(), "trialAssertions").isEqualTo(List.of(tone.assertion(), kept.assertion()));
+		requireThat(test.judgedAssertions(), "judgedAssertions").isEqualTo(List.of(tone.assertion()));
+		requireThat(test.requirementId(tone.assertion().id()), "toneRequirement").isEqualTo("r1");
+		requireThat(test.requirementId(kept.assertion().id()), "keptRequirement").isEqualTo("r2");
 	}
 
 	/**
@@ -429,114 +425,25 @@ public final class ContractTest
 		MappedAssertion tone = mapped("tone", AssertionKind.EFFECT, null, "The reply keeps the tone.", "r1");
 		MappedAssertion kept = mapped("kept", AssertionKind.GUARD, "file-exists {{dir}}/keep.txt",
 			"The {{dir}} directory keeps keep.txt.", "r2");
-		withNearMisses(List.of(tone, kept), Optional.empty(), "kept");
-	}
-
-	/**
-	 * Verifies that a test cannot have near misses for {@code expected_outcome} when its built-in tool decides it
-	 * without a judge fallback, and that the refusal names the test and the assertion.
-	 */
-	@Test(expectedExceptions = IllegalArgumentException.class,
-		expectedExceptionsMessageRegExp = ".*Test 't' has near misses for the assertion 'expected_outcome', which " +
-			"its judge does not decide.*")
-	public void toolOutcomeNearMissesAreRefused()
-	{
-		MappedAssertion tone = mapped("tone", AssertionKind.EFFECT, null, "The reply keeps the tone.", "r1");
-		withNearMisses(List.of(tone), Optional.of(new ExpectedOutcomeTool("exact-text {{expected_outcome}}")),
-			TestCase.EXPECTED_OUTCOME);
-	}
-
-	/**
-	 * Verifies that a test may give the assertion {@code expected_outcome} a built-in tool: it is then no longer an
-	 * assertion without a tool, CAT still supplies its description and kind, the tool's {@code on_tool_failure}
-	 * applies, and the tool must suit the test.
-	 */
-	@Test
-	public void expectedOutcomeMayHaveABuiltInTool()
-	{
-		MappedAssertion tone = mapped("tone", AssertionKind.EFFECT, null, "The reply keeps the tone.", "r1");
-		MappedAssertion kept = mapped("kept", AssertionKind.GUARD, "file-exists {{dir}}/keep.txt",
-			"The {{dir}} directory keeps keep.txt.", "r2");
-		MappedAssertion made = mapped("made", AssertionKind.GUARD, "file-exists {{dir}}/out.txt",
-			"The {{dir}} directory keeps out.txt.", "r1");
-
-		PromptTest failing = withExpectedOutcomeTool(List.of(tone, kept),
-			new ExpectedOutcomeTool("exact-text {{expected_outcome}}"));
-		requireThat(failing.judgedAssertions(), "failingJudged").isEqualTo(List.of(tone.assertion()));
-		requireThat(failing.expectedOutcome().id(), "failingId").isEqualTo(TestCase.EXPECTED_OUTCOME);
-		requireThat(failing.expectedOutcome().builtInTool().isPresent(), "failingHasTool").isTrue();
-		requireThat(failing.expectedOutcome().statement(), "failingStatement").
-			isEqualTo(asserting(List.of(tone, kept)).expectedOutcome().statement());
-
-		PromptTest deferring = withExpectedOutcomeTool(List.of(tone, kept),
-			new ExpectedOutcomeTool("exact-text {{expected_outcome}}", OnToolFailure.JUDGE));
-		requireThat(deferring.judgedAssertions(), "deferringJudged").isEqualTo(
-			List.of(tone.assertion(), deferring.expectedOutcome()));
-		requireThat(deferring.expectedOutcome().onToolFailure(), "deferringOnToolFailure").
-			isEqualTo(OnToolFailure.JUDGE);
-
-		PromptTest allByTool = withExpectedOutcomeTool(List.of(made, kept),
-			new ExpectedOutcomeTool("exact-text {{expected_outcome}}"));
-		requireThat(allByTool.judgedAssertions(), "allByToolJudged").isEmpty();
-		requireThat(asserting(List.of(made, kept)).judgedAssertions(), "withoutToolJudged").
-			isEqualTo(List.of(Assertion.expectedOutcome(AssertionKind.GUARD)));
-
-		boolean undeclared = false;
-		try
-		{
-			withExpectedOutcomeTool(List.of(made, kept), new ExpectedOutcomeTool("exact-text {{missing}}"));
-		}
-		catch (IllegalArgumentException e)
-		{
-			undeclared = true;
-			requireThat(e.getMessage(), "message").contains("{{missing}}");
-		}
-		requireThat(undeclared, "undeclared").isTrue();
-		boolean unknownTool = false;
-		try
-		{
-			new ExpectedOutcomeTool("no-such-tool x");
-		}
-		catch (IllegalArgumentException _)
-		{
-			unknownTool = true;
-		}
-		requireThat(unknownTool, "unknownTool").isTrue();
-	}
-
-	/**
-	 * Returns a test whose assertion {@code expected_outcome} has a built-in tool.
-	 *
-	 * @param assertions the declared assertions
-	 * @param tool the built-in tool of {@code expected_outcome}
-	 * @return the test
-	 */
-	private static PromptTest withExpectedOutcomeTool(List<MappedAssertion> assertions, ExpectedOutcomeTool tool)
-	{
-		return new PromptTest("t", new RiskRank(1), List.of("r1", "r2"), List.of(), "Always.", List.of("Clean {{dir}}."),
-			Duration.ofMinutes(1), "Complies.", List.of(), List.of(new VariableDeclaration("dir", "The directory.")),
-			List.of(), List.of(ContractFixtures.testCase("cleans build", Map.of("dir", "build"))), assertions,
-			List.of(), List.of(), Optional.empty(), Optional.of(tool));
+		withNearMisses(List.of(tone, kept), "kept");
 	}
 
 	/**
 	 * Returns a test with near misses for one assertion.
 	 *
-	 * @param assertions          the declared assertions
-	 * @param expectedOutcomeTool the built-in tool of {@code expected_outcome}, or empty
-	 * @param nearMissAssertion   the assertion that the near misses are for
+	 * @param assertions        the declared assertions
+	 * @param nearMissAssertion the assertion that the near misses are for
 	 * @return the test
 	 * @throws IllegalArgumentException if the judge does not decide {@code nearMissAssertion}
 	 */
-	private static PromptTest withNearMisses(List<MappedAssertion> assertions,
-		Optional<ExpectedOutcomeTool> expectedOutcomeTool, String nearMissAssertion)
+	private static PromptTest withNearMisses(List<MappedAssertion> assertions, String nearMissAssertion)
 	{
 		NearMisses nearMisses = new NearMisses(nearMissAssertion, List.of("Just meets (1)", "Just meets (2)"),
 			List.of("Just misses (1)", "Just misses (2)"));
 		return new PromptTest("t", new RiskRank(1), List.of("r1", "r2"), List.of(), "Always.", List.of("Clean {{dir}}."),
 			Duration.ofMinutes(1), "Complies.", List.of(), List.of(new VariableDeclaration("dir", "The directory.")),
 			List.of(), List.of(ContractFixtures.testCase("cleans build", Map.of("dir", "build"))), assertions,
-			List.of(), List.of(), Optional.empty(), expectedOutcomeTool, List.of(nearMisses));
+			List.of(), List.of(), Optional.empty(), List.of(nearMisses));
 	}
 
 	/**
@@ -554,7 +461,7 @@ public final class ContractTest
 			() -> new Requirement("r", "Asks first.", "CLAUDE.md", " ", BEHAVIORS),
 			() -> new PromptTest("t", new RiskRank(1), List.of("r1"), List.of(" "), "Always.", List.of("Hi."),
 				Duration.ofMinutes(1), "Complies.", List.of(), List.of(), List.of(), List.of(), List.of(COMPLIES),
-				List.of(), List.of()));
+				List.of(), List.of(), Optional.empty()));
 		for (Runnable build : invalid)
 		{
 			boolean rejected = false;
@@ -638,7 +545,7 @@ public final class ContractTest
 			formatting.absentTriggers(), formatting.applicability(), formatting.turns(), formatting.timeLimit(),
 			formatting.expectedBehaviour(), formatting.uncoveredInteractions(), formatting.variables(),
 			formatting.committedTestCases(), formatting.testCases(), formatting.assertions(),
-			formatting.regressionScenarios(), List.of());
+			formatting.regressionScenarios(), List.of(), Optional.empty());
 		List<Runnable> inconsistent = List.of(
 			() -> new Contract(valid.requirements(), valid.tests(), cells(formatting), valid.judge(),
 				valid.limitations(), valid.minimumPassRate(), valid.salt()),

@@ -791,10 +791,8 @@ public final class TrialAdoption
 		{
 			String testId = draft.contract().findCell(cell).orElseThrow().testId();
 			PromptTest test = draft.contract().findTest(testId).orElseThrow();
-			boolean allToolDecided = test.expectedOutcomeTool().filter(tool ->
-				tool.onToolFailure() == OnToolFailure.FAIL).isPresent() && test.assertions().stream().
-				allMatch(mapped -> mapped.assertion().tool() != null &&
-					mapped.assertion().onToolFailure() == OnToolFailure.FAIL);
+			boolean allToolDecided = test.assertions().stream().allMatch(mapped ->
+				mapped.assertion().tool() != null && mapped.assertion().onToolFailure() == OnToolFailure.FAIL);
 			if (allToolDecided)
 				limits.put(cell, 6);
 		}

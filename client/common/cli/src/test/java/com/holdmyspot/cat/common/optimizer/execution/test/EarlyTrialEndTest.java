@@ -6,7 +6,6 @@ import com.holdmyspot.cat.common.optimizer.contract.Assertion;
 import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
 import com.holdmyspot.cat.common.optimizer.contract.BuiltInTool;
 import com.holdmyspot.cat.common.optimizer.contract.BuiltInToolResult;
-import com.holdmyspot.cat.common.optimizer.contract.ExpectedOutcomeTool;
 import com.holdmyspot.cat.common.optimizer.contract.MappedAssertion;
 import com.holdmyspot.cat.common.optimizer.contract.OnToolFailure;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
@@ -26,7 +25,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import org.testng.annotations.Test;
 
 /** Checks when built-in assertion verdicts can no longer change. */
@@ -83,8 +81,9 @@ public final class EarlyTrialEndTest
 		requireThat(EarlyTrialEnd.isSettled(scoped, scopedFailure, 2), "count_scope_complete").isTrue();
 	}
 
-	/** A resumed observer keeps earlier settlement turns and receipts its new end decision before returning it. */
+	/** A resumed observer keeps prior settlements and receipts the decision when the last declared tool settles. */
 	// Requirement: R-E25
+	// Requirement: R-L17
 	@Test
 	public void resumesProgressAndRecordsTheDecision() throws IOException
 	{
@@ -104,7 +103,7 @@ public final class EarlyTrialEndTest
 
 		requireThat(endedEarly, "endedEarly").isTrue();
 		requireThat(observer.progress(), "progress").isEqualTo(new TurnObserver.Progress(2,
-			Map.of("reply", 1, TestCase.EXPECTED_OUTCOME, 2), true));
+			Map.of("reply", 1, "second_reply", 2), true));
 		requireThat(receipts, "receipts").isEqualTo(List.of(observer.progress()));
 		requireThat(order, "order").isEqualTo(List.of("receipt", "decision"));
 	}
@@ -130,20 +129,22 @@ public final class EarlyTrialEndTest
 	}
 
 	/**
-	 * Creates a test with one prior count settlement and an expected outcome settled on the next turn.
+	 * Creates a test with one prior count settlement and a second reply that settles before its final turn.
 	 *
-	 * @return a two-turn built-in assertion test
+	 * @return a three-turn built-in assertion test
 	 */
 	private static PromptTest progressTest()
 	{
 		TestCase testCase = new TestCase(Map.of("request", new TestValue.Text("Reply with ok.")), "done");
 		MappedAssertion reply = new MappedAssertion(new Assertion("reply", AssertionKind.EFFECT,
 			"count ok 0 0", "There is no ok reply."), "reply_required");
+		MappedAssertion secondReply = new MappedAssertion(new Assertion("second_reply", AssertionKind.EFFECT,
+			"exact-text turn=2 done", "The second reply is done."), "reply_required");
 		return new PromptTest("progress", new RiskRank(1), List.of("reply_required"), List.of(),
-			"A reply is requested.", List.of("{{request}}", "Reply again."), Duration.ofSeconds(30), "Replies with ok.",
+			"A reply is requested.", List.of("{{request}}", "Reply again.", "Close."), Duration.ofSeconds(30),
+			"Replies with ok.",
 			List.of(), List.of(new VariableDeclaration("request", "The first user turn.")), List.of(), List.of(testCase),
-			List.of(reply), List.of(), List.of(), Optional.empty(), Optional.of(new ExpectedOutcomeTool(
-				"exact-text turn=2 done")));
+			List.of(reply, secondReply), List.of(), List.of());
 	}
 
 	/**
@@ -161,7 +162,7 @@ public final class EarlyTrialEndTest
 		return new PromptTest("command", new RiskRank(1), List.of("command_succeeds"), List.of(),
 			"A command is requested.", List.of("{{request}}", "Continue.", "Continue again."), Duration.ofSeconds(30),
 			"Runs true.", List.of(), List.of(new VariableDeclaration("request", "The user turn.")), List.of(),
-			List.of(testCase), List.of(command, reply), List.of(), List.of(), Optional.empty(), Optional.empty());
+			List.of(testCase), List.of(command, reply), List.of(), List.of());
 	}
 
 	/**

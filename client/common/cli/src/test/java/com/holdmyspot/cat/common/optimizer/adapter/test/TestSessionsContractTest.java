@@ -11,8 +11,9 @@ import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
 import com.holdmyspot.cat.common.optimizer.contract.Assertion;
 import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
 import com.holdmyspot.cat.common.optimizer.contract.BuiltInToolResult;
-import com.holdmyspot.cat.common.optimizer.contract.ExpectedOutcomeTool;
+import com.holdmyspot.cat.common.optimizer.contract.EvidenceScope;
 import com.holdmyspot.cat.common.optimizer.contract.MappedAssertion;
+import com.holdmyspot.cat.common.optimizer.contract.OnToolFailure;
 import com.holdmyspot.cat.common.optimizer.contract.Part;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.RiskRank;
@@ -177,7 +178,7 @@ public final class TestSessionsContractTest
 			requireThat(completed.endedEarly(), "endedEarly").isTrue();
 			requireThat(completed.turnsNotRun(), "turnsNotRun").isEqualTo(List.of(2));
 			requireThat(completed.settledAssertions(), "settledAssertions").
-				isEqualTo(Map.of("reply", 1, TestCase.EXPECTED_OUTCOME, 1));
+				isEqualTo(Map.of("reply", 1));
 		}
 	}
 
@@ -241,9 +242,9 @@ public final class TestSessionsContractTest
 			requireThat(completed.endedEarly(), "endedEarly").isTrue();
 			requireThat(completed.turnsNotRun(), "turnsNotRun").isEqualTo(List.of(2));
 			requireThat(completed.settledAssertions(), "settledAssertions").
-				isEqualTo(Map.of("reply", 1, TestCase.EXPECTED_OUTCOME, 1));
+				isEqualTo(Map.of("reply", 1));
 			requireThat(test.decide(test.testCases().getFirst(), TrialEvidence.read(subject.port(), completed)).
-				stream().map(BuiltInToolResult::passed).toList(), "finalToolVerdicts").isEqualTo(List.of(false, false));
+				stream().map(BuiltInToolResult::passed).toList(), "finalToolVerdicts").isEqualTo(List.of(false));
 		}
 	}
 
@@ -278,12 +279,12 @@ public final class TestSessionsContractTest
 			requireThat(completed.turnsNotRun(), "turnsNotRun").isEmpty();
 			requireThat(completed.settledAssertions(), "settledAssertions").isEmpty();
 			requireThat(test.decide(test.testCases().getFirst(), TrialEvidence.read(subject.port(), completed)).
-				stream().map(BuiltInToolResult::passed).toList(), "finalToolVerdicts").isEqualTo(List.of(true, true));
+				stream().map(BuiltInToolResult::passed).toList(), "finalToolVerdicts").isEqualTo(List.of(true));
 		}
 	}
 
 	/**
-	 * A settled reply check cannot skip a later turn while the expected outcome still needs whole-trial judgment.
+	 * A settled reply check cannot skip a later turn while a declared assertion needs whole-trial judgment.
 	 *
 	 * @throws IOException if the trial evidence cannot be prepared or read
 	 * @throws InterruptedException if waiting for completion is interrupted
@@ -292,7 +293,7 @@ public final class TestSessionsContractTest
 	 */
 	// Requirement: R-E25
 	@Test(timeOut = 60_000)
-	public void judgedOutcomeRunsRemainingTurns()
+	public void judgedAssertionRunsRemainingTurns()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		List<String> requests = new ArrayList<>();
@@ -301,8 +302,11 @@ public final class TestSessionsContractTest
 				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--results")), TestSessions.HARNESS,
 					List.of(quickTurn(), quickTurn()), input, output, requests), new CountDownLatch(0)))
 		{
-			SessionResult.Completed completed = completeObservedTrial(subject,
-				trialTest("exact-text turn=1 ok", Optional.empty()));
+			Assertion followUp = new Assertion("follow_up", AssertionKind.EFFECT, null, OnToolFailure.FAIL,
+				"The follow-up reply uses context from the first user turn.",
+				"A tool cannot decide whether the follow-up uses that context.", EvidenceScope.RESPONSE);
+			PromptTest test = trialTest("exact-text turn=1 ok", List.of(new MappedAssertion(followUp, "reply_required")));
+			SessionResult.Completed completed = completeObservedTrial(subject, test);
 
 			requireThat(requests.size(), "requestedTurnsSentToHarness").isEqualTo(2);
 			requireThat(completed.responses(), "responses").isEqualTo(List.of(List.of(REPLY), List.of(REPLY)));
@@ -312,32 +316,34 @@ public final class TestSessionsContractTest
 	}
 
 	/**
-	 * Creates a two-turn test whose declared assertion and expected outcome use the given reply check.
+	 * Creates a two-turn test with one declared reply check.
 	 *
 	 * @param tool the built-in reply check
 	 * @return the test
 	 */
 	private static PromptTest trialTest(String tool)
 	{
-		return trialTest(tool, Optional.of(new ExpectedOutcomeTool(tool)));
+		return trialTest(tool, List.of());
 	}
 
 	/**
-	 * Creates a two-turn test whose expected outcome is either tool-decided or left to the judge.
+	 * Creates a two-turn test with a declared reply check and any additional assertions.
 	 *
-	 * @param tool the declared assertion's built-in check
-	 * @param expectedOutcomeTool the added expected-outcome assertion's tool, or empty for a judged assertion
+	 * @param tool                 the reply check's built-in tool
+	 * @param additionalAssertions other assertions declared by the test
 	 * @return the test
 	 */
-	private static PromptTest trialTest(String tool, Optional<ExpectedOutcomeTool> expectedOutcomeTool)
+	private static PromptTest trialTest(String tool, List<MappedAssertion> additionalAssertions)
 	{
 		TestCase testCase = new TestCase(Map.of("request", new TestValue.Text("Reply with ok.")), REPLY);
 		MappedAssertion reply = new MappedAssertion(new Assertion("reply", AssertionKind.EFFECT, tool,
 			"The reply is ok."), "reply_required");
+		List<MappedAssertion> assertions = new ArrayList<>(List.of(reply));
+		assertions.addAll(additionalAssertions);
 		return new PromptTest("reply", new RiskRank(1), List.of("reply_required"), List.of(), "A reply is requested.",
 			List.of("{{request}}", "Reply again."), Duration.ofSeconds(30), "Replies with ok.", List.of(),
 			List.of(new VariableDeclaration("request", "The first user turn.")), List.of(), List.of(testCase),
-			List.of(reply), List.of(), List.of(), Optional.empty(), expectedOutcomeTool);
+			assertions, List.of(), List.of(), Optional.empty());
 	}
 
 	/**

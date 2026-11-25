@@ -43,8 +43,8 @@ only common correct replies, so decide that assertion from its statement.
 
 ### Replies
 
-The test case, as JSON: its test, the variable values it drew, its expected outcome, the exact turns the trial agent
-received, and the expected compliant behaviour.
+The test case JSON gives the test name, the variable values, the exact turns the trial agent received and the
+expected compliant behaviour.
 
 {{test_case}}
 

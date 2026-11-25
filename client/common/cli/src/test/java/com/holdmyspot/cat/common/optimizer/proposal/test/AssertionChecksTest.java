@@ -14,7 +14,6 @@ import com.holdmyspot.cat.common.optimizer.contract.PromptTestFiles;
 import com.holdmyspot.cat.common.optimizer.contract.Requirement;
 import com.holdmyspot.cat.common.optimizer.contract.RiskRank;
 import com.holdmyspot.cat.common.optimizer.contract.Scenario;
-import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.contract.VariableDeclaration;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
 import com.holdmyspot.cat.common.optimizer.execution.AssertionVerdict;
@@ -60,7 +59,7 @@ public final class AssertionChecksTest
 
 	/**
 	 * Verifies that the selector keeps both examples of a tool-free assertion and a failed tool result under
-	 * `judge`. It skips tool decisions and the implicit outcome assertion.
+	 * {@code judge}. It skips tool decisions.
 	 */
 	@Test
 	public void selectsExamplesThatNeedTheJudge()
@@ -73,7 +72,7 @@ public final class AssertionChecksTest
 		List<JudgedExample> selected = AssertionChecks.selectExamples(proposal.contract(), checks);
 
 		requireThat(selected.stream().map(JudgedExample::check).toList(), "selectedChecks").
-			isEqualTo(List.of(checks.get(0), checks.get(1), checks.get(3), checks.get(7), checks.get(8)));
+			isEqualTo(List.of(checks.get(0), checks.get(1), checks.get(3), checks.get(6), checks.get(7)));
 		JudgedExample response = selected.getFirst();
 		requireThat(response.assertion().scope(), "responseScope").isEqualTo(EvidenceScope.RESPONSE);
 		requireThat(response.assertion().requirement(), "responseRequirement").
@@ -243,7 +242,6 @@ public final class AssertionChecksTest
 			new AssertionExampleCheck(FORMATTING, REPORT_MENTIONED, FAIL_MISSING, "pattern", false),
 			new AssertionExampleCheck(FORMATTING, PLAIN_TEXT, PASS_REGULAR, "exact-text", true),
 			new AssertionExampleCheck(FORMATTING, PLAIN_TEXT, FAIL_MISSING, "exact-text", false),
-			new AssertionExampleCheck(FORMATTING, TestCase.EXPECTED_OUTCOME, PASS_REGULAR, null, false),
 			new AssertionExampleCheck(SECOND_TEST, READABLE, PASS_REGULAR, null, false),
 			new AssertionExampleCheck(SECOND_TEST, READABLE, FAIL_MISSING, null, false));
 		return new DerivedProposal(contract, List.of(), List.of(), List.of(), "none", "{}", Path.of("draft"),

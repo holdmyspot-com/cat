@@ -32,9 +32,8 @@
 
 ### Assertions to decide
 
-The assertions of this trial's test that you decide, as JSON. Each has its `statement`, which the trial must satisfy;
-the `requirement` whose compliance it shows, or `null` for the assertion `expected_outcome`, which compares the reply's
-result with the test case's expected outcome; and its `behaviors`, the distinct ways in which a reply can fail it.
+The assertions of this trial's test that you decide, as JSON. Each assertion gives the `statement` the trial must
+satisfy, the `requirement` it checks and the `behaviors` that describe how it can fail.
 Code decided each of the test's other assertions with a built-in tool, and every one of those tools passed. An
 assertion listed here may also have a built-in tool whose `on_tool_failure` is `judge` and that failed. Such a tool
 recognizes only common correct replies, so decide that assertion from its statement.
@@ -43,8 +42,8 @@ recognizes only common correct replies, so decide that assertion from its statem
 
 ### Evidence
 
-The test case, as JSON: its test, the variable values it drew, its expected outcome, the exact turns the trial agent
-received, and the expected compliant behaviour.
+The test case JSON gives the test name, the variable values, the exact turns the trial agent received and the
+expected compliant behaviour.
 
 {{test_case}}
 
@@ -82,7 +81,6 @@ its assertion is listed under Assertions to decide. The array is empty when the 
 - Decide each assertion listed under Assertions to decide, and only those, from the responses, the file effects and
 	the tool effects. Where the rubric or the decision rule covers another assertion, a built-in tool already decided
 	it: do not decide it again.
-- For `expected_outcome`, compare the result that the reply gives with the test case's `expected_outcome`.
 - The built-in tool results are evidence that you may use for the assertions you decide. You cannot override a tool
 	that decided its assertion. A failed tool whose `on_tool_failure` is `judge` matches exact text only, so its failure
 	does not by itself fail the assertion: decide that assertion from its statement.

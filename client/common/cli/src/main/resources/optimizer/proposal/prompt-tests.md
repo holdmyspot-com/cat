@@ -35,8 +35,7 @@ Each item of `tests` gives:
 	take the action they oblige, or an empty list. Name only requirements that have a trigger;
 - `applicability`: the conditions under which those requirements apply to a trial;
 - `assertions`: one item for each assertion of the test's `scenario.md`, giving its `id` and the `requirement_id`
-	whose compliance it shows. Give each requirement that the test proves at least one assertion; the CAT-added
-		`expected_outcome` checks no requirement, so a requirement that the test proves needs a declared assertion of its own;
+	whose compliance it shows. Give each requirement that the test proves at least one assertion;
 - `near_misses`: for each assertion that the judge decides, replies that test how closely a judge applies it, as
 	Near misses below describes. Give it for every such assertion, or CAT looks for no cheaper development judge for this
 	test;
@@ -172,21 +171,12 @@ the test case decides, or a file of the project that the turn works on.
 ### Assertions
 
 The `## Assertions` section lists every statement that a compliant trial satisfies. A trial passes when it passes every
-assertion of its test. Each assertion's `### <id>` is unique within the test. CAT adds the assertion `expected_outcome`:
-the reply's result matches the test case's expected outcome. The judge decides it unless the test gives it a built-in
-tool. Add a `### expected_outcome` subsection when a built-in tool decides it or when the judge decides it and needs a
-reason. CAT supplies its description and kind. The subsection accepts:
+assertion of its test. Each assertion's `### <id>` is unique within the test. Choose an identifier other than
+`expected_outcome`, which CAT reserves. If a requirement asks for a test case's result, declare an assertion for
+that requirement and use `{{expected_outcome}}` in its statement or tool.
 
-- `tool`: the built-in tool and its arguments in one code span, such as `` `exact-text {{expected_outcome}}` ``; the
-	arguments may name the test's variables and `{{expected_outcome}}`;
-- `on_tool_failure`, optionally: `fail`, the meaning when the pair is absent, or `judge`. The same rules apply as for
-	any other assertion, below: under `fail` the tool must observe everything that every test case's expected outcome
-	requires, and under `judge` it must pass no reply that the expected outcome rejects.
-- `judge_reason`, when no tool decides the assertion or `on_tool_failure` is `judge`: one sentence explaining why no
-	built-in tool can decide the whole expected outcome assertion.
-
-Give every assertion that a built-in tool can decide under these rules that tool, `expected_outcome` included, because
-a trial whose tools decide every assertion needs no judge session. Every other assertion holds these pairs:
+Give each assertion a built-in tool when the tool can decide it. A trial whose tools decide every assertion needs no
+judge session. Each assertion holds these pairs:
 
 - `kind`: `guard` when an agent passes the assertion almost always even when the target prompt files are empty, such
 	as answering a search question correctly; it protects an operation that the prompts must not harm. `effect` when the
@@ -203,7 +193,7 @@ a trial whose tools decide every assertion needs no judge session. Every other a
 - `evidence_scope`, when the judge decides any part of an assertion (no `tool`, or `on_tool_failure: judge`): what its
 	judge reads, set from the obligation that the assertion's requirement places on the agent:
 	- `response`: the assertion is about what the agent says, such as the time that a reply states or whether an
-		explanation in it is correct. Its judge reads the test case and the trial's replies and nothing else: no built-in
+		explanation in it is correct. Its judge reads the test case's variable values and the trial's replies and nothing else: no built-in
 		tool result, no project file and no transcript. Give `response` only to an assertion without a `tool` or whose
 		tool examines replies: `exact-text`, `forbidden-text`, `pattern` or `count`.
 	- `actions`: the assertion is about what the agent does, such as whether a brief that it gave a child agent was
@@ -211,7 +201,7 @@ a trial whose tools decide every assertion needs no judge session. Every other a
 		and its transcript.
 
 	An assertion that needs both, or whose scope is unclear, is `actions`. Leave the pair out when a tool decides the
-	assertion under `fail`. The judge of `expected_outcome` reads what an `actions` judge reads.
+	assertion under `fail`.
 
 Where a requirement is about what the agent does, split its assertions wherever you can:
 a built-in tool decides whether the action happened, from the files that the trial left, its tool calls and their
@@ -275,8 +265,7 @@ only to assertions the judge decides.
 For each assertion decided by `exact-text`, `forbidden-text`, `pattern` or `count`, and for each assertion the judge
 can decide, write one passing example for each boundary class and at least one failing example. Each passing example
 meets the assertion's requirement and the expected outcome of its class's first test case. Each failing example
-misses the assertion. An action tool under `on_tool_failure: fail` needs no examples. The CAT-added
-`expected_outcome` assertion needs no examples.
+misses the assertion. An action tool under `on_tool_failure: fail` needs no examples.
 
 Put each example in `examples/<assertion id>/<example id>/` in the test directory. Name passing examples
 `pass_<boundary class>` and failing examples `fail_<snake_case_name>`. Write `replies.json` as an array of arrays
@@ -297,8 +286,7 @@ passing example and any tool that passes a failing example, under either `on_too
 
 CAT judges development trials with a cheaper judge when one agrees with the frozen judge closely enough. It first tests
 each candidate on near misses: replies that sit just on either side of an assertion's boundary. Write them in
-`near_misses` for every assertion that the judge decides, that is every assertion without a built-in `tool`,
-`expected_outcome` included unless the test gives it a built-in tool. Give each such assertion an item with:
+`near_misses` for every assertion that the judge can decide. Give each such assertion an item with:
 
 - `assertion_id`: the assertion's id;
 - `satisfying`: exactly 2 replies that only just satisfy the assertion;

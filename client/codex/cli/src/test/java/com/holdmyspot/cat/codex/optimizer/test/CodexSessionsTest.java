@@ -31,11 +31,13 @@ import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
 import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
 import com.holdmyspot.cat.common.optimizer.contract.DrawStream;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
-import com.holdmyspot.cat.common.optimizer.contract.ExpectedOutcomeTool;
+import com.holdmyspot.cat.common.optimizer.contract.EvidenceScope;
 import com.holdmyspot.cat.common.optimizer.contract.JudgedAssertion;
 import com.holdmyspot.cat.common.optimizer.contract.MappedAssertion;
+import com.holdmyspot.cat.common.optimizer.contract.OnToolFailure;
 import com.holdmyspot.cat.common.optimizer.contract.Part;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
+import com.holdmyspot.cat.common.optimizer.contract.Requirement;
 import com.holdmyspot.cat.common.optimizer.contract.RiskRank;
 import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TestValue;
@@ -209,11 +211,14 @@ public final class CodexSessionsTest
 		TestCase testCase = new TestCase(Map.of("notes", new TestValue.Text("notes.md")), "one");
 		MappedAssertion read = new MappedAssertion(new Assertion("notes_read", AssertionKind.EFFECT,
 			"read-in-full {{notes}}", "The agent reads the notes."), "read_notes");
-		return new PromptTest("retained_notes", new RiskRank(1), List.of("read_notes"), List.of(),
+		MappedAssertion reply = new MappedAssertion(new Assertion("notes_acknowledged", AssertionKind.EFFECT,
+			"exact-text turn=1 {{expected_outcome}}", "The agent acknowledges the notes with {{expected_outcome}}."),
+			"acknowledge_notes");
+		return new PromptTest("retained_notes", new RiskRank(1), List.of("read_notes", "acknowledge_notes"), List.of(),
 			"The notes file is available.", List.of("Read {{notes}}.", "Check again."), Duration.ofSeconds(30),
 			"The agent reads the notes and replies one.", List.of(), List.of(new VariableDeclaration("notes",
-				"the notes file")), List.of(), List.of(testCase), List.of(read), List.of(), List.of(), Optional.empty(),
-			Optional.of(new ExpectedOutcomeTool("exact-text turn=1 {{expected_outcome}}")), List.of(), null);
+				"the notes file")), List.of(), List.of(testCase), List.of(read, reply), List.of(), List.of(),
+			Optional.empty());
 	}
 
 	/**
@@ -1284,7 +1289,7 @@ public final class CodexSessionsTest
 			requireThat(completed.requestedTurns(), "requestedTurns").isEqualTo(2);
 			requireThat(completed.turnsNotRun(), "turnsNotRun").isEqualTo(List.of(2));
 			requireThat(completed.settledAssertions(), "settledAssertions").
-				isEqualTo(Map.of("notes_read", 1, TestCase.EXPECTED_OUTCOME, 1));
+				isEqualTo(Map.of("notes_read", 1, "notes_acknowledged", 1));
 			requireThat(turns, "turns").isEqualTo(List.of("Read notes.md."));
 			requireThat(bridgeReturned.await(5, TimeUnit.SECONDS), "bridgeReturned").isTrue();
 		}
@@ -1446,7 +1451,7 @@ public final class CodexSessionsTest
 			requireThat(completed.responses(), "responses").isEqualTo(List.of(List.of("one")));
 			requireThat(completed.turnsNotRun(), "turnsNotRun").isEqualTo(List.of(2));
 			requireThat(completed.settledAssertions(), "settledAssertions").
-				isEqualTo(Map.of("notes_read", 1, TestCase.EXPECTED_OUTCOME, 1));
+				isEqualTo(Map.of("notes_read", 1, "notes_acknowledged", 1));
 			requireThat(turns, "turns").isEqualTo(List.of("Read notes.md."));
 			requireThat(bridgeReturned.await(5, TimeUnit.SECONDS), "bridgeReturned").isTrue();
 		}
@@ -2426,9 +2431,15 @@ public final class CodexSessionsTest
 			if (role == SessionRole.JUDGE)
 			{
 				JudgePrompt judge = new JudgePrompt(json, evaluatorDirectory);
+				Requirement requirement = new Requirement("confirm_dispatch",
+					"Use the dispatch record to confirm whether loading can start.", Requirement.GOAL, null,
+					List.of("dispatch_not_confirmed"));
+				Assertion assertion = new Assertion("dispatch_confirmed", AssertionKind.GUARD, null,
+					OnToolFailure.FAIL, "The dispatch record supports the reply {{expected_outcome}}.",
+					"A tool cannot determine whether the record supports the reply.", EvidenceScope.ACTIONS);
 				request = judge.request(new JudgeTemplate(json, SESSION_PROFILE).
 					profile("Use the dispatch record.", "Pass when the evidence confirms the answer."), testCase, evidence,
-					List.of(new JudgedAssertion(Assertion.expectedOutcome(AssertionKind.GUARD), null)), List.of(), section);
+					List.of(new JudgedAssertion(assertion, requirement)), List.of(), section);
 			}
 			else
 			{

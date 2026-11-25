@@ -94,7 +94,8 @@ public final class AssertionExampleEvidenceTest
 			String turn = request.turns().getFirst();
 			requireThat(turn, "turn").contains("one listed assertion").contains("normalized activity").
 				contains("File changes").contains("Old location River").contains("New location River").
-				contains("Find River.").contains("The evidence supports the River location.");
+				contains("Find River.").
+				contains("The evidence supports the River location and this outcome. " + CASE.expectedOutcome());
 			requireThat(json.readTree(prompt.values().get("responses")), "responses").isEqualTo(json.valueToTree(REPLIES));
 			requireThat(json.readTree(prompt.values().get("assertions")).size(), "assertionCount").isEqualTo(1);
 			requireThat(request.profile(), "profile").isEqualTo(profile.profile());
@@ -110,7 +111,7 @@ public final class AssertionExampleEvidenceTest
 	}
 
 	/**
-	 * Checks that a response judge gets the selected case and replies, with no evidence directory or file.
+	 * Checks that a response judge gets the filled statement and replies, with no evidence directory or file.
 	 *
 	 * @throws IOException if the example cannot be prepared or read
 	 */
@@ -127,8 +128,9 @@ public final class AssertionExampleEvidenceTest
 			requireThat(request.readOnly(), "readOnly").isEmpty();
 			requireThat(request.evidencePrompt().isEmpty(), "evidencePrompt.isEmpty()").isTrue();
 			String turn = request.turns().getFirst();
-			requireThat(turn, "turn").contains("Find River.").contains("Arrives River").
-				contains("The evidence supports the River location.").doesNotContain("coordinates River").
+			requireThat(turn, "turn").contains("Find River.").
+				contains("The evidence supports the River location and this outcome. " + CASE.expectedOutcome()).
+				doesNotContain("coordinates River").
 				doesNotContain("New location River").doesNotContain("File changes").
 				doesNotContain(root.toString());
 			int start = turn.indexOf("\n\n[", turn.indexOf("The trial agent's reply"));
@@ -186,7 +188,8 @@ public final class AssertionExampleEvidenceTest
 		throws IOException
 	{
 		Assertion assertion = new Assertion("supports_location", AssertionKind.EFFECT, null, OnToolFailure.FAIL,
-			"The evidence supports the {{label}} location.", "Judge the meaning of the evidence.", scope);
+			"The evidence supports the {{label}} location and this outcome. {{expected_outcome}}",
+			"Judge the meaning of the evidence.", scope);
 		Requirement requirement = new Requirement("report_location", "Report the location.", "prompt.md", null,
 			List.of("incorrect_location"));
 		Path judgeDirectory = Files.createDirectory(root.resolve("judge"));

@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.optimizer.contract;
 
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
 import com.holdmyspot.cat.common.Identifier;
 
 import java.time.Duration;
@@ -18,7 +20,7 @@ import java.util.regex.Pattern;
  * <p>
  * Headings inside fenced code blocks belong to the text around them. Every problem names its line.
  */
-final class ScenarioParser
+public final class ScenarioParser
 {
 	private static final String VARIABLES = "Variables";
 	private static final String SCENARIO = "Scenario";
@@ -86,19 +88,6 @@ final class ScenarioParser
 	}
 
 	/**
-	 * The subsections of the {@code ## Assertions} section.
-	 *
-	 * @param assertions          the declared assertions, in order
-	 * @param expectedOutcomeTool the tool that the {@code ### expected_outcome} subsection gives the assertion that
-	 *                            CAT adds, or empty if the section has none
-	 * @param expectedOutcomeJudgeReason why no built-in tool decides the added assertion, or {@code null}
-	 */
-	private record ParsedAssertions(List<Assertion> assertions, Optional<ExpectedOutcomeTool> expectedOutcomeTool,
-		String expectedOutcomeJudgeReason)
-	{
-	}
-
-	/**
 	 * Creates a parser.
 	 *
 	 * @param location the text that starts each problem's message, such as the file's path and a colon, or an empty
@@ -153,12 +142,82 @@ final class ScenarioParser
 	}
 
 	/**
-	 * Parses the content.
+	 * Parses scenario text from a trusted stored contract, skipping the retired {@code ### expected_outcome}
+	 * subsection. Authored scenarios use {@link Scenario#parse(String)}.
+	 *
+	 * @param location the prefix for diagnostics, or an empty string
+	 * @param content the recorded scenario text
+	 * @return the scenario with its declared assertions
+	 * @throws NullPointerException if either argument is null
+	 * @throws ScenarioFormatException if the remaining content does not follow the scenario format
+	 */
+	public static Scenario parseRecorded(String location, String content) throws ScenarioFormatException
+	{
+		requireThat(location, "location").isNotNull();
+		requireThat(content, "content").isNotNull();
+		return new ScenarioParser(location, content).parse(true);
+	}
+
+	/**
+	 * Removes the retired assertion subsection from a saved scenario for delivery. Other text, including fenced
+	 * examples, keeps its original formatting.
+	 *
+	 * @param content the saved scenario
+	 * @return the scenario text that delivery writes
+	 * @throws NullPointerException if {@code content} is null
+	 * @throws IllegalArgumentException if the saved scenario contains the retired heading and has invalid sections
+	 */
+	public static String withoutRetiredAssertion(String content)
+	{
+		requireThat(content, "content").isNotNull();
+		if (!content.contains(TestCase.EXPECTED_OUTCOME))
+			return content;
+		ScenarioParser parser = new ScenarioParser("", content);
+		Section assertions;
+		try
+		{
+			assertions = parser.sections().get(ASSERTIONS);
+		}
+		catch (ScenarioFormatException e)
+		{
+			throw new IllegalArgumentException("Invalid saved scenario", e);
+		}
+		if (assertions == null)
+			return content;
+		List<Integer> headings = parser.subsections(assertions);
+		List<String> original = new ArrayList<>(List.of(content.split("\n", -1)));
+		for (int k = headings.size() - 1; k >= 0; --k)
+		{
+			int heading = headings.get(k);
+			if (!parser.assertionId(heading).equals(TestCase.EXPECTED_OUTCOME))
+				continue;
+			int end = end(headings, k, assertions);
+			if (end == parser.lines.size() && parser.lines.getLast().isEmpty())
+				--end;
+			original.subList(heading, end).clear();
+		}
+		return String.join("\n", original);
+	}
+
+	/**
+	 * Parses an authored scenario.
 	 *
 	 * @return the scenario
 	 * @throws ScenarioFormatException if the content does not follow the scenario format
 	 */
 	Scenario parse() throws ScenarioFormatException
+	{
+		return parse(false);
+	}
+
+	/**
+	 * Parses the scenario using the caller's choice for the retired subsection.
+	 *
+	 * @param recorded whether the scenario is from a trusted stored contract
+	 * @return the scenario
+	 * @throws ScenarioFormatException if the content does not follow the scenario format
+	 */
+	private Scenario parse(boolean recorded) throws ScenarioFormatException
 	{
 		Map<String, Section> sections = sections();
 		for (String name : List.of(VARIABLES, SCENARIO, ASSERTIONS))
@@ -174,16 +233,14 @@ final class ScenarioParser
 		Section expectedSection = sections.get(EXPECTED_BEHAVIOR);
 		if (expectedSection != null)
 			requireDeclared(expectedSection, names);
-		requireDeclared(sections.get(ASSERTIONS), names);
 		List<String> turns = turns(sections.get(SCENARIO));
 		Optional<ExpectedBehavior> expectedBehavior = Optional.empty();
 		if (expectedSection != null)
 			expectedBehavior = Optional.of(expectedBehavior(expectedSection));
-		ParsedAssertions parsed = assertions(sections.get(ASSERTIONS));
+		List<Assertion> assertions = assertions(sections.get(ASSERTIONS), names, recorded);
 		try
 		{
-			return new Scenario(variables, turns, expectedBehavior, parsed.assertions(), parsed.expectedOutcomeTool(),
-				parsed.expectedOutcomeJudgeReason());
+			return new Scenario(variables, turns, expectedBehavior, assertions);
 		}
 		catch (IllegalArgumentException e)
 		{
@@ -521,14 +578,17 @@ final class ScenarioParser
 	}
 
 	/**
-	 * Parses the assertions.
+	 * Parses the declared assertions.
 	 *
 	 * @param section the {@code ## Assertions} section
-	 * @return the declared assertions, in order, and the tool of the subsection {@code ### expected_outcome}, if any
-	 * @throws ScenarioFormatException if an assertion is malformed, or the section declares no assertion besides
-	 *                                 {@code expected_outcome}
+	 * @param names the declared variable names
+	 * @param recorded whether to skip a retired assertion from a trusted stored contract
+	 * @return the declared assertions, in order
+	 * @throws ScenarioFormatException if an assertion is malformed, an authored scenario uses the retired subsection,
+	 *                                 or the section declares no assertion
 	 */
-	private ParsedAssertions assertions(Section section) throws ScenarioFormatException
+	private List<Assertion> assertions(Section section, Set<String> names, boolean recorded)
+		throws ScenarioFormatException
 	{
 		List<Integer> headings = subsections(section);
 		int first;
@@ -538,88 +598,32 @@ final class ScenarioParser
 			first = headings.getFirst();
 		requireBlank(section.heading() + 1, first, "text comes before the first assertion; put it in an assertion " +
 			"subsection, such as ### answer_given");
-		if (headings.isEmpty())
-			throw error(section.heading(), "the ## Assertions section has no assertion");
 		List<Assertion> assertions = new ArrayList<>();
-		Optional<ExpectedOutcomeTool> expectedOutcomeTool = Optional.empty();
-		String expectedOutcomeJudgeReason = null;
 		Set<String> ids = new HashSet<>();
 		for (int k = 0; k < headings.size(); ++k)
 		{
 			int heading = headings.get(k);
-			String id = lines.get(heading).substring("### ".length()).strip();
+			String id = assertionId(heading);
+			if (id.equals(TestCase.EXPECTED_OUTCOME))
+			{
+				if (!recorded)
+				{
+					throw error(heading, "the assertion " + TestCase.EXPECTED_OUTCOME + " was removed. Give its " +
+						"tool to an assertion of this test that names a requirement");
+				}
+				continue;
+			}
 			if (!Identifier.SNAKE_CASE.matcher(id).matches())
 				throw error(heading, "the assertion id '" + id + "' must be lowercase words joined by underscores");
 			if (!ids.add(id))
 				throw error(heading, "the assertion " + id + " is declared twice");
-			if (id.equals(TestCase.EXPECTED_OUTCOME))
-			{
-				OutcomeDeclaration outcome = expectedOutcome(heading, end(headings, k, section));
-				expectedOutcomeTool = outcome.tool();
-				expectedOutcomeJudgeReason = outcome.judgeReason();
-			}
-			else
-				assertions.add(assertion(id, heading, end(headings, k, section)));
+			int end = end(headings, k, section);
+			requireDeclared(new Section(heading, end), names);
+			assertions.add(assertion(id, heading, end));
 		}
 		if (assertions.isEmpty())
-		{
-			throw error(section.heading(), "the ## Assertions section declares no assertion besides " +
-				TestCase.EXPECTED_OUTCOME + "; add one that checks a requirement, such as ### answer_given");
-		}
-		return new ParsedAssertions(assertions, expectedOutcomeTool, expectedOutcomeJudgeReason);
-	}
-
-	/**
-	 * The declaration of the assertion CAT adds from the expected outcome.
-	 *
-	 * @param tool its built-in tool, or empty when the judge decides it
-	 * @param judgeReason why no built-in tool decides it, or {@code null}
-	 */
-	private record OutcomeDeclaration(Optional<ExpectedOutcomeTool> tool, String judgeReason)
-	{
-	}
-
-	/**
-	 * Parses the pairs of the subsection {@code ### expected_outcome}. CAT supplies the assertion's description and kind.
-	 *
-	 * @param heading the index of its heading line
-	 * @param end the index of the line after its last line
-	 * @return the tool and reason, if any
-	 * @throws ScenarioFormatException if the subsection holds an undefined key or invalid value
-	 */
-	private OutcomeDeclaration expectedOutcome(int heading, int end) throws ScenarioFormatException
-	{
-		List<Pair> pairs = pairs(heading + 1, end, "the assertion " + TestCase.EXPECTED_OUTCOME + " holds only " +
-			"key-value pairs, such as - **tool**: `exact-text {{" + TestCase.EXPECTED_OUTCOME + "}}`");
-		for (Pair pair : pairs)
-		{
-			if (pair.key().equals(KIND) || pair.key().equals(DESCRIPTION))
-			{
-				throw error(pair.line(), "CAT supplies the " + pair.key() + " of the assertion " +
-					TestCase.EXPECTED_OUTCOME + "; give it only a tool and, optionally, on_tool_failure");
-			}
-		}
-		requireKeys(pairs, Set.of(TOOL, ON_TOOL_FAILURE, JUDGE_REASON),
-			"tool, on_tool_failure and judge_reason when the judge decides it");
-		Pair toolPair = find(pairs, TOOL);
-		Pair reasonPair = find(pairs, JUDGE_REASON);
-		if (reasonPair != null && reasonPair.value().isBlank())
-			throw error(reasonPair.line(), "the key judge_reason has no value");
-		OnToolFailure onToolFailure = OnToolFailure.FAIL;
-		Pair onToolFailurePair = find(pairs, ON_TOOL_FAILURE);
-		if (toolPair == null && onToolFailurePair != null)
-			throw error(onToolFailurePair.line(), "on_tool_failure has no tool whose failure it handles");
-		if (onToolFailurePair != null)
-			onToolFailure = onToolFailure(onToolFailurePair);
-		if (reasonPair != null && toolPair != null && onToolFailure != OnToolFailure.JUDGE)
-			throw error(reasonPair.line(), "judge_reason is only needed when the judge decides the assertion");
-		Optional<ExpectedOutcomeTool> tool = Optional.empty();
-		if (toolPair != null)
-			tool = Optional.of(new ExpectedOutcomeTool(tool(toolPair), onToolFailure));
-		String judgeReason = null;
-		if (reasonPair != null)
-			judgeReason = reasonPair.value();
-		return new OutcomeDeclaration(tool, judgeReason);
+			throw error(section.heading(), "the ## Assertions section has no assertion that checks a requirement");
+		return assertions;
 	}
 
 	/**
@@ -772,6 +776,17 @@ final class ScenarioParser
 			throw error(pair.line(), "the tool " + e.getMessage());
 		}
 		return tool;
+	}
+
+	/**
+	 * Reads an assertion id from its level-3 heading.
+	 *
+	 * @param heading the index of the heading
+	 * @return the id without surrounding whitespace
+	 */
+	private String assertionId(int heading)
+	{
+		return lines.get(heading).substring("### ".length()).strip();
 	}
 
 	/**

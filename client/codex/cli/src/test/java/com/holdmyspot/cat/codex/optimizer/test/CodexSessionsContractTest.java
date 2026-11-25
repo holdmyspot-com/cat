@@ -22,6 +22,7 @@ import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
 import com.holdmyspot.cat.common.optimizer.contract.JudgedAssertion;
 import com.holdmyspot.cat.common.optimizer.contract.OnToolFailure;
 import com.holdmyspot.cat.common.optimizer.contract.Requirement;
+import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.contract.ToolCall;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.execution.Judgment;
@@ -367,7 +368,7 @@ public final class CodexSessionsContractTest
 	 *
 	 * @param judge the replayed judge
 	 * @param root the test-owned workspace
-	 * @param assertions the recorded assertion identifiers preceding the expected outcome
+	 * @param assertions the recorded assertion identifiers preceding the historical outcome verdict
 	 */
 	private static void assertE5Verdict(SessionResult.Completed judge, Path root, String... assertions)
 	{
@@ -380,7 +381,11 @@ public final class CodexSessionsContractTest
 				List.of("unsatisfied"));
 			rubric.add(new JudgedAssertion(assertion, requirement));
 		}
-		rubric.add(new JudgedAssertion(Assertion.expectedOutcome(AssertionKind.EFFECT), null));
+		Assertion historicalOutcome = new Assertion(TestCase.EXPECTED_OUTCOME, AssertionKind.EFFECT, null,
+			OnToolFailure.FAIL, "The recorded answer matches the expected outcome.");
+		Requirement requirement = new Requirement("answer_question", historicalOutcome.statement(), Requirement.GOAL,
+			null, List.of("unexpected_outcome"));
+		rubric.add(new JudgedAssertion(historicalOutcome, requirement));
 		Judgment result = new JudgePrompt(JsonMapper.builder().build(), root.resolve("judge")).
 			judgment(judge, rubric).orElseThrow();
 		requireThat(result.failures(), "failedAssertions").isEmpty();

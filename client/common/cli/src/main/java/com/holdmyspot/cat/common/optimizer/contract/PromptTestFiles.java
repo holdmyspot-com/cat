@@ -210,8 +210,51 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario,
 	public static PromptTestFiles read(JsonMapper json, Path project, Path root, Path directory)
 		throws IOException, ScenarioFormatException
 	{
+		return read(json, project, root, directory, false);
+	}
+
+	/**
+	 * Reads a trusted recorded prompt test directory with its committed cases, ignoring the retired
+	 * {@code expected_outcome} assertion subsection.
+	 *
+	 * @param json      the JSON mapper that reads the values file
+	 * @param project   the project, which problems name files relative to, with {@code /} between names
+	 * @param root      the test root, which holds the prompt test directory or is that directory
+	 * @param directory the prompt test directory
+	 * @return the recorded prompt test's files
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code directory} does not lie at or below {@code root}, or {@code root}
+	 *                                  does not lie at or below {@code project}
+	 * @throws IOException              if a file cannot be read
+	 * @throws ScenarioFormatException  if the remaining scenario, workspace, examples or committed values are invalid
+	 * @see #read(JsonMapper, Path, Path, Path)
+	 */
+	public static PromptTestFiles readRecorded(JsonMapper json, Path project, Path root, Path directory)
+		throws IOException, ScenarioFormatException
+	{
+		return read(json, project, root, directory, true);
+	}
+
+	/**
+	 * Reads a prompt test and its committed values, validating each case against the scenario and workspace.
+	 *
+	 * @param json      the JSON mapper that reads the values file
+	 * @param project   the project
+	 * @param root      the test root
+	 * @param directory the prompt test directory
+	 * @param recorded  whether the prompt test is trusted recorded input
+	 * @return the prompt test's files and committed cases
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code directory} does not lie at or below {@code root}, or {@code root}
+	 *                                  does not lie at or below {@code project}
+	 * @throws IOException              if a file cannot be read
+	 * @throws ScenarioFormatException  if the scenario, workspace, examples or committed values are invalid
+	 */
+	private static PromptTestFiles read(JsonMapper json, Path project, Path root, Path directory, boolean recorded)
+		throws IOException, ScenarioFormatException
+	{
 		requireThat(json, "json").isNotNull();
-		PromptTestFiles files = readScenario(project, root, directory);
+		PromptTestFiles files = readScenario(project, project, root, directory, recorded);
 		Path valuesFile = directory.resolve(ValuesFile.NAME);
 		if (!Files.exists(valuesFile, LinkOption.NOFOLLOW_LINKS))
 			return files;
@@ -281,6 +324,49 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario,
 	public static PromptTestFiles readScenario(Path project, Path tree, Path root, Path directory)
 		throws IOException, ScenarioFormatException
 	{
+		return readScenario(project, tree, root, directory, false);
+	}
+
+	/**
+	 * Reads the scenario, workspace and examples of a trusted recorded prompt test in a project or saved draft.
+	 * The retired {@code expected_outcome} assertion subsection is ignored, and the caller reads the values file.
+	 *
+	 * @param project   the project, used for paths in diagnostics and workspace link targets outside {@code tree}
+	 * @param tree      the project or saved draft that holds the prompt test
+	 * @param root      the test root, which holds the prompt test directory or is that directory
+	 * @param directory the prompt test directory
+	 * @return the recorded prompt test's files, without test cases
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code directory} does not lie at or below {@code root}, or {@code root}
+	 *                                  does not lie at or below {@code tree}
+	 * @throws IOException              if a file cannot be read
+	 * @throws ScenarioFormatException  if the remaining scenario, workspace or examples are invalid
+	 * @see #readScenario(Path, Path, Path, Path)
+	 */
+	public static PromptTestFiles readRecordedScenario(Path project, Path tree, Path root, Path directory)
+		throws IOException, ScenarioFormatException
+	{
+		return readScenario(project, tree, root, directory, true);
+	}
+
+	/**
+	 * Reads a prompt test's scenario, workspace and examples using the caller's choice for the retired subsection.
+	 *
+	 * @param project   the project
+	 * @param tree      the project or draft that holds the prompt test
+	 * @param root      the test root
+	 * @param directory the prompt test directory
+	 * @param recorded  whether the prompt test is trusted recorded input
+	 * @return the prompt test's files, without test cases
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code directory} does not lie at or below {@code root}, or {@code root}
+	 *                                  does not lie at or below {@code tree}
+	 * @throws IOException              if a file cannot be read
+	 * @throws ScenarioFormatException  if the scenario, workspace or examples are invalid
+	 */
+	private static PromptTestFiles readScenario(Path project, Path tree, Path root, Path directory, boolean recorded)
+		throws IOException, ScenarioFormatException
+	{
 		requireThat(project, "project").isNotNull();
 		requireThat(tree, "tree").isNotNull();
 		requireThat(root, "root").isNotNull();
@@ -291,8 +377,13 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario,
 		if (!root.startsWith(tree))
 			throw new IllegalArgumentException("root must lie at or below tree.\ntree: " + tree + "\nroot: " + root);
 		Path scenarioFile = directory.resolve(SCENARIO);
-		String scenarioName = display(project, scenarioFile);
-		Scenario scenario = new ScenarioParser(scenarioName + ": ", Files.readString(scenarioFile)).parse();
+		String location = display(project, scenarioFile) + ": ";
+		String content = Files.readString(scenarioFile);
+		Scenario scenario;
+		if (recorded)
+			scenario = ScenarioParser.parseRecorded(location, content);
+		else
+			scenario = new ScenarioParser(location, content).parse();
 		Set<String> declared = new HashSet<>();
 		for (VariableDeclaration variable : scenario.variables())
 			declared.add(variable.name());

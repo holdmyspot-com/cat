@@ -25,6 +25,7 @@ import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
 import com.holdmyspot.cat.common.optimizer.contract.JudgedAssertion;
 import com.holdmyspot.cat.common.optimizer.contract.OnToolFailure;
 import com.holdmyspot.cat.common.optimizer.contract.Requirement;
+import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TestWorkspace;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.port.RateLimitWindow;
@@ -929,7 +930,7 @@ public final class ClaudeSessionsContractTest
 			judged("file_explains_question", AssertionKind.EFFECT, "inaccurate_file_explanation"),
 			judged("acknowledgement_one_short_sentence", AssertionKind.GUARD, "acknowledgement_too_long"),
 			judged("chat_reply_not_the_answer", AssertionKind.GUARD, "answer_given_in_chat_instead_of_file"),
-			new JudgedAssertion(Assertion.expectedOutcome(AssertionKind.EFFECT), null));
+			judged(TestCase.EXPECTED_OUTCOME, AssertionKind.EFFECT, "unexpected_outcome"));
 	}
 
 	/**
@@ -942,7 +943,7 @@ public final class ClaudeSessionsContractTest
 		return List.of(
 			judged("answers_accurately", AssertionKind.GUARD, "inaccurate_answer"),
 			judged("one_sentence", AssertionKind.EFFECT, "more_than_one_sentence"),
-			new JudgedAssertion(Assertion.expectedOutcome(AssertionKind.EFFECT), null));
+			judged(TestCase.EXPECTED_OUTCOME, AssertionKind.EFFECT, "unexpected_outcome"));
 	}
 
 	/**

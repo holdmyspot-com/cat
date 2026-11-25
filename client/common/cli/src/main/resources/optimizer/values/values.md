@@ -42,8 +42,7 @@ The failure group, as JSON:
 	which development test cases of the test carry too. It is empty when the failed test cases were untagged. The failed
 	test cases' values are held out from you; this label is all that CAT tells you of them.
 - `assertion`: the failed assertion, with its `id`, its `statement`, the `requirement` whose compliance it shows, with
-	its `id` and `description`, and its `behaviors`, the distinct ways in which a trial can fail it. `requirement` is
-	`null` for the assertion `expected_outcome`, which compares the reply's result with the test case's expected outcome.
+	its `id` and `description`, and its `behaviors`, the distinct ways in which a trial can fail it.
 - `behavior`: the behavior through which the formal failures failed the assertion. It is `other` when none of the
 	listed behaviors describes them.
 - `formal_failures`: how many certification trials of the test failed the assertion through the behavior in that

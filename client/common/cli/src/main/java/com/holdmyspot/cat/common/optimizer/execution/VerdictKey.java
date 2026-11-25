@@ -172,10 +172,7 @@ public record VerdictKey(Sha256 digest)
 		encoder.text(assertion.assertion().id()).text(assertion.assertion().statement(textByName)).
 			text(EnumNames.lowerCase(assertion.scope()));
 		Requirement requirement = assertion.requirement();
-		if (requirement == null)
-			encoder.absent();
-		else
-			encoder.text(requirement.id()).text(requirement.description()).text(requirement.source());
+		encoder.text(requirement.id()).text(requirement.description()).text(requirement.source());
 		List<String> behaviors = assertion.behaviors();
 		encoder.count(behaviors.size());
 		for (String behavior : behaviors)

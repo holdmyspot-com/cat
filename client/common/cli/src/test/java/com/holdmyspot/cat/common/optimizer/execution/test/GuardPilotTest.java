@@ -15,7 +15,6 @@ import com.holdmyspot.cat.common.optimizer.contract.BuiltInToolResult;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
 import com.holdmyspot.cat.common.optimizer.contract.EvidenceScope;
-import com.holdmyspot.cat.common.optimizer.contract.ExpectedOutcomeTool;
 import com.holdmyspot.cat.common.optimizer.contract.JudgeProfile;
 import com.holdmyspot.cat.common.optimizer.contract.JudgedAssertion;
 import com.holdmyspot.cat.common.optimizer.contract.MappedAssertion;
@@ -135,6 +134,14 @@ public final class GuardPilotTest
 	 * The reply that fails the {@code forbidden-text} check of {@link #checkedContract()}.
 	 */
 	private static final String BROKEN = "BROKEN";
+	/**
+	 * The reply that passes the exact-text check of the declared safe-reply assertion.
+	 */
+	private static final String SAFE = "SAFE";
+	/**
+	 * The identifier of the declared actions assertion.
+	 */
+	private static final String KEEPS_OTHER_FILES = "keeps_other_files";
 	/**
 	 * The boundary classes of the {@code safety} test in the tests of the pilot's class draws.
 	 */
@@ -356,7 +363,7 @@ public final class GuardPilotTest
 	public void pilotTakesAndWritesRecords() throws IOException, InterruptedException
 	{
 		// Requirement: R-L10
-		Contract contract = ContractFixtures.responseOnly(TierFixtures.tieredContract());
+		Contract contract = ContractFixtures.withEvidenceScope(TierFixtures.tieredContract(), EvidenceScope.RESPONSE);
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-records"));
@@ -398,7 +405,16 @@ public final class GuardPilotTest
 	public void pilotGroupsAssertionsByScope() throws IOException, InterruptedException
 	{
 		// Requirement: R-L19
-		Contract contract = ContractFixtures.withEvidenceScope(TierFixtures.tieredContract(), EvidenceScope.RESPONSE);
+		Contract responseContract = ContractFixtures.withEvidenceScope(TierFixtures.tieredContract(),
+			EvidenceScope.RESPONSE);
+		Map<String, List<MappedAssertion>> mapped = new HashMap<>();
+		for (PromptTest test : responseContract.tests())
+		{
+			List<MappedAssertion> assertions = new ArrayList<>(test.assertions());
+			assertions.add(keepsOtherFiles(test.requirementIds().getFirst()));
+			mapped.put(test.id(), assertions);
+		}
+		Contract contract = withAssertions(responseContract, mapped);
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-scopes"));
@@ -423,17 +439,24 @@ public final class GuardPilotTest
 			List<SessionRequest> actions = judges.stream().filter(request -> !request.readOnly().isEmpty()).toList();
 			requireThat((long) actions.size(), "actionsSessions").isEqualTo(trials);
 			requireThat((long) response.size(), "responseSessions").isEqualTo(distinct);
+			for (SessionRequest request : actions)
+			{
+				String turn = request.turns().getFirst();
+				requireThat(turn, "actionsTurn").startsWith("# Trial Judgment");
+				String decided = turn.substring(turn.indexOf("### Assertions to decide"), turn.indexOf("### Evidence"));
+				requireThat(decided, "actionsAssertions").contains("\"" + KEEPS_OTHER_FILES + "\"");
+			}
 			for (SessionRequest request : response)
 			{
 				String turn = request.turns().getFirst();
 				requireThat(turn, "responseTurn").startsWith("# Reply Judgment");
 				String decided = turn.substring(turn.indexOf("### Assertions to decide"), turn.indexOf("### Replies"));
-				requireThat(decided, "responseAssertions").doesNotContain("\"" + TestCase.EXPECTED_OUTCOME + "\"");
+				requireThat(decided, "responseAssertions").doesNotContain("\"" + KEEPS_OTHER_FILES + "\"");
 			}
 			Map<VerdictKey, VerdictRecord> records = store.verdicts(CAMPAIGN);
 			requireThat(records.isEmpty(), "records").isFalse();
 			for (VerdictRecord record : records.values())
-				requireThat(record.verdict().assertion(), "recordedAssertion").isNotEqualTo(TestCase.EXPECTED_OUTCOME);
+				requireThat(record.verdict().assertion(), "recordedAssertion").isNotEqualTo(KEEPS_OTHER_FILES);
 		}
 	}
 
@@ -643,7 +666,10 @@ public final class GuardPilotTest
 	public void talliesEachAssertion() throws IOException, InterruptedException
 	{
 		// Requirement: R-C23
-		Contract contract = TierFixtures.tieredContract();
+		Contract tiered = TierFixtures.tieredContract();
+		List<MappedAssertion> assertions = new ArrayList<>(tiered.findTest("safety").orElseThrow().assertions());
+		assertions.add(keepsOtherFiles("r2"));
+		Contract contract = withSafety(tiered, assertions);
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-tallies"));
@@ -660,7 +686,7 @@ public final class GuardPilotTest
 
 			requireThat(safety.decided("asks_before_deleting"), "decided").isEqualTo(GuardPilot.TRIALS);
 			requireThat(safety.passes("asks_before_deleting"), "passes").isEqualTo(15);
-			requireThat(safety.passes(TestCase.EXPECTED_OUTCOME), "expectedOutcomePasses").
+			requireThat(safety.passes(KEEPS_OTHER_FILES), "keepsOtherFilesPasses").
 				isEqualTo(GuardPilot.TRIALS);
 			requireThat(safety.isBelow("asks_before_deleting", new BigDecimal("0.95")), "belowNinetyFive").isTrue();
 			requireThat(safety.isBelow("asks_before_deleting", new BigDecimal("0.75")), "belowSeventyFive").isFalse();
@@ -915,7 +941,7 @@ public final class GuardPilotTest
 			requireThat(safety.decided("reply_intact"), "checkDecided").isEqualTo(GuardPilot.TRIALS);
 			requireThat(safety.passes("reply_intact"), "checkPasses").isEqualTo(0);
 			requireThat(safety.decided("asks_before_deleting"), "judgedDecided").isEqualTo(GuardPilot.TRIALS);
-			requireThat(safety.decided(TestCase.EXPECTED_OUTCOME), "expectedOutcomeDecided").
+			requireThat(safety.decided(KEEPS_OTHER_FILES), "keepsOtherFilesDecided").
 				isEqualTo(GuardPilot.TRIALS);
 			requireThat(safety.trials().getFirst().record(), "record").contains("forbidden-text " + BROKEN);
 		}
@@ -935,8 +961,7 @@ public final class GuardPilotTest
 		// Requirement: R-C9
 		Contract tiered = TierFixtures.tieredContract();
 		List<MappedAssertion> assertions = new ArrayList<>(tiered.findTest("safety").orElseThrow().assertions());
-		assertions.add(new MappedAssertion(new Assertion("reply_intact", AssertionKind.GUARD,
-			"forbidden-text " + BROKEN, OnToolFailure.JUDGE, "No reply says " + BROKEN + "."), "r2"));
+		assertions.add(intactReply(OnToolFailure.JUDGE));
 		Contract contract = withSafety(tiered, assertions);
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -960,9 +985,8 @@ public final class GuardPilotTest
 	}
 
 	/**
-	 * A trial whose built-in tools decide every assertion, {@code expected_outcome} included, runs no judge: the pilot
-	 * tallies every assertion as decided by its tool, and deletes the trial's project copies as it does for any
-	 * passing trial.
+	 * When built-in tools decide every declared assertion, the pilot starts no judge, tallies each tool's result and
+	 * deletes the trial's project copies as it does for any passing trial.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 * @throws InterruptedException if the thread is interrupted
@@ -970,53 +994,48 @@ public final class GuardPilotTest
 	@Test
 	public void toolsDecidingEveryAssertionRunNoJudge() throws IOException, InterruptedException
 	{
-		String safe = "SAFE";
-		Contract tiered = TierFixtures.tieredContract();
-		Contract contract = withSafety(tiered, List.of(new MappedAssertion(new Assertion("reply_intact",
-			AssertionKind.GUARD, "forbidden-text " + BROKEN, "No reply says " + BROKEN + "."), "r2")),
-			Optional.of(new ExpectedOutcomeTool("exact-text " + safe)));
+		// Requirement: R-L17
+		Contract contract = withSafety(TierFixtures.tieredContract(),
+			List.of(intactReply(OnToolFailure.FAIL), exactSafeReply(OnToolFailure.FAIL)));
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-tools"));
 			SessionScript sessions = new SessionScript(directory, request ->
 			{
 				if (isSafety(request))
-					return safe;
+					return SAFE;
 				return "pass";
 			});
 
 			PilotResult safety = pilot(sessions, workspace(directory), 4).run(contract, List.of(), control(), Set.of(),
 				SELECTION, Map.of(), new SplittableRandom(3)).get("safety");
 
-			requireThat(sessions.judgedReplies().stream().filter(reply -> reply.equals(safe)).count(),
+			requireThat(sessions.judgedReplies().stream().filter(reply -> reply.equals(SAFE)).count(),
 				"safetyJudges").isEqualTo(0L);
 			requireThat(safety.decided("reply_intact"), "checkDecided").isEqualTo(GuardPilot.TRIALS);
 			requireThat(safety.passes("reply_intact"), "checkPasses").isEqualTo(GuardPilot.TRIALS);
-			requireThat(safety.decided(TestCase.EXPECTED_OUTCOME), "expectedOutcomeDecided").
-				isEqualTo(GuardPilot.TRIALS);
-			requireThat(safety.passes(TestCase.EXPECTED_OUTCOME), "expectedOutcomePasses").isEqualTo(GuardPilot.TRIALS);
+			requireThat(safety.decided("safe_reply"), "safeReplyDecided").isEqualTo(GuardPilot.TRIALS);
+			requireThat(safety.passes("safe_reply"), "safeReplyPasses").isEqualTo(GuardPilot.TRIALS);
 			for (SessionResult.Completed trial : sessions.trials())
 			{
-				if (trial.responses().getFirst().getFirst().equals(safe))
+				if (trial.responses().getFirst().getFirst().equals(SAFE))
 					requireThat(Files.isDirectory(trial.effects()), "effectsKept").isFalse();
 			}
 		}
 	}
 
 	/**
-	 * A trial that fails the built-in tool of {@code expected_outcome} when its {@code on_tool_failure} is
-	 * {@code judge} runs its judge, which decides {@code expected_outcome}.
+	 * A trial that fails the exact-text tool with {@code on_tool_failure: judge} runs its judge, which decides the
+	 * declared safe-reply assertion.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 * @throws InterruptedException if the thread is interrupted
 	 */
 	@Test
-	public void failedExpectedOutcomeToolLeftToJudge() throws IOException, InterruptedException
+	public void failedExactReplyToolLeftToJudge() throws IOException, InterruptedException
 	{
-		Contract tiered = TierFixtures.tieredContract();
-		Contract contract = withSafety(tiered, List.of(new MappedAssertion(new Assertion("reply_intact",
-			AssertionKind.GUARD, "forbidden-text " + BROKEN, "No reply says " + BROKEN + "."), "r2")),
-			Optional.of(new ExpectedOutcomeTool("exact-text SAFE", OnToolFailure.JUDGE)));
+		Contract contract = withSafety(TierFixtures.tieredContract(),
+			List.of(intactReply(OnToolFailure.FAIL), exactSafeReply(OnToolFailure.JUDGE)));
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-tool-deferred"));
@@ -1032,8 +1051,7 @@ public final class GuardPilotTest
 
 			requireThat(sessions.judgedReplies().stream().filter(reply -> reply.equals("UNSAFE")).count(),
 				"safetyJudges").isEqualTo((long) GuardPilot.TRIALS);
-			requireThat(safety.decided(TestCase.EXPECTED_OUTCOME), "expectedOutcomeDecided").
-				isEqualTo(GuardPilot.TRIALS);
+			requireThat(safety.decided("safe_reply"), "safeReplyDecided").isEqualTo(GuardPilot.TRIALS);
 		}
 	}
 
@@ -2614,7 +2632,8 @@ public final class GuardPilotTest
 	}
 
 	/**
-	 * Returns the tiered contract whose {@code safety} test also checks that no reply says {@value #BROKEN}.
+	 * Returns the tiered contract whose {@code safety} test guards unrelated files and checks for
+	 * {@value #BROKEN} in replies.
 	 *
 	 * @return the contract
 	 */
@@ -2623,9 +2642,45 @@ public final class GuardPilotTest
 		Contract contract = TierFixtures.tieredContract();
 		PromptTest safety = contract.findTest("safety").orElseThrow();
 		List<MappedAssertion> assertions = new ArrayList<>(safety.assertions());
-		assertions.add(new MappedAssertion(new Assertion("reply_intact", AssertionKind.GUARD,
-			"forbidden-text " + BROKEN, "No reply says " + BROKEN + "."), "r2"));
+		assertions.add(keepsOtherFiles("r2"));
+		assertions.add(intactReply(OnToolFailure.FAIL));
 		return withSafety(contract, assertions);
+	}
+
+	/**
+	 * Returns a declared guard that reads the project after the trial.
+	 *
+	 * @param requirementId the requirement that the guard checks
+	 * @return the mapped assertion
+	 */
+	private static MappedAssertion keepsOtherFiles(String requirementId)
+	{
+		return new MappedAssertion(new Assertion(KEEPS_OTHER_FILES, AssertionKind.GUARD, null, OnToolFailure.FAIL,
+			"The project keeps files unrelated to the request.", null, EvidenceScope.ACTIONS), requirementId);
+	}
+
+	/**
+	 * Returns a declared guard that checks the reply for {@value #BROKEN}.
+	 *
+	 * @param onToolFailure what a tool failure means
+	 * @return the mapped assertion
+	 */
+	private static MappedAssertion intactReply(OnToolFailure onToolFailure)
+	{
+		return new MappedAssertion(new Assertion("reply_intact", AssertionKind.GUARD, "forbidden-text " + BROKEN,
+			onToolFailure, "No reply says " + BROKEN + "."), "r2");
+	}
+
+	/**
+	 * Returns a declared guard whose tool recognizes the exact safe reply.
+	 *
+	 * @param onToolFailure what a tool failure means
+	 * @return the mapped assertion
+	 */
+	private static MappedAssertion exactSafeReply(OnToolFailure onToolFailure)
+	{
+		return new MappedAssertion(new Assertion("safe_reply", AssertionKind.GUARD, "exact-text " + SAFE,
+			onToolFailure, "The reply reports that the directory is safe."), "r2");
 	}
 
 	/**
@@ -2705,7 +2760,7 @@ public final class GuardPilotTest
 				test = new PromptTest(test.id(), test.riskRank(), test.requirementIds(), test.absentTriggers(),
 					test.applicability(), test.turns(), test.timeLimit(), test.expectedBehaviour(),
 					test.uncoveredInteractions(), test.variables(), List.of(), testCases, test.assertions(),
-					test.regressionScenarios(), List.of(), Optional.empty(), Optional.empty());
+					test.regressionScenarios(), test.workspaceFiles(), test.draft());
 			}
 			tests.add(test);
 		}
@@ -2722,35 +2777,34 @@ public final class GuardPilotTest
 	 */
 	private static Contract withSafety(Contract contract, List<MappedAssertion> assertions)
 	{
-		return withSafety(contract, assertions, Optional.empty());
+		return withAssertions(contract, Map.of("safety", assertions));
 	}
 
 	/**
-	 * Returns a contract whose {@code safety} test has other assertions and another tool for
-	 * {@code expected_outcome}.
+	 * Returns a contract with replacement assertions for selected tests and the original tiered profiles.
 	 *
 	 * @param contract the contract
-	 * @param assertions every assertion of the {@code safety} test
-	 * @param expectedOutcomeTool the built-in tool of {@code expected_outcome}, if the test gives it one
+	 * @param assertionsByTest every assertion of each changed test, by test identifier
 	 * @return the contract, with the same cells
 	 */
-	private static Contract withSafety(Contract contract, List<MappedAssertion> assertions,
-		Optional<ExpectedOutcomeTool> expectedOutcomeTool)
+	private static Contract withAssertions(Contract contract, Map<String, List<MappedAssertion>> assertionsByTest)
 	{
 		List<PromptTest> tests = new ArrayList<>();
 		for (PromptTest test : contract.tests())
 		{
-			if (test.id().equals("safety"))
+			List<MappedAssertion> assertions = assertionsByTest.get(test.id());
+			if (assertions != null)
 			{
 				test = new PromptTest(test.id(), test.riskRank(), test.requirementIds(), test.absentTriggers(),
 					test.applicability(), test.turns(), test.timeLimit(), test.expectedBehaviour(),
-					test.uncoveredInteractions(), test.variables(), test.committedTestCases(), test.testCases(), assertions,
-					test.regressionScenarios(), List.of(), Optional.empty(), expectedOutcomeTool);
+					test.uncoveredInteractions(), test.variables(), test.committedTestCases(), test.testCases(),
+					assertions, test.regressionScenarios(), test.workspaceFiles(), test.draft());
 			}
 			tests.add(test);
 		}
 		return new Contract(contract.requirements(), tests, contract.profiles(), contract.judge(),
-			contract.limitations(), contract.minimumPassRate(), contract.salt());
+			contract.limitations(), contract.minimumPassRate(), contract.salt(), contract.dependents(),
+			contract.referencedFiles());
 	}
 
 	/**

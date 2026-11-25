@@ -6,8 +6,11 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFile;
+import com.holdmyspot.cat.common.optimizer.contract.Assertion;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestFiles;
+import com.holdmyspot.cat.common.optimizer.contract.TestCase;
+import com.holdmyspot.cat.common.optimizer.contract.TestValue;
+import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFile;
 import com.holdmyspot.cat.common.optimizer.proposal.RegressionScenarios;
 
 import org.testng.annotations.DataProvider;
@@ -22,6 +25,7 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -252,9 +256,8 @@ public final class RegressionScenariosTest
 	}
 
 	/**
-	 * Verifies that a prompt test directory in the current format is read with its scenario, workspace files and
-	 * committed test cases, and that a scenario in an earlier format is kept for conversion with the reason it does not
-	 * parse; each text fixture keeps the file that it is read from.
+	 * Verifies that a recorded prompt test directory with a retired assertion subsection retains its declared
+	 * assertions, workspace files and committed test cases. An earlier file format is kept with its parse problem.
 	 *
 	 * @throws IOException if the scenario tree cannot be created or read
 	 */
@@ -263,7 +266,7 @@ public final class RegressionScenariosTest
 	{
 		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			// Requirement: R-I3, R-C20
+			// Requirement: R-I3, R-C20, R-L17
 			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
 				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
@@ -288,12 +291,16 @@ public final class RegressionScenariosTest
 
 					- **kind**: effect
 					- **description**: The reply summarizes the notes.
+
+					### expected_outcome
+					- **tool**: `exact-text {{expected_outcome}}`
 					""");
 				Files.createDirectories(current.resolve("workspace"));
 				Files.writeString(current.resolve("workspace/{{notes}}"), "Release 4.2 shipped.");
-				Files.writeString(current.resolve("values.json"), """
+				String values = """
 					{"format_version": 1, "test_cases": [{"values": {"notes": "a.md"}, "expected_outcome": "4.2"}]}
-					""");
+					""";
+				Path valuesFile = Files.writeString(current.resolve("values.json"), values);
 				Path earlier = Files.createDirectories(tests.resolve("reported"));
 				Files.writeString(earlier.resolve("scenario.md"), "## Scenario\n\n### Request 1\n\nSummarize.\n");
 
@@ -308,8 +315,12 @@ public final class RegressionScenariosTest
 				if (!(found.get(1).format() instanceof RegressionScenarios.Current(PromptTestFiles files, var texts)))
 					throw new AssertionError("Not the current format: " + found.get(1).format());
 				requireThat(files.scenario().turns(), "turns").isEqualTo(List.of("Summarize `{{notes}}`."));
+				requireThat(files.scenario().assertions().stream().map(Assertion::id).toList(), "assertionIds").
+					isEqualTo(List.of("summary_given"));
 				requireThat(files.workspaceFiles().size(), "workspaceFiles.size()").isEqualTo(1);
-				requireThat(files.testCases().size(), "testCases.size()").isEqualTo(1);
+				requireThat(files.testCases(), "testCases").
+					isEqualTo(List.of(new TestCase(Map.of("notes", new TestValue.Text("a.md")), "4.2")));
+				requireThat(Files.readString(valuesFile), "valuesFile").isEqualTo(values);
 				String source = "plugin/src/test/resources/common/reading/whole_file_read/workspace/{{notes}}";
 				requireThat(texts, "texts").isEqualTo(List.of(new WorkspaceFile("{{notes}}", "Release 4.2 shipped.",
 					source)));

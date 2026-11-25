@@ -6,12 +6,12 @@ import com.holdmyspot.cat.common.optimizer.contract.Assertion;
 import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
 import com.holdmyspot.cat.common.optimizer.contract.EvidenceScope;
 import com.holdmyspot.cat.common.optimizer.contract.ExpectedBehavior;
-import com.holdmyspot.cat.common.optimizer.contract.ExpectedOutcomeTool;
 import com.holdmyspot.cat.common.optimizer.contract.JudgedAssertion;
 import com.holdmyspot.cat.common.optimizer.contract.OnToolFailure;
 import com.holdmyspot.cat.common.optimizer.contract.Requirement;
 import com.holdmyspot.cat.common.optimizer.contract.Scenario;
 import com.holdmyspot.cat.common.optimizer.contract.ScenarioFormatException;
+import com.holdmyspot.cat.common.optimizer.contract.ScenarioParser;
 import com.holdmyspot.cat.common.optimizer.contract.VariableDeclaration;
 
 import org.testng.annotations.Test;
@@ -705,84 +705,118 @@ public final class ScenarioTest
 		requireThat(refusal(start + "### Summary Given\n\n" + body), "notSnakeCase").startsWith("Line 9:");
 		requireThat(refusal(start + "### summary_given\n\n" + body + "### summary_given\n\n" + body),
 			"duplicate").startsWith("Line 14:");
-		requireThat(refusal(start + "### expected_outcome\n\n" + body), "reserved").startsWith("Line 11:").
-			contains("expected_outcome").contains("kind");
+		requireThat(refusal(start + "### expected_outcome\n\n" + body), "reserved").startsWith("Line 9:").
+			contains("expected_outcome").contains("names a requirement");
 	}
 
 	/**
-	 * Verifies that the subsection {@code expected_outcome} gives the assertion that CAT adds a built-in tool, that
-	 * {@code fail} is its default, that {@code on_tool_failure} is written only when it is {@code judge}, and that its
-	 * tool may name the expected outcome and the declared variables.
-	 *
-	 * @throws ScenarioFormatException if the scenario is refused
+	 * Refuses the retired subsection and tells the author where to put its tool.
 	 */
 	@Test
-	public void parsesExpectedOutcomeTool() throws ScenarioFormatException
+	public void refusesExpectedOutcomeSubsection()
 	{
-		Scenario failing = Scenario.parse(VARIABLES + TURN + ASSERTIONS + """
+		// Requirement: R-L17
+		String retired = VARIABLES + TURN + ASSERTIONS + """
 
 			### expected_outcome
 
 			- **tool**: `exact-text {{expected_outcome}}`
-			""");
-		requireThat(failing.assertions().stream().map(Assertion::id).toList(), "assertions").
-			isEqualTo(List.of("summary_given"));
-		requireThat(failing.expectedOutcomeTool(), "expectedOutcomeTool").
-			isEqualTo(Optional.of(new ExpectedOutcomeTool("exact-text {{expected_outcome}}")));
-		requireThat(Scenario.parse(failing.render()), "roundTrip").isEqualTo(failing);
-		requireThat(failing.render(), "rendered").doesNotContain("on_tool_failure");
+			""";
+		requireThat(refusal(retired), "refusal").contains("expected_outcome").contains("tool to an assertion").
+			contains("names a requirement");
+	}
 
-		Scenario judging = Scenario.parse(VARIABLES + TURN + ASSERTIONS + """
+	/**
+	 * Refuses the retired subsection even when it provides only a judge reason.
+	 */
+	@Test
+	public void refusesExpectedOutcomeJudgeReason()
+	{
+		// Requirement: R-L17
+		String retired = VARIABLES + TURN + ASSERTIONS + """
+
+			### expected_outcome
+
+			- **judge_reason**: Different summaries can describe the same release.
+			""";
+		requireThat(refusal(retired), "refusal").contains("expected_outcome").contains("assertion").
+			contains("requirement");
+	}
+
+	/**
+	 * Keeps the case's expected-outcome placeholder available to a declared assertion.
+	 *
+	 * @throws ScenarioFormatException if the scenario is refused
+	 */
+	@Test
+	public void keepsExpectedOutcomePlaceholder() throws ScenarioFormatException
+	{
+		// Requirement: R-L17
+		Scenario scenario = Scenario.parse(VARIABLES + TURN + """
+			## Assertions
+
+			### summary_given
+
+			- **kind**: effect
+			- **tool**: `exact-text {{expected_outcome}}`
+			- **description**: The reply reads {{expected_outcome}}.
+			""");
+
+		requireThat(scenario.assertions(), "assertions").isEqualTo(List.of(new Assertion("summary_given",
+			AssertionKind.EFFECT, "exact-text {{expected_outcome}}", "The reply reads {{expected_outcome}}.")));
+		requireThat(Scenario.parse(scenario.render()), "roundTrip").isEqualTo(scenario);
+	}
+
+	/**
+	 * The recorded reader ignores the retired tool and judge reason and keeps the declarations on either side.
+	 *
+	 * @throws ScenarioFormatException if the recorded scenario is refused
+	 */
+	@Test
+	public void ignoresRecordedOutcomeSubsection() throws ScenarioFormatException
+	{
+		// Requirement: R-L17
+		String retired = """
 
 			### expected_outcome
 
 			- **tool**: `pattern "(?i){{expected_outcome}}"`
 			- **on_tool_failure**: judge
 			- **judge_reason**: A reply can state the correct result in wording the pattern misses.
-			""");
-		requireThat(judging.expectedOutcomeTool(), "judging").isEqualTo(Optional.of(new ExpectedOutcomeTool(
-			"pattern \"(?i){{expected_outcome}}\"", OnToolFailure.JUDGE)));
-		requireThat(judging.expectedOutcomeJudgeReason(), "judgeReason").isEqualTo(
-			"A reply can state the correct result in wording the pattern misses.");
-		String rendered = judging.render();
-		requireThat(Scenario.parse(rendered), "roundTrip").isEqualTo(judging);
-		requireThat(rendered, "rendered").contains("### expected_outcome\n\n- **tool**: ").
-			contains("- **on_tool_failure**: judge\n").contains("- **judge_reason**: ");
+			""";
+		String second = """
 
-		Scenario judgeOnly = Scenario.parse(VARIABLES + TURN + ASSERTIONS + "\n\n### expected_outcome\n\n" +
-			"- **judge_reason**: The expected result needs a semantic comparison.\n");
-		requireThat(judgeOnly.expectedOutcomeJudgeReason(), "judgeOnlyReason").isEqualTo(
-			"The expected result needs a semantic comparison.");
-		requireThat(Scenario.parse(judgeOnly.render()), "judgeOnlyRoundTrip").isEqualTo(judgeOnly);
+			### notes_kept
 
-		Scenario without = Scenario.parse(VARIABLES + TURN + ASSERTIONS);
-		requireThat(without.expectedOutcomeTool(), "without").isEqualTo(Optional.empty());
-		requireThat(without.render(), "withoutRendered").doesNotContain("expected_outcome");
+			- **kind**: guard
+			- **tool**: `file-exists docs/{{notes}}`
+			- **description**: The notes still exist.
+			""";
+		String start = VARIABLES + TURN + ASSERTIONS;
+
+		Scenario recorded = ScenarioParser.parseRecorded("recorded scenario: ", start + retired + second);
+
+		requireThat(recorded, "recorded").isEqualTo(Scenario.parse(start + second));
+		requireThat(recorded.render(), "rendered").doesNotContain("### expected_outcome");
 	}
 
 	/**
-	 * Verifies that the subsection {@code expected_outcome} refuses every pair besides {@code tool} and
-	 * {@code on_tool_failure}, a missing tool, an unknown tool, a repeated subsection and a scenario whose only
-	 * assertion it is.
+	 * A recorded scenario must still declare an assertion when its retired subsection is skipped.
+	 *
+	 * @throws ScenarioFormatException if the recorded scenario is refused
 	 */
-	@Test
-	public void refusesInvalidExpectedOutcomeTool()
+	@Test(expectedExceptions = ScenarioFormatException.class,
+		expectedExceptionsMessageRegExp = "recorded scenario: Line 7: .*no assertion.*")
+	public void recordedScenarioNeedsAnAssertion() throws ScenarioFormatException
 	{
-		String start = VARIABLES + TURN + ASSERTIONS + "\n### expected_outcome\n\n";
-		String tool = "- **tool**: `exact-text {{expected_outcome}}`\n";
-		requireThat(refusal(start + "- **kind**: guard\n" + tool), "kind").startsWith("Line 16:").contains("kind");
-		requireThat(refusal(start + tool + "- **description**: The reply is right.\n"), "description").
-			startsWith("Line 17:").contains("description");
-		requireThat(refusal(start + tool + "- **other**: x\n"), "otherKey").startsWith("Line 17:").
-			contains("other");
-		requireThat(refusal(start + "- **on_tool_failure**: judge\n"), "noTool").startsWith("Line 16:").
-			contains("no tool");
-		requireThat(refusal(start + "- **tool**: `no-such-tool x`\n"), "unknownTool").startsWith("Line 16:");
-		requireThat(refusal(start + tool + "- **on_tool_failure**: retry\n"), "unknownValue").
-			startsWith("Line 17:").contains("retry");
-		requireThat(refusal(start + tool + "\n### expected_outcome\n\n" + tool), "twice").startsWith("Line 18:");
-		requireThat(refusal(VARIABLES + TURN + "## Assertions\n\n### expected_outcome\n\n" + tool), "only").
-			contains("no assertion besides expected_outcome");
+		// Requirement: R-L17
+		ScenarioParser.parseRecorded("recorded scenario: ", VARIABLES + TURN + """
+			## Assertions
+
+			### expected_outcome
+
+			- **judge_reason**: The expected result needs a semantic comparison.
+			""");
 	}
 
 	/**

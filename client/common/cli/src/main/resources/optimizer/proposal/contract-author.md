@@ -60,8 +60,7 @@
 	CAT rejects a proposal that contains one. Of the judge, you write only `judge.rubric` and `judge.decision_rule`.
 - Never write code. An assertion that a program can decide names one of CAT's built-in tools; CAT implements every
 	built-in tool.
-- For every assertion, including `expected_outcome`, assign a built-in tool when its truth is visible in the trial
-	record. For each assertion the judge decides, including a failed check with `on_tool_failure: judge`, state one
+- For every assertion, assign a built-in tool when its truth is visible in the trial record. For each assertion the judge decides, including a failed check with `on_tool_failure: judge`, state one
 	sentence explaining why no built-in tool decides it; CAT shows these under `Judged assertions` so the user can see
 	where judge sessions are spent. Choose `on_tool_failure: judge`
 	when a failed check may reject a valid outcome, and `fail` when its pass condition is the assertion.
@@ -144,9 +143,7 @@ user's feedback changes it. A higher rate needs more trials to prove.
 ### Judge rubric and decision rule
 
 - `judge.rubric`: the criteria that the judge applies to one trial's text, file effects and tool effects for each
-	assertion without a built-in tool or whose `on_tool_failure` is `judge`, including `expected_outcome` unless the
-	scenario gives it a built-in tool. For `expected_outcome`, say which differences from the expected outcome still
-	match, such as another spelling of the same date.
+	assertion without a built-in tool or whose `on_tool_failure` is `judge`.
 - `judge.decision_rule`: exactly when each assertion that the judge decides passes and when it fails. The judge sees
 	the built-in tool results as evidence but cannot override a tool that decided its assertion.
 

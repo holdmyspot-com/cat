@@ -22,15 +22,10 @@ import java.util.Set;
  * @param variables        the declared variables, in order
  * @param turns            the user turns, in order
  * @param expectedBehavior the {@code ## Expected Behavior} section, or empty for a scenario recorded without it
- * @param assertions       the assertions, in order, without {@value TestCase#EXPECTED_OUTCOME}
- * @param expectedOutcomeTool the built-in tool that the {@code ### expected_outcome} subsection of
- *                         {@code ## Assertions} gives the assertion that CAT adds, or empty if the judge decides it
- * @param expectedOutcomeJudgeReason why no built-in tool decides the added assertion, or {@code null} for legacy
- *                                   scenarios
+ * @param assertions       the declared assertions in order
  */
 public record Scenario(List<VariableDeclaration> variables, List<String> turns,
-	Optional<ExpectedBehavior> expectedBehavior, List<Assertion> assertions,
-	Optional<ExpectedOutcomeTool> expectedOutcomeTool, String expectedOutcomeJudgeReason)
+	Optional<ExpectedBehavior> expectedBehavior, List<Assertion> assertions)
 {
 	/**
 	 * Creates a scenario.
@@ -39,13 +34,11 @@ public record Scenario(List<VariableDeclaration> variables, List<String> turns,
 	 * @param turns            the user turns, in order
 	 * @param expectedBehavior the {@code ## Expected Behavior} section, or empty for a scenario recorded without it
 	 * @param assertions       the assertions, in order
-	 * @param expectedOutcomeTool the built-in tool that the assertion {@value TestCase#EXPECTED_OUTCOME} has, or empty
-	 *                         if the judge decides it
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if a list is empty, a turn is blank, two variables share a name, two assertions
 	 *                                  share an identifier, or a turn, the expected behavior's description, an
-	 *                                  assertion statement or an assertion's {@code tool} or the tool of
-	 *                                  {@value TestCase#EXPECTED_OUTCOME} has a placeholder for an undeclared variable
+	 *                                  assertion statement or an assertion's {@code tool} has a placeholder for an
+	 *                                  undeclared variable
 	 */
 	public Scenario
 	{
@@ -53,10 +46,6 @@ public record Scenario(List<VariableDeclaration> variables, List<String> turns,
 		requireThat(turns, "turns").isNotEmpty();
 		requireThat(expectedBehavior, "expectedBehavior").isNotNull();
 		requireThat(assertions, "assertions").isNotEmpty();
-		requireThat(expectedOutcomeTool, "expectedOutcomeTool").isNotNull();
-		if (expectedOutcomeTool.isPresent() && expectedOutcomeTool.get().onToolFailure() == OnToolFailure.FAIL &&
-			expectedOutcomeJudgeReason != null)
-			throw new IllegalArgumentException("The expected outcome tool decides the assertion without a judge");
 		variables = List.copyOf(variables);
 		turns = List.copyOf(turns);
 		assertions = List.copyOf(assertions);
@@ -86,40 +75,6 @@ public record Scenario(List<VariableDeclaration> variables, List<String> turns,
 			if (assertion.tool() != null)
 				requireDeclared(names, assertion.tool());
 		}
-		if (expectedOutcomeTool.isPresent())
-			requireDeclared(names, expectedOutcomeTool.get().tool());
-	}
-
-	/**
-	 * Creates a scenario with no explicit reason for the added assertion.
-	 *
-	 * @param variables the declared variables
-	 * @param turns the user turns
-	 * @param expectedBehavior the expected behavior, if any
-	 * @param assertions the declared assertions
-	 * @param expectedOutcomeTool the built-in tool for the added assertion, if any
-	 */
-	public Scenario(List<VariableDeclaration> variables, List<String> turns,
-		Optional<ExpectedBehavior> expectedBehavior, List<Assertion> assertions,
-		Optional<ExpectedOutcomeTool> expectedOutcomeTool)
-	{
-		this(variables, turns, expectedBehavior, assertions, expectedOutcomeTool, null);
-	}
-
-	/**
-	 * Creates a scenario whose assertion {@value TestCase#EXPECTED_OUTCOME} has no built-in tool.
-	 *
-	 * @param variables        the declared variables, in order
-	 * @param turns            the user turns, in order
-	 * @param expectedBehavior the {@code ## Expected Behavior} section, or empty for a scenario recorded without it
-	 * @param assertions       the assertions, in order
-	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if the canonical constructor rejects the arguments
-	 */
-	public Scenario(List<VariableDeclaration> variables, List<String> turns,
-		Optional<ExpectedBehavior> expectedBehavior, List<Assertion> assertions)
-	{
-		this(variables, turns, expectedBehavior, assertions, Optional.empty(), null);
 	}
 
 	/**
@@ -195,8 +150,7 @@ public record Scenario(List<VariableDeclaration> variables, List<String> turns,
 	 * written directly under {@code ## Scenario}, and several turns as numbered {@code ### Turn <n>} subsections. A
 	 * turn is written as prose, or as a {@code description} pair if a line of it would read as a heading or a pair.
 	 *
-	 * @return the sections, ending with a line break; a {@code ### expected_outcome} subsection after the assertions
-	 *   holds the tool of the assertion that CAT adds, if the scenario gives it one
+	 * @return the sections, ending with a line break
 	 * @throws IllegalArgumentException if the text would read back differently, such as a description that ends with
 	 *                                  spaces
 	 */
@@ -242,18 +196,6 @@ public record Scenario(List<VariableDeclaration> variables, List<String> turns,
 				appendPair(text, "evidence_scope", EnumNames.lowerCase(assertion.evidenceScope()));
 			if (assertion.judgeReason() != null)
 				appendPair(text, "judge_reason", assertion.judgeReason());
-		}
-		if (expectedOutcomeTool.isPresent() || expectedOutcomeJudgeReason != null)
-		{
-			text.append("\n### ").append(TestCase.EXPECTED_OUTCOME).append("\n\n");
-			if (expectedOutcomeTool.isPresent())
-			{
-				appendPair(text, "tool", CodeSpan.render(expectedOutcomeTool.get().tool()));
-				if (expectedOutcomeTool.get().onToolFailure() == OnToolFailure.JUDGE)
-					appendPair(text, "on_tool_failure", "judge");
-			}
-			if (expectedOutcomeJudgeReason != null)
-				appendPair(text, "judge_reason", expectedOutcomeJudgeReason);
 		}
 
 		String rendered = text.toString();
@@ -378,8 +320,7 @@ public record Scenario(List<VariableDeclaration> variables, List<String> turns,
 	}
 
 	/**
-	 * Returns the variables that the turns, assertion statements or assertions' {@code tool} values name, including the
-	 * tool of {@value TestCase#EXPECTED_OUTCOME}.
+	 * Returns the variables that the turns, assertion statements or assertions' {@code tool} values name.
 	 *
 	 * @return the names of the declared variables that this text uses, in order of first use
 	 */
@@ -394,7 +335,6 @@ public record Scenario(List<VariableDeclaration> variables, List<String> turns,
 			if (assertion.tool() != null)
 				named.addAll(Placeholders.scenarioNames(assertion.tool()));
 		}
-		expectedOutcomeTool.ifPresent(tool -> named.addAll(Placeholders.scenarioNames(tool.tool())));
 		named.remove(TestCase.EXPECTED_OUTCOME);
 		return named;
 	}

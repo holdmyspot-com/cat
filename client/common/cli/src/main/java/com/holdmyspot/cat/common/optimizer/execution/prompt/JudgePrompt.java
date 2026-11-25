@@ -3,13 +3,14 @@ package com.holdmyspot.cat.common.optimizer.execution.prompt;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.optimizer.contract.BuiltInToolResult;
+import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
 import com.holdmyspot.cat.common.optimizer.contract.EvidenceScope;
 import com.holdmyspot.cat.common.optimizer.contract.JudgeProfile;
 import com.holdmyspot.cat.common.optimizer.contract.JudgedAssertion;
 import com.holdmyspot.cat.common.optimizer.contract.Part;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.Requirement;
-import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
+import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.evidence.EvidencePrompt;
 import com.holdmyspot.cat.common.optimizer.execution.AssertionVerdict;
 import com.holdmyspot.cat.common.optimizer.execution.JudgeProtocol;
@@ -70,10 +71,10 @@ public final class JudgePrompt implements JudgeProtocol
 	 * {@inheritDoc}
 	 * <p>
 	 * The profile's prompt receives the rubric, the decision rule, the assertions to decide and the result schema, then
-	 * the evidence as data: the test case, the responses and the built-in tool results as JSON, and the rendered
-	 * trial activity and file changes. Each assertion's statement has the test case's values in place of its
-	 * placeholders. The effects directory is readable. A template that names the effects or transcript placeholders
-	 * receives those paths, and naming the transcript grants read-only access to its directory.
+	 * the evidence as data: the test case inputs, the responses and the built-in tool results as JSON, and the rendered
+	 * trial activity and file changes. Each assertion's statement uses the test case values for its placeholders,
+	 * including the expected outcome when named. A template that names the effects or transcript placeholders receives
+	 * those paths. The effects directory is readable, and naming the transcript grants read-only access to its directory.
 	 * <p>
 	 * Assertions of the {@link EvidenceScope#RESPONSE} scope are instead decided from the profile's response prompt,
 	 * which receives the rubric, the decision rule, the assertions, the test case, the replies and the result schema,
@@ -116,15 +117,10 @@ public final class JudgePrompt implements JudgeProtocol
 				put("id", judged.assertion().id()).
 				put("statement", judged.assertion().statement(textByName));
 			Requirement requirement = judged.requirement();
-			if (requirement == null)
-				node.putNull("requirement");
-			else
-			{
-				node.putObject("requirement").
-					put("id", requirement.id()).
-					put("description", requirement.description()).
-					put("source", requirement.source());
-			}
+			node.putObject("requirement").
+				put("id", requirement.id()).
+				put("description", requirement.description()).
+				put("source", requirement.source());
 			node.set("behaviors", json.valueToTree(judged.behaviors()));
 		}
 		ArrayNode resultArray = json.createArrayNode();
@@ -138,6 +134,9 @@ public final class JudgePrompt implements JudgeProtocol
 				put("passed", result.passed()).
 				put("observed", result.observed());
 		}
+		ObjectNode caseEvidence = TestCaseJson.encode(json, testCase);
+		caseEvidence.remove(TestCase.EXPECTED_OUTCOME);
+		String caseJson = pretty(caseEvidence);
 		if (scope == EvidenceScope.RESPONSE)
 		{
 			String template = profile.prompt(EvidenceScope.RESPONSE);
@@ -145,7 +144,7 @@ public final class JudgePrompt implements JudgeProtocol
 				"rubric", profile.rubric(),
 				"decision_rule", profile.decisionRule(),
 				"assertions", pretty(assertionArray),
-				"test_case", pretty(TestCaseJson.encode(json, testCase)),
+				"test_case", caseJson,
 				"responses", pretty(responseArray),
 				"result_schema", pretty(json.readTree(profile.resultSchema()))));
 			values.keySet().removeIf(name -> !template.contains("{{" + name + "}}"));
@@ -158,7 +157,7 @@ public final class JudgePrompt implements JudgeProtocol
 			"rubric", profile.rubric(),
 			"decision_rule", profile.decisionRule(),
 			"assertions", pretty(assertionArray),
-			"test_case", pretty(TestCaseJson.encode(json, testCase)),
+			"test_case", caseJson,
 			"responses", pretty(responseArray),
 			"effects", originalEffects.toString(),
 			"transcript", originalTranscript.toString(),

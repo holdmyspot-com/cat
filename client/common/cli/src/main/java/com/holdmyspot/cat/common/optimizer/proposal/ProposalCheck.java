@@ -105,7 +105,7 @@ public final class ProposalCheck
 	 * The fields of a completed prompt test whose values come from its {@value PromptTestFiles#SCENARIO}.
 	 */
 	private static final Set<String> SCENARIO_FIELDS = Set.of(".turns", ".variables", ".expected_behavior",
-		".time_limit_seconds", ".expected_outcome_tool", ".expected_outcome_judge_reason");
+		".time_limit_seconds");
 	/**
 	 * The file name suffix of a scenario in an earlier format.
 	 */
@@ -410,6 +410,15 @@ public final class ProposalCheck
 		requireThat(draft, "draft").isNotNull();
 		requireThat(observedSources, "observedSources").isNotNull();
 		requireThat(profiles, "profiles").isNotNull();
+		Set<String> fixedDirectories = new HashSet<>();
+		for (Path directory : fixed.keySet())
+			fixedDirectories.add(PortablePaths.text(directory));
+		for (JsonNode item : proposalFile.path("tests"))
+		{
+			if (item instanceof ObjectNode test &&
+				(!authoring || fixedDirectories.contains(test.path("directory").asString())))
+				ProposalSchema.normalizeRecordedTest(test);
+		}
 		String derivation = json.writerWithDefaultPrettyPrinter().writeValueAsString(proposalFile);
 
 		List<String> problems = new ArrayList<>();
@@ -1247,7 +1256,10 @@ public final class ProposalCheck
 			try
 			{
 				Path root = draft.resolve(PromptTestLocations.rootOf(directory).orElseThrow());
-				files = PromptTestFiles.readScenario(project, draft, root, testDirectory);
+				if (authoring)
+					files = PromptTestFiles.readScenario(project, draft, root, testDirectory);
+				else
+					files = PromptTestFiles.readRecordedScenario(project, draft, root, testDirectory);
 				content = Files.readString(scenarioFile, UTF_8);
 			}
 			catch (ScenarioFormatException e)
@@ -1265,15 +1277,6 @@ public final class ProposalCheck
 				throw new UncheckedIOException(e);
 			}
 			Scenario scenario = files.scenario();
-			boolean requireJudgeReasons = recordedTest == null;
-			if (requireJudgeReasons && (scenario.expectedOutcomeTool().isEmpty() ||
-				scenario.expectedOutcomeTool().get().onToolFailure() == OnToolFailure.JUDGE) &&
-				scenario.expectedOutcomeJudgeReason() == null)
-			{
-				problems.add(display(scenarioFile) + ": expected_outcome is judged but has no judge_reason; add one " +
-					"sentence explaining why no built-in tool decides it");
-				return null;
-			}
 			if (scenario.expectedBehavior().isEmpty())
 			{
 				problems.add(display(scenarioFile) + ": the scenario has no ## Expected Behavior section. Add one " +
@@ -1290,6 +1293,7 @@ public final class ProposalCheck
 			List<DraftCase> order = new ArrayList<>();
 			ArrayNode testCases = testCases(testDirectory, committedTestCases, filesOfTest, order);
 			boolean bareOutcomes = authoring && testCases != null && hasOnlyBareOutcomes(testCases, committedTestCases);
+			boolean requireJudgeReasons = authoring && recordedTest == null;
 			ArrayNode assertions = assertions(item, location, id, scenario, filesOfTest, requireJudgeReasons,
 				bareOutcomes);
 			if (testCases == null || assertions == null)
@@ -1346,15 +1350,6 @@ public final class ProposalCheck
 			test.putArray("workspace_files");
 			test.set("test_cases", testCases);
 			test.set("assertions", assertions);
-			if (scenario.expectedOutcomeTool().isPresent())
-			{
-				ObjectNode toolNode = test.putObject("expected_outcome_tool");
-				toolNode.put("tool", scenario.expectedOutcomeTool().get().tool());
-				toolNode.put("on_tool_failure",
-					EnumNames.lowerCase(scenario.expectedOutcomeTool().get().onToolFailure()));
-			}
-			if (scenario.expectedOutcomeJudgeReason() != null)
-				test.put("expected_outcome_judge_reason", scenario.expectedOutcomeJudgeReason());
 			if (item.has(ProposalSchema.NEAR_MISSES))
 				test.set(ProposalSchema.NEAR_MISSES, item.get(ProposalSchema.NEAR_MISSES));
 
@@ -1420,6 +1415,7 @@ public final class ProposalCheck
 		private ObjectNode fixedTest(ObjectNode completed)
 		{
 			ObjectNode test = completed.deepCopy();
+			ProposalSchema.normalizeRecordedTest(test);
 			String id = test.get("id").asString();
 			List<TestCase> committedTestCases = new ArrayList<>();
 			for (JsonNode testCase : test.remove(ProposalSchema.COMMITTED_TEST_CASES))
@@ -1673,7 +1669,7 @@ public final class ProposalCheck
 				}
 				// A recorded scenario that predates the key parses, but every judged assertion that a proposal holds
 				// declares what its judge reads
-				if (judged && assertion.evidenceScope() == null)
+				if (authoring && judged && assertion.evidenceScope() == null)
 				{
 					problems.add(scenarioFile + ": assertion `" + id + "` is judged but has no evidence_scope; add " +
 						"- **evidence_scope**: response if it is about what the agent says, or actions if it is about " +
@@ -1689,7 +1685,7 @@ public final class ProposalCheck
 				full.put("statement", assertion.statement());
 				if (judged && assertion.judgeReason() != null)
 					full.put("judge_reason", assertion.judgeReason());
-				if (judged)
+				if (judged && assertion.evidenceScope() != null)
 					full.put("evidence_scope", EnumNames.lowerCase(assertion.evidenceScope()));
 				full.put("requirement_id", items.get(k).get("requirement_id").asString());
 			}
