@@ -3,6 +3,9 @@ package com.holdmyspot.cat.codex.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.codex.runner.CodexAuthentication;
+import com.holdmyspot.cat.codex.runner.CodexRunner;
+import com.holdmyspot.cat.codex.runner.test.CodexSourceHomes;
 import com.holdmyspot.cat.codex.secrets.CodexSessionStartHookSecrets;
 import com.holdmyspot.cat.codex.secrets.CodexSubagentStartHookSecrets;
 import com.holdmyspot.cat.common.Platform;
@@ -12,7 +15,8 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.TestToolScope;
-import com.holdmyspot.cat.codex.runner.CodexRunner;
+import com.holdmyspot.cat.common.fakes.test.Yielding;
+import com.holdmyspot.cat.common.runner.AuthenticationOptions;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import java.io.ByteArrayInputStream;
@@ -26,13 +30,13 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
-import com.holdmyspot.cat.common.fakes.test.Yielding;
 
 /**
  * Verifies Codex SessionStart rule injection.
@@ -176,8 +180,12 @@ public final class CodexSessionStartHookTest
 			Path sessionFolder = cleanup.add(Files.createTempDirectory("cat-session-"));
 			Files.writeString(Files.createDirectories(plugin.resolve("rules/common")).resolve("rule.md"), "rule");
 			Map<String, String> environment = new HashMap<>();
+			Path source = CodexSourceHomes.create(sessionFolder, "source");
+			CodexSourceHomes.apiKeyLogin(source.resolve(".codex"));
+			CodexAuthentication authentication = CodexAuthentication.read(new AuthenticationOptions(Optional.of(source),
+				Optional.empty(), false), Map.of(), Platform.current());
 			CodexRunner.processEnvironment(Map.of("PATH", "/usr/bin"), HarnessDependencyCaches.NONE, sessionFolder,
-				sessionFolder, sessionFolder, Platform.LINUX_X64).forEach((name, value) ->
+				sessionFolder, sessionFolder, Platform.LINUX_X64, authentication).forEach((name, value) ->
 			{
 				if (name.startsWith("CAT_"))
 					environment.put(name, value);

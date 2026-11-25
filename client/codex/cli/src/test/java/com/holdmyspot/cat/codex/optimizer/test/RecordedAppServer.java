@@ -1,12 +1,13 @@
 package com.holdmyspot.cat.codex.optimizer.test;
 
-import com.holdmyspot.cat.common.FileLocks;
-import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.codex.optimizer.CodexSessions;
 import com.holdmyspot.cat.codex.runner.CodexProcess;
+import com.holdmyspot.cat.codex.runner.CodexRunner;
+import com.holdmyspot.cat.common.FileLocks;
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.optimizer.adapter.Bridge;
 import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
 import com.holdmyspot.cat.common.runner.LiveNestedSession;
@@ -15,7 +16,6 @@ import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.fakes.test.FakeHarnessCli;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Reader;
@@ -26,7 +26,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -175,7 +174,7 @@ final class RecordedAppServer implements Bridge
 				"recorded", List.of("recorded"));
 			TestHarnessRunnerScope scope = new TestHarnessRunnerScope();
 			CodexProcess adapter = new CodexProcess(process, scope, false,
-				CodexProcess.rollouts(nestedSession.directory().resolve("home"), nestedSession.sessionTranscripts()));
+				CodexRunner.sessionTranscripts(nestedSession));
 			adapter.initialize(nestedSession.directory().resolve("project"), "requested-alias");
 			return new LiveNestedSession(nestedSession, adapter, scope);
 		}, input, output);

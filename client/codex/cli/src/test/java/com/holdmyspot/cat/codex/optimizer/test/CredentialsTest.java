@@ -4,13 +4,18 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.codex.optimizer.Credentials;
+import com.holdmyspot.cat.codex.runner.CodexAuthentication;
+import com.holdmyspot.cat.codex.runner.test.CodexSourceHomes;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
+import com.holdmyspot.cat.common.runner.AuthenticationOptions;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.Optional;
 
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
@@ -77,22 +82,72 @@ public final class CredentialsTest
 	}
 
 	/**
-	 * Verifies that an API key in the environment selects an API key even when the file holds a subscription login.
+	 * Verifies that the class that a runner states in {@code CAT_HOST_LOGIN} wins over the login file, and that the
+	 * runner's {@code CODEX_API_KEY} and {@code OPENAI_API_KEY}, which no session receives, do not change the class.
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
 	@Test
-	public void environmentApiKeyOverridesFile() throws IOException
+	public void statedClassWinsAndKeyVariablesDoNot() throws IOException
 	{
-		// Requirement: R-E7
+		// Requirement: R-E7, R-I15
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory("cat-codex-home-"));
 			writeAuth(home, "{\"OPENAI_API_KEY\":null,\"tokens\":{\"id_token\":\"placeholder\"}}");
+			requireThat(Credentials.classify(home, Map.of("CAT_HOST_LOGIN", "api_key"), JSON), "statedApiKey").
+				isEqualTo(HostLogin.API_KEY);
 			requireThat(Credentials.classify(home, Map.of("CODEX_API_KEY", "placeholder"), JSON), "codexKey").
-				isEqualTo(HostLogin.API_KEY);
+				isEqualTo(HostLogin.SUBSCRIPTION);
 			requireThat(Credentials.classify(home, Map.of("OPENAI_API_KEY", "placeholder"), JSON), "openaiKey").
-				isEqualTo(HostLogin.API_KEY);
+				isEqualTo(HostLogin.SUBSCRIPTION);
+			writeAuth(home, "{\"OPENAI_API_KEY\":\"placeholder\"}");
+			requireThat(Credentials.classify(home, Map.of("CAT_HOST_LOGIN", "subscription"), JSON),
+				"statedSubscription").isEqualTo(HostLogin.SUBSCRIPTION);
+		}
+	}
+
+	/**
+	 * Verifies that a source home's class is {@code api_key} for an API-key {@code auth.json} and the declared class for
+	 * a provider with a base URL, and that the runner's own login file, which holds a ChatGPT sign-in, does not change
+	 * it; and that the class that the source's session states in {@code CAT_HOST_LOGIN} is that class.
+	 *
+	 * @throws IOException if the fixture cannot be written or the source is refused
+	 */
+	@Test
+	public void classifiesSourceHomeLogin() throws IOException
+	{
+		// Requirement: R-I15
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-source-class-")).toRealPath();
+			Path runner = CodexSourceHomes.create(root, "runner");
+			CodexSourceHomes.signInLogin(runner.resolve(".codex"));
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), runner.toString());
+
+			Path apiKey = CodexSourceHomes.create(root, "api-key");
+			CodexSourceHomes.apiKeyLogin(apiKey.resolve(".codex"));
+			CodexAuthentication fromKey = CodexAuthentication.read(new AuthenticationOptions(Optional.of(apiKey),
+				Optional.empty(), false), environment, Platform.current());
+			requireThat(fromKey.loginClass(), "apiKeyClass").isEqualTo(HostLogin.API_KEY);
+			requireThat(fromKey.environment().get("CAT_HOST_LOGIN"), "apiKeyStated").isEqualTo("api_key");
+
+			Path gateway = CodexSourceHomes.create(root, "gateway");
+			CodexSourceHomes.secret(gateway.resolve("key"));
+			CodexSourceHomes.configuration(gateway.resolve(".codex"), """
+				model_provider = "gateway"
+				[model_providers.gateway]
+				base_url = "https://gateway.example/v1"
+				[model_providers.gateway.auth]
+				command = "sh"
+				args = ["-c", "cat ~/key"]
+				""");
+			CodexAuthentication fromGateway = CodexAuthentication.read(new AuthenticationOptions(Optional.of(gateway),
+				Optional.of(HostLogin.SUBSCRIPTION), false), environment, Platform.current());
+			requireThat(fromGateway.loginClass(), "gatewayClass").isEqualTo(HostLogin.SUBSCRIPTION);
+			requireThat(fromGateway.environment().get("CAT_HOST_LOGIN"), "gatewayStated").isEqualTo("subscription");
+			requireThat(Credentials.classify(gateway.resolve(".codex"), fromGateway.environment(), JSON),
+				"classified").isEqualTo(HostLogin.SUBSCRIPTION);
 		}
 	}
 

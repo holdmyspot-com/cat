@@ -9,6 +9,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.codex.optimizer.CodexSessions;
 import com.holdmyspot.cat.codex.runner.CodexConnectionConfiguration;
+import com.holdmyspot.cat.codex.runner.CodexParentMultiAgentState;
 import com.holdmyspot.cat.codex.runner.CodexRunner;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
@@ -19,6 +20,10 @@ import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
 import com.holdmyspot.cat.common.runner.NestedSession;
 import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
+import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
+import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
+import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -26,6 +31,7 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.testng.annotations.Test;
@@ -65,7 +71,7 @@ public final class CodexSessionEnvironmentVersionTest
 			{
 				Path root = cleanup.add(Files.createTempDirectory("cat-codex-session-environment-"));
 				Path source = root.resolve("host.toml");
-				Path destination = root.resolve("home/config.toml");
+				Path destination = root.resolve("home/.codex/config.toml");
 				Path temporaryDirectory = Files.createDirectories(root.resolve("home/tmp"));
 				Path npmCache = Files.createDirectories(root.resolve("npm-cache"));
 				Path mavenCache = Files.createDirectories(root.resolve("maven-cache"));
@@ -88,11 +94,10 @@ public final class CodexSessionEnvironmentVersionTest
 				Files.createSymbolicLink(linkedProject.resolve("outside.md"), Path.of("../outside.md"));
 				manager.copyProject(linkedProject, nestedSession);
 				manager.snapshotProject(nestedSession);
-				Files.writeString(nestedSession.directory().resolve("home/auth.json"), "{}");
+				Path sessionCodexFolder = Files.createDirectories(nestedSession.directory().resolve("home/.codex"));
+				Files.writeString(sessionCodexFolder.resolve("auth.json"), "{}");
 				Files.createDirectories(hostProject.resolve("results/workspaces"));
 				Files.writeString(source, """
-					openai_base_url = "http://localhost:2455/backend-api/codex"
-					forced_login_method = "api"
 					model = "gpt-6-sol"
 					model_reasoning_effort = "medium"
 					project_doc_fallback_filenames = ["GUIDE.md", "TEAM.md"]
@@ -123,8 +128,17 @@ public final class CodexSessionEnvironmentVersionTest
 				// no session
 				SessionRequestAccess requestAccess = SessionRequestAccess.allowing(nestedSession, root.resolve("artifact"), 0,
 					Platform.LINUX_X64, SessionRequestAccess.Shell.POSIX).orElseThrow();
-				CodexConnectionConfiguration.copy(source, destination, nestedSession.directory().resolve("project"), caches,
-					temporaryDirectory, 0, requestAccess, Platform.LINUX_X64);
+				// The session's credential settings come from its launch's source home, never from the host configuration
+				String credentialSettings = """
+					openai_base_url = "http://localhost:2455/backend-api/codex"
+					forced_login_method = "api"
+					""";
+				Files.createDirectories(destination.getParent());
+				CodexConnectionConfiguration.copy(source, destination, root.resolve("home"), credentialSettings,
+					nestedSession.directory().resolve("project"), caches, temporaryDirectory, 0, requestAccess,
+					Platform.LINUX_X64, CodexParentMultiAgentState.NONE, ChildPolicy.intersect(ParentPolicy.UNSANDBOXED,
+						new ChildNeeds(root.resolve("home").toAbsolutePath(), caches.directories(), List.of(), Set.of())),
+					ExtraPermissions.NONE, null);
 				// Bubblewrap hides the denied directory that holds the read-only paths, so the profile does not list what is
 				// under it
 				Path bin = Files.createDirectories(root.resolve("bin"));

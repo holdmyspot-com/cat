@@ -127,8 +127,9 @@ public final class CodexRunnerCli
 	 * <p>
 	 * With {@code serve}, {@value ChildNeedsReport#OPTION} and a file, optionally followed by the launch's
 	 * {@value AuthenticationOptions#HOME_OPTION} and {@value AuthenticationOptions#LOGIN_CLASS_OPTION}, it writes what a
-	 * Codex child session needs to that file, as {@link CodexRunner#childNeeds(Map)} reports it, for the request server
-	 * that asks before it starts the child, and starts nothing.
+	 * Codex child session with the launch's source home needs to that file, as
+	 * {@link #reportChildNeeds(Map, Path, AuthenticationOptions, PrintWriter)} reports it, for the request server that
+	 * asks before it starts the child, and starts nothing.
 	 * <p>
 	 * A brokered hook comparison reads its launch from standard input and writes its result to standard output.
 	 *
@@ -160,14 +161,9 @@ public final class CodexRunnerCli
 				System.exit(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
 			}
 			String[] needsArgs = args;
-			int status = HarnessRunnerOptions.refusingInvalidArguments(() ->
-			{
-				// A Codex session does not yet take its credential from the source home that the request names, so the
-				// options are only checked
-				AuthenticationOptions.parseAlone(Arrays.copyOfRange(needsArgs, 3, needsArgs.length));
-				CodexRunner.childNeeds(environment).write(JsonMapper.builder().build(), Path.of(needsArgs[2]));
-				return 0;
-			}, errors());
+			int status = HarnessRunnerOptions.refusingInvalidArguments(() -> reportChildNeeds(environment,
+				Path.of(needsArgs[2]), AuthenticationOptions.parseAlone(Arrays.copyOfRange(needsArgs, 3,
+					needsArgs.length)), errors()), errors());
 			if (status != 0)
 				System.exit(status);
 			return;
@@ -239,6 +235,42 @@ public final class CodexRunnerCli
 			errors.println(e.getMessage());
 		}
 		return HarnessRunnerOptions.REFUSED_LAUNCH_STATUS;
+	}
+
+	/**
+	 * Writes what a Codex child session with a launch's source home needs to a file, as
+	 * {@link CodexRunner#childNeeds(Map, CodexAuthentication)} reports it, or refuses when it cannot be determined or
+	 * the source home would refuse the launch, as {@link CodexAuthentication#read} decides.
+	 *
+	 * @param environment    the caller's environment
+	 * @param file           the file to write
+	 * @param authentication the launch's choice of source home and gateway login class
+	 * @param errors         receives the reason, as one line, when the needs cannot be determined
+	 * @return {@code 0} if the needs were written, or {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} if they
+	 *   cannot be determined or the source home refuses the launch, in which case no file is written
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if the file cannot be written
+	 */
+	public static int reportChildNeeds(Map<String, String> environment, Path file,
+		AuthenticationOptions authentication, PrintWriter errors) throws IOException
+	{
+		requireThat(environment, "environment").isNotNull();
+		requireThat(file, "file").isNotNull();
+		requireThat(authentication, "authentication").isNotNull();
+		requireThat(errors, "errors").isNotNull();
+		ChildNeedsReport needs;
+		try
+		{
+			needs = CodexRunner.childNeeds(environment, CodexAuthentication.read(authentication, environment,
+				Platform.current()));
+		}
+		catch (IOException e)
+		{
+			errors.println(e.getMessage());
+			return HarnessRunnerOptions.REFUSED_LAUNCH_STATUS;
+		}
+		needs.write(JsonMapper.builder().build(), file);
+		return 0;
 	}
 
 	/**
@@ -332,7 +364,8 @@ public final class CodexRunnerCli
 			}
 			case LaunchRoute.Served _ -> RequestServer.forward(HARNESS_ID, options, plugin.get(), installed,
 				scopes, input, waiting.every(REQUEST_POLL), output, errors);
-			case LaunchRoute.Bounded _ -> serveInProcess(args, environment, waiting, input, output, errors);
+			case LaunchRoute.Bounded _ -> serveInProcess(args, plugin.get(), environment, waiting, input, output,
+				errors);
 		};
 	}
 
@@ -364,6 +397,7 @@ public final class CodexRunnerCli
 	 * Serves the launch in this process.
 	 *
 	 * @param args        the command and its options
+	 * @param plugin      the absolute folder of the plugin that holds the launcher, which the session runs
 	 * @param environment the launcher's environment, which the launch keeps without the harness markers, so that
 	 *                    neither the runner nor the new session takes itself for the session that ran the launcher
 	 * @param waiting     the process's waiting
@@ -373,10 +407,10 @@ public final class CodexRunnerCli
 	 * @return the exit status
 	 * @throws IOException if runner startup, the harness, or bridge I/O fails
 	 */
-	private static int serveInProcess(String[] args, Map<String, String> environment, Waiting waiting, Reader input,
-		OutputStream output, PrintWriter errors) throws IOException
+	private static int serveInProcess(String[] args, Path plugin, Map<String, String> environment, Waiting waiting,
+		Reader input, OutputStream output, PrintWriter errors) throws IOException
 	{
-		args = HarnessRunnerOptions.withArtifact(args, PluginDirectory.of(CodexRunnerCli.class));
+		args = HarnessRunnerOptions.withArtifact(args, plugin);
 		environment = MARKERS.without(environment);
 		Path home = Platform.current().homeDirectory(environment);
 		try (JvmScope process = new MainJvmScope(environment, waiting))
@@ -522,6 +556,10 @@ public final class CodexRunnerCli
 
 	/**
 	 * Serves one Codex bridge using caller-provided streams and environment.
+	 * <p>
+	 * The session takes its credential from the launch's source home, which the runner reads first, before it reads a
+	 * resumed nested session, takes a capacity slot or creates a nested session. The source files that hold a secret join
+	 * the launch's denied reads, so that neither the session nor any session that it requests may read them.
 	 *
 	 * @param process the process scope, whose lock coordinator and waiting the bridge uses
 	 * @param workingDirectory the directory from which the command was invoked
@@ -533,8 +571,11 @@ public final class CodexRunnerCli
 	 *   command selected. The bridge waits for a permit before it starts Codex, unless the command names
 	 *   {@code --capacity-held}.
 	 * @throws NullPointerException    if any argument is null
-	 * @throws SessionRefusedException if the launch names no {@code --policy-bound}, or the session's sandbox would
-	 *                                 not confine it as its policy requires
+	 * @throws SessionRefusedException if the launch's source home would refuse the launch, as
+	 *                                 {@link CodexAuthentication#read} decides; if the launch names no
+	 *                                 {@code --policy-bound}; if the launch chose its source home itself and its bound
+	 *                                 denies reading a source file, as {@link CodexAuthentication#requireReadable}
+	 *                                 decides; or if the session's sandbox would not confine it as its policy requires
 	 * @throws InvalidArgumentsException if the file of extra permissions that the launch names is missing or invalid
 	 * @throws IOException             if the policy bound cannot be read, or runner startup, the harness, or bridge
 	 *                                 I/O fails
@@ -550,15 +591,24 @@ public final class CodexRunnerCli
 		requireThat(capacityForMaximum, "capacityForMaximum").isNotNull();
 		try (ToolScope scope = toolScope(workingDirectory, environment, process.waiting()))
 		{
+			// The source home decides before anything else, so that a refused launch reads no nested session
+			AuthenticationOptions authenticationOptions = AuthenticationOptions.parse(args);
+			CodexAuthentication authentication = CodexAuthentication.read(authenticationOptions, environment,
+				Platform.current());
 			// A runner that continues a nested session's harness session takes the options that the nested session's start
 			// fixed
 			args = NestedSessionLaunch.resumedArguments(scope.json(), HARNESS_ID, args);
 			String agentName = agentName(args);
 			int toolOutputTokenLimit = toolOutputTokenLimit(args);
-			HarnessRunnerOptions options = options(args, HarnessTemporaryRoot.from(scope));
+			HarnessRunnerOptions options = authentication.withDeniedReads(options(args,
+				HarnessTemporaryRoot.from(scope)));
 			Path cat = options.catArtifact(CodexRunner.MANIFEST);
 			CodexAgentDefinition agent = loadAgent(cat, agentName);
 			ParentPolicy bound = policyBound(scope.json(), options);
+			// A nested session's runner passes on its own launch's source home, whose secret files the nested session's
+			// policy, and so the bound, denies by design
+			if (!authenticationOptions.inherited())
+				authentication.requireReadable(bound);
 			ExtraPermissions extraPermissions = HarnessRunnerOptions.readExtraPermissions(scope.json(),
 				options.extraPermissions());
 			FileReplacer replacer = FileReplacer.retrying(process.waiting());
@@ -586,7 +636,7 @@ public final class CodexRunnerCli
 						options.workspace(), trialPlugins, manager, "codex", environment, options.model(),
 						options.effort(), options.installCat(), agent, options.readOnlyEvidence(), options.deniedReads(),
 						toolOutputTokenLimit, options.sessionTranscripts(), options.sessionRequests(), bound, policy::set,
-						options.gitName(), options.gitEmail(), extraPermissions, options.resumeSlot()),
+						options.gitName(), options.gitEmail(), extraPermissions, options.resumeSlot(), authentication),
 						manager, options, scope.json(), replacer, input, output, (harness, arguments, directory) ->
 						requestedRunner(scope, options.artifact(), harness, environment).start(PolicyBoundFile.
 							boundArguments(scope.json(), arguments, directory, policy.get()), directory,

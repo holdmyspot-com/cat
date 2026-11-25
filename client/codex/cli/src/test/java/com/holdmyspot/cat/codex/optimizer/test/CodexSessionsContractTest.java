@@ -11,7 +11,9 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.codex.optimizer.CodexSessions;
+import com.holdmyspot.cat.codex.runner.test.CodexSourceHomes;
 import com.holdmyspot.cat.codex.secrets.CodexSessionsSecrets;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.adapter.Bridge;
 import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
@@ -37,6 +39,7 @@ import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
 import com.holdmyspot.cat.common.optimizer.port.contract.test.SessionPortContract.Subject;
 import com.holdmyspot.cat.common.optimizer.port.contract.test.SessionPortContract;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
+import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness;
 
@@ -118,10 +121,35 @@ public final class CodexSessionsContractTest
 	 */
 	private static CodexSessions port(JvmScope jvm, Path root, Bridge bridge)
 	{
+		return port(jvm, root, Map.of(), bridge);
+	}
+
+	/**
+	 * Creates a port over an explicitly supplied bridge, test-owned configuration directory and environment.
+	 *
+	 * @param jvm         the borrowed process scope
+	 * @param root        the directory holding configuration and session artifacts
+	 * @param environment the port's environment
+	 * @param bridge      the external app-server replacement
+	 * @return the production adapter
+	 */
+	private static CodexSessions port(JvmScope jvm, Path root, Map<String, String> environment, Bridge bridge)
+	{
 		return CodexSessionsSecrets.getCodexSessionsAccess().
 			newCodexSessions(new RunnerSessions.Settings(jvm, root, root.resolve("results"),
-			List::of, false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer()),
+			List::of, false, environment, root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer()),
 			bridge);
+	}
+
+	/**
+	 * Returns the environment of a port inside a nested session, whose runner states no login class, so that the port
+	 * classifies the login of its own Codex folder.
+	 *
+	 * @return the environment
+	 */
+	private static Map<String, String> nestedSession()
+	{
+		return Map.of(HarnessEnvironment.NESTED_SESSION_VARIABLE, HarnessEnvironment.NESTED_SESSION_VALUE);
 	}
 
 	/**
@@ -404,7 +432,19 @@ public final class CodexSessionsContractTest
 		try (TestJvmScope jvm = new TestJvmScope())
 		{
 			// Requirement: R-E7
-			contractWithoutSessions(jvm).reportsTheHostLoginWithoutASession();
+			new SessionPortContract(() ->
+			{
+				Path root = Files.createTempDirectory(jvm.temporaryDirectory(), "codex-contract-");
+				TemporaryDirectories cleanup = new TemporaryDirectories();
+				cleanup.add(root);
+				Path home = CodexSourceHomes.create(root, "home");
+				CodexSourceHomes.apiKeyLogin(home.resolve(".codex"));
+				return new RecordedSubject(cleanup, port(jvm, root, Map.of(Platform.current().homeVariable(),
+					home.toString()), (_, _, _) ->
+				{
+					throw new AssertionError("Login classification must not start a session");
+				}), root, new RecordedAppServer(List.of()));
+			}).reportsTheHostLoginWithoutASession();
 		}
 	}
 
@@ -666,7 +706,8 @@ public final class CodexSessionsContractTest
 	}
 
 	/**
-	 * Verifies subscription classification from a configuration fixture rather than host credentials.
+	 * Verifies subscription classification, inside a nested session whose runner states no class, from a configuration
+	 * fixture rather than host credentials.
 	 *
 	 * @throws IOException if a fixture cannot be created or read
 	 */
@@ -680,7 +721,7 @@ public final class CodexSessionsContractTest
 			{
 				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "codex-contract-"));
 				Files.writeString(root.resolve("auth.json"), "{\"tokens\":{}}", UTF_8);
-				CodexSessions sessions = port(jvm, root, (_, _, _) ->
+				CodexSessions sessions = port(jvm, root, nestedSession(), (_, _, _) ->
 				{
 					throw new AssertionError("Login classification must not start a session");
 				});
@@ -691,8 +732,9 @@ public final class CodexSessionsContractTest
 	}
 
 	/**
-	 * Verifies API-key classification without starting a session, then rejects an unsupported credential-key type.
-	 * Fixture values are placeholders, never real credentials.
+	 * Verifies API-key classification, inside a nested session whose runner states no class, without starting a
+	 * session, then rejects an unsupported credential-key type. Fixture values are placeholders, never real
+	 * credentials.
 	 *
 	 * @throws IOException if a fixture cannot be created or read
 	 */
@@ -705,7 +747,7 @@ public final class CodexSessionsContractTest
 			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
 				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "codex-contract-"));
-				CodexSessions sessions = port(jvm, root, (_, _, _) ->
+				CodexSessions sessions = port(jvm, root, nestedSession(), (_, _, _) ->
 				{
 					throw new AssertionError("Login classification must not start a session");
 				});
@@ -880,7 +922,8 @@ public final class CodexSessionsContractTest
 		@Override
 		public Set<HostLogin> acceptableLogins()
 		{
-			return Set.of(HostLogin.UNKNOWN);
+			// The only check that asks for the login gives the port a source home whose only credential is an API-key login
+			return Set.of(HostLogin.API_KEY);
 		}
 
 		@Override

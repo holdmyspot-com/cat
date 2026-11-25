@@ -1,11 +1,18 @@
 package com.holdmyspot.cat.codex.runner.test;
 
+import com.holdmyspot.cat.codex.runner.CodexAuthentication;
 import com.holdmyspot.cat.codex.runner.CodexConnectionConfiguration;
+import com.holdmyspot.cat.codex.runner.CodexParentMultiAgentState;
 import com.holdmyspot.cat.codex.runner.CodexRunner;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.runner.AuthenticationOptions;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.contract.test.SessionCommandLimitsContract;
+import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
+import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
+import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -15,6 +22,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.dataformat.toml.TomlMapper;
 
@@ -40,7 +48,12 @@ public final class CodexSessionCommandLimitsTest extends SessionCommandLimitsCon
 	protected Limits limits(Fixture fixture, int sessionRequests) throws IOException
 	{
 		Path sessionHome = fixture.sessionHome();
-		Path configuration = sessionHome.resolve("config.toml");
+		Path configuration = sessionHome.resolve(".codex/config.toml");
+		Path source = CodexSourceHomes.create(fixture.userHome().resolveSibling("source-homes"), "source");
+		if (!Files.exists(source.resolve(".codex/auth.json")))
+			CodexSourceHomes.apiKeyLogin(source.resolve(".codex"));
+		CodexAuthentication authentication = CodexAuthentication.read(new AuthenticationOptions(Optional.of(source),
+			Optional.empty(), false), fixture.userEnvironment(), Platform.current());
 		Path userCodexHome = Path.of(fixture.userEnvironment().get("CODEX_HOME"));
 		SessionRequestAccess.Shell shell = SessionRequestAccess.Shell.POSIX;
 		if (Platform.current().isWindows())
@@ -48,10 +61,11 @@ public final class CodexSessionCommandLimitsTest extends SessionCommandLimitsCon
 		SessionRequestAccess requestAccess = SessionRequestAccess.allowing(fixture.nestedSession(), fixture.artifact(),
 			sessionRequests, Platform.current(), shell).orElse(null);
 		Path temporaryDirectory = Files.createDirectories(sessionHome.resolve("tmp"));
-		CodexConnectionConfiguration.copy(userCodexHome.resolve("config.toml"), configuration,
-			fixture.nestedSession().directory().resolve("project"),
-			HarnessDependencyCaches.NONE, temporaryDirectory, 0, requestAccess,
-			Platform.current());
+		CodexConnectionConfiguration.copy(userCodexHome.resolve("config.toml"), configuration, sessionHome,
+			authentication.settings(), fixture.nestedSession().directory().resolve("project"),
+			HarnessDependencyCaches.NONE, temporaryDirectory, 0, requestAccess, Platform.current(),
+			CodexParentMultiAgentState.NONE, ChildPolicy.intersect(ParentPolicy.UNSANDBOXED, new ChildNeeds(
+				fixture.nestedSession().directory(), List.of(), List.of(), Set.of())), ExtraPermissions.NONE, null);
 		List<Path> readOnly = CodexRunner.sessionReadOnly(fixture.nestedSession(), List.of(), requestAccess);
 		String profile = CodexConnectionConfiguration.addSessionProfile(configuration, readOnly,
 			CodexRunner.sessionDeniedReads(fixture.manager(), fixture.nestedSession(), readOnly, fixture.deniedReads(),
@@ -60,7 +74,7 @@ public final class CodexSessionCommandLimitsTest extends SessionCommandLimitsCon
 
 		Map<String, String> commandEnvironment = new HashMap<>(CodexRunner.processEnvironment(
 			fixture.userEnvironment(), HarnessDependencyCaches.NONE, sessionHome, fixture.nestedSession().directory(),
-			temporaryDirectory, Platform.current()));
+			temporaryDirectory, Platform.current(), authentication));
 		JsonNode policy = root.path("shell_environment_policy");
 		for (JsonNode excluded : policy.path("exclude"))
 			commandEnvironment.remove(excluded.stringValue());
@@ -101,13 +115,13 @@ public final class CodexSessionCommandLimitsTest extends SessionCommandLimitsCon
 	{
 		// CAT's read-part command reads the session's tool output limit from the session's configuration, which holds
 		// no login
-		return List.of(fixture.sessionHome().resolve("config.toml"));
+		return List.of(fixture.sessionHome().resolve(".codex/config.toml"));
 	}
 
 	@Override
 	protected Optional<Path> ownLogin(Fixture fixture)
 	{
-		// The runner copies the user's login into the nested session's home, which is the session's Codex home
-		return Optional.of(fixture.sessionHome().resolve("auth.json"));
+		// The copy of the source's login in the session's Codex folder is denied to the session's commands
+		return Optional.empty();
 	}
 }

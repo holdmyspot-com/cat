@@ -83,8 +83,17 @@ public final class CodexConnectionConfiguration
 	private static final String MOUNTED_RUNNER_PERMISSION_PROFILE = "cat-mounted-runner";
 	private static final List<String> SESSION_PERMISSION_PROFILES = List.of("cat-runner", "cat-validator",
 		"cat-denied-reads", MOUNTED_RUNNER_PERMISSION_PROFILE);
-	private static final Set<String> CONNECTION_SETTINGS = Set.of("forced_login_method", "model",
-		"model_reasoning_effort", "openai_base_url");
+	/**
+	 * The top-level settings of the runner's own configuration that a session keeps. The settings that choose the
+	 * session's credential and model host come from the launch's source home instead.
+	 */
+	private static final Set<String> CONNECTION_SETTINGS = Set.of("model", "model_reasoning_effort");
+	/**
+	 * The settings that choose a session's credential or its model host, which the session takes from its source home
+	 * alone.
+	 */
+	private static final List<String> CREDENTIAL_SETTINGS = List.of("openai_base_url", "forced_login_method",
+		"model_provider", "model_providers");
 	/**
 	 * The {@code [features]} entries that decide whether and how a session may start subagents.
 	 */
@@ -162,39 +171,38 @@ public final class CodexConnectionConfiguration
 	}
 
 	/**
-	 * Returns the host that a session's Codex sends its model requests to: the host of the {@code openai_base_url}
-	 * that the session copies from the host configuration, otherwise the host that Codex reaches for the session's
-	 * login. That is the API host when the configuration forces an API login, the environment holds an API key or the
-	 * login file holds one, and the ChatGPT host otherwise.
+	 * Returns the host that a session's Codex sends its model requests to, from the source configuration and login that
+	 * the session takes: the host of the base URL of the selected provider's table, otherwise of
+	 * {@code openai_base_url}, otherwise the host that Codex reaches for the login. That is the API host when the
+	 * configuration forces an API login or the login file holds an API key, and the ChatGPT host otherwise.
 	 *
-	 * @param source      the host configuration file
-	 * @param environment the runner's environment
-	 * @param login       the session's login file, which may not exist
+	 * @param sourceConfiguration the source's {@code config.toml}, which may not exist
+	 * @param sourceLogin         the source's {@code auth.json}, which may not exist
 	 * @return the host, in lower case
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException          if the configuration or the login file cannot be read or parsed, or the base URL
-	 *                              names no host
+	 * @throws IOException          if a file cannot be read or parsed, or a base URL names no host
 	 */
-	public static String modelHost(Path source, Map<String, String> environment, Path login) throws IOException
+	public static String modelHost(Path sourceConfiguration, Path sourceLogin) throws IOException
 	{
-		requireThat(source, "source").isNotNull();
-		requireThat(environment, "environment").isNotNull();
-		requireThat(login, "login").isNotNull();
-		if (Files.isRegularFile(source))
+		requireThat(sourceConfiguration, "sourceConfiguration").isNotNull();
+		requireThat(sourceLogin, "sourceLogin").isNotNull();
+		if (Files.isRegularFile(sourceConfiguration))
 		{
-			JsonNode configuration = parse(source, BoundedInput.readUtf8(source, MAXIMUM_CONFIGURATION_BYTES,
-				"Codex configuration"), "connection settings");
+			JsonNode configuration = parse(sourceConfiguration, BoundedInput.readUtf8(sourceConfiguration,
+				MAXIMUM_CONFIGURATION_BYTES, "Codex configuration"), "connection settings");
+			String providerId = configuration.path("model_provider").asString("openai");
+			JsonNode providerUrl = configuration.path("model_providers").path(providerId).path("base_url");
+			if (providerUrl.isString())
+				return urlHost(sourceConfiguration, "model_providers." + providerId + ".base_url", providerUrl.asString());
 			JsonNode baseUrl = configuration.path("openai_base_url");
 			if (baseUrl.isString())
-				return urlHost(source, baseUrl.asString());
+				return urlHost(sourceConfiguration, "openai_base_url", baseUrl.asString());
 			if (configuration.path("forced_login_method").asString("").equals("api"))
 				return API_MODEL_HOST;
 		}
-		if (!CodexRunner.requiresCredentialFiles(environment))
-			return API_MODEL_HOST;
-		if (Files.isRegularFile(login))
+		if (Files.isRegularFile(sourceLogin))
 		{
-			String text = BoundedInput.readUtf8(login, MAXIMUM_CONFIGURATION_BYTES, "Codex login");
+			String text = BoundedInput.readUtf8(sourceLogin, MAXIMUM_CONFIGURATION_BYTES, "Codex login");
 			JsonNode apiKey;
 			try
 			{
@@ -202,7 +210,7 @@ public final class CodexConnectionConfiguration
 			}
 			catch (JacksonException e)
 			{
-				throw new IOException("Cannot parse the Codex login " + login, e);
+				throw new IOException("Cannot parse the Codex login " + sourceLogin, e);
 			}
 			if (apiKey.isString() && !apiKey.asString().isBlank())
 				return API_MODEL_HOST;
@@ -214,11 +222,12 @@ public final class CodexConnectionConfiguration
 	 * Returns the host of a base URL.
 	 *
 	 * @param source  the configuration that names the URL
+	 * @param setting the setting that names the URL
 	 * @param baseUrl the URL
 	 * @return the host, in lower case
 	 * @throws IOException if the URL is malformed or names no host
 	 */
-	private static String urlHost(Path source, String baseUrl) throws IOException
+	private static String urlHost(Path source, String setting, String baseUrl) throws IOException
 	{
 		String host;
 		try
@@ -227,10 +236,10 @@ public final class CodexConnectionConfiguration
 		}
 		catch (IllegalArgumentException e)
 		{
-			throw new IOException(source + " sets openai_base_url to a malformed URL: " + baseUrl, e);
+			throw new IOException(source + " sets " + setting + " to a malformed URL: " + baseUrl, e);
 		}
 		if (host == null || host.isBlank())
-			throw new IOException(source + " sets openai_base_url to a URL without a host: " + baseUrl);
+			throw new IOException(source + " sets " + setting + " to a URL without a host: " + baseUrl);
 		return host.toLowerCase(Locale.ROOT);
 	}
 
@@ -242,13 +251,15 @@ public final class CodexConnectionConfiguration
 	 * network without hosts or bind local addresses without the policy's permission, or names a profile entry whose
 	 * effect CAT does not know. The managed layer also widens it if it replaces a profile's {@code extends}, names
 	 * another {@code default_permissions} or a configuration {@code profile}, or sets {@code sandbox_mode} to
-	 * {@code danger-full-access}.
+	 * {@code danger-full-access}. Either layer is also refused if it sets {@code openai_base_url},
+	 * {@code forced_login_method}, {@code model_provider} or {@code model_providers}, which would replace the credential
+	 * or the model host that the session takes from its source home.
 	 *
 	 * @param systemLayer  the system layer, which may not exist
 	 * @param managedLayer the managed layer, which may not exist
 	 * @param policy       the session's policy
 	 * @throws NullPointerException    if any of the arguments are null
-	 * @throws SessionRefusedException if a layer cannot be parsed or would widen the session
+	 * @throws SessionRefusedException if a layer cannot be parsed, would widen the session or sets a credential setting
 	 * @throws IOException             if a layer cannot be read
 	 */
 	public static void requireNarrowingLayers(Path systemLayer, Path managedLayer, ChildPolicy policy)
@@ -286,6 +297,11 @@ public final class CodexConnectionConfiguration
 				"configuration layer " + layer + ", which Codex merges into the session's configuration, so it cannot " +
 				"tell whether the layer gives the session more access than its sandbox policy allows. Fix the file, " +
 				"then start the session again.", e);
+		}
+		for (String setting : CREDENTIAL_SETTINGS)
+		{
+			if (values.has(setting))
+				throw credentialLayer(layer, setting);
 		}
 		if (managed)
 		{
@@ -426,6 +442,23 @@ public final class CodexConnectionConfiguration
 				default -> throw wideningLayer(layer, name, value);
 			}
 		}
+	}
+
+	/**
+	 * Returns the refusal of a session whose Codex configuration layer sets a setting that chooses the session's
+	 * credential or its model host, which would replace the source home's. The refusal does not quote the setting's
+	 * value, which may hold a secret.
+	 *
+	 * @param layer   the layer
+	 * @param setting the setting
+	 * @return the refusal
+	 */
+	private static SessionRefusedException credentialLayer(Path layer, String setting)
+	{
+		return new SessionRefusedException("CAT does not start the session: the Codex configuration layer " + layer +
+			" sets " + setting + ", which Codex merges into the session's configuration and which would replace the " +
+			"credential or the model host that the session takes from its source home. Remove the setting from " +
+			layer + ", then start the session again.");
 	}
 
 	/**
@@ -659,6 +692,47 @@ public final class CodexConnectionConfiguration
 		CodexParentMultiAgentState parentState, ChildPolicy policy, ExtraPermissions extraPermissions,
 		Path retainedConfiguration) throws IOException
 	{
+		copy(source, destination, destination.getParent(), "", project, caches, temporaryDirectory,
+			toolOutputTokenLimit, requestAccess, platform, parentState, policy, extraPermissions, retainedConfiguration);
+	}
+
+	/**
+	 * Generates a session's configuration in the session's Codex folder, as
+	 * {@link #copy(Path, Path, Path, HarnessDependencyCaches, Path, int, SessionRequestAccess, Platform,
+	 * CodexParentMultiAgentState, ChildPolicy, ExtraPermissions, Path)} does, except that the session's commands get
+	 * the session home as their home folder and its Codex folder, the configuration's folder, as their
+	 * {@code CODEX_HOME}, and that the configuration takes the source home's settings that choose the session's
+	 * credential and model host. The runner's own configuration gives the session no such setting.
+	 *
+	 * @param source                the runner's own Codex configuration, which may not exist
+	 * @param destination           the staged configuration in the session's Codex folder
+	 * @param sessionHome           the session's home, which holds its Codex folder and which its commands receive as
+	 *                              their home folder and may write
+	 * @param connectionSettings    the TOML of the source home's settings, as dotted keys of the configuration's root,
+	 *                              or an empty string
+	 * @param project               the session's project
+	 * @param caches                the verified writable dependency caches
+	 * @param temporaryDirectory    the session's temporary directory
+	 * @param toolOutputTokenLimit  the maximum tokens of each tool output, or {@code 0} for Codex's default
+	 * @param requestAccess         the session's request access, or {@code null} if it may request no sessions
+	 * @param platform              the platform that the session runs on
+	 * @param parentState           the parent thread's recorded multi-agent settings
+	 * @param policy                the current sandbox policy
+	 * @param extraPermissions      the writes and hosts the launch asks for beyond what Codex needs
+	 * @param retainedConfiguration the session's previous configuration on resume, or {@code null} on a fresh launch
+	 * @throws NullPointerException if any of the arguments other than {@code requestAccess} and
+	 *                              {@code retainedConfiguration} are null
+	 * @throws IOException          if a configuration cannot be read, parsed or written
+	 */
+	public static void copy(Path source, Path destination, Path sessionHome, String connectionSettings, Path project,
+		HarnessDependencyCaches caches, Path temporaryDirectory, int toolOutputTokenLimit,
+		SessionRequestAccess requestAccess, Platform platform, CodexParentMultiAgentState parentState,
+		ChildPolicy policy, ExtraPermissions extraPermissions, Path retainedConfiguration) throws IOException
+	{
+		requireThat(source, "source").isNotNull();
+		requireThat(destination, "destination").isNotNull();
+		requireThat(sessionHome, "sessionHome").isNotNull();
+		requireThat(connectionSettings, "connectionSettings").isNotNull();
 		requireThat(project, "project").isNotNull();
 		requireThat(caches, "caches").isNotNull();
 		requireThat(temporaryDirectory, "temporaryDirectory").isNotNull();
@@ -696,6 +770,7 @@ public final class CodexConnectionConfiguration
 					copied.append(line).append(System.lineSeparator());
 			}
 		}
+		copied.append(connectionSettings);
 		TomlMapper mapper = TomlMapper.builder().build();
 		if (retainedConfiguration != null)
 		{
@@ -741,8 +816,11 @@ public final class CodexConnectionConfiguration
 		copied.append(System.lineSeparator()).append("[shell_environment_policy]").append(System.lineSeparator()).
 			append("exclude = ").append(credentials).append(System.lineSeparator()).
 			append(System.lineSeparator()).append("[shell_environment_policy.set]").append(System.lineSeparator());
+		Path codexFolder = destination.toAbsolutePath().getParent();
 		Map<String, String> commandEnvironment = new TreeMap<>(caches.environment());
-		commandEnvironment.putAll(SessionCommandLimits.homeEnvironment(destination.getParent(), platform));
+		commandEnvironment.putAll(SessionCommandLimits.homeEnvironment(sessionHome, platform));
+		// A Codex that a command starts, such as a prompt optimizer's session, finds the session's own Codex folder
+		commandEnvironment.put("CODEX_HOME", codexFolder.toString());
 		List<Path> writable = new ArrayList<>(keptWrites);
 		if (requestAccess != null)
 		{
@@ -764,14 +842,14 @@ public final class CodexConnectionConfiguration
 		}
 		ObjectNode agents = mapper.createObjectNode();
 		if (parentConfiguration != null)
-			copyMultiAgentSettings(parentConfiguration, features, agents, destination.getParent(), project);
+			copyMultiAgentSettings(parentConfiguration, features, agents, sessionHome, project);
 		parentState.applyTo(features, agents);
 		// Without its network proxy, Codex ignores the profile's host list and lets the commands reach every host
 		if (!policy.hosts().isEmpty())
 			features.put(NETWORK_PROXY_FEATURE, true);
 		appendTable(copied, mapper, "features", features);
 		appendTable(copied, mapper, "agents", agents);
-		appendRunnerProfile(copied, destination.getParent(), writable, temporaryDirectory, project, platform, policy);
+		appendRunnerProfile(copied, sessionHome, codexFolder, writable, temporaryDirectory, project, platform, policy);
 		Files.createDirectories(destination.getParent());
 		Files.writeString(destination, copied.toString());
 	}
@@ -885,6 +963,8 @@ public final class CodexConnectionConfiguration
 	 *
 	 * @param configuration      the isolated configuration being assembled
 	 * @param isolatedHome       the fresh runtime home that the runner owns
+	 * @param codexFolder        the session's Codex folder, inside or equal to {@code isolatedHome}, whose
+	 *                           configuration, hooks and plugins stay read-only to the commands
 	 * @param writable           the other directories that the session may write: the verified shared dependency caches
 	 *                           and the extra writes that its launch asks for, which the policy keeps, and the nested
 	 *                           session's requests directory when the session may request sessions
@@ -895,11 +975,13 @@ public final class CodexConnectionConfiguration
 	 * @throws SessionRefusedException if the session must bind local addresses on macOS
 	 * @throws IOException             if the real path of a policy denial cannot be read
 	 */
-	private static void appendRunnerProfile(StringBuilder configuration, Path isolatedHome, List<Path> writable,
-		Path temporaryDirectory, Path project, Platform platform, ChildPolicy policy) throws IOException
+	private static void appendRunnerProfile(StringBuilder configuration, Path isolatedHome, Path codexFolder,
+		List<Path> writable, Path temporaryDirectory, Path project, Platform platform, ChildPolicy policy)
+		throws IOException
 	{
 		assert configuration != null;
 		assert isolatedHome != null;
+		assert codexFolder != null;
 		assert writable != null;
 		assert temporaryDirectory != null;
 		configuration.append(System.lineSeparator()).append("[permissions.").append(RUNNER_PERMISSION_PROFILE).
@@ -912,7 +994,7 @@ public final class CodexConnectionConfiguration
 		filesystem.put(TEMPORARY_DIRECTORY, "write");
 		for (Path directory : writable)
 			filesystem.put(toml(directory), "write");
-		addIsolatedHomeProtections(filesystem, isolatedHome);
+		addIsolatedHomeProtections(filesystem, codexFolder);
 		addProjectGitPermissions(filesystem, project, platform);
 		for (Path denial : policy.writeDenials())
 		{
@@ -995,7 +1077,7 @@ public final class CodexConnectionConfiguration
 	 * the home has none, and leaves an existing one as it is.
 	 *
 	 * @param filesystem   the runner profile's filesystem entries, by TOML-escaped path
-	 * @param isolatedHome the fresh runtime home that the runner owns
+	 * @param isolatedHome the session's Codex folder, which holds its configuration, hooks and plugins
 	 * @throws IOException if the hooks file cannot be written
 	 */
 	private static void addIsolatedHomeProtections(Map<String, String> filesystem, Path isolatedHome)

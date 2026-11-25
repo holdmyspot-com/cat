@@ -6,12 +6,14 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.codex.CommandShell;
 import com.holdmyspot.cat.codex.layout.CodexInstallation;
+import com.holdmyspot.cat.codex.runner.CodexAuthentication;
 import com.holdmyspot.cat.codex.runner.CodexConnectionConfiguration;
 import com.holdmyspot.cat.codex.runner.CodexRunnerCli;
 import com.holdmyspot.cat.common.runner.AuthenticationEvidence;
 import com.holdmyspot.cat.common.runner.RetainedNestedSessionClient;
 import com.holdmyspot.cat.codex.secrets.CodexSessionsAccess;
 import com.holdmyspot.cat.codex.secrets.CodexSessionsSecrets;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.RuleVariableResolver;
 import com.holdmyspot.cat.common.optimizer.adapter.Bridge;
 import com.holdmyspot.cat.common.optimizer.adapter.HarnessEvents;
@@ -22,6 +24,7 @@ import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
+import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.NestedSession;
 
 import java.io.IOException;
@@ -73,7 +76,7 @@ public final class CodexSessions extends RunnerSessions
 	 * session's model receives or how its actions take effect, and register the new version with the hash of the
 	 * configuration, permission profile and developer instructions that the runner gives a session.
 	 */
-	private static final int SESSION_ENVIRONMENT_VERSION = 21;
+	private static final int SESSION_ENVIRONMENT_VERSION = 22;
 	/**
 	 * The CAT release that introduced {@link #SESSION_ENVIRONMENT_VERSION}. Set it to the release that ships a new
 	 * version whenever the version changes.
@@ -156,15 +159,35 @@ public final class CodexSessions extends RunnerSessions
 		return true;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * Outside a nested session, the authentication is the one that the runner takes from the command's source home, as
+	 * {@link CodexAuthentication} reads it. Inside a nested session, the nested session's runner passes on its own
+	 * launch's source home, which the nested session's commands may not read, so the port reports none.
+	 */
 	@Override
-	public Optional<AuthenticationEvidence> authentication()
+	public Optional<AuthenticationEvidence> authentication() throws IOException
 	{
-		return Optional.empty();
+		Map<String, String> environment = settings().environment();
+		if (environment.containsKey(HarnessEnvironment.NESTED_SESSION_VARIABLE))
+			return Optional.empty();
+		return Optional.of(CodexAuthentication.read(settings().authentication(), environment, Platform.current()).
+			evidence());
 	}
 
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * Outside a nested session, the class is that of the credential that the command's source home selects. Inside a
+	 * nested session, it is the class that the nested session's runner states in {@code CAT_HOST_LOGIN}.
+	 */
 	@Override
 	public HostLogin hostLogin() throws IOException
 	{
+		Optional<AuthenticationEvidence> authentication = authentication();
+		if (authentication.isPresent())
+			return authentication.get().loginClass();
 		return Credentials.classify(settings().configurationDirectory(), settings().environment(),
 			JsonMapper.builder().build());
 	}

@@ -17,6 +17,7 @@ import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
+import com.holdmyspot.cat.common.runner.AuthenticationOptions;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessCapacityWaitExpiredException;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
@@ -26,6 +27,7 @@ import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
 import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.ParentSandbox;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
+import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyBoundFile;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
@@ -40,8 +42,10 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.testng.annotations.DataProvider;
@@ -292,7 +296,8 @@ public final class CodexRunnerCliTest
 					"5", "--model", "gpt-6-luna", "--effort", "low", "--policy-bound", policyBound(root).toString()};
 				try (HarnessCapacity.Permit _ = capacity.acquire())
 				{
-					CodexRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(), _ -> capacity);
+					CodexRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(),
+						CodexSourceHomes.runnerEnvironment(root), _ -> capacity);
 					throw new AssertionError("The bridge did not give up waiting for capacity");
 				}
 				catch (HarnessCapacityWaitExpiredException _)
@@ -381,7 +386,8 @@ public final class CodexRunnerCliTest
 			"--effort", "low", "--policy-bound", policyBound(root).toString()};
 		try
 		{
-			CodexRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(), _ ->
+			CodexRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(),
+				CodexSourceHomes.runnerEnvironment(root), _ ->
 			{
 				throw new IllegalStateException("Capacity requested");
 			});
@@ -430,7 +436,7 @@ public final class CodexRunnerCliTest
 				{
 					// Taking capacity comes before starting Codex, so a refusal that takes none starts no session
 					CodexRunnerCli.serve(jvm, root, args.toArray(String[]::new), new StringReader(""), new StringWriter(),
-						Map.of(), _ ->
+						CodexSourceHomes.runnerEnvironment(root), _ ->
 						{
 							throw new AssertionError("The launch took a capacity slot");
 						});
@@ -609,7 +615,7 @@ public final class CodexRunnerCliTest
 	private static void start(TestJvmScope jvm, Path root, List<String> args) throws IOException
 	{
 		CodexRunnerCli.serve(jvm, root, args.toArray(String[]::new), new StringReader(""), new StringWriter(),
-			Map.of(), _ ->
+			CodexSourceHomes.runnerEnvironment(root), _ ->
 		{
 			throw new AssertionError("The launch took a capacity slot");
 		});
@@ -906,7 +912,8 @@ public final class CodexRunnerCliTest
 				"gpt-6-luna", "--effort", "low"};
 			try
 			{
-				CodexRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(), _ ->
+				CodexRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(),
+					CodexSourceHomes.runnerEnvironment(root), _ ->
 				{
 					throw new AssertionError("The launch took a capacity slot");
 				});
@@ -942,7 +949,7 @@ public final class CodexRunnerCliTest
 			try
 			{
 				CodexRunnerCli.serve(jvm, root, requested.toArray(String[]::new), new StringReader(""),
-					new StringWriter(), Map.of(), _ ->
+					new StringWriter(), CodexSourceHomes.runnerEnvironment(root), _ ->
 				{
 					throw new IllegalStateException("Capacity requested");
 				});
@@ -976,7 +983,8 @@ public final class CodexRunnerCliTest
 				extra.toString()};
 
 			InvalidArgumentsException refusal = expectThrows(InvalidArgumentsException.class, () ->
-				CodexRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(), _ ->
+				CodexRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(),
+					CodexSourceHomes.runnerEnvironment(root), _ ->
 				{
 					throw new AssertionError("The launch took a capacity slot");
 				}));
@@ -1003,7 +1011,8 @@ public final class CodexRunnerCliTest
 				"gpt-6-luna", "--effort", "low", "--policy-bound", policyBound(root).toString(), "--capacity-held"};
 			try
 			{
-				CodexRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(), _ ->
+				CodexRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(),
+					CodexSourceHomes.runnerEnvironment(root), _ ->
 				{
 					throw new AssertionError("The launch took a capacity slot");
 				});
@@ -1384,5 +1393,528 @@ public final class CodexRunnerCliTest
 		Files.writeString(agents.resolve(AGENT + ".toml"), "name = \"" + AGENT + "\"\n" + fields +
 			"developer_instructions = '''\nReview the change.\n'''\n");
 		return artifact;
+	}
+
+	/**
+	 * Verifies that a launch whose source home holds no Codex authentication is refused with the refusal status before
+	 * it creates a nested session, naming the files that the runner read and {@code --home}, and no Claude fix,
+	 * although the runner's own environment and home folder hold a credential: only the source home's files decide.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void refusesCodexSourceWithoutAuthentication() throws IOException
+	{
+		// Requirement: R-I15
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("codex-source-home-")).toRealPath();
+			Path source = CodexSourceHomes.create(root, "source");
+			Path configuration = CodexSourceHomes.configuration(source.resolve(".codex"), "model = \"gpt-6-luna\"\n");
+			Path runnerHome = CodexSourceHomes.create(root, "runner");
+			CodexSourceHomes.apiKeyLogin(runnerHome.resolve(".codex"));
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(),
+				runnerHome.toString(), "OPENAI_API_KEY", CodexSourceHomes.SECRET, "CODEX_API_KEY",
+				CodexSourceHomes.SECRET);
+			StringWriter errors = new StringWriter();
+
+			int status = launchWithAuthentication(root, List.of("--home", source.toString()), environment, errors);
+
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").contains(configuration.toString()).
+				contains(source.resolve(".codex/auth.json").toString()).contains("--home").
+				doesNotContain("claude").doesNotContain(CodexSourceHomes.SECRET);
+			requireThat(Files.exists(root.resolve("results")), "resultsFolderExists").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that a launch that names a relative or missing source home is refused with the refusal status, naming
+	 * {@code --home} and the value, before it creates a nested session.
+	 *
+	 * @param relative {@code true} to name a relative path, {@code false} to name a missing absolute folder
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test(dataProvider = "relativeOrMissing")
+	public void refusesInvalidCodexSourceHome(boolean relative) throws IOException
+	{
+		// Requirement: R-I15
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("codex-source-home-")).toRealPath();
+			Map<String, String> environment = CodexSourceHomes.runnerEnvironment(root);
+			String home;
+			if (relative)
+				home = "relative/home";
+			else
+				home = root.resolve("missing").toString();
+			StringWriter errors = new StringWriter();
+
+			int status = launchWithAuthentication(root, List.of("--home", home), environment, errors);
+
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").contains("--home").contains(home);
+			requireThat(Files.exists(root.resolve("results")), "resultsFolderExists").isFalse();
+		}
+	}
+
+	/**
+	 * Returns whether a source home is named by a relative path rather than by a missing absolute one.
+	 *
+	 * @return the choices
+	 */
+	@DataProvider
+	public static Object[][] relativeOrMissing()
+	{
+		return new Object[][]{{true}, {false}};
+	}
+
+	/**
+	 * Returns source configurations that send the session's requests to a base URL.
+	 *
+	 * @return each configuration
+	 */
+	@DataProvider
+	public static Object[][] baseUrlSources()
+	{
+		return new Object[][]
+		{
+			{"openai_base_url = \"https://gateway.example/v1\"\n"},
+			{"""
+				model_provider = "gateway"
+				[model_providers.gateway]
+				base_url = "https://gateway.example/v1"
+				[model_providers.gateway.auth]
+				command = "printf"
+				args = ["key"]
+				"""}
+		};
+	}
+
+	/**
+	 * Verifies that a launch whose source configuration sends the session's requests to a base URL and that declares
+	 * no class of login is refused with the refusal status, naming {@code --gateway-login-class} and the configuration
+	 * file, without any of the source's secrets.
+	 *
+	 * @param configuration the source's configuration
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test(dataProvider = "baseUrlSources")
+	public void refusesCodexBaseUrlWithoutLoginClass(String configuration) throws IOException
+	{
+		// Requirement: R-I15
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("codex-source-home-")).toRealPath();
+			Path source = CodexSourceHomes.create(root, "source");
+			Path file = CodexSourceHomes.configuration(source.resolve(".codex"), configuration);
+			CodexSourceHomes.apiKeyLogin(source.resolve(".codex"));
+			StringWriter errors = new StringWriter();
+
+			int status = launchWithAuthentication(root, List.of("--home", source.toString()),
+				CodexSourceHomes.runnerEnvironment(root), errors);
+
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").contains("--gateway-login-class").contains(file.toString()).
+				doesNotContain(CodexSourceHomes.SECRET);
+			requireThat(Files.exists(root.resolve("results")), "resultsFolderExists").isFalse();
+		}
+	}
+
+	/**
+	 * Returns values of {@code --gateway-login-class} that name no class that a launch may declare.
+	 *
+	 * @return each value
+	 */
+	@DataProvider
+	public static Object[][] invalidLoginClasses()
+	{
+		return new Object[][]{{"unknown"}, {"API_KEY"}, {"oauth"}};
+	}
+
+	/**
+	 * Verifies that a launch that declares a class other than {@code subscription} and {@code api_key} is refused with
+	 * the refusal status, naming the option, before it creates a nested session.
+	 *
+	 * @param value the declared class
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test(dataProvider = "invalidLoginClasses")
+	public void refusesInvalidCodexLoginClass(String value) throws IOException
+	{
+		// Requirement: R-I15
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("codex-source-home-")).toRealPath();
+			StringWriter errors = new StringWriter();
+
+			int status = launchWithAuthentication(root, List.of("--gateway-login-class", value),
+				CodexSourceHomes.runnerEnvironment(root), errors);
+
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").contains("--gateway-login-class").contains(value);
+			requireThat(Files.exists(root.resolve("results")), "resultsFolderExists").isFalse();
+		}
+	}
+
+	/**
+	 * Returns source configurations whose credential lies outside the files that the runner reads, each with the
+	 * setting that the refusal names and whether the source holds an {@code auth.json} that holds an API key.
+	 *
+	 * @return each configuration, setting and login
+	 */
+	@DataProvider
+	public static Object[][] credentialsOutsideSource()
+	{
+		return new Object[][]
+		{
+			{"""
+				model_provider = "gateway"
+				[model_providers.gateway]
+				base_url = "https://gateway.example/v1"
+				[model_providers.gateway.gateway_oauth]
+				issuer = "https://gateway.example"
+				""", "model_providers.gateway.gateway_oauth"},
+			{"cli_auth_credentials_store = \"keyring\"\n", "cli_auth_credentials_store"},
+			{"cli_auth_credentials_store = \"auto\"\n", "cli_auth_credentials_store"}
+		};
+	}
+
+	/**
+	 * Verifies that a launch whose selected source provider signs in through {@code gateway_oauth} without
+	 * {@code credential_export}, or whose source keeps its login in the operating system's store with no
+	 * {@code auth.json}, is refused with the refusal status, naming the configuration file and the setting.
+	 *
+	 * @param configuration the source's configuration
+	 * @param setting       the setting that the refusal names
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test(dataProvider = "credentialsOutsideSource")
+	public void refusesCredentialOutsideSourceFiles(String configuration, String setting) throws IOException
+	{
+		// Requirement: R-I15
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("codex-source-home-")).toRealPath();
+			Path source = CodexSourceHomes.create(root, "source");
+			Path file = CodexSourceHomes.configuration(source.resolve(".codex"), configuration);
+			StringWriter errors = new StringWriter();
+
+			int status = launchWithAuthentication(root, List.of("--home", source.toString(), "--gateway-login-class",
+				"api_key"), CodexSourceHomes.runnerEnvironment(root), errors);
+
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").contains(file.toString()).contains(setting).
+				doesNotContain(CodexSourceHomes.SECRET);
+			requireThat(Files.exists(root.resolve("results")), "resultsFolderExists").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that a launch whose source {@code auth.json} holds a ChatGPT sign-in is refused with the refusal status,
+	 * naming the file, without quoting the sign-in's tokens.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void refusesCodexSignIn() throws IOException
+	{
+		// Requirement: R-I15
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("codex-source-home-")).toRealPath();
+			Path source = CodexSourceHomes.create(root, "source");
+			Path login = CodexSourceHomes.signInLogin(source.resolve(".codex"));
+			StringWriter errors = new StringWriter();
+
+			int status = launchWithAuthentication(root, List.of("--home", source.toString()),
+				CodexSourceHomes.runnerEnvironment(root), errors);
+
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").contains(login.toString()).contains("ChatGPT").
+				doesNotContain(CodexSourceHomes.SECRET);
+			requireThat(Files.exists(root.resolve("results")), "resultsFolderExists").isFalse();
+		}
+	}
+
+	/**
+	 * Returns the selected provider's settings that pass a secret to Codex through a variable of its environment or
+	 * hold one inline, each with its name.
+	 *
+	 * @return each provider table's extra line and the setting
+	 */
+	@DataProvider
+	public static Object[][] providerSecretSettings()
+	{
+		return new Object[][]
+		{
+			{"env_key = \"GATEWAY_KEY\"", "env_key"},
+			{"env_http_headers = { \"Authorization\" = \"GATEWAY_HEADER\" }", "env_http_headers"},
+			{"experimental_bearer_token = \"" + CodexSourceHomes.SECRET + "\"", "experimental_bearer_token"},
+			{"http_headers = { \"Authorization\" = \"Bearer " + CodexSourceHomes.SECRET + "\" }", "http_headers"}
+		};
+	}
+
+	/**
+	 * Verifies that a launch whose selected source provider sets {@code env_key} or {@code env_http_headers}, or holds
+	 * an inline {@code experimental_bearer_token} or {@code http_headers} secret, is refused with the refusal status
+	 * before it creates a nested session, naming the provider and the setting, with no secret in the message.
+	 *
+	 * @param line    the provider table's line that sets the secret
+	 * @param setting the setting
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test(dataProvider = "providerSecretSettings")
+	public void refusesProviderSecretSetting(String line, String setting) throws IOException
+	{
+		// Requirement: R-I15
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("codex-source-home-")).toRealPath();
+			Path source = CodexSourceHomes.create(root, "source");
+			CodexSourceHomes.apiKeyLogin(source.resolve(".codex"));
+			Path file = CodexSourceHomes.configuration(source.resolve(".codex"), """
+				model_provider = "gateway"
+				[model_providers.gateway]
+				base_url = "https://gateway.example/v1"
+				%s
+				""".formatted(line));
+			Map<String, String> environment = new HashMap<>(CodexSourceHomes.runnerEnvironment(root));
+			environment.put("GATEWAY_KEY", CodexSourceHomes.SECRET);
+			StringWriter errors = new StringWriter();
+
+			int status = launchWithAuthentication(root, List.of("--home", source.toString(), "--gateway-login-class",
+				"api_key"), environment, errors);
+
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").contains(file.toString()).
+				contains("model_providers.gateway." + setting).doesNotContain(CodexSourceHomes.SECRET);
+			requireThat(Files.exists(root.resolve("results")), "resultsFolderExists").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that a launch that resumes a nested session takes the source home's checks before it reads the nested
+	 * session, so that a source home without Codex authentication refuses it.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void resumedCodexLaunchTakesSourceHomeChecks() throws IOException
+	{
+		// Requirement: R-I15
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("codex-source-home-")).toRealPath();
+			Path source = CodexSourceHomes.create(root, "source");
+			StringWriter errors = new StringWriter();
+
+			int status = launchWithAuthentication(root, List.of("--home", source.toString(), "--slot-id",
+				NestedSessionManager.newSlotId(Clock.systemUTC()), "--resume-slot", "thread-1"),
+				CodexSourceHomes.runnerEnvironment(root), errors);
+
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").contains(source.resolve(".codex/auth.json").toString());
+		}
+	}
+
+	/**
+	 * Verifies that the runner that a request server asks for a child's needs takes the source home's checks, so that
+	 * a source home without Codex authentication refuses the report with the refusal status, naming the files that the
+	 * runner read, and writes no report; and that a source home with an API-key login reports the source's files and
+	 * its model host, whatever the runner's own Codex folder holds.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void codexChildNeedsTakeSourceHomeChecks() throws IOException
+	{
+		// Requirement: R-I15
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("codex-source-home-")).toRealPath();
+			Path source = CodexSourceHomes.create(root, "source");
+			Map<String, String> environment = CodexSourceHomes.runnerEnvironment(root);
+			Path report = root.resolve("needs.json");
+			StringWriter errors = new StringWriter();
+
+			int status = CodexRunnerCli.reportChildNeeds(environment, report, new AuthenticationOptions(
+				Optional.of(source), Optional.empty(), false), new PrintWriter(errors, true));
+
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").contains(source.resolve(".codex/auth.json").toString());
+			requireThat(Files.exists(report), "reportWritten").isFalse();
+
+			Path login = CodexSourceHomes.apiKeyLogin(source.resolve(".codex"));
+			status = CodexRunnerCli.reportChildNeeds(environment, report, new AuthenticationOptions(
+				Optional.of(source), Optional.empty(), false), new PrintWriter(errors, true));
+
+			requireThat(status, "acceptedStatus").isEqualTo(0);
+			ChildNeedsReport needs = ChildNeedsReport.read(JsonMapper.builder().build(), report);
+			requireThat(needs.hosts(), "hosts").isEqualTo(Set.of("api.openai.com"));
+			requireThat(needs.logins(), "logins").isEqualTo(List.of(login));
+			requireThat(Files.readString(report), "report").doesNotContain(CodexSourceHomes.SECRET);
+		}
+	}
+
+	/**
+	 * Verifies that without {@code --home} the runner's own home folder is the source home, and that the runner's
+	 * {@code CODEX_HOME} then names the source's Codex folder, as for the user's own Codex; and that with
+	 * {@code --home} that variable changes nothing. Each source here holds no authentication, so the refusal names the
+	 * files that the runner read.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void choosesSourceCodexFolder() throws IOException
+	{
+		// Requirement: R-I15
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("codex-source-home-")).toRealPath();
+			Path runnerHome = CodexSourceHomes.create(root, "runner");
+			Path configured = Files.createDirectories(root.resolve("configured"));
+			Path named = CodexSourceHomes.create(root, "named");
+
+			StringWriter defaultErrors = new StringWriter();
+			int status = launchWithAuthentication(root, List.of(), Map.of("PATH", "",
+				Platform.current().homeVariable(), runnerHome.toString()), defaultErrors);
+			requireThat(status, "defaultStatus").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(defaultErrors.toString(), "defaultErrors").contains(
+				runnerHome.resolve(".codex/auth.json").toString());
+
+			StringWriter configuredErrors = new StringWriter();
+			status = launchWithAuthentication(root, List.of(), Map.of("PATH", "", Platform.current().homeVariable(),
+				runnerHome.toString(), "CODEX_HOME", configured.toString()), configuredErrors);
+			requireThat(status, "configuredStatus").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(configuredErrors.toString(), "configuredErrors").
+				contains(configured.resolve("auth.json").toString()).
+				doesNotContain(runnerHome.resolve(".codex").toString());
+
+			StringWriter namedErrors = new StringWriter();
+			status = launchWithAuthentication(root, List.of("--home", named.toString()), Map.of("PATH", "",
+				Platform.current().homeVariable(), runnerHome.toString(), "CODEX_HOME", configured.toString()),
+				namedErrors);
+			requireThat(status, "namedStatus").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(namedErrors.toString(), "namedErrors").contains(named.resolve(".codex/auth.json").toString()).
+				doesNotContain(configured.toString());
+		}
+	}
+
+	/**
+	 * Verifies that a launch whose source home holds an API-key login goes on to start its session, as far as a test
+	 * without a CAT artifact goes.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void startsLaunchWithApiKeyLogin() throws IOException
+	{
+		// Requirement: R-I15
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("codex-source-home-")).toRealPath();
+			Map<String, String> environment = CodexSourceHomes.runnerEnvironment(root);
+			StringWriter errors = new StringWriter();
+
+			IOException failure = expectThrows(IOException.class, () -> launchWithAuthentication(root, List.of(),
+				environment, errors));
+
+			// The session starts and fails only because the test runs no CAT artifact
+			requireThat(failure, "failure").isNotInstanceOf(SessionRefusedException.class);
+			requireThat(errors.toString(), "errors").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that a launch whose bound denies reading a file that the runner reads from the source home is refused
+	 * with the refusal status, naming the file and the denial, while the same launch passed on by a nested session's
+	 * runner, whose bound denies those files by design, is not refused for them.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void refusesCodexSourceFileThatBoundDenies() throws IOException
+	{
+		// Requirement: R-I15
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("codex-source-home-")).toRealPath();
+			Path source = CodexSourceHomes.create(root, "source");
+			Path login = CodexSourceHomes.apiKeyLogin(source.resolve(".codex"));
+			Path denied = source.resolve(".codex");
+			Map<String, String> environment = CodexSourceHomes.runnerEnvironment(root);
+			StringWriter errors = new StringWriter();
+
+			int status = launchWithAuthentication(root, List.of("--home", source.toString()), environment, errors,
+				List.of(denied));
+
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").contains(login.toString());
+			// The denied folder's path begins the file's, so the denial is named only if it remains without the file's
+			requireThat(errors.toString().replace(login.toString(), ""), "denial").contains(denied.toString());
+			requireThat(Files.exists(root.resolve("results")), "resultsFolderExists").isFalse();
+
+			StringWriter inheritedErrors = new StringWriter();
+			IOException failure = expectThrows(IOException.class, () -> launchWithAuthentication(root, List.of(
+				"--home", source.toString(), "--inherited-source-home"), environment, inheritedErrors, List.of(denied)));
+			// The session starts and fails only because the test runs no CAT artifact
+			requireThat(failure, "failure").isNotInstanceOf(SessionRefusedException.class);
+			requireThat(inheritedErrors.toString(), "inheritedErrors").isEmpty();
+		}
+	}
+
+	/**
+	 * Runs a launch in this process, as CAT's own starter starts it with a bound that denies nothing and a capacity
+	 * slot that the starter holds, and returns its exit status.
+	 *
+	 * @param root        the test's directory, which holds the project and the results folder
+	 * @param options     the launch's options beyond its project, results folder, profile and bound
+	 * @param environment the runner's environment
+	 * @param errors      receives why the launch was refused
+	 * @return the exit status
+	 * @throws IOException if the launch fails without being refused
+	 */
+	private static int launchWithAuthentication(Path root, List<String> options, Map<String, String> environment,
+		StringWriter errors) throws IOException
+	{
+		return launchWithAuthentication(root, options, environment, errors, List.of());
+	}
+
+	/**
+	 * Runs a launch in this process, as CAT's own starter starts it with a bound and a capacity slot that the starter
+	 * holds, and returns its exit status.
+	 *
+	 * @param root        the test's directory, which holds the project and the results folder
+	 * @param options     the launch's options beyond its project, results folder, profile and bound
+	 * @param environment the runner's environment
+	 * @param errors      receives why the launch was refused
+	 * @param readDenials the files and folders that the bound denies the session reading
+	 * @return the exit status
+	 * @throws IOException if the launch fails without being refused
+	 */
+	private static int launchWithAuthentication(Path root, List<String> options, Map<String, String> environment,
+		StringWriter errors, List<Path> readDenials) throws IOException
+	{
+		Path project = Files.createDirectories(root.resolve("project"));
+		JsonMapper json = JsonMapper.builder().build();
+		List<String> denials = new ArrayList<>();
+		for (Path denial : readDenials)
+			denials.add(json.writeValueAsString(denial.toString()));
+		Path bound = Files.writeString(root.resolve("authentication-bound.json"), """
+			{"format_version": 1, "write_roots": [%s], "write_denials": [], "read_denials": [%s],
+			 "read_reallowances": [], "hosts": ["api.openai.com", "gateway.example"], "allow_local_binding": false}
+			""".formatted(json.writeValueAsString(root.toString()), String.join(", ", denials)));
+		List<String> args = new ArrayList<>(List.of("serve", "--project", project.toString(), "--results",
+			root.resolve("results").toString(), "--model", "gpt-6-luna", "--effort", "low", "--capacity-held",
+			PolicyBoundFile.OPTION, bound.toString()));
+		args.addAll(options);
+		PrintWriter writer = new PrintWriter(errors, true);
+		return HarnessRunnerOptions.refusingInvalidArguments(() -> CodexRunnerCli.launch(args.toArray(String[]::new),
+			environment, Yielding.waiting(), new StringReader(""), new ByteArrayOutputStream(), writer,
+			() -> root.resolve("plugin"), List::of, () ->
+			{
+				throw new AssertionError("No session's tool scope is opened");
+			}), writer);
 	}
 }

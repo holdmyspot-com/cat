@@ -161,8 +161,8 @@ failure, report the reason and do not launch. `<harness>-runner` runs that same 
 
 Before a launch, require all of these exact prerequisites:
 
-- The harness's command, `claude` for Claude Code or `codex` for Codex, is available on `PATH`, and for Codex,
-	authenticated. The launcher checks the credential of a Claude Code launch, as described below.
+- The harness's command, `claude` for Claude Code or `codex` for Codex, is available on `PATH`. The launcher checks
+	the credential of each launch, as described below.
 - `<runner>` exists.
 - For Claude Code only: running `<runner>` with the arguments `--verify-artifact <artifact>` succeeds, and the
 	requested profile is supported.
@@ -197,6 +197,15 @@ users may read, with the fix that the refusal names, and do not read, copy or ch
 When that fix is the `claude-credential set` command that the refusal names, give the user the command exactly as the
 refusal prints it, to run in their own terminal, and neither run it nor ask the user for the token: the token must not
 pass through your session.
+
+Every Codex session that the launch starts, and every one that its sessions request, likewise uses the authentication
+of a source home: the `auth.json` of the home folder's `.codex` folder when it holds an API key, and the settings of
+its `config.toml` that choose the model provider and its credential, such as a provider's token command; never a
+ChatGPT sign-in. Without `--home`, its Codex folder is the one that `CODEX_HOME` names when it is set. `--home` and
+`--gateway-login-class` work as for Claude Code, and the launcher names `--gateway-login-class` when the selected
+provider or `openai_base_url` sends the session's requests to a gateway. Report any other refusal of the source home to
+the user, such as one whose `auth.json` holds a ChatGPT sign-in or whose provider takes its key from an environment
+variable, with the fix that the refusal names, and do not read, copy or change the source home's files yourself.
 
 Pass `--session-transcripts` only when your task needs the session's own transcript. The runner then
 copies every transcript of the session, subagents' included, into `artifacts/session-transcripts` in its session

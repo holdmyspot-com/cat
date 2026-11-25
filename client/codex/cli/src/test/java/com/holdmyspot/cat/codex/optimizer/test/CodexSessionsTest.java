@@ -1,12 +1,5 @@
 package com.holdmyspot.cat.codex.optimizer.test;
 
-import com.holdmyspot.cat.common.JvmScope;
-import com.holdmyspot.cat.common.Pause;
-
-import com.holdmyspot.cat.common.fakes.test.GitProjects;
-import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
-
-import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static com.holdmyspot.cat.common.optimizer.adapter.fakes.test.SessionRequestFixtures.partOf;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -17,12 +10,18 @@ import com.holdmyspot.cat.codex.CodexSessionHarness;
 import com.holdmyspot.cat.codex.CommandShell;
 import com.holdmyspot.cat.codex.optimizer.CodexSessions;
 import com.holdmyspot.cat.codex.runner.CodexRunnerCli;
+import com.holdmyspot.cat.codex.runner.test.CodexSourceHomes;
 import com.holdmyspot.cat.codex.secrets.CodexSessionsSecrets;
+import com.holdmyspot.cat.common.JvmScope;
+import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.fakes.test.GitProjects;
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
 import com.holdmyspot.cat.common.optimizer.adapter.fakes.test.ContractAuthorFixtures;
 import com.holdmyspot.cat.common.optimizer.adapter.fakes.test.RoleRuleFixtures;
@@ -61,7 +60,10 @@ import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
 import com.holdmyspot.cat.common.optimizer.proposal.JudgeTemplate;
+import com.holdmyspot.cat.common.runner.AuthenticationEvidence;
+import com.holdmyspot.cat.common.runner.AuthenticationOptions;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
+import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.HarnessProcess;
 import com.holdmyspot.cat.common.runner.HarnessProcessResult;
 import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
@@ -75,10 +77,9 @@ import com.holdmyspot.cat.common.runner.ResultsCopy;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
 import com.holdmyspot.cat.common.runner.fakes.test.RequestingNestedSession;
-import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
+import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
-
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -110,12 +111,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.node.ObjectNode;
-
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Tests {@link CodexSessions} over the real runner bridge with a scripted harness.
@@ -1048,8 +1048,24 @@ public final class CodexSessionsTest
 	 */
 	private static CodexSessions loginPort(JvmScope jvm, Path root, Map<String, String> environment)
 	{
+		return loginPort(jvm, root, environment, AuthenticationOptions.DEFAULT);
+	}
+
+	/**
+	 * Creates a port whose runner must never be started, for a command that names a source home and a class.
+	 *
+	 * @param jvm the borrowed process scope
+	 * @param root the directory for session folders and the host configuration
+	 * @param environment the host environment
+	 * @param authentication the command's choice of source home and gateway login class
+	 * @return the port
+	 */
+	private static CodexSessions loginPort(JvmScope jvm, Path root, Map<String, String> environment,
+		AuthenticationOptions authentication)
+	{
 		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("results"), List::of, false,
-			environment, root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+			environment, root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer(), Optional.empty(),
+			null, authentication);
 		return CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings, (options, input, output) ->
 		{
 			throw new AssertionError("A login classification must not start a session");
@@ -1057,8 +1073,8 @@ public final class CodexSessionsTest
 	}
 
 	/**
-	 * Verifies that the port classifies a signed-in host as a subscription, from the key names of its credential
-	 * file, without starting a session.
+	 * Verifies that the port classifies a source home whose provider names a base URL as the class that the command
+	 * declares, without starting a session, while the runner's own Codex folder holds an API-key login.
 	 *
 	 * @throws IOException if a credential fixture cannot be created
 	 */
@@ -1067,13 +1083,25 @@ public final class CodexSessionsTest
 	{
 		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			// Requirement: R-E7
+			// Requirement: R-E7, R-I15
 			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
-				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
-				Files.writeString(root.resolve("auth.json"), "{\"tokens\":{}}", UTF_8);
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-")).
+					toRealPath();
+				CodexSourceHomes.apiKeyLogin(root);
+				Path home = CodexSourceHomes.create(root, "home");
+				CodexSourceHomes.secret(home.resolve("key"));
+				CodexSourceHomes.configuration(home.resolve(".codex"), """
+					model_provider = "gateway"
+					[model_providers.gateway]
+					base_url = "https://gateway.example/v1"
+					[model_providers.gateway.auth]
+					command = "sh"
+					args = ["-c", "cat ~/key"]
+					""");
 
-				HostLogin login = loginPort(jvm, root, Map.of()).hostLogin();
+				HostLogin login = loginPort(jvm, root, Map.of(Platform.current().homeVariable(), home.toString()),
+					new AuthenticationOptions(Optional.empty(), Optional.of(HostLogin.SUBSCRIPTION), false)).hostLogin();
 
 				requireThat(login, "login").isEqualTo(HostLogin.SUBSCRIPTION);
 			}
@@ -1081,8 +1109,8 @@ public final class CodexSessionsTest
 	}
 
 	/**
-	 * Verifies that the port classifies a host whose environment selects an API key as an API-key login, even when a
-	 * subscription credential file exists.
+	 * Verifies that the port classifies a source home whose {@code auth.json} holds an API key as an API-key login,
+	 * while the runner's own Codex folder holds a ChatGPT sign-in.
 	 *
 	 * @throws IOException if a credential fixture cannot be created
 	 */
@@ -1091,13 +1119,17 @@ public final class CodexSessionsTest
 	{
 		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			// Requirement: R-E7
+			// Requirement: R-E7, R-I15
 			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
-				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
-				Files.writeString(root.resolve("auth.json"), "{\"tokens\":{}}", UTF_8);
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-")).
+					toRealPath();
+				CodexSourceHomes.signInLogin(root);
+				Path home = CodexSourceHomes.create(root, "home");
+				CodexSourceHomes.apiKeyLogin(home.resolve(".codex"));
 
-				HostLogin login = loginPort(jvm, root, Map.of("CODEX_API_KEY", "")).hostLogin();
+				HostLogin login = loginPort(jvm, root, Map.of(Platform.current().homeVariable(), home.toString())).
+					hostLogin();
 
 				requireThat(login, "login").isEqualTo(HostLogin.API_KEY);
 			}
@@ -1105,8 +1137,69 @@ public final class CodexSessionsTest
 	}
 
 	/**
-	 * Verifies that the port reports an unknown login when the host has neither a credential file nor a login
-	 * variable.
+	 * Verifies that the port records the source home that a command names, the names of the parts that its sessions
+	 * take and their class as its evidence, with no secret, and records none inside a nested session, whose runner
+	 * already recorded its own.
+	 *
+	 * @throws IOException if a credential fixture cannot be created
+	 */
+	@Test(timeOut = 120_000)
+	public void recordsSourceHomeEvidence() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			// Requirement: R-I15
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-")).
+					toRealPath();
+				Path home = CodexSourceHomes.create(root, "home");
+				CodexSourceHomes.apiKeyLogin(home.resolve(".codex"));
+				Map<String, String> environment = Map.of(Platform.current().homeVariable(),
+					root.resolve("runner").toString());
+
+				AuthenticationEvidence evidence = loginPort(jvm, root, environment,
+					new AuthenticationOptions(Optional.of(home), Optional.empty(), false)).authentication().orElseThrow();
+
+				requireThat(evidence.home(), "home").isEqualTo(home);
+				requireThat(evidence.parts(), "parts").isEqualTo(List.of(".codex/auth.json"));
+				requireThat(evidence.loginClass(), "loginClass").isEqualTo(HostLogin.API_KEY);
+				requireThat(evidence.toJson(JsonMapper.builder().build()).toString(), "json").
+					doesNotContain(CodexSourceHomes.SECRET);
+
+				Map<String, String> nested = Map.of(HarnessEnvironment.NESTED_SESSION_VARIABLE,
+					HarnessEnvironment.NESTED_SESSION_VALUE);
+				requireThat(loginPort(jvm, root, nested).authentication().isPresent(), "nestedEvidence").isFalse();
+			}
+		}
+	}
+
+	/**
+	 * Verifies that inside a nested session the port classifies the host as the class that the nested session's
+	 * runner states in {@code CAT_HOST_LOGIN}, because the nested session's commands may not read its source home.
+	 *
+	 * @throws IOException if a fixture cannot be created
+	 */
+	@Test(timeOut = 120_000)
+	public void classifiesTheLoginThatTheRunnerStates() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			// Requirement: R-I15
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				CodexSourceHomes.apiKeyLogin(root);
+				HostLogin login = loginPort(jvm, root, Map.of(HarnessEnvironment.NESTED_SESSION_VARIABLE,
+					HarnessEnvironment.NESTED_SESSION_VALUE, "CAT_HOST_LOGIN", "subscription")).hostLogin();
+				requireThat(login, "login").isEqualTo(HostLogin.SUBSCRIPTION);
+			}
+		}
+	}
+
+	/**
+	 * Verifies that inside a nested session whose runner states no class and whose home holds no login, the port
+	 * reports an unknown login.
 	 *
 	 * @throws IOException if a credential fixture cannot be created
 	 */
@@ -1120,7 +1213,8 @@ public final class CodexSessionsTest
 			{
 				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
 
-				HostLogin login = loginPort(jvm, root, Map.of()).hostLogin();
+				HostLogin login = loginPort(jvm, root, Map.of(HarnessEnvironment.NESTED_SESSION_VARIABLE,
+					HarnessEnvironment.NESTED_SESSION_VALUE)).hostLogin();
 
 				requireThat(login, "login").isEqualTo(HostLogin.UNKNOWN);
 			}
