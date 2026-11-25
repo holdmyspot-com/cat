@@ -4113,9 +4113,9 @@ public final class DriverTest
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("trial-authentication")),
 				developing().window(2).build(), HostLogin.API_KEY);
-			AuthenticationEvidence first = new AuthenticationEvidence(Path.of("/homes/first"), List.of("apiKeyHelper"),
-				HostLogin.API_KEY);
-			AuthenticationEvidence second = new AuthenticationEvidence(Path.of("/homes/second"),
+			AuthenticationEvidence first = new AuthenticationEvidence(Path.of("/homes/first").toAbsolutePath(),
+				List.of("apiKeyHelper"), HostLogin.API_KEY);
+			AuthenticationEvidence second = new AuthenticationEvidence(Path.of("/homes/second").toAbsolutePath(),
 				List.of("ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN"), HostLogin.SUBSCRIPTION);
 			harness.sessions().supplyAuthentication(first);
 			try (Driver driver = harness.open())
