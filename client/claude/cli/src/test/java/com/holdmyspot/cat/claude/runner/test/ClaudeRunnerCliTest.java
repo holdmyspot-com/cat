@@ -1189,8 +1189,9 @@ public final class ClaudeRunnerCliTest
 			SourceHomes.catCredential(home, SourceHomes.SETUP_TOKEN);
 			StringWriter errors = new StringWriter();
 
+			String path = SandboxPrograms.path(root);
 			IOException failure = expectThrows(IOException.class, () -> launchWithAuthentication(root, List.of(),
-				Map.of("PATH", "", Platform.current().homeVariable(), home.toString()), errors));
+				Map.of("PATH", path, Platform.current().homeVariable(), home.toString()), errors));
 
 			// The session starts and fails only because the test runs no CAT artifact
 			requireThat(failure, "failure").isNotInstanceOf(SessionRefusedException.class);
@@ -1508,8 +1509,9 @@ public final class ClaudeRunnerCliTest
 				""");
 			StringWriter errors = new StringWriter();
 
+			String path = SandboxPrograms.path(root);
 			IOException failure = expectThrows(IOException.class, () -> launchWithAuthentication(root, List.of(),
-				Map.of("PATH", "", Platform.current().homeVariable(), home.toString()), errors));
+				Map.of("PATH", path, Platform.current().homeVariable(), home.toString()), errors));
 
 			// The session starts and fails only because the test runs no CAT artifact
 			requireThat(failure, "failure").isNotInstanceOf(SessionRefusedException.class);
@@ -1536,8 +1538,8 @@ public final class ClaudeRunnerCliTest
 				{"apiKeyHelper": "printf key"}
 				""");
 			Path denied = source.resolve(".claude");
-			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(),
-				SourceHomes.create(root, "runner").toString());
+			Map<String, String> environment = Map.of("PATH", SandboxPrograms.path(root),
+				Platform.current().homeVariable(), SourceHomes.create(root, "runner").toString());
 			StringWriter errors = new StringWriter();
 
 			int status = launchWithAuthentication(root, List.of("--home", source.toString()), environment, errors,

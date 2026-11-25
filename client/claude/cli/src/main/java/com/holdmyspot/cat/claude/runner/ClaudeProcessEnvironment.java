@@ -2,9 +2,12 @@ package com.holdmyspot.cat.claude.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.runner.HarnessEnvironment;
+
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
@@ -15,6 +18,24 @@ import java.util.regex.Pattern;
  */
 public final class ClaudeProcessEnvironment
 {
+	/**
+	 * Returns the environment from which a nested Claude process's environment is built: the caller's generic
+	 * operating-system variables, as {@link HarnessEnvironment#scrub} copies them, with the unavailable and duplicate
+	 * directories of {@code PATH} removed. Claude Code's sandbox reads {@code PATH} and the temporary folder from the
+	 * process's environment, so the check that the sandbox can start reads them here.
+	 *
+	 * @param callerEnvironment the caller's environment
+	 * @return the environment, which the caller may change
+	 * @throws NullPointerException if {@code callerEnvironment} is null
+	 */
+	public static Map<String, String> baseEnvironment(Map<String, String> callerEnvironment)
+	{
+		requireThat(callerEnvironment, "callerEnvironment").isNotNull();
+		Map<String, String> environment = new HashMap<>(HarnessEnvironment.scrub(callerEnvironment));
+		removeUnavailablePathEntries(environment);
+		return environment;
+	}
+
 	/**
 	 * Removes unavailable and duplicate path directories before Claude constructs its sandbox.
 	 *

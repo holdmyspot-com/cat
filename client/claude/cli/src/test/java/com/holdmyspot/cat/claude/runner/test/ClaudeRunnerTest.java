@@ -9,9 +9,13 @@ import com.holdmyspot.cat.claude.installer.Integration;
 import com.holdmyspot.cat.claude.runner.ClaudeAuthentication;
 import com.holdmyspot.cat.claude.runner.ClaudeConnectionSettings;
 import com.holdmyspot.cat.claude.runner.ClaudeProcess;
+import com.holdmyspot.cat.claude.runner.ClaudeProcessEnvironment;
 import com.holdmyspot.cat.claude.runner.ClaudeRunner;
 import com.holdmyspot.cat.claude.runner.ClaudeRunnerCli;
+import com.holdmyspot.cat.claude.runner.ClaudeSessionRole;
+import com.holdmyspot.cat.claude.runner.ClaudeSessionSandbox;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.runner.AuthenticationOptions;
@@ -37,6 +41,7 @@ import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.charset.StandardCharsets;
@@ -2233,6 +2238,169 @@ public final class ClaudeRunnerTest
 			requireThat(Files.exists(ClaudeAuthentication.keyFile(claudeFolder), LinkOption.NOFOLLOW_LINKS),
 				"keyFileExists").isFalse();
 		}
+	}
+
+	/**
+	 * Verifies that a launch whose pre-launch check fails is refused with a {@link SessionRefusedException} before the
+	 * results folder holds a nested session and without starting the Claude executable, for a new session and for one
+	 * that resumes a session, with a {@code TMPDIR} in the project's settings that is longer than the sandbox's
+	 * sockets allow on Linux and macOS, and with the native Windows refusal on Windows.
+	 *
+	 * @throws IOException if a fixture cannot be created
+	 */
+	@Test
+	public void refusesLaunchWhoseSandboxWouldNotStart() throws IOException
+	{
+		// Requirement: R-I16
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-sandbox-start-")).toRealPath();
+			Path project = Files.createDirectories(root.resolve("project/.claude"));
+			Files.writeString(project.resolve("settings.json"), """
+				{"env": {"TMPDIR": "/%s"}}
+				""".formatted("t".repeat(100)));
+			Path results = root.resolve("results");
+			Path started = root.resolve("claude-started");
+			Path executable = marker(root, started);
+			Path home = SourceHomes.create(root, "source");
+			ClaudeAuthentication authentication = SourceHomes.keyHelper(home);
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), results,
+				Clock.systemUTC(), Yielding.fileReplacer());
+			AtomicReference<ChildPolicy> listened = new AtomicReference<>();
+			for (String resumed : new String[]{null, "session-that-does-not-exist"})
+			{
+				try
+				{
+					new ClaudeRunner(Yielding.waiting()).start(root.resolve("artifact"), root.resolve("project"), null,
+						List.of(), manager, executable.toString(), Map.of("PATH", ""), "sonnet", "low", null, false,
+						List.of(), List.of(), "", false, 0, null, listened::set, null, null, ExtraPermissions.NONE,
+						ClaudeSessionRole.TRIAL, resumed, authentication);
+					throw new AssertionError("The launch was not refused");
+				}
+				catch (SessionRefusedException e)
+				{
+					if (Platform.current().isWindows())
+						requireThat(e.getMessage(), "message").contains("native Windows");
+					else
+						requireThat(e.getMessage(), "message").contains("env.TMPDIR").contains("101 bytes");
+				}
+				requireThat(Files.exists(started), "claudeStarted").isFalse();
+				requireThat(Files.exists(results), "results").isFalse();
+			}
+			requireThat(Files.exists(root.resolve("artifact")), "artifactRead").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that a session that runs without a sandbox is not refused for the causes that stop a sandbox, since it
+	 * starts none, so that the check reads the session's role.
+	 *
+	 * @throws IOException if a fixture cannot be created
+	 */
+	@Test
+	public void skipsSandboxCheckWithoutSandbox() throws IOException
+	{
+		// Requirement: R-I16
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-no-sandbox-start-")).toRealPath();
+			Path project = Files.createDirectories(root.resolve("project/.claude"));
+			Files.writeString(project.resolve("settings.json"), """
+				{"env": {"TMPDIR": "/%s"}}
+				""".formatted("t".repeat(100)));
+			Path home = SourceHomes.create(root, "source");
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(),
+				root.resolve("results"), Clock.systemUTC(), Yielding.fileReplacer());
+			AtomicReference<ChildPolicy> listened = new AtomicReference<>();
+			try
+			{
+				new ClaudeRunner(Yielding.waiting()).start(root.resolve("artifact"), root.resolve("project"), null,
+					List.of(), manager, "claude", Map.of("PATH", ""), "sonnet", "low", null, false, List.of(),
+					List.of(), "", false, 0, null, listened::set, null, null, ExtraPermissions.NONE, ClaudeSessionRole.JUDGE,
+					null, SourceHomes.keyHelper(home));
+				throw new AssertionError("The launch started");
+			}
+			catch (SessionRefusedException e)
+			{
+				throw new AssertionError("The launch was refused: " + e.getMessage(), e);
+			}
+			catch (IOException _)
+			{
+				// The artifact does not exist, so the launch stops after the check that this test shows is skipped
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a runner environment that sets {@code TMPDIR}, {@code TMP} and {@code TEMP} to a folder of 200 bytes
+	 * gives a Claude process environment without them on Linux and macOS, so that the temporary folder that the
+	 * pre-launch check reads is {@code /tmp} and the launch passes the length check, and that the {@code PATH} that the
+	 * check searches is the one that the Claude process gets.
+	 *
+	 * @throws IOException if the environment cannot be built
+	 */
+	@Test
+	public void processHasNoTemporaryVariables() throws IOException
+	{
+		// Requirement: R-I16
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-temporary-variables-")).toRealPath();
+			String folder = "/" + "t".repeat(199);
+			Path first = Files.createDirectory(root.resolve("first"));
+			Path second = Files.createDirectory(root.resolve("second"));
+			String path = String.join(File.pathSeparator, first.toString(), root.resolve("missing").toString(),
+				second.toString(), first.toString());
+			Map<String, String> environment = new HashMap<>();
+			environment.put("PATH", path);
+			environment.put("TMPDIR", folder);
+			environment.put("TMP", folder);
+			environment.put("TEMP", folder);
+			Path home = SourceHomes.create(root, "session-source");
+
+			Map<String, String> result = ClaudeRunner.processEnvironment(scope, environment,
+				HarnessDependencyCaches.NONE, root.resolve("missing-settings.json"), root.resolve("session-home"), null,
+				SourceHomes.keyHelper(home));
+
+			requireThat(ClaudeProcessEnvironment.baseEnvironment(environment).get("PATH"), "checkedPath").
+				isEqualTo(result.get("PATH")).isEqualTo(String.join(File.pathSeparator, first.toString(),
+					second.toString()));
+			if (!Platform.current().isWindows())
+			{
+				requireThat(result.keySet(), "variables").doesNotContain("TMPDIR").doesNotContain("TMP").
+					doesNotContain("TEMP");
+				requireThat(ClaudeProcessEnvironment.baseEnvironment(environment).keySet(), "checkedVariables").
+					doesNotContain("TMPDIR").doesNotContain("TMP").doesNotContain("TEMP");
+				requireThat(ClaudeSessionSandbox.temporaryFolder(result), "temporaryFolder").isEqualTo(Path.of("/tmp"));
+				requireThat(ClaudeSessionSandbox.startRefusal(Platform.current(), result.get("PATH"),
+					ClaudeSessionSandbox.temporaryFolder(result), null, null,
+					ClaudeSessionSandbox.MACOS_SANDBOX_EXECUTABLE, null, null).orElse(""), "refusal").
+					doesNotContain("temporary folder");
+			}
+		}
+	}
+
+	/**
+	 * Writes an executable that records that it ran.
+	 *
+	 * @param directory the directory of the executable
+	 * @param marker    the file that the executable creates
+	 * @return the executable
+	 * @throws IOException if the file cannot be written
+	 */
+	private static Path marker(Path directory, Path marker) throws IOException
+	{
+		if (PortableFiles.hasModes(directory))
+		{
+			Path file = Files.writeString(directory.resolve("claude-fixture.sh"), "#!/bin/sh\n: > '" + marker + "'\n");
+			Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rwxr-xr-x"));
+			return file;
+		}
+		return Files.writeString(directory.resolve("claude-fixture.cmd"), "@echo off\r\ntype nul > \"" + marker +
+			"\"\r\n");
 	}
 
 	/**

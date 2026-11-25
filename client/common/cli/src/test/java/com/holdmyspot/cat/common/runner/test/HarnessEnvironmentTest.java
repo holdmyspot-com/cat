@@ -1,12 +1,15 @@
 package com.holdmyspot.cat.common.runner.test;
 
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -304,5 +307,45 @@ public final class HarnessEnvironmentTest
 		requireThat(HarnessEnvironment.requestServerRefusal(Map.of(HarnessEnvironment.NESTED_SESSION_VARIABLE, "0")),
 			"otherValue").isEmpty();
 		requireThat(HarnessEnvironment.requestServerRefusal(Map.of("PATH", "/bin")), "outsideNestedSession").isEmpty();
+	}
+
+	/**
+	 * Verifies that the {@code PATH} search returns the first executable regular file of the requested name and skips
+	 * an empty entry, a directory that does not exist, a directory of that name and, where the file system has
+	 * permission bits, a file of that name that is not executable, so that the search names the file that a program
+	 * starting {@code bwrap} or {@code socat} from that {@code PATH} would run.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void findsFirstExecutableFileOnPath() throws IOException
+	{
+		// Requirement: R-I16
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path empty = cleanup.add(Files.createTempDirectory("cat-path-"));
+			Path missing = empty.resolve("missing");
+			Path namesDirectory = cleanup.add(Files.createTempDirectory("cat-path-"));
+			Files.createDirectory(namesDirectory.resolve("tool"));
+			Path notExecutable = cleanup.add(Files.createTempDirectory("cat-path-"));
+			Path first = cleanup.add(Files.createTempDirectory("cat-path-"));
+			Path second = cleanup.add(Files.createTempDirectory("cat-path-"));
+			Path expected = Files.createFile(first.resolve("tool"));
+			Path later = Files.createFile(second.resolve("tool"));
+			if (PortableFiles.hasModes(first))
+			{
+				Files.createFile(notExecutable.resolve("tool"), PosixFilePermissions.asFileAttribute(
+					PosixFilePermissions.fromString("rw-r--r--")));
+				Files.setPosixFilePermissions(expected, PosixFilePermissions.fromString("rwxr-xr-x"));
+				Files.setPosixFilePermissions(later, PosixFilePermissions.fromString("rwxr-xr-x"));
+			}
+			String path = String.join(File.pathSeparator, "", missing.toString(), empty.toString(),
+				namesDirectory.toString(), notExecutable.toString(), first.toString(), second.toString());
+
+			requireThat(HarnessEnvironment.findExecutable("tool", path), "found").isEqualTo(Optional.of(expected));
+			requireThat(HarnessEnvironment.findExecutable("tool", String.join(File.pathSeparator, "", missing.toString(),
+				empty.toString(), namesDirectory.toString(), notExecutable.toString())), "absent").isEmpty();
+			requireThat(HarnessEnvironment.findExecutable("tool", ""), "emptyPath").isEmpty();
+		}
 	}
 }

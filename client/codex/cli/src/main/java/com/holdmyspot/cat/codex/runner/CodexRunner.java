@@ -45,7 +45,6 @@ import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -1497,16 +1496,7 @@ public final class CodexRunner
 	public static Optional<Path> bubblewrap(Map<String, String> environment)
 	{
 		requireThat(environment, "environment").isNotNull();
-		String path = environment.getOrDefault("PATH", "");
-		for (String directory : path.split(File.pathSeparator))
-		{
-			if (directory.isEmpty())
-				continue;
-			Path candidate = Path.of(directory, "bwrap");
-			if (Files.isRegularFile(candidate) && Files.isExecutable(candidate))
-				return Optional.of(candidate);
-		}
-		return Optional.empty();
+		return HarnessEnvironment.findExecutable("bwrap", environment.getOrDefault("PATH", ""));
 	}
 
 	/**

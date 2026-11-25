@@ -5,6 +5,7 @@ import static com.holdmyspot.cat.claude.ClaudePluginInfo.HARNESS_ID;
 import com.holdmyspot.cat.claude.ClaudeConfiguration;
 import com.holdmyspot.cat.claude.installer.Integration;
 import com.holdmyspot.cat.claude.optimizer.InstalledPlugins;
+import com.holdmyspot.cat.claude.runner.ClaudeSessionSandbox.ProbeResult;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -58,7 +59,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -160,11 +160,13 @@ public final class ClaudeRunner
 	 * @throws SessionRefusedException if the session's sandbox would not confine it as its policy requires: its
 	 *   bound does not let it write what Claude Code writes outside the session's session folder, which the bound always
 	 *   lets it write, or a settings file that Claude Code also loads would widen it; or if the session runs without a
-	 *   sandbox and its tools include one beyond {@link ClaudeSessionSandbox#READ_ONLY_TOOLS}
+	 *   sandbox and its tools include one beyond {@link ClaudeSessionSandbox#READ_ONLY_TOOLS}; or if the session runs
+	 *   inside a sandbox that Claude Code could not start, before the nested session is created or resumed, as
+	 *   {@link ClaudeSessionSandbox#startRefusal} decides
 	 * @throws IOException if startup fails
 	 */
 	@SuppressWarnings("PMD.CloseResource")
-	LiveNestedSession start(Path artifact, Path project, Path workspace, List<Path> trialPlugins,
+	public LiveNestedSession start(Path artifact, Path project, Path workspace, List<Path> trialPlugins,
 		NestedSessionManager manager, String executable, Map<String, String> environment, String model, String effort,
 		ClaudeAgentDefinition agent, boolean installCat, List<Path> readOnlyEvidence,
 		List<Path> deniedReads, String instructionFilesMode, boolean sessionTranscripts, int sessionRequests,
@@ -186,6 +188,9 @@ public final class ClaudeRunner
 		requireThat(instructionFilesMode, "instructionFilesMode").isNotNull();
 		if (agent != null && !installCat)
 			throw new IOException("A direct CAT agent requires --install-cat");
+		// Before the nested session is created or resumed, so that a refused launch leaves nothing behind
+		if (sandboxed(role))
+			requireSandboxStart(project, environment);
 		Path artifactRoot = HarnessArtifact.validate(artifact, MANIFEST);
 		boolean resumes = resumedSession != null;
 		NestedSession nestedSession;
@@ -338,6 +343,56 @@ public final class ClaudeRunner
 			if (!resumes)
 				manager.fail(nestedSession, e.getMessage());
 			throw e;
+		}
+	}
+
+	/**
+	 * Refuses a launch whose Claude Code sandbox would not start, once, before the session's Claude process exists. The
+	 * check reads the {@code PATH} and the temporary folder from the environment that the Claude process gets, the
+	 * {@code TMPDIR} and {@code sandbox.bwrapPath} of the settings files that Claude Code loads beside the session's own,
+	 * and runs the program that tries to start a sandbox, only if every cheaper check passed.
+	 *
+	 * @param project     the project whose settings files Claude Code loads in the session
+	 * @param environment the caller's environment
+	 * @throws SessionRefusedException if the sandbox would not start, as
+	 *   {@link ClaudeSessionSandbox#startRefusal} decides
+	 * @throws IOException             if a settings file cannot be read
+	 */
+	private void requireSandboxStart(Path project, Map<String, String> environment) throws IOException
+	{
+		Platform platform = Platform.current();
+		Map<String, String> processEnvironment = ClaudeProcessEnvironment.baseEnvironment(environment);
+		String path = processEnvironment.getOrDefault("PATH", "");
+		Path temporaryFolder = ClaudeSessionSandbox.temporaryFolder(processEnvironment);
+		Path sandboxExecutable = ClaudeSessionSandbox.MACOS_SANDBOX_EXECUTABLE;
+		try (AbstractHarnessRunnerScope scope = new MainHarnessRunnerScope(environment, waiting))
+		{
+			// From the lowest precedence to the highest: the project's files, which the managed files override
+			List<Path> files = new ArrayList<>();
+			files.add(project.resolve(".claude/settings.json"));
+			files.add(project.resolve(".claude/settings.local.json"));
+			files.addAll(ClaudeConnectionSettings.managedSettings(platform));
+			ClaudeSandboxSettings settings = ClaudeSandboxSettings.read(scope.json(), files);
+			Optional<String> refusal = ClaudeSessionSandbox.startRefusal(platform, path, temporaryFolder,
+				settings.temporaryFolder(), settings.bwrapPath(), sandboxExecutable, null, null);
+			if (refusal.isEmpty())
+			{
+				IOException temporaryFileFailure = null;
+				if (platform.isLinux())
+					temporaryFileFailure = SandboxProbe.fileCreationFailure(temporaryFolder).orElse(null);
+				ProbeResult probe = null;
+				Optional<List<String>> command = ClaudeSessionSandbox.probeCommand(platform, path, settings.bwrapPath(),
+					sandboxExecutable);
+				if (temporaryFileFailure == null && command.isPresent())
+				{
+					probe = SandboxProbe.run(command.get(), Path.of("").toAbsolutePath(), processEnvironment,
+						scope.executableFiles());
+				}
+				refusal = ClaudeSessionSandbox.startRefusal(platform, path, temporaryFolder, settings.temporaryFolder(),
+					settings.bwrapPath(), sandboxExecutable, temporaryFileFailure, probe);
+			}
+			if (refusal.isPresent())
+				throw new SessionRefusedException(refusal.get());
 		}
 	}
 
@@ -673,8 +728,7 @@ public final class ClaudeRunner
 		requireThat(hostSettings, "hostSettings").isNotNull();
 		requireThat(processHome, "processHome").isNotNull();
 		requireThat(authentication, "authentication").isNotNull();
-		Map<String, String> isolatedEnvironment = new HashMap<>(HarnessEnvironment.scrub(environment));
-		ClaudeProcessEnvironment.removeUnavailablePathEntries(isolatedEnvironment);
+		Map<String, String> isolatedEnvironment = ClaudeProcessEnvironment.baseEnvironment(environment);
 		ClaudeConnectionSettings.copyProcessEnvironment(environment, isolatedEnvironment);
 		isolatedEnvironment.putAll(caches.environment());
 		ClaudeConnectionSettings.copy(scope.json(), hostSettings, isolatedEnvironment);

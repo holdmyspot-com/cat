@@ -1,9 +1,12 @@
 package com.holdmyspot.cat.common.runner;
 
 import com.holdmyspot.cat.common.Platform;
+import java.io.File;
 import java.net.InetAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
@@ -11,6 +14,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.StringJoiner;
+import java.util.regex.Pattern;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -263,6 +267,39 @@ public final class HarnessEnvironment
 		if (!sessionFolder.isAbsolute())
 			throw new IllegalArgumentException("sessionFolder must be absolute");
 		environment.put("GIT_CEILING_DIRECTORIES", sessionFolder.toString());
+	}
+
+	/**
+	 * Returns the first executable regular file of a name in the directories of a {@code PATH}. An empty entry, a
+	 * directory that does not exist, a directory of that name and a file that is not executable are skipped.
+	 *
+	 * @param program the name of the file to find, such as {@code bwrap}
+	 * @param path    the value of a {@code PATH} variable, whose directories {@link File#pathSeparator} separates
+	 * @return the file, or empty if no directory of {@code path} holds an executable file of that name
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code program} is blank
+	 */
+	public static Optional<Path> findExecutable(String program, String path)
+	{
+		requireThat(program, "program").isNotBlank();
+		requireThat(path, "path").isNotNull();
+		for (String directory : path.split(Pattern.quote(File.pathSeparator)))
+		{
+			if (directory.isEmpty())
+				continue;
+			Path candidate;
+			try
+			{
+				candidate = Path.of(directory, program);
+			}
+			catch (InvalidPathException _)
+			{
+				continue;
+			}
+			if (Files.isRegularFile(candidate) && Files.isExecutable(candidate))
+				return Optional.of(candidate);
+		}
+		return Optional.empty();
 	}
 
 	/**
