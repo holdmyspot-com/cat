@@ -2167,6 +2167,34 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Verifies that a {@code start} that is refused after the optimization worktree was added, here because trials
+	 * would not load the target, removes the worktree and leaves no campaign directory.
+	 *
+	 * @throws Exception if the repository cannot be written or the command fails for another reason
+	 */
+	@Test
+	public void refusedStartLeavesNoWorktreeOrCampaign() throws Exception
+	{
+		// Requirement: R-W17
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}), Set.of(Path.of("CLAUDE.md"), buildProgram()));
+			writeBuildProgram(repository.root());
+			configure(repository.root(), buildConfiguration("cat", 3, "out"));
+
+			String message = refusal(() -> repository.core().start(Path.of("CLAUDE.md")));
+
+			requireThat(message, "message").contains("exited with status 3");
+			try (Stream<Path> campaigns = Files.list(repository.campaigns()))
+			{
+				requireThat(campaigns.toList(), "campaignDirectories").isEmpty();
+			}
+		}
+	}
+
+	/**
 	 * Verifies that the stored pilot records the number of trials that it drew and, for each trial, the boundary
 	 * class of its test case, with at least two trials of every boundary class that the test's development test
 	 * cases have.

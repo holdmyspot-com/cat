@@ -1434,28 +1434,40 @@ public final class OptimizerCore implements Core
 		ForkInputs inputs = prepareFork(root, directory, relative, evaluators);
 		ForkView fork = inputs.fork();
 		CommandResult result;
-		// The fork creates the campaign's directory, which holds the lock file
-		try (CampaignLock _ = lock(id))
+		boolean recorded = false;
+		try
 		{
-			FileInventory inventory = fork.inventory();
-			Overlay incumbent = Overlay.of(inventory);
-			new FileCandidateOverlays(directory, inventory, scope.json(), scope.fileReplacer()).save(incumbent);
-			Header header = new Header(id, root, target, scope.harness(), Lifecycle.ACTIVE, goal, extra, evaluators);
-			MeasurementIdentity identity = campaignEnvironment();
-			if (evaluators.equals(Set.of(scope.harness())))
-				identity = environment(inventory::entry);
-			Campaign campaign = Campaign.start(header, ceiling, incumbent.identity(), identity);
-			if (inputs.plugins().isEmpty())
+			// The fork creates the campaign's directory, which holds the lock file
+			try (CampaignLock _ = lock(id))
 			{
-				store.replaceSnapshot(campaign);
-				campaign = withTrialPlugins(root, store, campaign, fork, configured);
+				FileInventory inventory = fork.inventory();
+				Overlay incumbent = Overlay.of(inventory);
+				new FileCandidateOverlays(directory, inventory, scope.json(), scope.fileReplacer()).save(incumbent);
+				Header header = new Header(id, root, target, scope.harness(), Lifecycle.ACTIVE, goal, extra, evaluators);
+				MeasurementIdentity identity = campaignEnvironment();
+				if (evaluators.equals(Set.of(scope.harness())))
+					identity = environment(inventory::entry);
+				Campaign campaign = Campaign.start(header, ceiling, incumbent.identity(), identity);
+				if (inputs.plugins().isEmpty())
+				{
+					store.replaceSnapshot(campaign);
+					campaign = withTrialPlugins(root, store, campaign, fork, configured);
+				}
+				else
+				{
+					campaign = withPreparedPlugins(campaign, fork.workspace(), inputs.plugins());
+					store.replaceSnapshot(campaign);
+				}
+				recorded = true;
+				result = derive(root, store, campaign, fork, null, null, sliceStart);
 			}
-			else
-			{
-				campaign = withPreparedPlugins(campaign, fork.workspace(), inputs.plugins());
-				store.replaceSnapshot(campaign);
-			}
-			result = derive(root, store, campaign, fork, null, null, sliceStart);
+		}
+		catch (CommandRefusedException | IOException | InterruptedException e)
+		{
+			// The lock is released, so the campaign's directory can go. A campaign whose plugins are recorded stays.
+			if (!recorded)
+				undoStart(root, directory, e);
+			throw e;
 		}
 		if (fork.ignoreNotice().isEmpty())
 			return result;
@@ -1501,17 +1513,30 @@ public final class OptimizerCore implements Core
 			}
 			catch (CommandRefusedException | IOException | InterruptedException e)
 			{
-				try
-				{
-					scope.forks().remove(root, directory);
-					TemporaryDirectories.deleteRecursively(directory);
-				}
-				catch (IOException cleanup)
-				{
-					e.addSuppressed(cleanup);
-				}
+				undoStart(root, directory, e);
 				throw e;
 			}
+		}
+	}
+
+	/**
+	 * Undoes a start that failed after it created its fork: removes the optimization worktree and its registration, and
+	 * deletes the campaign's directory.
+	 *
+	 * @param root the project root
+	 * @param directory the campaign's directory
+	 * @param failure the failure that ended the start, which receives a failure of the undo as a suppressed one
+	 */
+	private void undoStart(Path root, Path directory, Exception failure)
+	{
+		try
+		{
+			scope.forks().remove(root, directory);
+			TemporaryDirectories.deleteRecursively(directory);
+		}
+		catch (IOException cleanup)
+		{
+			failure.addSuppressed(cleanup);
 		}
 	}
 
