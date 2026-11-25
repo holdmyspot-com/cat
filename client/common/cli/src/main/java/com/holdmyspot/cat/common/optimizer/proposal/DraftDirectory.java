@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.optimizer.contract.ExamplesFile;
 import com.holdmyspot.cat.common.optimizer.contract.InvalidProposalException;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestFiles;
 import com.holdmyspot.cat.common.optimizer.contract.ScenarioFormatException;
@@ -27,6 +28,8 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
+
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * The directory in which a contract author writes the prompt tests of its proposal as files, each at its path relative
@@ -217,15 +220,20 @@ public final class DraftDirectory
 	/**
 	 * Copies the recorded prompt tests of the target into a new draft directory, each at its directory as
 	 * {@link #testDirectories(RegressionScenarios)} returns it, with the files and directories of a test root that its
-	 * links reach.
+	 * links reach. A checkout drops an empty directory, so seeding recreates each example directory that a prompt
+	 * test's {@value ExamplesFile#NAME} lists and leaves the file out: in a draft, the empty directories are their own
+	 * record.
 	 *
+	 * @param json      the JSON mapper that reads a prompt test's {@value ExamplesFile#NAME}
 	 * @param scenarios the recorded scenarios of the target
 	 * @param draft     the draft directory, which need not exist
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException          if a file cannot be read or written
+	 * @throws IOException          if a file cannot be read or written, or a prompt test's {@value ExamplesFile#NAME}
+	 *                              is refused as reading the prompt test refuses it
 	 */
-	public static void seed(RegressionScenarios scenarios, Path draft) throws IOException
+	public static void seed(JsonMapper json, RegressionScenarios scenarios, Path draft) throws IOException
 	{
+		requireThat(json, "json").isNotNull();
 		requireThat(draft, "draft").isNotNull();
 		Map<String, Path> directories = testDirectories(scenarios);
 		Files.createDirectories(draft);
@@ -237,13 +245,41 @@ public final class DraftDirectory
 				continue;
 			Path citation = Path.of(scenario.citation());
 			if (isCaseScenario(citation))
-				copyTest(project, directory, draft);
+				seedTest(json, project, directory, draft);
 			else
 			{
 				Path converted = Files.createDirectories(draft.resolve(directory));
 				Files.writeString(converted.resolve(PromptTestFiles.SCENARIO), scenario.content());
 			}
 		}
+	}
+
+	/**
+	 * Copies one recorded prompt test into a draft directory, recreating the example directories that its
+	 * {@value ExamplesFile#NAME} lists.
+	 *
+	 * @param json          the JSON mapper that reads the file
+	 * @param project       the project
+	 * @param testDirectory the prompt test's directory, relative to the project
+	 * @param draft         the draft directory
+	 * @throws IOException if a file cannot be read or written, or the prompt test's {@value ExamplesFile#NAME} is
+	 *                     refused
+	 */
+	private static void seedTest(JsonMapper json, Path project, Path testDirectory, Path draft) throws IOException
+	{
+		Set<String> listed;
+		try
+		{
+			listed = PromptTestFiles.listedExampleDirectories(json, project, project.resolve(testDirectory));
+		}
+		catch (ScenarioFormatException e)
+		{
+			throw new IOException(e.getMessage(), e);
+		}
+		copyTest(project, testDirectory, draft);
+		Path examples = draft.resolve(testDirectory).resolve(PromptTestFiles.EXAMPLES);
+		for (String directory : listed)
+			Files.createDirectories(examples.resolve(directory));
 	}
 
 	/**
@@ -264,7 +300,8 @@ public final class DraftDirectory
 	/**
 	 * Copies one prompt test into a draft directory: its directory and the files and directories of a test root that the
 	 * links of its {@value PromptTestFiles#WORKSPACE} directory reach. A link that is refused, or whose target
-	 * {@code source} does not hold, adds nothing: checking the draft directory reports it.
+	 * {@code source} does not hold, adds nothing: checking the draft directory reports it. The copy leaves out the
+	 * {@value ExamplesFile#NAME} that CAT owns.
 	 *
 	 * @param source        the directory that holds the prompt test at its path, such as the project or another
 	 *                      draft directory
@@ -309,7 +346,9 @@ public final class DraftDirectory
 		requireThat(draft, "draft").isNotNull();
 		Path test = source.resolve(testDirectory);
 		Path examples = test.resolve(PromptTestFiles.EXAMPLES);
-		copyTree(test, draft.resolve(testDirectory), path -> !includeExamples && path.startsWith(examples));
+		Path examplesFile = test.resolve(ExamplesFile.NAME);
+		copyTree(test, draft.resolve(testDirectory),
+			path -> path.equals(examplesFile) || !includeExamples && path.startsWith(examples));
 		for (Path shared : linkedTargets(source, testDirectory))
 			copyEntry(source.resolve(shared), draft.resolve(shared));
 	}

@@ -299,7 +299,7 @@ public final class ContractAuthorProtocol
 		requireThat(loadedFiles, "loadedFiles").isNotNull();
 		requireThat(judged, "judged").isNotNull();
 		return request(promptSystem, profiles, hookRegistrations(hooks), loadedFiles, NONE, NONE,
-			draft -> DraftDirectory.seed(scenarios, draft), salt, judged);
+			draft -> DraftDirectory.seed(json, scenarios, draft), salt, judged);
 	}
 
 	/**
@@ -335,7 +335,7 @@ public final class ContractAuthorProtocol
 		List<DerivedSource> loadedFiles, long salt, Function<ProposalCheck.Assessment, List<String>> judged)
 	{
 		return request(promptSystem, profiles, hookRegistrations(hooks), loadedFiles, NONE, NONE,
-			draft -> DraftDirectory.seed(scenarios, draft), salt, judged);
+			draft -> DraftDirectory.seed(json, scenarios, draft), salt, judged);
 	}
 
 	/**

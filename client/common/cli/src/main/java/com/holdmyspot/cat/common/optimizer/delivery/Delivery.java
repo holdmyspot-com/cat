@@ -14,6 +14,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.DeliveryRequest;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementCondition;
 import com.holdmyspot.cat.common.optimizer.campaign.Outcome;
 import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFile;
+import com.holdmyspot.cat.common.optimizer.contract.ExamplesFile;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest.Draft;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestFiles;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestLocations;
@@ -353,8 +354,10 @@ public final class Delivery
 	/**
 	 * Returns each prompt test's values file, regression scenario, workspace files and links, and example files.
 	 * Delivery writes a draft's {@value PromptTestFiles#SCENARIO} and {@value PromptTestFiles#EXAMPLES} files unchanged.
-	 * For an existing test whose confirmed draft records examples, delivery also removes forked regular example
-	 * files that the draft omits.
+	 * A checkout drops an empty directory, so delivery lists the draft's empty example directories in
+	 * {@value ExamplesFile#NAME} when it has any. For an existing test whose confirmed draft records examples, delivery
+	 * also removes forked regular example files that the draft omits, and a forked {@value ExamplesFile#NAME} once the
+	 * draft has no empty example directory.
 	 * It writes each workspace link at the path the draft holds it, and each other workspace file at the path the draft
 	 * read it from, which may be the target of a link that leads outside {@value PromptTestFiles#WORKSPACE}.
 	 * <p>
@@ -423,8 +426,16 @@ public final class Delivery
 				Path examples = directory.resolve(PromptTestFiles.EXAMPLES);
 				for (Entry<String, FileContent> example : draft.exampleFiles().entrySet())
 					files.put(examples.resolve(example.getKey()), example.getValue());
+				Set<String> emptyDirectories = ExamplesFile.emptyDirectories(draft.exampleFiles().keySet(),
+					draft.exampleDirectories());
+				if (!emptyDirectories.isEmpty())
+				{
+					StringWriter listing = new StringWriter();
+					ExamplesFile.write(json, emptyDirectories, listing);
+					files.put(directory.resolve(ExamplesFile.NAME), new FileContent(listing.toString().getBytes(UTF_8)));
+				}
 				if (!test.location().created())
-					deletedFiles.addAll(obsoleteExampleFiles(selected.fork(), examples, draft));
+					deletedFiles.addAll(obsoleteExampleFiles(selected.fork(), directory, draft, emptyDirectories));
 				files.put(scenarioPath, new FileContent(test.scenarioFile(null).getBytes(UTF_8)));
 				continue;
 			}
@@ -459,21 +470,30 @@ public final class Delivery
 	}
 
 	/**
-	 * Returns the forked regular example files omitted by a draft that recorded example membership.
+	 * Returns the forked regular example files omitted by a draft that recorded example membership, with the forked
+	 * {@value ExamplesFile#NAME} if the draft has no empty example directory.
 	 *
 	 * @param fork the files recorded at the fork
-	 * @param examples the example directory relative to the project
+	 * @param directory the prompt test directory relative to the project
 	 * @param draft the confirmed draft
+	 * @param emptyDirectories the draft's empty example directories
 	 * @return the paths of the obsolete regular files
 	 */
-	private static List<Path> obsoleteExampleFiles(FileInventory fork, Path examples, Draft draft)
+	private static List<Path> obsoleteExampleFiles(FileInventory fork, Path directory, Draft draft,
+		Set<String> emptyDirectories)
 	{
 		if (draft.exampleFiles().isEmpty() && draft.exampleDirectories().isEmpty())
 			return List.of();
-		return fork.entries().entrySet().stream().filter(entry -> entry.getValue() instanceof RegularFile).
+		Path examples = directory.resolve(PromptTestFiles.EXAMPLES);
+		List<Path> obsolete = new ArrayList<>(fork.entries().entrySet().stream().
+			filter(entry -> entry.getValue() instanceof RegularFile).
 			map(Entry::getKey).filter(path -> path.startsWith(examples) && !path.equals(examples)).
 			filter(path -> !draft.exampleFiles().containsKey(PortablePaths.text(examples.relativize(path)))).
-			toList();
+			toList());
+		Path examplesFile = directory.resolve(ExamplesFile.NAME);
+		if (emptyDirectories.isEmpty() && fork.entry(examplesFile).orElse(null) instanceof RegularFile)
+			obsolete.add(examplesFile);
+		return obsolete;
 	}
 
 	/**

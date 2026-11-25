@@ -23,8 +23,10 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.NavigableSet;
 import java.util.Optional;
 import java.util.Set;
+import java.util.SortedSet;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.stream.Stream;
@@ -45,8 +47,8 @@ import tools.jackson.databind.json.JsonMapper;
  * @param testCases          the test cases of the values file, or an empty list if the directory has none
  * @param exampleSources     each example source file, keyed by its path below {@value #EXAMPLES} with {@code /}
  *                           separators, sorted by path
- * @param exampleDirectories the paths of all directories below {@value #EXAMPLES}, including empty ones, with
- *                           {@code /} separators, sorted by path
+ * @param exampleDirectories the paths of all directories below {@value #EXAMPLES}, including empty ones and those
+ *                           that {@value ExamplesFile#NAME} lists, with {@code /} separators, sorted by path
  */
 public record PromptTestFiles(Path root, Path directory, Scenario scenario,
 	List<PromptTestFiles.WorkspaceEntry> workspaceFiles, Map<String, Path> sources, Map<String, String> copiedLinks,
@@ -190,7 +192,9 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario,
 	 * Reads a prompt test directory of the project.
 	 * <p>
 	 * The prompt test's workspace files are the files of its {@value #WORKSPACE} directory and the project files that its
-	 * symbolic links reach, each at its path below {@value #WORKSPACE}.
+	 * symbolic links reach, each at its path below {@value #WORKSPACE}. Its example directories also hold each
+	 * directory that its {@value ExamplesFile#NAME} lists, with the directory's parents, because a checkout drops an
+	 * empty directory.
 	 *
 	 * @param json      the JSON mapper that reads the values file
 	 * @param project   the directory that problems name files relative to, with {@code /} between names
@@ -205,7 +209,10 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario,
 	 *                                  target is missing or lies outside the project, whose target directory holds
 	 *                                  the link, that forms a cycle or that reaches a prompt test directory,
 	 *                                  {@value #EXAMPLES} is a link or a non-directory entry, it holds a link or a
-	 *                                  special file, or a committed test case is not valid for the prompt test
+	 *                                  special file, {@value ExamplesFile#NAME} is not a regular file that follows its
+	 *                                  format or lists a path that leaves {@value #EXAMPLES}, names a file or names a
+	 *                                  directory that holds an entry, or a committed test case is not valid for the
+	 *                                  prompt test
 	 */
 	public static PromptTestFiles read(JsonMapper json, Path project, Path root, Path directory)
 		throws IOException, ScenarioFormatException
@@ -255,13 +262,21 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario,
 	{
 		requireThat(json, "json").isNotNull();
 		PromptTestFiles files = readScenario(project, project, root, directory, recorded);
-		Path valuesFile = directory.resolve(ValuesFile.NAME);
-		if (!Files.exists(valuesFile, LinkOption.NOFOLLOW_LINKS))
-			return files;
-		List<TestCase> testCases;
-		try (BufferedReader in = Files.newBufferedReader(valuesFile))
+		Set<String> exampleDirectories = new HashSet<>(files.exampleDirectories());
+		for (String path : readExamplesFile(json, project, directory, files.exampleSources(), exampleDirectories))
 		{
-			testCases = ValuesFile.read(json, in, display(project, valuesFile));
+			exampleDirectories.add(path);
+			for (int slash = path.indexOf('/'); slash != -1; slash = path.indexOf('/', slash + 1))
+				exampleDirectories.add(path.substring(0, slash));
+		}
+		Path valuesFile = directory.resolve(ValuesFile.NAME);
+		List<TestCase> testCases = List.of();
+		if (Files.exists(valuesFile, LinkOption.NOFOLLOW_LINKS))
+		{
+			try (BufferedReader in = Files.newBufferedReader(valuesFile))
+			{
+				testCases = ValuesFile.read(json, in, display(project, valuesFile));
+			}
 		}
 		for (int i = 0; i < testCases.size(); ++i)
 		{
@@ -273,7 +288,127 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario,
 			}
 		}
 		return new PromptTestFiles(root, directory, files.scenario(), files.workspaceFiles(), files.sources(),
-			files.copiedLinks(), testCases, files.exampleSources(), files.exampleDirectories());
+			files.copiedLinks(), testCases, files.exampleSources(), exampleDirectories);
+	}
+
+	/**
+	 * Returns the directories that a prompt test's {@value ExamplesFile#NAME} lists, checked against its
+	 * {@value #EXAMPLES} directory as {@link #read(JsonMapper, Path, Path, Path)} checks them, so that a copy of the
+	 * prompt test can recreate the empty directories that a checkout dropped.
+	 *
+	 * @param json      the JSON mapper that reads the file
+	 * @param project   the directory that problems name files relative to
+	 * @param directory the prompt test directory
+	 * @return the listed directories, relative to {@value #EXAMPLES} with {@code /} separators, sorted by path, or an
+	 *   empty set if the prompt test has no {@value ExamplesFile#NAME}
+	 * @throws NullPointerException    if any of the arguments are null
+	 * @throws IOException             if a file cannot be read
+	 * @throws ScenarioFormatException if {@value #EXAMPLES} is a link or a non-directory entry or holds a link or a
+	 *                                 special file, or {@value ExamplesFile#NAME} is not a regular file that follows
+	 *                                 its format or lists a path that leaves {@value #EXAMPLES}, names a file or names
+	 *                                 a directory that holds an entry
+	 */
+	public static SortedSet<String> listedExampleDirectories(JsonMapper json, Path project, Path directory)
+		throws IOException, ScenarioFormatException
+	{
+		requireThat(json, "json").isNotNull();
+		requireThat(project, "project").isNotNull();
+		requireThat(directory, "directory").isNotNull();
+		Map<String, Path> exampleSources = new HashMap<>();
+		Set<String> exampleDirectories = new HashSet<>();
+		readExamples(project, directory.resolve(EXAMPLES), exampleSources, exampleDirectories);
+		return Collections.unmodifiableSortedSet(new TreeSet<>(readExamplesFile(json, project, directory,
+			exampleSources, exampleDirectories)));
+	}
+
+	/**
+	 * Reads the directories that a prompt test's {@value ExamplesFile#NAME} lists, if the file exists.
+	 *
+	 * @param json               the JSON mapper that reads the file
+	 * @param project            the directory that problems name files relative to
+	 * @param directory          the prompt test directory
+	 * @param exampleSources     the example files that the prompt test directory holds, by their path below
+	 *                           {@value #EXAMPLES}
+	 * @param exampleDirectories the directories that the prompt test directory holds below {@value #EXAMPLES}
+	 * @return the listed directories in file order, or an empty list if the file does not exist
+	 * @throws IOException             if the file cannot be read
+	 * @throws ScenarioFormatException if the file is not a regular file that follows its format, or it lists a path
+	 *                                 that leaves {@value #EXAMPLES}, names a file or names a directory that holds an
+	 *                                 entry
+	 */
+	private static List<String> readExamplesFile(JsonMapper json, Path project, Path directory,
+		Map<String, Path> exampleSources, Set<String> exampleDirectories) throws IOException, ScenarioFormatException
+	{
+		Path file = directory.resolve(ExamplesFile.NAME);
+		BasicFileAttributes attributes;
+		try
+		{
+			attributes = Files.readAttributes(file, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+		}
+		catch (NoSuchFileException _)
+		{
+			return List.of();
+		}
+		String location = display(project, file);
+		if (!attributes.isRegularFile())
+		{
+			throw new ScenarioFormatException(location + ": the entry must be a regular file. " +
+				ExamplesFile.CORRECTION);
+		}
+		List<String> listed = ExamplesFile.read(json, Files.readAllBytes(file), location);
+		NavigableSet<String> entries = new TreeSet<>(exampleDirectories);
+		entries.addAll(exampleSources.keySet());
+		entries.addAll(listed);
+		for (String path : listed)
+		{
+			String problem = listedProblem(path, exampleSources, entries, project);
+			if (problem != null)
+			{
+				throw new ScenarioFormatException(location + ": the empty directory '" + path + "' " + problem + ". " +
+					ExamplesFile.CORRECTION);
+			}
+		}
+		return listed;
+	}
+
+	/**
+	 * Returns why a directory that {@value ExamplesFile#NAME} lists cannot be an empty example directory.
+	 *
+	 * @param path           the listed directory
+	 * @param exampleSources the example files that the prompt test directory holds, by their path below
+	 *                       {@value #EXAMPLES}
+	 * @param entries        the paths below {@value #EXAMPLES} of every example file, every directory that the prompt
+	 *                       test directory holds and every listed directory
+	 * @param project        the directory that problems name files relative to
+	 * @return the problem, phrased to follow the directory, or {@code null} if the directory can be empty
+	 */
+	private static String listedProblem(String path, Map<String, Path> exampleSources, NavigableSet<String> entries,
+		Path project)
+	{
+		if (path.isEmpty())
+			return "is not a path inside " + EXAMPLES + "/, because it is empty";
+		for (String segment : path.split("/", -1))
+		{
+			String segmentProblem = segmentProblem(segment);
+			if (segmentProblem != null)
+			{
+				return "is not a path inside " + EXAMPLES + "/, because its name '" + segment + "' " +
+					segmentProblem;
+			}
+		}
+		for (int slash = path.indexOf('/'); slash != -1; slash = path.indexOf('/', slash + 1))
+		{
+			Path parent = exampleSources.get(path.substring(0, slash));
+			if (parent != null)
+				return "names the file " + display(project, parent);
+		}
+		Path source = exampleSources.get(path);
+		if (source != null)
+			return "names the file " + display(project, source);
+		String below = entries.ceiling(path + "/");
+		if (below != null && below.startsWith(path + "/"))
+			return "holds " + EXAMPLES + "/" + below;
+		return null;
 	}
 
 	/**

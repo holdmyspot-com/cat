@@ -4,6 +4,13 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.optimizer.contract.AssertionExamples;
+import com.holdmyspot.cat.common.optimizer.contract.ExamplesFile;
+import com.holdmyspot.cat.common.optimizer.contract.PromptTestFiles;
+import com.holdmyspot.cat.common.optimizer.contract.PromptTestLocations;
+import com.holdmyspot.cat.common.optimizer.contract.RecordedTrial;
+import com.holdmyspot.cat.common.optimizer.contract.ScenarioFormatException;
+import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.proposal.DraftDirectory;
 import com.holdmyspot.cat.common.optimizer.proposal.RegressionScenarios;
@@ -13,13 +20,18 @@ import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
+import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.SortedSet;
+import java.util.TreeSet;
 import java.util.stream.Stream;
 
 /**
@@ -96,7 +108,7 @@ public final class DraftDirectoryTest
 			Path draft = scope.add(Files.createTempDirectory("draft-"));
 			RegressionScenarios scenarios = scenarios(project);
 
-			DraftDirectory.seed(scenarios, draft);
+			DraftDirectory.seed(JSON, scenarios, draft);
 
 			requireThat(DraftDirectory.testDirectories(scenarios), "testDirectories").isEqualTo(Map.of(
 				".cat/tests/notes/long_document/scenario.md", LONG_DOCUMENT,
@@ -114,6 +126,142 @@ public final class DraftDirectoryTest
 				isEqualTo(VALUES);
 			requireThat(Files.readString(draft.resolve(".cat/tests/notes/old_case/scenario.md")), "loose").
 				isEqualTo(LOOSE);
+		}
+	}
+
+	/**
+	 * Verifies that seeding a draft from a delivered prompt test whose checkout dropped its empty example directories
+	 * recreates each directory that its {@value ExamplesFile#NAME} lists and leaves the file out, so that delivering the
+	 * draft unchanged lists the same directories and its examples keep their explicitly empty snapshots.
+	 *
+	 * @throws IOException             if a file cannot be read or written
+	 * @throws ScenarioFormatException if the seeded draft cannot be read
+	 */
+	@Test
+	public void seedingRecreatesListedEmptyDirectories() throws IOException, ScenarioFormatException
+	{
+		// Requirement: R-L14
+		// Requirement: R-L15
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Path project = project(scope);
+			Path recorded = project.resolve(LONG_DOCUMENT);
+			write(recorded.resolve("examples/summary_given/pass_tides/replies.json"),
+				"[[\"The tides of {{topic}} rise twice a day.\"]]\n");
+			SortedSet<String> listed = new TreeSet<>(Set.of("summary_given/fail_no_summary/project",
+				"summary_given/pass_brief", "summary_given/pass_tides/initial"));
+			String listing = listing(listed);
+			write(recorded.resolve(ExamplesFile.NAME), listing);
+			Path draft = scope.add(Files.createTempDirectory("draft-"));
+
+			DraftDirectory.seed(JSON, scenarios(project), draft);
+
+			Path seeded = draft.resolve(LONG_DOCUMENT);
+			requireThat(Files.notExists(seeded.resolve(ExamplesFile.NAME), LinkOption.NOFOLLOW_LINKS),
+				"seededExamplesFile").isTrue();
+			for (String directory : listed)
+				requireEmptyDirectory(seeded.resolve(PromptTestFiles.EXAMPLES).resolve(directory), directory);
+			PromptTestFiles files = PromptTestFiles.readScenario(project, draft,
+				draft.resolve(PromptTestLocations.rootOf(LONG_DOCUMENT).orElseThrow()), seeded);
+			SortedSet<String> delivered = ExamplesFile.emptyDirectories(files.exampleSources().keySet(),
+				files.exampleDirectories());
+			requireThat(delivered, "delivered").isEqualTo(listed);
+			requireThat(listing(delivered), "deliveredListing").isEqualTo(listing);
+
+			Path staged = scope.add(Files.createTempDirectory("staged-"));
+			Files.writeString(staged.resolve("doc.md"), "The tides rise twice a day.\n", UTF_8);
+			RecordedTrial tides = render(files, "summary_given/pass_tides", staged, scope);
+			requireThat(tides.replies(), "tides.replies()").isEqualTo(List.of(List.of(
+				"The tides of tides rise twice a day.")));
+			requireEmptyDirectory(tides.initialProject(), "tides.initialProject()");
+			requireThat(tides.effects(), "tides.effects()").isEqualTo(tides.initialProject());
+			RecordedTrial noSummary = render(files, "summary_given/fail_no_summary", staged, scope);
+			requireThat(noSummary.initialProject(), "noSummary.initialProject()").isEqualTo(staged);
+			requireEmptyDirectory(noSummary.effects(), "noSummary.effects()");
+		}
+	}
+
+	/**
+	 * Verifies that seeding refuses a recorded {@value ExamplesFile#NAME} as reading the prompt test does, naming the
+	 * file, instead of seeding a draft that loses the directories it lists.
+	 *
+	 * @throws IOException if the file is refused
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp =
+		".*long_document/examples[.]json: the empty directory 'summary_given/pass_tides' holds .*")
+	public void seedingRefusesInvalidExamplesFile() throws IOException
+	{
+		// Requirement: R-L15
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Path project = project(scope);
+			Path recorded = project.resolve(LONG_DOCUMENT);
+			write(recorded.resolve("examples/summary_given/pass_tides/replies.json"), "[[\"The tides rise.\"]]\n");
+			write(recorded.resolve(ExamplesFile.NAME), listing(Set.of("summary_given/pass_tides")));
+			Path draft = scope.add(Files.createTempDirectory("draft-"));
+
+			DraftDirectory.seed(JSON, scenarios(project), draft);
+		}
+	}
+
+	/**
+	 * Returns the content that delivery writes to an {@value ExamplesFile#NAME}.
+	 *
+	 * @param directories the empty example directories
+	 * @return the file's content
+	 * @throws IOException if the content cannot be written
+	 */
+	private static String listing(Set<String> directories) throws IOException
+	{
+		StringWriter out = new StringWriter();
+		ExamplesFile.write(JSON, directories, out);
+		return out.toString();
+	}
+
+	/**
+	 * Renders one example of a draft prompt test as its checks do.
+	 *
+	 * @param files   the draft prompt test's files
+	 * @param example the example's directory relative to {@value PromptTestFiles#EXAMPLES}
+	 * @param staged  the default initial project
+	 * @param scope   removes the scratch directory
+	 * @return the rendered example
+	 * @throws IOException if the example cannot be rendered
+	 */
+	private static RecordedTrial render(PromptTestFiles files, String example, Path staged, TemporaryDirectories scope)
+		throws IOException
+	{
+		String prefix = example + "/";
+		Map<String, Path> sources = new HashMap<>();
+		for (Map.Entry<String, Path> source : files.exampleSources().entrySet())
+		{
+			if (source.getKey().startsWith(prefix))
+				sources.put(source.getKey().substring(prefix.length()), source.getValue());
+		}
+		Set<String> directories = new HashSet<>();
+		for (String directory : files.exampleDirectories())
+		{
+			if (directory.startsWith(prefix))
+				directories.add(directory.substring(prefix.length()));
+		}
+		Path scratch = scope.add(Files.createTempDirectory("example-"));
+		return AssertionExamples.render(JSON, files.scenario().turns().size(),
+			ContractFixtures.testCase("A summary", Map.of("topic", "tides")), sources, directories, staged, scratch);
+	}
+
+	/**
+	 * Requires a directory that exists and holds no entry.
+	 *
+	 * @param directory the directory
+	 * @param name      the name of the value in a failure
+	 * @throws IOException if the directory cannot be listed
+	 */
+	private static void requireEmptyDirectory(Path directory, String name) throws IOException
+	{
+		requireThat(Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS), name + ".isDirectory").isTrue();
+		try (Stream<Path> entries = Files.list(directory))
+		{
+			requireThat(entries.toList(), name).isEmpty();
 		}
 	}
 
@@ -153,7 +301,7 @@ public final class DraftDirectoryTest
 		{
 			Path project = project(scope);
 			Path latest = scope.add(Files.createTempDirectory("latest-"));
-			DraftDirectory.seed(scenarios(project), latest);
+			DraftDirectory.seed(JSON, scenarios(project), latest);
 			Path created = latest.resolve(".cat/tests/notes/new_case/scenario.md");
 			Files.createDirectories(created.getParent());
 			Files.writeString(created, SCENARIO);
@@ -180,7 +328,7 @@ public final class DraftDirectoryTest
 		{
 			Path project = project(scope);
 			Path latest = scope.add(Files.createTempDirectory("latest-"));
-			DraftDirectory.seed(scenarios(project), latest);
+			DraftDirectory.seed(JSON, scenarios(project), latest);
 			Path revision = scope.add(Files.createTempDirectory("revision-"));
 
 			DraftDirectory.copyTest(latest, LONG_DOCUMENT, revision);
@@ -209,7 +357,7 @@ public final class DraftDirectoryTest
 			Path project = project(scope);
 			Path heldOut = scope.add(Files.createTempDirectory("held_out-"));
 			Path seeded = scope.add(Files.createTempDirectory("seeded-"));
-			DraftDirectory.seed(scenarios(project), seeded);
+			DraftDirectory.seed(JSON, scenarios(project), seeded);
 			List<String> confirmedFiles = files(seeded);
 			Path stored = DraftDirectory.store(seeded, heldOut);
 			Path revision = scope.add(Files.createTempDirectory("revision-"));
@@ -246,7 +394,7 @@ public final class DraftDirectoryTest
 		{
 			Path project = project(scope);
 			Path confirmed = scope.add(Files.createTempDirectory("confirmed-"));
-			DraftDirectory.seed(scenarios(project), confirmed);
+			DraftDirectory.seed(JSON, scenarios(project), confirmed);
 			Path revision = scope.add(Files.createTempDirectory("revision-"));
 			DraftDirectory.copyTest(confirmed, LONG_DOCUMENT, revision);
 			Map<Path, Sha256> received = DraftDirectory.sharedFiles(confirmed, LONG_DOCUMENT);
@@ -282,7 +430,7 @@ public final class DraftDirectoryTest
 			Path project = project(scope);
 			Path heldOut = scope.add(Files.createTempDirectory("held_out-"));
 			Path first = scope.add(Files.createTempDirectory("first-"));
-			DraftDirectory.seed(scenarios(project), first);
+			DraftDirectory.seed(JSON, scenarios(project), first);
 			List<String> seeded = files(first);
 			Path second = scope.add(Files.createTempDirectory("second-"));
 			DraftDirectory.copy(first, second);
@@ -318,7 +466,7 @@ public final class DraftDirectoryTest
 			Path project = project(scope);
 			Path sessionFolder = scope.add(Files.createTempDirectory("session-"));
 			Path draft = sessionFolder.resolve(DraftDirectory.name(sessionFolder));
-			DraftDirectory.seed(scenarios(project), draft);
+			DraftDirectory.seed(JSON, scenarios(project), draft);
 			Path written = draft.resolve(".cat/tests/notes/new_case/scenario.md");
 			Files.createDirectories(written.getParent());
 			Files.writeString(written, SCENARIO);

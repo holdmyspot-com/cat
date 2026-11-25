@@ -23,15 +23,20 @@ import com.holdmyspot.cat.common.optimizer.campaign.MeasurementIdentity;
 import com.holdmyspot.cat.common.optimizer.campaign.Outcome;
 import com.holdmyspot.cat.common.optimizer.contract.AddedTestCases;
 import com.holdmyspot.cat.common.optimizer.contract.Assertion;
+import com.holdmyspot.cat.common.optimizer.contract.AssertionExamples;
 import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
 import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
+import com.holdmyspot.cat.common.optimizer.contract.ExamplesFile;
 import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFile;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestFiles;
+import com.holdmyspot.cat.common.optimizer.contract.PromptTestLocations;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestLocations.Location;
+import com.holdmyspot.cat.common.optimizer.contract.RecordedTrial;
 import com.holdmyspot.cat.common.optimizer.contract.Scenario;
 import com.holdmyspot.cat.common.optimizer.contract.ScenarioFormatException;
+import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.contract.ValuesFile;
 import com.holdmyspot.cat.common.optimizer.contract.VariableDeclaration;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
@@ -74,13 +79,16 @@ import java.nio.file.attribute.FileTime;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -151,6 +159,33 @@ public final class DeliveryTest
 
 		- **kind**: effect
 		- **description**: The reply reads the file.
+		""";
+	/**
+	 * The scenario of the {@code plain_list} test that a draft creates with assertion examples.
+	 */
+	private static final String LIST_SCENARIO = """
+		# Plain list
+
+		Written for the 2.0 release.
+
+		## Design Goals
+
+		The agent lists three items.
+
+		## Variables
+
+		- **kind**: The kind of item that the list names.
+
+		## Scenario
+
+		List three {{kind}}.
+
+		## Assertions
+
+		### listed
+
+		- **kind**: effect
+		- **description**: The reply lists three {{kind}}.
 		""";
 
 	/**
@@ -1146,6 +1181,211 @@ public final class DeliveryTest
 			{
 				requireThat(ValuesFile.read(JSON, in, ValuesFile.NAME), "testCases").isEqualTo(first.allTestCases());
 			}
+		}
+	}
+
+	/**
+	 * Delivery records the empty example directories of a draft in {@value ExamplesFile#NAME}, so that a checkout that
+	 * holds only the delivered files reads them back. Rendering the reloaded examples keeps an explicitly empty
+	 * {@code initial/} or {@code project/} and applies the defaults only to the omitted ones. The file reaches neither
+	 * the example evidence nor a staged trial project.
+	 *
+	 * @throws IOException             if the fixture, delivery or rendering fails
+	 * @throws ScenarioFormatException if the delivered prompt test cannot be read back
+	 */
+	@Test
+	public void emptyExampleDirectoriesSurviveCheckout() throws IOException, ScenarioFormatException
+	{
+		// Requirement: R-L14
+		// Requirement: R-L15
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path testDirectory = TESTS.resolve("plain_list");
+			Contract fixtureContract = ContractFixtures.contract();
+			List<PromptTest> promptTests = new ArrayList<>(fixtureContract.tests());
+			promptTests.set(1, withDraft(fixtureContract.tests().get(1), List.of(), List.of(),
+				new PromptTest.Draft(testDirectory, LIST_SCENARIO, Map.of(),
+					Map.of("listed/pass_colors/replies.json", content("[[\"Three {{kind}}: red, green, blue.\"]]\n")),
+					Set.of("listed/pass_colors/initial", "listed/fail_missing_items/project", "listed/pass_fruits"))));
+			Contract contract = new Contract(fixtureContract.requirements(), promptTests, fixtureContract.profiles(),
+				fixtureContract.judge(), fixtureContract.limitations(), fixtureContract.minimumPassRate(),
+				fixtureContract.salt());
+			List<DeliveredTest> tests = DeliveredTest.of(contract, AddedTestCases.NONE, Path.of("rules/main.md")).
+				subList(1, 2);
+			requireThat(tests.getFirst().location(), "location").isEqualTo(new Location(testDirectory, true));
+
+			Fixture fixture = Fixture.create(template, cleanup);
+			Overlay candidate = fixture.candidate();
+			Delivered delivered = requireDelivered(fixture.delivery(fixture.store(), candidate, NO_HOOK).
+				deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources(),
+					RECORD, tests));
+			Path examplesFile = testDirectory.resolve(ExamplesFile.NAME);
+			requireThat(patchedPaths(delivered), "patchedPaths").contains(examplesFile);
+			requireThat(JSON.readTree(read(fixture.resolve(examplesFile))), "examplesFile").isEqualTo(JSON.readTree("""
+				{
+				  "format_version": 1,
+				  "empty_directories": ["listed/fail_missing_items/project", "listed/pass_colors/initial",
+				    "listed/pass_fruits"]
+				}"""));
+
+			Path checkout = cleanup.add(Files.createTempDirectory("cat-checkout-"));
+			FileTrees.copy(fixture.resolve(testDirectory), checkout);
+			deleteEmptyDirectories(checkout);
+			requireThat(Files.exists(checkout.resolve("examples/listed/pass_colors/initial")), "checkedOutInitial").
+				isFalse();
+			PromptTestFiles files = PromptTestFiles.read(JSON, checkout, checkout, checkout);
+			requireThat(files.exampleSources().keySet(), "exampleSources").
+				isEqualTo(Set.of("listed/pass_colors/replies.json"));
+
+			TestCase testCase = ContractFixtures.plainList("colors");
+			Path staged = cleanup.add(Files.createTempDirectory("cat-staged-"));
+			Files.writeString(staged.resolve("notes.txt"), "Staged notes.\n", UTF_8);
+			RecordedTrial colors = render(files, "listed/pass_colors", testCase, staged, cleanup);
+			requireThat(colors.replies(), "colors.replies()").isEqualTo(List.of(List.of("Three colors: red, green, blue.")));
+			requireEmptyDirectory(colors.initialProject(), "colors.initialProject()");
+			requireThat(colors.effects(), "colors.effects()").isEqualTo(colors.initialProject());
+
+			RecordedTrial missing = render(files, "listed/fail_missing_items", testCase, staged, cleanup);
+			requireThat(missing.initialProject(), "missing.initialProject()").isEqualTo(staged);
+			requireEmptyDirectory(missing.effects(), "missing.effects()");
+
+			RecordedTrial fruits = render(files, "listed/pass_fruits", testCase, staged, cleanup);
+			requireThat(fruits.initialProject(), "fruits.initialProject()").isEqualTo(staged);
+			requireThat(fruits.effects(), "fruits.effects()").isEqualTo(staged);
+
+			Set<Path> excluded = PromptTestLocations.excluded(contract, Path.of("rules/main.md"), fixture.base());
+			requireThat(excluded.stream().anyMatch(examplesFile::startsWith), "examplesFileExcluded").isTrue();
+		}
+	}
+
+	/**
+	 * Delivery writes {@value ExamplesFile#NAME} only for a draft that has an empty example directory, and a revision
+	 * that leaves none removes the recorded file through the delivery journal.
+	 *
+	 * @throws IOException if the fixture or delivery fails
+	 */
+	@Test
+	public void examplesFileFollowsEmptyDirectories() throws IOException
+	{
+		// Requirement: R-L14
+		// Requirement: R-L15
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path editedDirectory = EDITED_SCENARIO.getParent();
+			Path staleFile = editedDirectory.resolve(ExamplesFile.NAME);
+			Path createdDirectory = TESTS.resolve("plain_list");
+			Contract fixtureContract = ContractFixtures.contract();
+			List<PromptTest> promptTests = new ArrayList<>(fixtureContract.tests());
+			promptTests.set(0, withDraft(fixtureContract.tests().getFirst(), List.of(PortablePaths.text(EDITED_SCENARIO)),
+				List.of(), new PromptTest.Draft(editedDirectory, RECORDED_SCENARIO, Map.of(),
+					Map.of("read/pass_same_day/replies.json", content("[[\"The agent read the file.\"]]\n"),
+						"read/fail_missing_notes/project/notes.txt", content("Old notes.\n")), Set.of())));
+			promptTests.set(1, withDraft(fixtureContract.tests().get(1), List.of(), List.of(),
+				new PromptTest.Draft(createdDirectory, LIST_SCENARIO, Map.of(),
+					Map.of("listed/pass_colors/replies.json", content("[[\"Red, green and blue.\"]]\n")),
+					Set.of("listed/pass_colors"))));
+			Contract contract = new Contract(fixtureContract.requirements(), promptTests, fixtureContract.profiles(),
+				fixtureContract.judge(), fixtureContract.limitations(), fixtureContract.minimumPassRate(),
+				fixtureContract.salt());
+			List<DeliveredTest> tests = DeliveredTest.of(contract, AddedTestCases.NONE, Path.of("rules/main.md")).
+				subList(0, 2);
+			requireThat(tests.stream().map(DeliveredTest::location).toList(), "locations").isEqualTo(List.of(
+				new Location(editedDirectory, false), new Location(createdDirectory, true)));
+
+			Fixture fixture = Fixture.create(template, cleanup).
+				recordFile(EDITED_SCENARIO, RECORDED_SCENARIO.getBytes(UTF_8)).
+				recordFile(editedDirectory.resolve("examples/read/pass_same_day/replies.json"),
+					"[[\"The agent read the file.\"]]\n".getBytes(UTF_8)).
+				recordFile(staleFile, "{\"format_version\": 1, \"empty_directories\": [\"read/fail_missing_notes/project\"]}\n".
+					getBytes(UTF_8));
+			Overlay candidate = fixture.candidate();
+			Delivered delivered = requireDelivered(fixture.delivery(fixture.store(), candidate, NO_HOOK,
+				Map.of(EDITED_SCENARIO, content(RECORDED_SCENARIO))).
+				deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources(),
+					RECORD, tests));
+
+			requireThat(Files.notExists(fixture.resolve(staleFile)), "staleFileRemoved").isTrue();
+			requireThat(delivered.changes().stream().filter(Delete.class::isInstance).
+				map(DeliveryChange::target).toList(), "deletedFiles").contains(staleFile);
+			requireThat(read(fixture.resolve(editedDirectory.resolve("examples/read/fail_missing_notes/project/notes.txt"))),
+				"notes").isEqualTo("Old notes.\n");
+			requireThat(Files.exists(fixture.resolve(createdDirectory.resolve("examples/listed/pass_colors/replies.json"))),
+				"createdReplies").isTrue();
+			requireThat(Files.notExists(fixture.resolve(createdDirectory.resolve(ExamplesFile.NAME))),
+				"noExamplesFile").isTrue();
+		}
+	}
+
+	/**
+	 * Renders one example of a prompt test as the judge would see it.
+	 *
+	 * @param files    the prompt test's files
+	 * @param example  the example's directory relative to {@value PromptTestFiles#EXAMPLES}
+	 * @param testCase the case that supplies the placeholder values
+	 * @param staged   the default initial project
+	 * @param cleanup  removes the scratch directory
+	 * @return the rendered example
+	 * @throws IOException if the example cannot be rendered
+	 */
+	private static RecordedTrial render(PromptTestFiles files, String example, TestCase testCase, Path staged,
+		TemporaryDirectories cleanup) throws IOException
+	{
+		String prefix = example + "/";
+		Map<String, Path> sources = new HashMap<>();
+		for (Entry<String, Path> source : files.exampleSources().entrySet())
+		{
+			if (source.getKey().startsWith(prefix))
+				sources.put(source.getKey().substring(prefix.length()), source.getValue());
+		}
+		Set<String> directories = new HashSet<>();
+		for (String directory : files.exampleDirectories())
+		{
+			if (directory.startsWith(prefix))
+				directories.add(directory.substring(prefix.length()));
+		}
+		Path scratch = cleanup.add(Files.createTempDirectory("cat-example-"));
+		return AssertionExamples.render(JSON, files.scenario().turns().size(), testCase, sources, directories, staged,
+			scratch);
+	}
+
+	/**
+	 * Requires a directory that exists and holds no entry.
+	 *
+	 * @param directory the directory
+	 * @param name      the name of the value in a failure
+	 * @throws IOException if the directory cannot be listed
+	 */
+	private static void requireEmptyDirectory(Path directory, String name) throws IOException
+	{
+		try (Stream<Path> entries = Files.list(directory))
+		{
+			requireThat(entries.toList(), name).isEmpty();
+		}
+	}
+
+	/**
+	 * Deletes every empty directory below a directory, as a checkout that holds only files leaves them out.
+	 *
+	 * @param root the directory
+	 * @throws IOException if a directory cannot be listed or deleted
+	 */
+	private static void deleteEmptyDirectories(Path root) throws IOException
+	{
+		List<Path> directories;
+		try (Stream<Path> paths = Files.walk(root))
+		{
+			directories = paths.filter(path -> !path.equals(root) && Files.isDirectory(path)).
+				sorted(Comparator.reverseOrder()).toList();
+		}
+		for (Path directory : directories)
+		{
+			boolean empty;
+			try (Stream<Path> entries = Files.list(directory))
+			{
+				empty = entries.findAny().isEmpty();
+			}
+			if (empty)
+				Files.delete(directory);
 		}
 	}
 
