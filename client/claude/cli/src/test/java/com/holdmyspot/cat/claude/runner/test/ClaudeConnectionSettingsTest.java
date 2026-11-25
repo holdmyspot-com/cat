@@ -1140,6 +1140,73 @@ public final class ClaudeConnectionSettingsTest
 	}
 
 	/**
+	 * Verifies that a session that another session requests, which the requester's policy bounds with a denial of the
+	 * folder that holds the requester's requested sessions, is denied its sibling sessions and its own records but not
+	 * its own responses directory, where its launcher reads the responses to its own requests.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void keepsOwnResponsesReadable() throws IOException
+	{
+		// Requirement: R-I11
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-own-responses-")).toRealPath();
+			Path requester = Files.createDirectories(root.resolve("slots/d1/claude/s-1"));
+			Path requestedSessions = Files.createDirectories(requester.resolve("slots"));
+			Path sessionFolder = Files.createDirectories(requestedSessions.resolve("d1/claude/s-1"));
+			Path sibling = Files.createDirectories(requestedSessions.resolve("d1/claude/s-2/project"));
+			Path home = Files.createDirectories(sessionFolder.resolve("home"));
+			Path project = Files.createDirectories(sessionFolder.resolve("project/.git"));
+			Path requests = Files.createDirectories(sessionFolder.resolve("requests"));
+			Path responses = Files.createDirectories(sessionFolder.resolve("responses"));
+			Path records = Files.writeString(sessionFolder.resolve("session.json"), "{}");
+			Path cache = Files.createDirectories(root.resolve("cache"));
+			Path destination = root.resolve("isolated/settings.json");
+			ChildPolicy bound = new ChildPolicy(List.of(requests, cache), List.of(), List.of(requestedSessions),
+				List.of(), Set.of("api.example"), false);
+			SessionRequestAccess access = new SessionRequestAccess(requests, responses,
+				root.resolve("requested-results"), root.resolve("artifact/bin/request-session"),
+				SessionRequestAccess.Shell.POSIX);
+
+			ChildPolicy effective = ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"),
+				destination, sessionFolder.resolve("claude"), home, List.of(cache), sessionFolder, List.of(), "", access,
+				project.getParent(), sessionFolder, bound, ExtraPermissions.NONE, "api.example");
+
+			JsonNode settings = scope.json().readTree(Files.readString(destination));
+			List<String> denied = strings(settings.path("sandbox").path("filesystem").path("denyRead"));
+			requireThat(covers(denied, responses), "deniesOwnResponses").withContext(denied, "denyRead").isFalse();
+			requireThat(covers(denied, requests), "deniesOwnRequests").withContext(denied, "denyRead").isFalse();
+			requireThat(covers(denied, sibling), "deniesSibling").withContext(denied, "denyRead").isTrue();
+			requireThat(covers(denied, records), "deniesRecords").withContext(denied, "denyRead").isTrue();
+			List<String> inherited = new ArrayList<>();
+			for (Path path : effective.readDenials())
+				inherited.add(path.toString());
+			requireThat(covers(inherited, responses), "inheritedDeniesOwnResponses").isFalse();
+			requireThat(covers(inherited, sibling), "inheritedDeniesSibling").isTrue();
+		}
+	}
+
+	/**
+	 * Indicates whether any of some paths is a path or a folder that holds it.
+	 *
+	 * @param denied the paths
+	 * @param path   the path
+	 * @return {@code true} if a path of {@code denied} is {@code path} or holds it
+	 */
+	private static boolean covers(List<String> denied, Path path)
+	{
+		for (String entry : denied)
+		{
+			if (path.startsWith(Path.of(entry)))
+				return true;
+		}
+		return false;
+	}
+
+	/**
 	 * Verifies that the runner refuses a session whose read denials total more paths than Claude Code can sandbox its
 	 * commands with, rather than start a session in which every command waits for an approval that no one can give,
 	 * and writes no settings for it.

@@ -580,4 +580,38 @@ public final class ChildPolicyTest
 			requireThat(refusal.getMessage(), "message").contains("model.example");
 		}
 	}
+
+	/**
+	 * Verifies that a policy made to leave paths readable replaces each read denial that holds one of them with the
+	 * denial of everything else in it, except the policy's write roots, and keeps every other denial.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void leavingReadableCarvesDenialsAroundPaths() throws IOException
+	{
+		// Requirement: R-I11
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
+			Path holder = Files.createDirectories(root.resolve("slots"));
+			Path own = Files.createDirectories(holder.resolve("a/own"));
+			Path home = Files.createDirectories(own.resolve("home"));
+			Path responses = Files.createDirectories(own.resolve("responses"));
+			Path record = Files.writeString(own.resolve("session.json"), "{}");
+			Path sibling = Files.createDirectories(holder.resolve("a/sibling"));
+			Path other = Files.createDirectories(holder.resolve("b"));
+			Path secret = Files.createDirectories(root.resolve("secret"));
+			ChildPolicy policy = new ChildPolicy(List.of(home), List.of(), List.of(holder, secret), List.of(),
+				Set.of(), false);
+
+			ChildPolicy carved = policy.leavingReadable(List.of(responses));
+
+			requireThat(Set.copyOf(carved.readDenials()), "readDenials").
+				isEqualTo(Set.of(record, sibling, other, secret));
+			requireThat(carved.writeRoots(), "writeRoots").isEqualTo(List.of(home));
+			requireThat(policy.leavingReadable(List.of(root.resolve("elsewhere"))).readDenials(), "unrelated").
+				isEqualTo(List.of(holder, secret));
+		}
+	}
 }

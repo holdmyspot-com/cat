@@ -236,8 +236,8 @@ public final class CodexRunner
 				environment.get(THREAD_ID));
 			// The session's commands may reach only the host that its own Codex sends model requests to
 			String modelHost = authentication.modelHost();
-			ChildPolicy policy = ChildPolicy.intersect(bound, new ChildNeeds(nestedSession.directory().toAbsolutePath(),
-				caches.directories(), List.of(), Set.of(modelHost)).with(extraPermissions));
+			ChildPolicy policy = sessionPolicy(bound, new ChildNeeds(nestedSession.directory().toAbsolutePath(),
+				caches.directories(), List.of(), Set.of(modelHost)).with(extraPermissions), requestAccess);
 			boolean pluginsInstalled = installCat || !trialPlugins.isEmpty();
 			List<String> appServer = appServerCommand(executable, pluginsInstalled);
 			Path worktree = nestedSession.directory().resolve("project");
@@ -831,6 +831,31 @@ public final class CodexRunner
 		if (!agentInstructions.isEmpty())
 			instructions.add(agentInstructions);
 		return instructions.toString();
+	}
+
+	/**
+	 * Returns the policy of a session: its needs, which the policy that bounds it allows, with the session's responses
+	 * directory readable. The bound may deny the folder that holds the session's own folder, as a requester's bound
+	 * denies the folder that holds its requested sessions, but the session's commands read the responses to the
+	 * requests that they make.
+	 *
+	 * @param bound         the policy that bounds the session's
+	 * @param needs         the session's needs
+	 * @param requestAccess the session's access to requested sessions, or {@code null} if it may request none
+	 * @return the session's policy
+	 * @throws NullPointerException if {@code bound} or {@code needs} are null
+	 * @throws SessionRefusedException if the bound does not allow what the session needs
+	 * @throws IOException          if a path of the policy cannot be resolved or listed
+	 */
+	public static ChildPolicy sessionPolicy(ParentPolicy bound, ChildNeeds needs, SessionRequestAccess requestAccess)
+		throws IOException
+	{
+		requireThat(bound, "bound").isNotNull();
+		requireThat(needs, "needs").isNotNull();
+		ChildPolicy policy = ChildPolicy.intersect(bound, needs);
+		if (requestAccess == null)
+			return policy;
+		return policy.leavingReadable(List.of(requestAccess.responses()));
 	}
 
 	/**

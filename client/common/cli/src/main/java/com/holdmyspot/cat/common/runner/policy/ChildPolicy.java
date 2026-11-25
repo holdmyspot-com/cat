@@ -3,6 +3,8 @@ package com.holdmyspot.cat.common.runner.policy;
 import java.io.IOException;
 import java.net.Inet6Address;
 import java.net.InetAddress;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -11,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.stream.Stream;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -128,6 +131,86 @@ public record ChildPolicy(List<Path> writeRoots, List<Path> writeDenials, List<P
 		Set<String> hosts = needs.hosts();
 		return new ChildPolicy(List.copyOf(writeRoots), writeDenials, List.copyOf(readDenials), readReallowances,
 			hosts, parent.allowLocalBinding() && anyNeedsLocalBinding(hosts));
+	}
+
+	/**
+	 * Returns this policy with each read denial that holds one of the paths replaced by the denial of everything else
+	 * in it, so that the commands may read those paths while they stay denied the rest of what the denial held. The
+	 * policy's write roots inside such a denial stay out of the replacement, as the commands may write them, and a
+	 * file or folder that is created later beside the paths is not denied.
+	 * <p>
+	 * A session that another session requests needs this: its requester's policy denies the folder that holds all of
+	 * the requester's requested sessions, and the session's own responses folder lies inside it.
+	 *
+	 * @param readable the paths that the commands must be able to read
+	 * @return a policy that differs from this one only in its read denials
+	 * @throws NullPointerException if {@code readable} is null
+	 * @throws IOException          if a symbolic link in a path cannot be read, a path follows more than 40 links, or
+	 *                              a folder of a denial cannot be listed
+	 */
+	public ChildPolicy leavingReadable(List<Path> readable) throws IOException
+	{
+		requireThat(readable, "readable").isNotNull();
+		List<Path> resolved = RealPaths.resolveAll(readable);
+		Set<Path> carved = new LinkedHashSet<>();
+		for (Path denial : readDenials)
+		{
+			List<Path> inside = new ArrayList<>();
+			for (Path path : resolved)
+			{
+				if (path.startsWith(denial) && !path.equals(denial))
+					inside.add(path);
+			}
+			if (inside.isEmpty())
+			{
+				carved.add(denial);
+				continue;
+			}
+			for (Path root : writeRoots)
+			{
+				if (root.startsWith(denial))
+					inside.add(root);
+			}
+			carveAround(denial, inside, carved);
+		}
+		return new ChildPolicy(writeRoots, writeDenials, List.copyOf(carved), readReallowances, hosts,
+			allowLocalBinding);
+	}
+
+	/**
+	 * Adds each entry of a folder that is not one of the paths and does not hold one, descending into each entry that
+	 * holds one.
+	 *
+	 * @param folder the folder that holds a path
+	 * @param paths  the paths that stay readable
+	 * @param denied the denials to which the entries are added
+	 * @throws IOException if the folder cannot be listed
+	 */
+	private static void carveAround(Path folder, List<Path> paths, Set<Path> denied) throws IOException
+	{
+		List<Path> entries;
+		try (Stream<Path> listing = Files.list(folder))
+		{
+			entries = listing.sorted().toList();
+		}
+		for (Path entry : entries)
+		{
+			if (paths.contains(entry))
+				continue;
+			boolean holdsPath = false;
+			for (Path path : paths)
+			{
+				if (path.startsWith(entry))
+				{
+					holdsPath = true;
+					break;
+				}
+			}
+			if (holdsPath && Files.isDirectory(entry, LinkOption.NOFOLLOW_LINKS))
+				carveAround(entry, paths, denied);
+			else
+				denied.add(entry);
+		}
 	}
 
 	/**

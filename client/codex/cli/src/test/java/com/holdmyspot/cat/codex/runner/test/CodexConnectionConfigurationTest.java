@@ -15,6 +15,7 @@ import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.runner.AuthenticationOptions;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
+import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
@@ -204,6 +205,69 @@ public final class CodexConnectionConfigurationTest
 			{"file", Platform.LINUX_X64},
 			{"directory", Platform.WINDOWS_X64}
 		};
+	}
+
+	/**
+	 * Verifies that a session that another session requests, which its requester's policy bounds with a denial of the
+	 * folder that holds the requester's requested sessions, has a permission profile that denies its sibling sessions
+	 * but not its own responses directory, where its commands read the responses to their own requests.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void profileKeepsOwnResponsesReadable() throws IOException
+	{
+		// Requirement: R-I11
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-own-responses-")).toRealPath();
+			Path requestedSessions = Files.createDirectories(root.resolve("slots/d1/codex/s-1/slots"));
+			Path session = Files.createDirectories(requestedSessions.resolve("d1/codex/s-1"));
+			Path sibling = Files.createDirectories(requestedSessions.resolve("d1/codex/s-2/project"));
+			Path project = Files.createDirectories(session.resolve("project"));
+			Files.createDirectories(session.resolve("home"));
+			Path requests = Files.createDirectories(session.resolve("requests"));
+			Path responses = Files.createDirectories(session.resolve("responses"));
+			ParentPolicy bound = new ParentPolicy(true, List.of(requests), List.of(), List.of(requestedSessions),
+				List.of(), HostAccess.listed(Set.of("model.example")), false, List.of());
+			SessionRequestAccess access = new SessionRequestAccess(requests, responses, root.resolve("requested-results"),
+				root.resolve("artifact/bin/request-session"), SessionRequestAccess.Shell.POSIX);
+			ChildPolicy policy = CodexRunner.sessionPolicy(bound, new ChildNeeds(session, List.of(), List.of(),
+				Set.of("model.example")), access);
+			Path destination = root.resolve("home/config.toml");
+
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, project,
+				HarnessDependencyCaches.NONE, root.resolve("tmp"), 0, access, Platform.LINUX_X64,
+				CodexParentMultiAgentState.NONE, policy);
+
+			JsonNode filesystem = TomlMapper.builder().build().readTree(Files.readString(destination)).
+				path("permissions").path("cat-runner").path("filesystem");
+			List<String> denied = new ArrayList<>();
+			for (Map.Entry<String, JsonNode> entry : filesystem.properties())
+			{
+				if (entry.getValue().asString().equals("deny"))
+					denied.add(entry.getKey());
+			}
+			requireThat(covers(denied, responses), "deniesOwnResponses").withContext(denied, "denied").isFalse();
+			requireThat(covers(denied, sibling), "deniesSibling").withContext(denied, "denied").isTrue();
+		}
+	}
+
+	/**
+	 * Indicates whether any of some paths is a path or a folder that holds it.
+	 *
+	 * @param denied the paths
+	 * @param path   the path
+	 * @return {@code true} if a path of {@code denied} is {@code path} or holds it
+	 */
+	private static boolean covers(List<String> denied, Path path)
+	{
+		for (String entry : denied)
+		{
+			if (path.startsWith(Path.of(entry)))
+				return true;
+		}
+		return false;
 	}
 
 	/**

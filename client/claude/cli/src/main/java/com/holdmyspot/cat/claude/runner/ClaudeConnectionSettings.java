@@ -605,8 +605,14 @@ public final class ClaudeConnectionSettings
 			parentSettings = mapper.readTree(BoundedInput.readUtf8(source, MAXIMUM_SETTINGS_BYTES,
 				"Claude settings"));
 		}
+		// The bound may deny the folder that holds the session's own folder, as a requester's does for its requested
+		// sessions, but the session's commands read the responses to the requests that they make. The Read rules below
+		// carve out every path that the session reads from the whole denial, so they need no change.
+		ChildPolicy sandboxPolicy = policy;
+		if (requestAccess != null)
+			sandboxPolicy = policy.leavingReadable(List.of(requestAccess.responses()));
 		if (sandboxed)
-			putSandbox(settings, policy, implicitWrites);
+			putSandbox(settings, sandboxPolicy, implicitWrites);
 		if (!promptCacheTtl.isEmpty())
 			settings.put("promptCacheTtl", promptCacheTtl);
 		if (authentication != null)
@@ -656,7 +662,7 @@ public final class ClaudeConnectionSettings
 		Files.createDirectories(claudeHome);
 		Files.createDirectories(destination.getParent());
 		Files.writeString(destination, mapper.writeValueAsString(settings));
-		return policy;
+		return sandboxPolicy;
 	}
 
 	/**
