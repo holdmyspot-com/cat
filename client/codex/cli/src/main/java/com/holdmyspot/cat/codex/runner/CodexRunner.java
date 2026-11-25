@@ -1327,6 +1327,10 @@ public final class CodexRunner
 			commands.execute(pluginCommands.get(0), "marketplace-add");
 			commands.execute(pluginCommands.get(1), "plugin-add");
 			installPermissions(isolatedHome, isolatedEnvironment, replacer);
+			// The installation has no installer policy; the marker lets its installer report the installed version
+			Path marker = new CodexInstallation(isolatedHome.toAbsolutePath()).runnerMarker();
+			Files.createDirectories(marker.getParent());
+			Files.writeString(marker, "");
 		}
 		for (int i = 0; i < trialPlugins.size(); ++i)
 		{

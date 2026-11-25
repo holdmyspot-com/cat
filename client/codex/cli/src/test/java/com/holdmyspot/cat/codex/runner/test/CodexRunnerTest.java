@@ -204,6 +204,11 @@ public final class CodexRunnerTest
 				});
 			requireThat(steps, "withCatSteps").isEqualTo(List.of("marketplace-add", "plugin-add"));
 			requireThat(withCat.resolve("agents/cat-worker.toml"), "agent").isRegularFile();
+			CodexInstallation isolated = new CodexInstallation(withCat.toAbsolutePath());
+			requireThat(isolated.runnerMarker(), "runnerMarker").isRegularFile();
+			requireThat(Files.exists(isolated.policy()), "policy").isFalse();
+			requireThat(Files.exists(new CodexInstallation(withoutCat.toAbsolutePath()).runnerMarker()),
+				"markerWithoutCat").isFalse();
 		}
 	}
 

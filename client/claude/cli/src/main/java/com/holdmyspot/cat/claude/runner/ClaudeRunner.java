@@ -4,6 +4,7 @@ import static com.holdmyspot.cat.claude.ClaudePluginInfo.HARNESS_ID;
 
 import com.holdmyspot.cat.claude.ClaudeConfiguration;
 import com.holdmyspot.cat.claude.installer.Integration;
+import com.holdmyspot.cat.claude.layout.ClaudeInstallation;
 import com.holdmyspot.cat.claude.optimizer.InstalledPlugins;
 import com.holdmyspot.cat.claude.runner.ClaudeSessionSandbox.ProbeResult;
 
@@ -552,6 +553,7 @@ public final class ClaudeRunner
 		{
 			Path plugin = isolatedConfiguration.resolve("plugins/cat-marketplace/plugins/cat");
 			installPermissions(isolatedConfiguration, environment, plugin, replacer, json);
+			writeRunnerMarker(new ClaudeInstallation(isolatedConfiguration.toAbsolutePath().normalize()));
 			plugins.add(plugin);
 		}
 		for (Path trialPlugin : trialPlugins)
@@ -1107,6 +1109,7 @@ public final class ClaudeRunner
 			commands.execute(pluginCommands.get(1), "plugin-install");
 			Path plugin = marketplace.resolve("plugins/cat");
 			installPermissions(isolatedConfiguration, environment, plugin, replacer, json);
+			writeRunnerMarker(new ClaudeInstallation(isolatedConfiguration.toAbsolutePath().normalize()));
 			plugins.add(plugin);
 		}
 		for (Path trialPlugin : trialPlugins)
@@ -1120,6 +1123,20 @@ public final class ClaudeRunner
 			plugins.add(marketplace.resolve("plugins/" + name));
 		}
 		return plugins;
+	}
+
+	/**
+	 * Records that the runner, not CAT's installer, installed CAT into the isolated configuration. The installation has
+	 * no installer policy, so its installer reports the installed version and changes nothing.
+	 *
+	 * @param installation the isolated installation
+	 * @throws IOException if the marker cannot be written
+	 */
+	private static void writeRunnerMarker(ClaudeInstallation installation) throws IOException
+	{
+		Path marker = installation.runnerMarker();
+		Files.createDirectories(marker.getParent());
+		Files.writeString(marker, "");
 	}
 
 	/**

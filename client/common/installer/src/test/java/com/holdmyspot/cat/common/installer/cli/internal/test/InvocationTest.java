@@ -219,6 +219,46 @@ public final class InvocationTest
 	}
 
 	/**
+	 * In a home that a nested session's runner installed CAT into, which has a marker and no policy, status reports
+	 * CAT's installed version as installed by the runner, and install and uninstall refuse for that reason.
+	 *
+	 * @throws IOException if the fixture cannot be created or the output cannot be read
+	 */
+	@Test
+	public void runnerInstalledHomeIsReported() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Installation installation = new Installation(cleanup.add(testDirectory("invocation-runner-installed-")));
+			Files.writeString(RecordingIntegration.registeredVersion(installation.home), "1.2");
+			Files.createDirectories(installation.data);
+			Files.writeString(installation.data.resolve("runner-installed"), "");
+
+			Run status = installation.run(Map.of(), List.of(new RegisteredProvider()), new RecordingIntegration(),
+				"status", "--harness", "harness-a");
+			requireThat(status.status, "status").withContext(status.output, "output").isEqualTo(0);
+			requireThat(status.result().path("result").stringValue(), "result").isEqualTo("status");
+			requireThat(status.result().path("installed").booleanValue(), "installed").isTrue();
+			requireThat(status.result().path("version").stringValue(), "version").isEqualTo("1.2");
+			requireThat(status.result().path("message").stringValue(), "message").contains("installed by the runner").
+				contains("cannot update or repair");
+
+			for (String operation : List.of("install", "uninstall"))
+			{
+				RecordingIntegration integration = new RecordingIntegration();
+				Run run = installation.run(Map.of(), List.of(new RegisteredProvider()), integration, operation,
+					"--harness", "harness-a");
+				requireThat(run.status, operation).withContext(run.output, "output").isEqualTo(3);
+				requireThat(run.result().path("result").stringValue(), "result").isEqualTo("refused");
+				requireThat(run.result().path("message").stringValue(), "message").contains("installed by the runner").
+					contains("cannot update or repair");
+				requireThat(integration.calls(), "calls").doesNotContain("unregister");
+			}
+			requireThat(Files.exists(installation.policyFile), "policyExists").isFalse();
+		}
+	}
+
+	/**
 	 * The entry command that a refusal tells the user to run in a terminal sets {@code HOME} to the installer
 	 * process's value when the account's home directory is another directory, so that the terminal installs into the
 	 * harness home of the session that asked.

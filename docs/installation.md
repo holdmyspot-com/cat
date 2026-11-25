@@ -92,6 +92,12 @@ Start or restart Claude Code or Codex. Then either ask your agent "Which CAT ver
 installer from a version folder. `status` reads the active version and changes nothing; add `--verbose` to also list
 the entries that the install added.
 
+In a home that a nested session's runner installed CAT into, such as a trial session of the prompt optimizer, there is
+no installer policy. `status` there reports CAT's installed version as installed by the runner, which the installer
+cannot update or repair, and does not contact the release source. `install` and `uninstall` there refuse for that
+reason. A home with neither a policy nor the runner's marker still refuses every operation and tells you to run the CAT
+entry command again.
+
 Every installer command prints a report for you to read. Give `--json` as its last argument to get the result as one
 line of JSON instead, as your agent's skills do.
 

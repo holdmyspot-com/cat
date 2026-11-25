@@ -6,6 +6,7 @@ import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.claude.installer.Integration;
+import com.holdmyspot.cat.claude.layout.ClaudeInstallation;
 import com.holdmyspot.cat.claude.runner.ClaudeAuthentication;
 import com.holdmyspot.cat.claude.runner.ClaudeConnectionSettings;
 import com.holdmyspot.cat.claude.runner.ClaudeProcess;
@@ -512,6 +513,10 @@ public final class ClaudeRunnerTest
 
 			Path withCat = root.resolve("with/.claude");
 			List<Path> installed = install(artifact, true, List.of(), withCat, (_, step) -> steps.add(step));
+			Path marker = new ClaudeInstallation(withCat).runnerMarker();
+			requireThat(marker, "runnerMarker").isRegularFile();
+			requireThat(Files.exists(new ClaudeInstallation(withCat).policy()), "policy").isFalse();
+			requireThat(Files.exists(new ClaudeInstallation(withoutCat).runnerMarker()), "markerWithoutCat").isFalse();
 			requireThat(installed, "withCat").isEqualTo(List.of(withCat.resolve("plugins/cat-marketplace/plugins/cat")));
 			requireThat(steps, "withCatSteps").isEqualTo(List.of("marketplace-add", "plugin-install"));
 		}

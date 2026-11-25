@@ -14,6 +14,7 @@ import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
 import com.holdmyspot.cat.common.installer.activation.HarnessCommand;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
+import com.holdmyspot.cat.common.installer.activation.InstalledState;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
 import com.holdmyspot.cat.common.installer.cli.internal.Arguments.Operation;
 import com.holdmyspot.cat.common.installer.engine.Consent;
@@ -71,6 +72,11 @@ import tools.jackson.databind.node.ObjectNode;
  */
 public final class Invocation
 {
+	/**
+	 * The reason that a home which a nested session's runner installed CAT into is only reported, never changed.
+	 */
+	private static final String RUNNER_INSTALLED = "CAT is installed by the runner of a nested session, which " +
+		"this installer cannot update or repair.";
 	/**
 	 * The connection deadline for the fixed policy release source.
 	 */
@@ -314,6 +320,12 @@ public final class Invocation
 		String own = locations.harness();
 		if (!arguments.harness().isEmpty() && !arguments.harness().equals(own))
 			return print(otherHarness(own, arguments.harness()), arguments, locations);
+		if (runnerInstalled(locations.policy()))
+		{
+			if (arguments.operation() == Operation.STATUS)
+				return runnerInstalledStatus(arguments, locations);
+			return print(runnerRefusal(own, locations.policy()), arguments, locations);
+		}
 		if (arguments.operation() == Operation.UNINSTALL && Files.notExists(locations.policy(), NOFOLLOW_LINKS))
 			return uninstallWithoutPolicy(arguments, locations);
 		Managed managed = manage(own, locations.policy(), arguments.operation() == Operation.STATUS);
@@ -360,6 +372,59 @@ public final class Invocation
 		UninstallResult result = new Uninstaller(locations.data(), managed.policy(), managed.activation(), session,
 			locations.image(), userHome, clock, waiting).uninstall(arguments.deleteData());
 		return printUninstall(result, arguments, locations);
+	}
+
+	/**
+	 * Returns whether a home holds an installation that a nested session's runner made: it has no policy, and it has
+	 * the runner's marker.
+	 *
+	 * @param policyFile the installation's policy file
+	 * @return {@code true} if the policy is missing and the marker exists
+	 */
+	private static boolean runnerInstalled(Path policyFile)
+	{
+		return Files.notExists(policyFile, NOFOLLOW_LINKS) &&
+			Files.isRegularFile(policyFile.resolveSibling(HarnessInstallation.RUNNER_MARKER), NOFOLLOW_LINKS);
+	}
+
+	/**
+	 * Returns the refusal of an operation that changes an installation which a nested session's runner made.
+	 *
+	 * @param own        the harness
+	 * @param policyFile the installation's policy file, which does not exist
+	 * @return the refusal
+	 */
+	private static UpdateResult runnerRefusal(String own, Path policyFile)
+	{
+		return failure(Result.REFUSED, own, RUNNER_INSTALLED + " It has no installer policy, so install, update and " +
+			"uninstall refuse there.", List.of(policyFile.resolveSibling(HarnessInstallation.RUNNER_MARKER)));
+	}
+
+	/**
+	 * Reports the version of CAT that a nested session's runner installed, without contacting the release source.
+	 *
+	 * @param arguments the validated status operation
+	 * @param locations the installation identified by the running version folder
+	 * @return the printed result's status
+	 * @throws IOException if the installation state cannot be read
+	 */
+	private int runnerInstalledStatus(Arguments arguments, Locations locations) throws IOException
+	{
+		String own = locations.harness();
+		Optional<PluginActivation> activation = activations.stream().
+			filter(provider -> provider.harness().equals(own)).findFirst();
+		if (activation.isEmpty())
+		{
+			return print(failure(Result.REFUSED, own, "This installer has no plugin provider for " + own + ".",
+				List.of()), arguments, locations);
+		}
+		InstalledState installed = activation.get().installed(locations.installation().home());
+		String message = RUNNER_INSTALLED;
+		if (!installed.consistent())
+			message += " Its installation state is incomplete.";
+		UpdateResult status = new UpdateResult(Result.STATUS, own, installed.version(), Optional.empty(), message,
+			List.of(), installed.consistent(), List.of());
+		return print(status, encode(status), arguments, locations);
 	}
 
 	/**
@@ -951,6 +1016,8 @@ public final class Invocation
 	private Managed manage(String own, Path policyFile, boolean readOnly)
 		throws IOException, TrustException
 	{
+		if (!Files.isRegularFile(policyFile) && runnerInstalled(policyFile))
+			return Managed.refused(runnerRefusal(own, policyFile));
 		if (!Files.isRegularFile(policyFile))
 		{
 			return Managed.refused(failure(Result.REFUSED, own, "Installer policy is missing; " +

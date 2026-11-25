@@ -17,6 +17,11 @@ import java.util.Optional;
 public interface HarnessInstallation
 {
 	/**
+	 * The name of the marker that a nested session's runner writes in the data directory.
+	 */
+	String RUNNER_MARKER = "runner-installed";
+
+	/**
 	 * Resolves a harness's configuration directory from the environment: the directory that the home variable names,
 	 * or the default directory in the user's home directory when the variable is unset or empty.
 	 *
@@ -141,6 +146,17 @@ public interface HarnessInstallation
 	default Path policy()
 	{
 		return dataDirectory().resolve("policy.json");
+	}
+
+	/**
+	 * Returns the marker that a nested session's runner writes when it installs CAT into an isolated home. The marker
+	 * records that the runner, not this installer, installed CAT there, so the home has no policy.
+	 *
+	 * @return {@code runner-installed} in the data directory
+	 */
+	default Path runnerMarker()
+	{
+		return dataDirectory().resolve(RUNNER_MARKER);
 	}
 
 	/**
