@@ -23,3 +23,12 @@ recordings hold no `session_state_changed` lines, because those sessions did not
   with `EPERM`, with no process stopping it. The report has the same frame with another reason:
   `EPERM: operation not permitted, listen '<tmp>/srt-mux-16-2.sock'`. Results that follow it ran outside the sandbox.
 - `socket-listen-report-stopped.jsonl`: the same session stopped as soon as the report line was read.
+- `required-report-stopped.jsonl`: a session of Claude Code 2.1.332 started with `sandbox.failIfUnavailable: true` on
+  2026-11-25 (UTC), model `haiku`, in a shell whose `socket(AF_UNIX, ...)` calls fail with `EPERM`. The result of the
+  first Bash call is the report of a sandbox that is required:
+  `Sandbox is required but failed to initialize: EPERM: operation not permitted, listen '/tmp/srt-mux-74-2.sock'.
+  Restart to retry. Running it outside the sandbox (dangerouslyDisableSandbox) is not allowed either.` The stream ends
+  after the report. The recording keeps the session's `init`, `assistant` and `user` lines only.
+- `required-report-then-results-followed.jsonl`: the same session with no process stopping it. The model retried the
+  command, and the results of its later Bash calls carry the same report: nothing ran outside the sandbox. The
+  recording ends with the session's `result` line.

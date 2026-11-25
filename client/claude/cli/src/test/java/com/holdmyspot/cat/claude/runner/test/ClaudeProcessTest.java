@@ -1006,9 +1006,10 @@ public final class ClaudeProcessTest
 
 	/**
 	 * Returns the recorded sessions whose first Bash result is Claude Code's report that its command sandbox failed to
-	 * start. The two reports have the same frame and different reasons, and each is recorded twice: once with nothing
-	 * stopping the session, so the results of later Bash calls follow the report, and once with the session stopped
-	 * as soon as the report was read, so the stream ends after it.
+	 * start. The reports come in two frames, one for a session whose sandbox is enabled and one for a session that
+	 * requires it, and each recording has a reason of its own. The sessions that did not stop at the report are
+	 * recorded with the results of later Bash calls after it, and the sessions that stopped as soon as the report was
+	 * read end after it.
 	 *
 	 * @return the recording, the report in its first Bash result, and whether the recording holds a later Bash result
 	 */
@@ -1020,11 +1021,16 @@ public final class ClaudeProcessTest
 			"attempts" + frameEnd;
 		String socketListen = "Sandbox is enabled but failed to initialize: EPERM: operation not permitted, listen " +
 			"'<tmp>/srt-mux-16-2.sock'" + frameEnd;
+		String required = "Sandbox is required but failed to initialize: EPERM: operation not permitted, listen " +
+			"'/tmp/srt-mux-74-2.sock'. Restart to retry. Running it outside the sandbox (dangerouslyDisableSandbox) is " +
+			"not allowed either.";
 		return new Object[][]{
 			{"bridge-sockets-report-then-commands-ran.jsonl", bridgeSockets, true},
 			{"bridge-sockets-report-stopped.jsonl", bridgeSockets, false},
 			{"socket-listen-report-then-commands-ran.jsonl", socketListen, true},
-			{"socket-listen-report-stopped.jsonl", socketListen, false}};
+			{"socket-listen-report-stopped.jsonl", socketListen, false},
+			{"required-report-then-results-followed.jsonl", required, true},
+			{"required-report-stopped.jsonl", required, false}};
 	}
 
 	/**
@@ -1115,6 +1121,9 @@ public final class ClaudeProcessTest
 	{
 		String report = "Sandbox is enabled but failed to initialize: Failed to create bridge sockets after 5 attempts. " +
 			"Sandboxing is disabled for the rest of this session; restart to retry.";
+		String required = "Sandbox is required but failed to initialize: EPERM: operation not permitted, listen " +
+			"'/tmp/srt-mux-74-2.sock'. Restart to retry. Running it outside the sandbox (dangerouslyDisableSandbox) is " +
+			"not allowed either.";
 		return new Object[][]{
 			// Claude Code refuses a Bash call that no permission rule allows
 			{List.of(new BashResult("\"Claude requested permissions to use Bash, but you haven't granted it yet.\"",
@@ -1126,7 +1135,11 @@ public final class ClaudeProcessTest
 			// A command that prints the report's words has not failed to start the sandbox
 			{List.of(new BashResult("\"" + report + "\"", false))},
 			// The report is Claude Code's whole result, so words after other text are a command's own output
-			{List.of(new BashResult("\"Exit code 1\\n" + report + "\"", true))}};
+			{List.of(new BashResult("\"Exit code 1\\n" + report + "\"", true))},
+			// The same guards hold for the report of a session that requires its sandbox
+			{List.of(new BashResult("\"MARKER_ALPHA\"", false), new BashResult("\"" + required + "\"", true))},
+			{List.of(new BashResult("\"" + required + "\"", false))},
+			{List.of(new BashResult("\"Exit code 1\\n" + required + "\"", true))}};
 	}
 
 	/**
@@ -1170,6 +1183,33 @@ public final class ClaudeProcessTest
 	{
 		String report = "Sandbox is enabled but failed to initialize: Failed to create bridge sockets after 5 attempts. " +
 			"Sandboxing is disabled for the rest of this session; restart to retry.";
+		assertLaterTurnEndsAtReportInTextBlocks(report);
+	}
+
+	/**
+	 * Verifies that the report of a session that requires its sandbox is recognized in the same places as the report of
+	 * a session whose sandbox is enabled: in a list of text blocks, and in the first Bash result of a later turn.
+	 *
+	 * @throws IOException if a turn fails unexpectedly
+	 */
+	// Requirement: R-I16
+	@Test(timeOut = 10_000)
+	public void endsLaterTurnAtRequiredReportInBlocks() throws IOException
+	{
+		String report = "Sandbox is required but failed to initialize: EPERM: operation not permitted, listen " +
+			"'/tmp/srt-mux-74-2.sock'. Restart to retry. Running it outside the sandbox (dangerouslyDisableSandbox) is " +
+			"not allowed either.";
+		assertLaterTurnEndsAtReportInTextBlocks(report);
+	}
+
+	/**
+	 * Runs a turn that completes and a later turn whose first Bash result is the report, as a list of text blocks.
+	 *
+	 * @param report the report
+	 * @throws IOException if a turn fails unexpectedly
+	 */
+	private void assertLaterTurnEndsAtReportInTextBlocks(String report) throws IOException
+	{
 		FakeHarnessCli claude = new FakeHarnessCli(_ ->
 		{
 		});

@@ -15,13 +15,16 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Finds Claude Code's report that its command sandbox failed to start in the lines of a session's standard output.
  * <p>
- * When Claude Code cannot start its sandbox, it reports the failure as the result of the session's first Bash call and
- * runs every later call without the sandbox, although the session's settings forbid unsandboxed commands. The report
- * is one sentence, {@code Sandbox is enabled but failed to initialize: <reason>. Sandboxing is disabled for the rest of
- * this session; restart to retry.}, whatever the reason: a bridge socket that cannot be created and a socket that
- * cannot be listened on, which the recordings under {@code runner/sandbox-start} show, give the same frame. The report
- * is an error result that holds nothing else, so a command that prints the sentence, or a failed command whose output
- * contains it, is not mistaken for the report. Only the session's first Bash result can be the report.
+ * When Claude Code cannot start its sandbox, it reports the failure as the result of the session's first Bash call. A
+ * session whose settings do not require the sandbox then runs every later call without it, although the settings
+ * forbid unsandboxed commands. The report is one sentence, {@code Sandbox is enabled but failed to initialize:
+ * <reason>. Sandboxing is disabled for the rest of this session; restart to retry.}. A session whose settings require
+ * the sandbox gets {@code Sandbox is required but failed to initialize: <reason>. Restart to retry. Running it outside
+ * the sandbox (dangerouslyDisableSandbox) is not allowed either.}, and its later calls fail the same way. Each frame
+ * holds any reason: a bridge socket that cannot be created and a socket that cannot be listened on, which the
+ * recordings under {@code runner/sandbox-start} show, give the same frame. The report is an error result that holds
+ * nothing else, so a command that prints the sentence, or a failed command whose output contains it, is not mistaken
+ * for the report. Only the session's first Bash result can be the report.
  * <p>
  * After the report, this object records whether a Bash result followed it, which shows that a command ran after the
  * sandbox was disabled.
@@ -31,10 +34,14 @@ import tools.jackson.databind.json.JsonMapper;
 public final class SandboxStartReport
 {
 	/**
-	 * The report's frame, with any reason.
+	 * The report's two frames, with any reason. A session whose settings allow Claude Code to run without its sandbox
+	 * gets the first, and a session that requires the sandbox gets the second.
 	 */
-	private static final Pattern REPORT = Pattern.compile("Sandbox is enabled but failed to initialize: .+\\. " +
-		"Sandboxing is disabled for the rest of this session; restart to retry\\.", Pattern.DOTALL);
+	private static final Pattern REPORT = Pattern.compile(
+		"Sandbox is enabled but failed to initialize: .+\\. " +
+			"Sandboxing is disabled for the rest of this session; restart to retry\\.|" +
+			"Sandbox is required but failed to initialize: .+\\. Restart to retry\\. " +
+			"Running it outside the sandbox \\(dangerouslyDisableSandbox\\) is not allowed either\\.", Pattern.DOTALL);
 	private final JsonMapper json;
 	/**
 	 * Guards every field below.

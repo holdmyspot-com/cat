@@ -240,8 +240,9 @@ public final class ClaudeProcess implements HarnessProcess
 	 * fails instead of completing with Claude's error text as its reply.
 	 * <p>
 	 * When the result of the process's first Bash call is Claude Code's report that its command sandbox failed to start,
-	 * the turn fails at once: Claude Code runs every later command without the sandbox, so the runner stops the process
-	 * tree, writes it no further input and reports the failure with the report and whether a Bash result followed it.
+	 * the turn fails at once: Claude Code may run every later command without the sandbox, so the runner stops the
+	 * process tree, writes it no further input and reports the failure with the report and whether a Bash result
+	 * followed it.
 	 *
 	 * @param request the non-blank user prompt
 	 * @return the captured event stream for the turn
@@ -401,7 +402,7 @@ public final class ClaudeProcess implements HarnessProcess
 		assert report != null;
 		String followed;
 		if (bashResultFollowed)
-			followed = "A Bash result followed the report, so a command may have run outside the sandbox.";
+			followed = "A Bash result followed the report; it shows whether a command ran outside the sandbox.";
 		else
 			followed = "No Bash result followed the report.";
 		return "Claude Code's command sandbox failed to start: " + report + " The runner stopped the Claude process " +

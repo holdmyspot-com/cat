@@ -452,12 +452,15 @@ On macOS it checks that `/usr/bin/sandbox-exec` exists and runs `/usr/bin/true` 
 that the temporary folder's path has at most 68 bytes.
 
 **While the session runs**, the runner reads the result of the session's first Bash call. When it is Claude Code's report
-that its sandbox failed to start (`Sandbox is enabled but failed to initialize: <reason>. Sandboxing is disabled for the
-rest of this session; restart to retry.`, whatever the reason), the runner stops the Claude process at once and sends it
-no further input. The turn ends as an infrastructure failure, never as a pass or a fail outcome. Its reason quotes the
-report and says whether a Bash result followed it, which shows that a command ran after the sandbox was disabled. This
-covers causes that the checks before the start cannot see, such as a sandbox that does not finish starting in time on a
-slow machine. Fix the cause and start a new session.
+that its sandbox failed to start, the runner stops the Claude process at once and sends it no further input. The report
+has one of two forms, whatever the reason. The runner's sessions require their sandbox, and Claude Code reports
+`Sandbox is required but failed to initialize: <reason>. Restart to retry. Running it outside the sandbox
+(dangerouslyDisableSandbox) is not allowed either.` A session that does not require it gets `Sandbox is enabled but
+failed to initialize: <reason>. Sandboxing is disabled for the rest of this session; restart to retry.` The turn ends as
+an infrastructure failure, never as a pass or a fail outcome. Its reason quotes the report and says whether a Bash
+result followed it, which shows whether a command ran after the report. This covers causes that the checks before the
+start cannot see, such as a sandbox that does not finish starting in time on a slow machine. Fix the cause and start a
+new session.
 
 **Known limitation.** The runner can read the report only once Claude Code has printed it. Bash calls that the model
 issued in the same message as the call that receives the report could run outside the sandbox, with your permissions,
