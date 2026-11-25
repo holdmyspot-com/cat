@@ -103,6 +103,11 @@ import static org.testng.Assert.expectThrows;
 public final class SessionRequestBrokerTest
 {
 	/**
+	 * The files that every launch of a session records again, relative to the session folder.
+	 */
+	private static final List<String> RUNNER_FILES = List.of(".claude/launch.json",
+		"responses/limits.json", "artifacts/codex-features-list-disable-plugins.stdout");
+	/**
 	 * The harness session that an interrupted requested nested session records.
 	 */
 	private static final String RESUMED_SESSION = "5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90";
@@ -1780,8 +1785,17 @@ public final class SessionRequestBrokerTest
 					Path retainedSession = slot.root().resolve("claude").resolve(slot.slotId());
 					Files.writeString(retainedSession.resolve("artifacts/bridge-transcript.jsonl"),
 						"{\"type\":\"suspended\",\"completed_turns\":1}\n");
+					for (String runnerFile : RUNNER_FILES)
+					{
+						Path file = retainedSession.resolve(runnerFile);
+						Files.createDirectories(file.getParent());
+						Files.writeString(file, "first " + runnerFile);
+					}
 					ResultsCopy.Result copied = ResultsCopy.copy(retainedSession, session, RESUMED_SESSION, fixture.project);
 					requireThat(copied.incomplete().isEmpty(), "firstCopy").isTrue();
+					// The resumed session rewrites the files that each launch of a session records
+					for (String runnerFile : RUNNER_FILES)
+						Files.writeString(retainedSession.resolve(runnerFile), "resumed " + runnerFile);
 					originalReply = Files.readString(firstReply);
 					Files.writeString(session.resolve("artifacts/requester-observation"), "requester-owned evidence");
 				}
@@ -1817,6 +1831,11 @@ public final class SessionRequestBrokerTest
 						isEqualTo("completed");
 					requireThat(Files.readString(session.resolve("artifacts/requester-observation")), "observation").
 						isEqualTo("requester-owned evidence");
+					for (String runnerFile : RUNNER_FILES)
+					{
+						requireThat(Files.readString(session.resolve(runnerFile)), runnerFile).
+							isEqualTo("resumed " + runnerFile);
+					}
 				}
 			}
 		}

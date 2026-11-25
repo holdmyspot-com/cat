@@ -2943,6 +2943,19 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
+	 * Ends a failure reason with one period.
+	 *
+	 * @param reason the reason, which may already end with a period
+	 * @return the reason as a sentence
+	 */
+	private static String sentence(String reason)
+	{
+		if (reason.endsWith("."))
+			return reason;
+		return reason + ".";
+	}
+
+	/**
 	 * Describes why a session did not complete.
 	 *
 	 * @param result the session's result
@@ -2954,7 +2967,7 @@ public final class OptimizerCore implements Core
 		return switch (result)
 		{
 			case SessionResult.Completed _ -> throw new IllegalArgumentException("The session completed");
-			case SessionResult.Failed failed -> "did not complete: " + failed.reason() + ".";
+			case SessionResult.Failed failed -> "did not complete: " + sentence(failed.reason());
 			case SessionResult.LaunchRefused refused -> "did not start. " + refused.reason();
 			case SessionResult.Interrupted _ -> "was interrupted.";
 			case SessionResult.Refused refused ->
@@ -4012,7 +4025,7 @@ public final class OptimizerCore implements Core
 			case SessionResult.Failed failed ->
 			{
 				throw new DerivationFailed(DerivationFailure.repeatable("The contract author session did not complete: " +
-					failed.reason() + ".", "Run `start` again to retry."));
+					sentence(failed.reason()), "Run `start` again to retry."));
 			}
 			case SessionResult.LaunchRefused refused ->
 			{

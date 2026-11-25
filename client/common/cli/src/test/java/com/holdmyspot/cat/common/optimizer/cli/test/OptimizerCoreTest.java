@@ -1615,6 +1615,9 @@ public final class OptimizerCoreTest
 				{new SessionResult.Failed("The contract author session reached its 30-minute time limit", List.of()),
 					"The contract author session did not complete: The contract author session reached its " +
 					"30-minute time limit. Run `start` again to retry."},
+				{new SessionResult.Failed("The results copy at /results is incomplete.", List.of()),
+					"The contract author session did not complete: The results copy at /results is incomplete. " +
+					"Run `start` again to retry."},
 				{new SessionResult.Interrupted(List.of()),
 					"The contract author session was interrupted. Run `start` again to retry."},
 				{new SessionResult.RateLimited(new Hold(resetsAt, 0), List.of()),

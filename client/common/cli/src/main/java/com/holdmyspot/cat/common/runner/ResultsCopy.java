@@ -498,9 +498,32 @@ public final class ResultsCopy
 					throw collision;
 				if (relative.equals(CHECKPOINT) || relative.equals(BRIDGE_TRANSCRIPT))
 					replacePhaseFile(file, attempted);
-				else if (!isEarlierEvidence(relative) || Files.mismatch(file, attempted) != -1)
+				else if (isEarlierEvidence(relative))
+				{
+					if (Files.mismatch(file, attempted) != -1)
+						throw collision;
+				}
+				else if (isTurnEvidence(relative))
 					throw collision;
+				else
+				{
+					// The settled copy is the resumed session's own, and holds each file that a launch records again, such
+					// as its limits or link copies, as that session left it
+					replacePhaseFile(file, attempted);
+				}
 			}
+		}
+
+		/**
+		 * Identifies a turn's evidence file.
+		 *
+		 * @param relative the path inside the session
+		 * @return whether the path is a turn's events, errors or reply
+		 */
+		private static boolean isTurnEvidence(Path relative)
+		{
+			return relative.getNameCount() == 2 && relative.startsWith(SESSION_ARTIFACTS) &&
+				TURN_EVIDENCE.matcher(relative.getFileName().toString()).matches();
 		}
 
 		/**
