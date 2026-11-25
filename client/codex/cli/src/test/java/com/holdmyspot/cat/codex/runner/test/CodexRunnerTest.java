@@ -623,9 +623,9 @@ public final class CodexRunnerTest
 			Path configuration = home.resolve(".codex/config.toml");
 
 			CodexConnectionConfiguration.copy(root.resolve("host.toml"), configuration, home,
-				apiKeySource(root, "source").settings(), root.resolve("session/project"), HarnessDependencyCaches.NONE,
-				temporaryDirectory, 0, null, Platform.LINUX_X64, CodexParentMultiAgentState.NONE,
-				ChildPolicy.intersect(ParentPolicy.UNSANDBOXED,
+				apiKeySource(root, "source").settings(home.resolve(".codex")), root.resolve("session/project"),
+				HarnessDependencyCaches.NONE, temporaryDirectory, 0, null, Platform.LINUX_X64,
+				CodexParentMultiAgentState.NONE, ChildPolicy.intersect(ParentPolicy.UNSANDBOXED,
 					new ChildNeeds(root, List.of(), List.of(), Set.of())), ExtraPermissions.NONE, null);
 
 			JsonNode policy = TomlMapper.builder().build().readTree(Files.readString(configuration)).
@@ -827,7 +827,8 @@ public final class CodexRunnerTest
 			String recorded = Files.readString(nestedSession.directory().resolve("session.json"));
 			requireThat(recorded, "recorded").contains("model_providers.gateway").
 				doesNotContain(CodexSourceHomes.SECRET);
-			requireThat(authentication.settings(), "settings").doesNotContain(CodexSourceHomes.SECRET);
+			requireThat(authentication.settings(root.resolve("session/home/.codex")), "settings").
+				doesNotContain(CodexSourceHomes.SECRET);
 			requireThat(authentication.toString(), "description").doesNotContain(CodexSourceHomes.SECRET);
 		}
 	}

@@ -4,8 +4,11 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.SeekableByteChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.AclEntry;
 import java.nio.file.attribute.AclEntryFlag;
 import java.nio.file.attribute.AclEntryPermission;
@@ -161,6 +164,40 @@ public final class SecretFile
 	public static FileAttribute<?> ownerOnlyFile(Path folder) throws IOException
 	{
 		return ownerOnly(folder, OWNER_FILE_MODE, Set.of());
+	}
+
+	/**
+	 * Creates a new file that holds a secret, with the access that {@link #ownerOnlyFile(Path)} gives it as it is
+	 * created, and writes the secret's bytes to it. A file that was created is removed if the write fails.
+	 *
+	 * @param file  the file, which does not exist, in an existing folder
+	 * @param bytes the secret's bytes, which the method does not change
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if the file exists, or cannot be created or written
+	 */
+	public static void create(Path file, byte[] bytes) throws IOException
+	{
+		requireThat(file, "file").isNotNull();
+		requireThat(bytes, "bytes").isNotNull();
+		try (SeekableByteChannel channel = Files.newByteChannel(file, EnumSet.of(StandardOpenOption.CREATE_NEW,
+			StandardOpenOption.WRITE), ownerOnlyFile(file.toAbsolutePath().getParent())))
+		{
+			ByteBuffer buffer = ByteBuffer.wrap(bytes);
+			while (buffer.hasRemaining())
+				channel.write(buffer);
+		}
+		catch (IOException | RuntimeException e)
+		{
+			try
+			{
+				Files.deleteIfExists(file);
+			}
+			catch (IOException suppressed)
+			{
+				e.addSuppressed(suppressed);
+			}
+			throw e;
+		}
 	}
 
 	/**

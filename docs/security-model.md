@@ -366,11 +366,20 @@ a file that the token command names by an absolute path or a `~/` path, and they
 Claude source. The commands and file tools of the session, and of every session that it requests, cannot read them or
 the session's copy of `auth.json`.
 
+A selected provider that takes its token from the variable that its `env_key` names, or that holds an inline
+`experimental_bearer_token`, is also used. The runner writes the token into the session's key file, `cat-api-key` in the
+session's own `.codex` folder, as it does for Claude, and gives the session's copy of the provider an `auth` token
+command that prints that file, in place of `env_key` and `experimental_bearer_token`. Codex runs the token command
+itself, outside the command sandbox, while the session's commands, hooks and file tools, and those of every session that
+it requests, cannot read the key file. The variable never reaches the app-server's environment, which Codex gives to
+every hook, and the token is not in the session's `config.toml`. The runner removes the key file when the session ends
+and writes it again when the session resumes.
+
 Before it starts the session, and with status 2, `codex-runner` refuses a source home whose Codex folder holds neither
 an `auth.json` with an API key nor a token command of the selected provider, a `model_provider` without its table, a
 gateway without `--gateway-login-class`, and a secret file that fails the checks. It also refuses a selected provider
-that sets `env_key` or `env_http_headers`, or holds an `experimental_bearer_token` or `http_headers`: the session's
-Codex would need that secret in its own environment, which Codex gives to every hook that the session runs. It refuses
+whose `env_key` names a variable that the runner's environment does not set, and one that sets `env_http_headers` or
+holds an `http_headers` secret, because a secret that is sent in headers cannot become a bearer token. It refuses
 a provider's `gateway_oauth` sign-in without `credential_export`, and a `cli_auth_credentials_store` of `keyring` or
 `auto` with no `auth.json`, because the login is then in a store that the runner cannot copy. Its message names the
 file, the option or the setting, and never quotes a secret. The session's `session.json`, its receipt and each response

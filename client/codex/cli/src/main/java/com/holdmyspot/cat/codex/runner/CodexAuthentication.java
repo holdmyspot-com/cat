@@ -2,8 +2,7 @@ package com.holdmyspot.cat.codex.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
-import static java.nio.file.StandardOpenOption.CREATE_NEW;
-import static java.nio.file.StandardOpenOption.WRITE;
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.Platform;
@@ -17,13 +16,10 @@ import com.holdmyspot.cat.common.runner.SourceHome;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.channels.SeekableByteChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.EnumSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -47,6 +43,12 @@ import tools.jackson.dataformat.toml.TomlMapper;
  * the provider's token command wrapped so that it runs with the source home as its home folder, and the
  * {@code auth.json} as a copy that its owner alone may read, which the session's commands may not read and which is
  * removed when the session's app-server ends.
+ * <p>
+ * A selected provider that takes its token from the variable that its {@code env_key} names, or that holds it inline as
+ * an {@code experimental_bearer_token}, receives it through the session's key file instead: the session's copy of the
+ * provider drops both settings and gains an {@code auth} token command that prints the key file, which Codex runs
+ * outside the command sandbox, so that the token is neither in the session's {@code config.toml} nor in any
+ * environment.
  * <p>
  * The description of an instance holds no secret.
  * <p>
@@ -85,12 +87,13 @@ public final class CodexAuthentication
 	private static final List<String> TOP_LEVEL_SETTINGS = List.of("model_provider", "openai_base_url",
 		"forced_login_method");
 	/**
-	 * The settings of a provider's table that make Codex take a secret from the app-server's environment, or that hold
-	 * one inline, which the session would pass to the app-server's environment: Codex gives that whole environment to
-	 * every hook of the session, whatever the session's {@code shell_environment_policy} excludes.
+	 * The name of the key file in a session's Codex folder.
 	 */
-	private static final List<String> ENVIRONMENT_SECRET_SETTINGS = List.of("env_key", "env_http_headers",
-		"experimental_bearer_token", "http_headers");
+	private static final String KEY_FILE = "cat-api-key";
+	/**
+	 * The settings of a provider's table that send a secret in headers, which cannot become a bearer token.
+	 */
+	private static final List<String> HEADER_SECRET_SETTINGS = List.of("env_http_headers", "http_headers");
 	/**
 	 * The values of {@code cli_auth_credentials_store} that keep the login in the operating system's store.
 	 */
@@ -106,6 +109,8 @@ public final class CodexAuthentication
 	private final String modelHost;
 	private final List<Path> secretFiles;
 	private final List<Path> sourceFiles;
+	private final String providerId;
+	private final String keyFileToken;
 
 	/**
 	 * Creates an authentication.
@@ -120,10 +125,13 @@ public final class CodexAuthentication
 	 * @param modelHost     the host of the session's model requests
 	 * @param secretFiles   the source files that hold a secret
 	 * @param sourceFiles   the source files that the runner reads for the session's credential
+	 * @param providerId    the identifier of the selected provider
+	 * @param keyFileToken  the token that the session's key file holds, or {@code null} if the selected provider does
+	 *                      not supply one through {@code env_key} or {@code experimental_bearer_token}
 	 */
 	private CodexAuthentication(SourceHome source, Path folder, Path configuration, ObjectNode settings,
 		List<String> settingNames, Path login, HostLogin loginClass, String modelHost, List<Path> secretFiles,
-		List<Path> sourceFiles)
+		List<Path> sourceFiles, String providerId, String keyFileToken)
 	{
 		this.source = source;
 		this.folder = folder;
@@ -135,6 +143,8 @@ public final class CodexAuthentication
 		this.modelHost = modelHost;
 		this.secretFiles = secretFiles;
 		this.sourceFiles = sourceFiles;
+		this.providerId = providerId;
+		this.keyFileToken = keyFileToken;
 	}
 
 	/**
@@ -145,21 +155,25 @@ public final class CodexAuthentication
 	 * A source file holds a secret when it is {@code auth.json} or a file that the selected provider's token command
 	 * names in its arguments by an absolute path or a path under {@code ~/}, which names the source home. Each one must
 	 * hold its secret safely, as {@link SecretFile} decides from its metadata.
+	 * <p>
+	 * When the selected provider holds an inline {@code experimental_bearer_token}, that token is the session's key file
+	 * content; otherwise, when it sets {@code env_key}, the content is the value of that variable in {@code environment}.
 	 *
 	 * @param options     the launch's choice of source home and gateway login class
-	 * @param environment the runner's environment
+	 * @param environment the runner's environment, which holds the variable that the selected provider's
+	 *                    {@code env_key} names
 	 * @param platform    the platform whose home variable names the runner's home folder
 	 * @return the authentication
 	 * @throws NullPointerException    if any of the arguments are null
 	 * @throws SessionRefusedException if the source home does not exist; if its {@code config.toml} or
 	 *                                 {@code auth.json} cannot be parsed; if the selected provider has no table, sets
-	 *                                 {@code env_key} or {@code env_http_headers}, holds an inline
-	 *                                 {@code experimental_bearer_token} or {@code http_headers}, or signs in through
-	 *                                 {@code gateway_oauth} without {@code credential_export}; if the source keeps its
-	 *                                 login in the operating system's store; if its {@code auth.json} holds a ChatGPT
-	 *                                 sign-in or no API key; if it holds no authentication; if a base URL names no
-	 *                                 host, or the launch declares no class of login for it; or if a file that holds a
-	 *                                 secret does not hold it safely. The reason names the files or the setting and
+	 *                                 {@code env_http_headers}, holds an inline {@code http_headers}, names in
+	 *                                 {@code env_key} a variable that {@code environment} does not set, or signs in
+	 *                                 through {@code gateway_oauth} without {@code credential_export}; if the source
+	 *                                 keeps its login in the operating system's store; if its {@code auth.json} holds a
+	 *                                 ChatGPT sign-in or no API key; if it holds no authentication; if a base URL names
+	 *                                 no host, or the launch declares no class of login for it; or if a file that holds
+	 *                                 a secret does not hold it safely. The reason names the files or the setting and
 	 *                                 never quotes a secret.
 	 * @throws IOException             if a source file cannot be read
 	 */
@@ -184,15 +198,16 @@ public final class CodexAuthentication
 				"another source home with " + AuthenticationOptions.HOME_OPTION + ".");
 		}
 		String settingPrefix = "model_providers." + providerId + ".";
-		Optional<String> environmentSecret = environmentSecretSetting(provider);
-		if (environmentSecret.isPresent())
+		Optional<String> headerSecret = headerSecretSetting(provider);
+		if (headerSecret.isPresent())
 		{
 			throw new SessionRefusedException("CAT does not start the session: " + configuration + " sets " +
-				settingPrefix + environmentSecret.get() + " for the selected provider " + providerId + ". The " +
-				"session's Codex would need that secret in its own environment, and Codex gives that environment to " +
-				"every hook that the session runs. Give the provider a token command in its auth table instead, or " +
+				settingPrefix + headerSecret.get() + " for the selected provider " + providerId + ". A secret that " +
+				"is sent in headers cannot become the bearer token that the session's key file holds. Give the " +
+				"provider env_key, an experimental_bearer_token or a token command in its auth table instead, or " +
 				"name another source home with " + AuthenticationOptions.HOME_OPTION + ".");
 		}
+		String keyFileToken = keyFileToken(provider, configuration, settingPrefix, providerId, environment);
 		JsonNode gatewaySignIn = provider.path("gateway_oauth");
 		if (!gatewaySignIn.isMissingNode() && gatewaySignIn.path("credential_export").isMissingNode())
 		{
@@ -220,11 +235,12 @@ public final class CodexAuthentication
 		JsonNode tokenCommand = provider.path("auth");
 		boolean hasTokenCommand = tokenCommand.isObject() && tokenCommand.path("command").isString();
 		boolean hasExport = !gatewaySignIn.isMissingNode();
-		if (apiKeyLogin == null && !hasTokenCommand && !hasExport)
+		if (apiKeyLogin == null && !hasTokenCommand && !hasExport && keyFileToken == null)
 		{
 			throw new SessionRefusedException("CAT does not start the session: the source home " +
 				source.directory() + " holds no Codex authentication. The runner read " + configuration + ", whose " +
-				"selected provider " + providerId + " has no token command, and found no " + loginFile + ". Log in " +
+				"selected provider " + providerId + " has no token command, env_key or experimental_bearer_token, and " +
+				"found no " + loginFile + ". Log in " +
 				"with an API key, as codex login --with-api-key does, or give the selected provider a token command, " +
 				"or name another source home with " + AuthenticationOptions.HOME_OPTION + ".");
 		}
@@ -281,7 +297,12 @@ public final class CodexAuthentication
 		if (provider.isObject())
 		{
 			ObjectNode copied = ((ObjectNode) provider).deepCopy();
-			if (hasTokenCommand)
+			if (keyFileToken != null)
+			{
+				copied.remove("env_key");
+				copied.remove("experimental_bearer_token");
+			}
+			else if (hasTokenCommand)
 				copied.set("auth", wrapped(source, tokenCommand));
 			settings.putObject("model_providers").set(providerId, copied);
 			settingNames.add("model_providers." + providerId);
@@ -290,7 +311,7 @@ public final class CodexAuthentication
 		if (baseUrl != null)
 			loginClass = declared.orElseThrow();
 		return new CodexAuthentication(source, folder, configuration, settings, List.copyOf(settingNames),
-			apiKeyLogin, loginClass, modelHost, secretFiles, List.copyOf(sourceFiles));
+			apiKeyLogin, loginClass, modelHost, secretFiles, List.copyOf(sourceFiles), providerId, keyFileToken);
 	}
 
 	/**
@@ -318,15 +339,14 @@ public final class CodexAuthentication
 	}
 
 	/**
-	 * Returns the setting of the selected provider's table that would put a secret in the app-server's environment.
-	 * This is the one place that decides which of a provider's secrets the session cannot take.
+	 * Returns the setting of the selected provider's table that sends a secret in headers.
 	 *
 	 * @param provider the selected provider's table, or a missing node
 	 * @return the setting's name, or empty if the provider sets none of them
 	 */
-	private static Optional<String> environmentSecretSetting(JsonNode provider)
+	private static Optional<String> headerSecretSetting(JsonNode provider)
 	{
-		for (String setting : ENVIRONMENT_SECRET_SETTINGS)
+		for (String setting : HEADER_SECRET_SETTINGS)
 		{
 			JsonNode value = provider.path(setting);
 			if (value.isMissingNode() || value.isNull())
@@ -336,6 +356,41 @@ public final class CodexAuthentication
 			return Optional.of(setting);
 		}
 		return Optional.empty();
+	}
+
+	/**
+	 * Returns the token that the session's key file holds: the selected provider's inline
+	 * {@code experimental_bearer_token}, or else the value of the variable that its {@code env_key} names.
+	 *
+	 * @param provider      the selected provider's table, or a missing node
+	 * @param configuration the source's {@code config.toml}
+	 * @param settingPrefix the prefix of the provider's settings in messages
+	 * @param providerId    the identifier of the selected provider
+	 * @param environment   the runner's environment
+	 * @return the token, or {@code null} if the provider sets neither setting
+	 * @throws SessionRefusedException if {@code env_key} names a variable that the environment does not set or sets to
+	 *                                 blank text
+	 */
+	private static String keyFileToken(JsonNode provider, Path configuration, String settingPrefix, String providerId,
+		Map<String, String> environment) throws SessionRefusedException
+	{
+		String name = provider.path("env_key").asString("");
+		String fromEnvironment = null;
+		if (!name.isBlank())
+		{
+			fromEnvironment = environment.get(name);
+			if (fromEnvironment == null || fromEnvironment.isBlank())
+			{
+				throw new SessionRefusedException("CAT does not start the session: " + configuration + " sets " +
+					settingPrefix + "env_key to " + name + " for the selected provider " + providerId + ", and the " +
+					"runner's environment does not set " + name + ". Set it where the runner starts, or name another " +
+					"source home with " + AuthenticationOptions.HOME_OPTION + ".");
+			}
+		}
+		String inline = provider.path("experimental_bearer_token").asString("");
+		if (!inline.isBlank())
+			return inline;
+		return fromEnvironment;
 	}
 
 	/**
@@ -495,18 +550,84 @@ public final class CodexAuthentication
 
 	/**
 	 * Returns the settings that the session's {@code config.toml} takes from the source, as TOML dotted keys that belong
-	 * at the file's root, before any table header.
+	 * at the file's root, before any table header. A provider whose token the session's key file holds has an
+	 * {@code auth} token command that prints that file, in place of its {@code env_key} and
+	 * {@code experimental_bearer_token}.
 	 *
+	 * @param codexFolder the session's Codex folder, which holds the key file
 	 * @return the TOML text, empty if the source sets none of them
+	 * @throws NullPointerException if {@code codexFolder} is null
 	 */
-	public String settings()
+	public String settings(Path codexFolder)
 	{
+		requireThat(codexFolder, "codexFolder").isNotNull();
 		if (settings.isEmpty())
 			return "";
-		String text = TomlMapper.builder().build().writeValueAsString(settings);
+		ObjectNode session = settings.deepCopy();
+		if (keyFileToken != null)
+		{
+			ObjectNode tokenCommand = ((ObjectNode) session.path("model_providers").path(providerId)).putObject("auth");
+			tokenCommand.put("command", "cat");
+			tokenCommand.putArray("args").add(keyFile(codexFolder).toAbsolutePath().toString());
+		}
+		String text = TomlMapper.builder().build().writeValueAsString(session);
 		if (!text.endsWith("\n"))
 			text += System.lineSeparator();
 		return text;
+	}
+
+	/**
+	 * Returns the key file of a session's Codex folder, which holds the token that the session's token command prints
+	 * while the session's app-server runs.
+	 *
+	 * @param codexFolder the session's Codex folder
+	 * @return the key file
+	 * @throws NullPointerException if {@code codexFolder} is null
+	 */
+	public static Path keyFile(Path codexFolder)
+	{
+		requireThat(codexFolder, "codexFolder").isNotNull();
+		return codexFolder.resolve(KEY_FILE);
+	}
+
+	/**
+	 * Writes the session's key file before its app-server starts or resumes. The file is created new with access for its
+	 * owner alone, set as it is created, and receives the token from memory. A key file that an earlier launch left is
+	 * removed first, so a resume writes the resuming launch's token; for a provider that supplies no token through
+	 * {@code env_key} or {@code experimental_bearer_token}, no key file remains.
+	 *
+	 * @param codexFolder the session's Codex folder, which exists
+	 * @throws NullPointerException if {@code codexFolder} is null
+	 * @throws IOException          if the file cannot be removed, created or written; a file that was created is then
+	 *                              removed
+	 */
+	public void writeKeyFile(Path codexFolder) throws IOException
+	{
+		Path file = keyFile(codexFolder);
+		removeKeyFile(codexFolder);
+		if (keyFileToken == null)
+			return;
+		byte[] bytes = keyFileToken.getBytes(UTF_8);
+		try
+		{
+			SecretFile.create(file, bytes);
+		}
+		finally
+		{
+			Arrays.fill(bytes, (byte) 0);
+		}
+	}
+
+	/**
+	 * Removes the session's key file, if any.
+	 *
+	 * @param codexFolder the session's Codex folder
+	 * @throws NullPointerException if {@code codexFolder} is null
+	 * @throws IOException          if the file cannot be removed
+	 */
+	public static void removeKeyFile(Path codexFolder) throws IOException
+	{
+		Files.deleteIfExists(keyFile(codexFolder));
 	}
 
 	/**
@@ -527,25 +648,9 @@ public final class CodexAuthentication
 		if (login == null)
 			return;
 		byte[] bytes = Files.readAllBytes(login);
-		Path copy = codexFolder.resolve(LOGIN);
-		try (SeekableByteChannel channel = Files.newByteChannel(copy, EnumSet.of(CREATE_NEW, WRITE),
-			SecretFile.ownerOnlyFile(codexFolder)))
+		try
 		{
-			ByteBuffer buffer = ByteBuffer.wrap(bytes);
-			while (buffer.hasRemaining())
-				channel.write(buffer);
-		}
-		catch (IOException | RuntimeException e)
-		{
-			try
-			{
-				Files.deleteIfExists(copy);
-			}
-			catch (IOException suppressed)
-			{
-				e.addSuppressed(suppressed);
-			}
-			throw e;
+			SecretFile.create(codexFolder.resolve(LOGIN), bytes);
 		}
 		finally
 		{

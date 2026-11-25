@@ -954,7 +954,7 @@ public final class CodexConnectionConfigurationTest
 			ChildPolicy policy = ChildPolicy.intersect(ParentPolicy.UNSANDBOXED, new ChildNeeds(root.resolve("session"),
 				List.of(), List.of(), Set.of()));
 
-			CodexConnectionConfiguration.copy(host, destination, home, authentication.settings(),
+			CodexConnectionConfiguration.copy(host, destination, home, authentication.settings(home.resolve(".codex")),
 				root.resolve("session/project"), HarnessDependencyCaches.NONE, home.resolve("tmp"), 0, null,
 				Platform.LINUX_X64, CodexParentMultiAgentState.NONE, policy, ExtraPermissions.NONE, null);
 

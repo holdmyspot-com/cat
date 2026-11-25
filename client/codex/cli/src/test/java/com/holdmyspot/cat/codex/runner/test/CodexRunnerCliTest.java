@@ -1638,8 +1638,8 @@ public final class CodexRunnerCliTest
 	}
 
 	/**
-	 * Returns the selected provider's settings that pass a secret to Codex through a variable of its environment or
-	 * hold one inline, each with its name.
+	 * Returns the selected provider's settings that send a secret in headers, which cannot become a bearer token, each
+	 * with its name.
 	 *
 	 * @return each provider table's extra line and the setting
 	 */
@@ -1648,17 +1648,15 @@ public final class CodexRunnerCliTest
 	{
 		return new Object[][]
 		{
-			{"env_key = \"GATEWAY_KEY\"", "env_key"},
 			{"env_http_headers = { \"Authorization\" = \"GATEWAY_HEADER\" }", "env_http_headers"},
-			{"experimental_bearer_token = \"" + CodexSourceHomes.SECRET + "\"", "experimental_bearer_token"},
 			{"http_headers = { \"Authorization\" = \"Bearer " + CodexSourceHomes.SECRET + "\" }", "http_headers"}
 		};
 	}
 
 	/**
-	 * Verifies that a launch whose selected source provider sets {@code env_key} or {@code env_http_headers}, or holds
-	 * an inline {@code experimental_bearer_token} or {@code http_headers} secret, is refused with the refusal status
-	 * before it creates a nested session, naming the provider and the setting, with no secret in the message.
+	 * Verifies that a launch whose selected source provider sets {@code env_http_headers} or holds an inline
+	 * {@code http_headers} secret is refused with the refusal status before it creates a nested session, naming the
+	 * provider and the setting, with no secret in the message.
 	 *
 	 * @param line    the provider table's line that sets the secret
 	 * @param setting the setting
@@ -1689,6 +1687,39 @@ public final class CodexRunnerCliTest
 			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
 			requireThat(errors.toString(), "errors").contains(file.toString()).
 				contains("model_providers.gateway." + setting).doesNotContain(CodexSourceHomes.SECRET);
+			requireThat(Files.exists(root.resolve("results")), "resultsFolderExists").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that a launch whose selected source provider names a variable in {@code env_key} that the runner's
+	 * environment does not set is refused with the refusal status before it creates a nested session, naming the
+	 * provider and the variable.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void refusesEnvironmentKeyThatTheRunnerLacks() throws IOException
+	{
+		// Requirement: R-I15
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("codex-source-home-")).toRealPath();
+			Path source = CodexSourceHomes.create(root, "source");
+			Path file = CodexSourceHomes.configuration(source.resolve(".codex"), """
+				model_provider = "gateway"
+				[model_providers.gateway]
+				base_url = "https://gateway.example/v1"
+				env_key = "GATEWAY_KEY"
+				""");
+			StringWriter errors = new StringWriter();
+
+			int status = launchWithAuthentication(root, List.of("--home", source.toString(), "--gateway-login-class",
+				"api_key"), CodexSourceHomes.runnerEnvironment(root), errors);
+
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").contains(file.toString()).contains("gateway").
+				contains("GATEWAY_KEY");
 			requireThat(Files.exists(root.resolve("results")), "resultsFolderExists").isFalse();
 		}
 	}

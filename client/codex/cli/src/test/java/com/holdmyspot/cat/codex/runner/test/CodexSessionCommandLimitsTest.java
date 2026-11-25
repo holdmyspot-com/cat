@@ -62,10 +62,11 @@ public final class CodexSessionCommandLimitsTest extends SessionCommandLimitsCon
 			sessionRequests, Platform.current(), shell).orElse(null);
 		Path temporaryDirectory = Files.createDirectories(sessionHome.resolve("tmp"));
 		CodexConnectionConfiguration.copy(userCodexHome.resolve("config.toml"), configuration, sessionHome,
-			authentication.settings(), fixture.nestedSession().directory().resolve("project"),
-			HarnessDependencyCaches.NONE, temporaryDirectory, 0, requestAccess, Platform.current(),
-			CodexParentMultiAgentState.NONE, ChildPolicy.intersect(ParentPolicy.UNSANDBOXED, new ChildNeeds(
-				fixture.nestedSession().directory(), List.of(), List.of(), Set.of())), ExtraPermissions.NONE, null);
+			authentication.settings(sessionHome.resolve(".codex")),
+			fixture.nestedSession().directory().resolve("project"), HarnessDependencyCaches.NONE, temporaryDirectory, 0,
+			requestAccess, Platform.current(), CodexParentMultiAgentState.NONE, ChildPolicy.intersect(
+				ParentPolicy.UNSANDBOXED, new ChildNeeds(fixture.nestedSession().directory(), List.of(), List.of(),
+					Set.of())), ExtraPermissions.NONE, null);
 		List<Path> readOnly = CodexRunner.sessionReadOnly(fixture.nestedSession(), List.of(), requestAccess);
 		String profile = CodexConnectionConfiguration.addSessionProfile(configuration, readOnly,
 			CodexRunner.sessionDeniedReads(fixture.manager(), fixture.nestedSession(), readOnly, fixture.deniedReads(),

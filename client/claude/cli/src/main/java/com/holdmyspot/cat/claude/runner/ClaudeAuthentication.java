@@ -18,13 +18,9 @@ import com.holdmyspot.cat.common.runner.SourceHome;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.channels.SeekableByteChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
-import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -607,25 +603,7 @@ public final class ClaudeAuthentication
 		Files.deleteIfExists(file);
 		if (token == null)
 			return;
-		try (SeekableByteChannel channel = Files.newByteChannel(file, EnumSet.of(StandardOpenOption.CREATE_NEW,
-			StandardOpenOption.WRITE), SecretFile.ownerOnlyFile(claudeFolder)))
-		{
-			ByteBuffer bytes = ByteBuffer.wrap(token.getBytes(UTF_8));
-			while (bytes.hasRemaining())
-				channel.write(bytes);
-		}
-		catch (IOException | RuntimeException e)
-		{
-			try
-			{
-				Files.deleteIfExists(file);
-			}
-			catch (IOException suppressed)
-			{
-				e.addSuppressed(suppressed);
-			}
-			throw e;
-		}
+		SecretFile.create(file, token.getBytes(UTF_8));
 	}
 
 	/**

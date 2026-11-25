@@ -238,8 +238,10 @@ but the session that starts them needs a credential and a working sandbox:
   that `CODEX_HOME` names when it is set, or else `.codex` in your home folder, when it holds an API key, as
   `codex login --with-api-key` writes it; or else a token command in the `auth` table of the model provider that its
   `config.toml` selects. Sessions do not use a ChatGPT sign-in, which `codex login` writes: a launch from a home folder
-  whose `auth.json` holds one is refused. Nor do they use a provider's `env_key` or `env_http_headers`, an
-  `experimental_bearer_token` or `http_headers`, or a login in the operating system's credential store. To bill
+  whose `auth.json` holds one is refused. A provider's `env_key` works when the variable that it names is set in the
+  environment that the agent runs in, as does an inline `experimental_bearer_token`: the session receives the token
+  through a key file that its commands cannot read. Sessions do not use a provider's `env_http_headers` or
+  `http_headers`, or a login in the operating system's credential store. To bill
   another credential, have the agent name another home folder with `--home <dir>`, and when the provider's `base_url`
   or `openai_base_url` names a gateway, tell the agent the kind of login that it bills, as for Claude. Each file that
   holds the credential must be readable by you alone, and the session's commands cannot read it or the session's

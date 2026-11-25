@@ -224,6 +224,7 @@ public final class CodexRunner
 			Path hostHome = CodexInstallation.resolveHome(environment);
 			// Copied before the sandbox is computed, which denies the session's commands only the files that exist
 			authentication.copyLogin(codexFolder);
+			authentication.writeKeyFile(codexFolder);
 			Path isolatedConfiguration = configuration(codexFolder);
 			HarnessDependencyCaches caches = HarnessDependencyCache.verify(environment);
 			SessionRequestAccess.Shell shell = SessionRequestAccess.Shell.POSIX;
@@ -252,8 +253,8 @@ public final class CodexRunner
 				if (resumes)
 					retainedConfiguration = isolatedConfiguration;
 				CodexConnectionConfiguration.copy(configuration(hostHome), stagedConfiguration, isolatedHome,
-					authentication.settings(), worktree, caches, temporaryDirectory, toolOutputTokenLimit, requestAccess,
-					Platform.current(), parentState, policy, extraPermissions, retainedConfiguration);
+					authentication.settings(codexFolder), worktree, caches, temporaryDirectory, toolOutputTokenLimit,
+					requestAccess, Platform.current(), parentState, policy, extraPermissions, retainedConfiguration);
 				if (!Platform.current().isWindows())
 				{
 					CodexConnectionConfiguration.requireNarrowingLayers(CodexConnectionConfiguration.SYSTEM_LAYER,
@@ -675,11 +676,11 @@ public final class CodexRunner
 
 	/**
 	 * Returns a session's harness process whose close also deletes the session's copy of its source's
-	 * {@code auth.json}, once the session's app-server has exited and before the caller retains or empties the
-	 * session's slot, so that the copy rests in the slot only while the app-server runs.
+	 * {@code auth.json} and its key file, once the session's app-server has exited and before the caller retains or
+	 * empties the session's slot, so that they rest in the slot only while the app-server runs.
 	 *
 	 * @param session     the session's harness process
-	 * @param codexFolder the session's Codex folder, which holds the copy
+	 * @param codexFolder the session's Codex folder, which holds the copy and the key file
 	 * @return the harness process
 	 * @throws NullPointerException if any of the arguments are null
 	 */
@@ -691,7 +692,7 @@ public final class CodexRunner
 	}
 
 	/**
-	 * Deletes a session's login copy after its launch failed.
+	 * Deletes a session's login copy and key file after its launch failed.
 	 *
 	 * @param codexFolder the session's Codex folder
 	 * @param primary     the launch failure, which receives a failure to delete the copy
@@ -700,7 +701,7 @@ public final class CodexRunner
 	{
 		try
 		{
-			CodexAuthentication.removeLogin(codexFolder);
+			removeCredentialCopies(codexFolder);
 		}
 		catch (IOException e)
 		{
@@ -709,7 +710,34 @@ public final class CodexRunner
 	}
 
 	/**
-	 * A session's harness process whose close also deletes the session's login copy.
+	 * Removes a session's login copy and its key file, the second even if removing the first failed.
+	 *
+	 * @param codexFolder the session's Codex folder
+	 * @throws IOException if either file cannot be removed
+	 */
+	private static void removeCredentialCopies(Path codexFolder) throws IOException
+	{
+		try
+		{
+			CodexAuthentication.removeLogin(codexFolder);
+		}
+		catch (IOException e)
+		{
+			try
+			{
+				CodexAuthentication.removeKeyFile(codexFolder);
+			}
+			catch (IOException suppressed)
+			{
+				e.addSuppressed(suppressed);
+			}
+			throw e;
+		}
+		CodexAuthentication.removeKeyFile(codexFolder);
+	}
+
+	/**
+	 * A session's harness process whose close also deletes the session's login copy and key file.
 	 */
 	private static final class LoginCopyRemoval implements HarnessProcess
 	{
@@ -784,8 +812,8 @@ public final class CodexRunner
 		}
 
 		/**
-		 * Closes the session's harness process, which ends its app-server, then deletes the login copy, even if the
-		 * close failed.
+		 * Closes the session's harness process, which ends its app-server, then deletes the login copy and the key file,
+		 * even if the close failed.
 		 *
 		 * @throws IOException if the close fails or the copy cannot be deleted
 		 */
@@ -801,7 +829,7 @@ public final class CodexRunner
 				deleteLoginCopy(codexFolder, e);
 				throw e;
 			}
-			CodexAuthentication.removeLogin(codexFolder);
+			removeCredentialCopies(codexFolder);
 		}
 	}
 
@@ -1073,7 +1101,8 @@ public final class CodexRunner
 	 * therefore cannot read the runner's records of its own nested session or of any other nested session, the workspace
 	 * files of any nested session, any login but that copy, such as the user's own Codex and Claude logins, or the user's
 	 * configuration. The method creates the session log directory, because the sandbox skips a denied path that does not
-	 * exist yet; for the same reason, it leaves out a login or configuration file that does not exist.
+	 * exist yet; for the same reason, it leaves out a login or configuration file that does not exist. The session's
+	 * key file, which its own Codex process reads through the token command, is denied to the session's commands.
 	 * <p>
 	 * A session that may request sessions is not denied the session log directory, because the commands that it
 	 * runs include the prompt optimizer's {@code nestedSession}, which reads the session's rollout there to learn that
@@ -1189,6 +1218,10 @@ public final class CodexRunner
 			if (Files.exists(file, NOFOLLOW_LINKS))
 				result.add(file);
 		}
+		// The session's own Codex process runs the token command that prints its key file; its commands may not read it
+		Path keyFile = CodexAuthentication.keyFile(codexFolder);
+		if (Files.exists(keyFile, NOFOLLOW_LINKS))
+			result.add(keyFile);
 		return List.copyOf(result);
 	}
 
