@@ -64,6 +64,11 @@ import tools.jackson.databind.json.JsonMapper;
  * and is emptied only when that launch ends its nested session or the nested session is discarded. A resume or a
  * discard of a nested session whose session is still being stopped waits for that session to give the slot back.
  * <p>
+ * A slot whose nested session recorded that a harness child may exist, and never recorded the child's identity or its
+ * absence, while the process that launched it is gone, is <b>stuck</b>: its launch state cannot become known. CAT
+ * leaves a stuck slot untouched, never empties it and signals nothing in it, and no session takes it. The attempt that
+ * the slot held is run again in another slot, and the user removes the stuck slot by hand.
+ * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class SessionSlots
@@ -228,7 +233,7 @@ public final class SessionSlots
 				while (taken.cardinality() >= count)
 					wait(RELEASE_WAIT_MILLIS);
 				int index = taken.nextClearBit(0);
-				while (isRetained(slot(heldOut, index + 1)))
+				while (isRetained(slot(heldOut, index + 1)) || isStuck(slot(heldOut, index + 1)))
 					index = taken.nextClearBit(index + 1);
 				taken.set(index);
 				slot = slot(heldOut, index + 1);
@@ -644,11 +649,15 @@ public final class SessionSlots
 				{
 					if (!identity.equals(request.identity()))
 						return new RetainedTrialResponse(requestId, Status.UNSAFE, Optional.empty(), OptionalInt.empty());
+					if (isStuck(trial))
+						return stuck(requestId, slot);
 					if (!trialSettled(trial))
 						return new RetainedTrialResponse(requestId, Status.BUSY, Optional.empty(), OptionalInt.empty());
 					removeSlot(slot, trial.records());
 					return new RetainedTrialResponse(requestId, Status.DISCARDED, Optional.empty(), OptionalInt.empty());
 				}
+				if (isStuck(trial))
+					return stuck(requestId, slot);
 				if (!trialSettled(trial))
 					return new RetainedTrialResponse(requestId, Status.BUSY, Optional.empty(), OptionalInt.empty());
 				OptionalInt turns = trial.readyTurns();
@@ -661,6 +670,76 @@ public final class SessionSlots
 		{
 			free(slot);
 		}
+	}
+
+	/**
+	 * Returns the answer for a trial whose slot is stuck.
+	 *
+	 * @param requestId the original launch's archive identifier
+	 * @param slot      the stuck slot
+	 * @return the answer, which names the slot that CAT left untouched
+	 */
+	private static RetainedTrialResponse stuck(UUID requestId, Slot slot)
+	{
+		return new RetainedTrialResponse(requestId, Status.STUCK, Optional.empty(), OptionalInt.empty(),
+			Optional.of(slot.root().toAbsolutePath()));
+	}
+
+	/**
+	 * Indicates whether a bound trial's slot is stuck. Startup must be settled, so that no starter can still write to
+	 * the slot.
+	 *
+	 * @param trial its verified state while startup is excluded
+	 * @return {@code true} if the slot holds a launch that stays uncertain with its owner gone
+	 * @throws IOException if startup or process liveness cannot be established
+	 */
+	private boolean isStuck(BoundTrial trial) throws IOException
+	{
+		if (trial.session().isEmpty() || !startupSettled(trial.permit()))
+			return false;
+		return isStuck(trial.session().get().manifest());
+	}
+
+	/**
+	 * Indicates whether a slot is stuck: a nested session below it recorded that a harness child may exist and recorded
+	 * neither the child's identity nor its absence, and the process that launched it is gone. Such a slot is never
+	 * emptied, so that a process that may still run in it is never mistaken for one that does not.
+	 *
+	 * @param slot the slot
+	 * @return {@code true} if the slot is stuck, or {@code false} if it is not, or its nested sessions cannot be read or
+	 *   checked, which emptying the slot reports
+	 */
+	private boolean isStuck(Slot slot)
+	{
+		try
+		{
+			for (RecordedNestedSession record : manifests(slot.root()))
+			{
+				if (isStuck(NestedSessionManager.readManifest(record.manifest())))
+					return true;
+			}
+		}
+		catch (IOException _)
+		{
+			// Emptying the slot reports the reason
+		}
+		return false;
+	}
+
+	/**
+	 * Indicates whether a nested session's launch stays uncertain with its launcher gone.
+	 *
+	 * @param manifest the nested session's manifest
+	 * @return {@code true} if the manifest records a possible child without an identity, and its owner is neither this
+	 *   process nor alive
+	 * @throws IOException if the owner's liveness cannot be established
+	 */
+	private boolean isStuck(NestedSessionManager.Manifest manifest) throws IOException
+	{
+		if (manifest.harnessProcessState() != NestedSessionManager.HarnessProcessState.STARTING)
+			return false;
+		return manifest.ownerPid() != ProcessHandle.current().pid() &&
+			!liveness.isAlive(manifest.ownerPid(), manifest.ownerStart());
 	}
 
 	/**
@@ -1061,10 +1140,12 @@ public final class SessionSlots
 	/**
 	 * Stops the processes that the slot's previous session recorded, and if none remains alive, removes the slot's
 	 * directory. Each nested session's manifest is removed after everything else in the nested session, so that a removal
-	 * that stops partway leaves the record of the nested session's processes for the next attempt.
+	 * that stops partway leaves the record of the nested session's processes for the next attempt. A stuck slot is left
+	 * as it is, and nothing in it is signalled.
 	 *
 	 * @param slot the slot
-	 * @return {@code true} if the slot has no directory, or {@code false} if a recorded process remains alive
+	 * @return {@code true} if the slot has no directory, or {@code false} if a recorded process remains alive or the slot
+	 *   is stuck
 	 * @throws IOException if the slot cannot be emptied
 	 */
 	private boolean empty(Slot slot) throws IOException
@@ -1075,11 +1156,28 @@ public final class SessionSlots
 		try (ExclusiveFileLock _ = locked.get())
 		{
 			List<RecordedNestedSession> records = manifests(slot.root());
-			if (!startupSettled(readPermit(slot)) || !stopRecordedProcesses(records))
+			if (!startupSettled(readPermit(slot)) || isStuck(records) || !stopRecordedProcesses(records))
 				return false;
 			removeSlot(slot, records);
 			return true;
 		}
+	}
+
+	/**
+	 * Indicates whether any of a slot's nested sessions is stuck, which keeps the slot from being emptied or signalled.
+	 *
+	 * @param records the nested sessions of the slot
+	 * @return {@code true} if a nested session's launch stays uncertain with its launcher gone
+	 * @throws IOException if a nested session's manifest cannot be read or does not match its nested session
+	 */
+	private boolean isStuck(List<RecordedNestedSession> records) throws IOException
+	{
+		for (RecordedNestedSession record : records)
+		{
+			if (isStuck(readSlotManifest(record)))
+				return true;
+		}
+		return false;
 	}
 
 	/**

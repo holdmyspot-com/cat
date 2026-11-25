@@ -72,6 +72,7 @@ import com.holdmyspot.cat.common.optimizer.execution.PilotSlice;
 import com.holdmyspot.cat.common.optimizer.execution.ProcessHandleTerminator;
 import com.holdmyspot.cat.common.optimizer.execution.SliceResult;
 import com.holdmyspot.cat.common.optimizer.execution.SliceRunner;
+import com.holdmyspot.cat.common.optimizer.execution.StuckSlots;
 import com.holdmyspot.cat.common.optimizer.execution.TrialSelection;
 import com.holdmyspot.cat.common.optimizer.execution.VerdictRecords;
 import com.holdmyspot.cat.common.optimizer.execution.prompt.ApproachRankingPrompt;
@@ -2439,6 +2440,11 @@ public final class OptimizerCore implements Core
 			try (CampaignLock lock = retainBackgroundLock(campaign, held.get()))
 			{
 				result = runHeld(root, campaign, lock, sliceStart);
+			}
+			for (String stuck : StuckSlots.notices(lockFile(campaign)))
+			{
+				if (!result.notices().contains(stuck))
+					notices.add(stuck);
 			}
 			// The cleanup takes the lock itself, so the command releases it first
 			DeliveryResult delivery = Optional.ofNullable(result.delivery()).map(DeliveryReport::result).orElse(null);
@@ -5680,6 +5686,7 @@ public final class OptimizerCore implements Core
 		Path failure = noticeFailureFile(campaign.header().id());
 		if (Files.isRegularFile(failure))
 			notices.add(Files.readString(failure));
+		notices.addAll(StuckSlots.notices(lockFile(campaign.header().id())));
 		return result.withNotices(notices);
 	}
 

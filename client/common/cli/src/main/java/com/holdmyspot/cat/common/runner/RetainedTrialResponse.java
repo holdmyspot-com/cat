@@ -11,6 +11,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.runner.RetainedTrialRequest.Operation;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.Locale;
@@ -24,21 +25,23 @@ import tools.jackson.databind.node.ObjectNode;
 
 /**
  * A broker's response concerning the retained slot of an original trial launch. A caller may start a replacement
- * attempt after {@link Status#DISCARDED} or {@link Status#ABSENT}.
+ * attempt after {@link Status#DISCARDED}, {@link Status#ABSENT} or {@link Status#STUCK}.
  *
  * @param requestId      the original launch's request identifier
  * @param status         the broker's answer
  * @param identity       the observed slot for a ready or unsafe status, when known
  * @param completedTurns the number of completed turns for a session ready to resume, or empty otherwise
+ * @param stuckSlot      the absolute path of the slot that CAT left untouched, for a stuck status, or empty otherwise
  */
 public record RetainedTrialResponse(UUID requestId, Status status, Optional<Identity> identity,
-	OptionalInt completedTurns)
+	OptionalInt completedTurns, Optional<Path> stuckSlot)
 {
 	private static final String ID_FIELD = "id";
 	private static final String STATUS_FIELD = "status";
 	private static final String REASON_FIELD = "reason";
+	private static final String STUCK_SLOT_FIELD = "stuck_slot";
 	private static final Set<String> FIELDS = Set.of(VERSION_FIELD, ID_FIELD, REQUEST_ID_FIELD, STATUS_FIELD,
-		IDENTITY_FIELD, TURNS_FIELD, REASON_FIELD);
+		IDENTITY_FIELD, TURNS_FIELD, REASON_FIELD, STUCK_SLOT_FIELD);
 
 	/**
 	 * Reads the broker's answer to a pending request. A discard that finds a different slot generation returns
@@ -89,6 +92,7 @@ public record RetainedTrialResponse(UUID requestId, Status status, Optional<Iden
 		if (request.operation() == Operation.DISCARD && (status == Status.READY || identity.isPresent()))
 			throw new IOException("The retained trial discard response cannot report an observed slot");
 		OptionalInt completedTurns = readTurns(value);
+		Optional<Path> stuckSlot = readStuckSlot(value);
 		if (request.operation() == Operation.EXPORT_SUCCESSOR && status == Status.READY)
 		{
 			Identity predecessor = request.identity().orElseThrow();
@@ -99,12 +103,52 @@ public record RetainedTrialResponse(UUID requestId, Status status, Optional<Iden
 		}
 		try
 		{
-			return Optional.of(new RetainedTrialResponse(requestId, status, identity, completedTurns));
+			return Optional.of(new RetainedTrialResponse(requestId, status, identity, completedTurns, stuckSlot));
 		}
 		catch (IllegalArgumentException e)
 		{
 			throw new IOException(e.getMessage(), e);
 		}
+	}
+
+	/**
+	 * Reads the slot that a stuck status names.
+	 *
+	 * @param value the response document
+	 * @return the slot, or empty if the document names none
+	 * @throws IOException if the field is not a valid path
+	 */
+	private static Optional<Path> readStuckSlot(JsonNode value) throws IOException
+	{
+		if (!value.has(STUCK_SLOT_FIELD))
+			return Optional.empty();
+		JsonNode slot = value.path(STUCK_SLOT_FIELD);
+		if (!slot.isString() || slot.asString().isBlank())
+			throw new IOException("The retained trial response names an invalid stuck slot");
+		try
+		{
+			return Optional.of(Path.of(slot.asString()));
+		}
+		catch (InvalidPathException e)
+		{
+			throw new IOException("The retained trial response names an invalid stuck slot", e);
+		}
+	}
+
+	/**
+	 * Creates an answer that names no stuck slot.
+	 *
+	 * @param requestId      the original launch's request identifier
+	 * @param status         the broker's answer, which is not {@link Status#STUCK}
+	 * @param identity       the observed slot for a ready or unsafe status, when known
+	 * @param completedTurns the number of completed turns for a session ready to resume, or empty otherwise
+	 * @throws NullPointerException     if any argument is null
+	 * @throws IllegalArgumentException if the identity or completed turn count contradicts the status
+	 */
+	public RetainedTrialResponse(UUID requestId, Status status, Optional<Identity> identity,
+		OptionalInt completedTurns)
+	{
+		this(requestId, status, identity, completedTurns, Optional.empty());
 	}
 
 	/**
@@ -114,8 +158,9 @@ public record RetainedTrialResponse(UUID requestId, Status status, Optional<Iden
 	 * @param status         the broker's answer
 	 * @param identity       the observed slot for a ready or unsafe status, when known
 	 * @param completedTurns the number of completed turns for a session ready to resume, or empty otherwise
+	 * @param stuckSlot      the absolute path of the slot that CAT left untouched, for a stuck status, or empty otherwise
 	 * @throws NullPointerException     if any argument is null
-	 * @throws IllegalArgumentException if the identity or completed turn count contradicts the status
+	 * @throws IllegalArgumentException if the identity, completed turn count or stuck slot contradicts the status
 	 */
 	public RetainedTrialResponse
 	{
@@ -123,6 +168,14 @@ public record RetainedTrialResponse(UUID requestId, Status status, Optional<Iden
 		requireThat(status, "status").isNotNull();
 		requireThat(identity, "identity").isNotNull();
 		requireThat(completedTurns, "completedTurns").isNotNull();
+		requireThat(stuckSlot, "stuckSlot").isNotNull();
+		if ((status == Status.STUCK) != stuckSlot.isPresent())
+			throw new IllegalArgumentException("Only a stuck retained trial names a slot, and it must name one");
+		if (stuckSlot.isPresent() && !stuckSlot.get().isAbsolute())
+		{
+			throw new IllegalArgumentException("The retained trial's stuck slot must be an absolute path: " +
+				stuckSlot.get());
+		}
 		if (status == Status.READY)
 		{
 			if (identity.isEmpty() || identity.get().session().isEmpty() || completedTurns.isEmpty() ||
@@ -159,6 +212,7 @@ public record RetainedTrialResponse(UUID requestId, Status status, Optional<Iden
 			put(REQUEST_ID_FIELD, requestId.toString()).put(STATUS_FIELD, status.name().toLowerCase(Locale.ROOT));
 		identity.ifPresent(observed -> value.set(IDENTITY_FIELD, observed.document(json)));
 		completedTurns.ifPresent(turns -> value.put(TURNS_FIELD, turns));
+		stuckSlot.ifPresent(slot -> value.put(STUCK_SLOT_FIELD, slot.toString()));
 		SessionRequestCli.write(json, directory.resolve(WorktreeResponse.FILE_NAME), value);
 	}
 
@@ -184,6 +238,12 @@ public record RetainedTrialResponse(UUID requestId, Status status, Optional<Iden
 		 * The retained session was interrupted between turns and can be claimed for resumption.
 		 */
 		READY,
+		/**
+		 * The original launch's slot holds a launch whose state stays uncertain and whose owner is gone. CAT leaves the
+		 * slot untouched and signals nothing in it, so the caller treats the original launch as settled and runs the
+		 * attempt again in another slot, and the user removes the slot by hand.
+		 */
+		STUCK,
 		/**
 		 * The bound discard removed the original launch's retained slot.
 		 */

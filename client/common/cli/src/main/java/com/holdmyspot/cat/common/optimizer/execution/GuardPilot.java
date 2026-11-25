@@ -866,7 +866,8 @@ public final class GuardPilot
 	 */
 	private static void discard(SessionPort trials, RetainedTrialResponse observed) throws IOException
 	{
-		if (observed.status() == Status.ABSENT)
+		// A stuck slot stays as it is for the user to remove, and its launch cannot start again
+		if (observed.status() == Status.ABSENT || observed.status() == Status.STUCK)
 			return;
 		UUID requestId = observed.requestId();
 		RetainedTrialResponse answer = trials.retainedTrial(RetainedTrialRequest.discard(requestId, observed.identity()));

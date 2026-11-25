@@ -355,6 +355,10 @@ public final class Cleanup
 				throw new IOException("The retained trial response names a different request");
 			if (status.status() == RetainedTrialResponse.Status.ABSENT)
 				continue;
+			// A stuck slot stays as it is for the user to remove, and its launch cannot start again. The driver that found
+			// it recorded it for the commands that report the campaign.
+			if (status.status() == RetainedTrialResponse.Status.STUCK)
+				continue;
 			if (status.status() != RetainedTrialResponse.Status.READY &&
 				status.status() != RetainedTrialResponse.Status.UNSAFE)
 				throw new IOException("The retained trial request is still active or cannot be safely discarded");

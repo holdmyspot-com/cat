@@ -159,6 +159,51 @@ public final class CleanupTest
 	}
 
 	/**
+	 * A retained request whose slot the broker leaves untouched, because its launch state is uncertain and its owner is
+	 * gone, does not keep the campaign's files: the broker is not asked to discard it, and the removal completes.
+	 *
+	 * @throws IOException if cleanup fails
+	 */
+	@Test
+	public void stuckSlotDoesNotBlockCleanup() throws IOException
+	{
+		// Requirement: R-I12
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = Fixture.create(cleanup);
+			Campaign campaign = fixture.store(certified(new DeliveryRequest(CANDIDATE, 1, Outcome.CERTIFIED)));
+			UUID requestId = UUID.randomUUID();
+			TrialKey key = new TrialKey(Purpose.DEVELOPMENT, 1, Sha256.of("snapshot".getBytes(UTF_8)), "test", 1);
+			new FileCampaignStore(fixture.campaigns, JSON, Yielding.fileReplacer()).writeTrialRecovery(CAMPAIGN,
+				new TrialRecovery(key, 1, requestId, 0, Map.of(), false));
+			Path slot = Files.createDirectories(cleanup.add(Files.createTempDirectory("stuck-")).resolve("d1"));
+			List<String> events = new ArrayList<>();
+			SessionPort sessions = (SessionPort) java.lang.reflect.Proxy.newProxyInstance(SessionPort.class.getClassLoader(),
+				new Class<?>[] {SessionPort.class}, (proxy, method, args) ->
+				{
+					if (method.getName().equals("recoversTrials"))
+						return true;
+					if (method.getName().equals("retainedTrial"))
+					{
+						RetainedTrialRequest request = (RetainedTrialRequest) args[0];
+						events.add(request.operation().name());
+						return new RetainedTrialResponse(requestId, RetainedTrialResponse.Status.STUCK, Optional.empty(),
+							OptionalInt.empty(), Optional.of(slot.toAbsolutePath()));
+					}
+					throw new UnsupportedOperationException(method.getName());
+				});
+
+			Cleanup.Removal removal = fixture.cleanup(NO_HOOK, sessions, _ -> List.of()).
+				end(campaign, delivered(Outcome.CERTIFIED));
+
+			requireThat(removal, "removal").isEqualTo(new Cleanup.Removal.Removed());
+			requireThat(events, "operations").isEqualTo(List.of("STATUS"));
+			requireThat(Files.isDirectory(slot), "slotLeftForTheUser").isTrue();
+			fixture.requireRemoved();
+		}
+	}
+
+	/**
 	 * A busy retained request defers cleanup without removing files, and the recorded removal retries later.
 	 *
 	 * @throws IOException if cleanup fails

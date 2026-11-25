@@ -971,6 +971,182 @@ public final class SessionSlotsTest
 	}
 
 	/**
+	 * Verifies that a slot whose launch state stays uncertain after its owner is gone is left untouched when its
+	 * session ends: nothing in it is removed or signalled, and the next session takes another slot.
+	 *
+	 * @throws IOException          if the filesystem operation fails
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = 30_000)
+	public void leavesStuckStartingSlotUntouched() throws IOException, InterruptedException
+	{
+		// Requirement: R-I12
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Liveness liveness = new Liveness();
+			SessionSlots slots = new SessionSlots(cleanup.add(Files.createTempDirectory("slots-")), 1, liveness);
+			SessionSlots.Slot first = slots.acquire(false);
+			NestedSession nested = startingSession(jvm, first, true);
+			Path sentinel = Files.writeString(nested.directory().resolve("evidence"), "keep");
+			liveness.end();
+
+			slots.release(first);
+
+			requireThat(nested.directory().resolve("session.json"), "manifest").isRegularFile();
+			requireThat(sentinel, "sentinel").isRegularFile();
+			SessionSlots.Slot second = slots.acquire(false);
+			requireThat(second.number(), "number").isEqualTo(2);
+			requireThat(second.slotId(), "slotId").isEqualTo("s-2");
+			requireThat(liveness.terminations(), "terminations").isEqualTo(0);
+			requireThat(sentinel, "sentinelAfterNextSession").isRegularFile();
+		}
+	}
+
+	/**
+	 * Supplies whether the launcher that recorded an uncertain launch is the current process.
+	 *
+	 * @return the owner choices
+	 */
+	@DataProvider
+	public static Object[][] ownersThatAreNotGone()
+	{
+		return new Object[][]{{true}, {false}};
+	}
+
+	/**
+	 * Verifies that an uncertain launch whose owner is not gone still refuses to empty its slot.
+	 *
+	 * @param ownerIsCurrentProcess {@code true} if the launcher is this process, or {@code false} if it is another
+	 *                              process that lives
+	 * @throws IOException          if the filesystem operation fails
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(dataProvider = "ownersThatAreNotGone", timeOut = 30_000)
+	public void refusesStartingSlotWhileOwnerLives(boolean ownerIsCurrentProcess)
+		throws IOException, InterruptedException
+	{
+		// Requirement: R-I12
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			SessionSlots slots = new SessionSlots(cleanup.add(Files.createTempDirectory("slots-")), 1, new Liveness());
+			SessionSlots.Slot first = slots.acquire(false);
+			NestedSession nested = startingSession(jvm, first, !ownerIsCurrentProcess);
+
+			IOException failure = expectThrows(IOException.class, () -> slots.release(first));
+
+			requireThat(failure.getMessage(), "failure").contains("Harness launch state is unknown");
+			requireThat(nested.directory().resolve("session.json"), "manifest").isRegularFile();
+		}
+	}
+
+	/**
+	 * Verifies that the broker names the slot of a trial whose launch stays uncertain with its owner gone, for a status
+	 * and for a discard, and leaves the slot untouched, so that the caller reruns the attempt in another slot.
+	 *
+	 * @throws IOException          if the filesystem operation fails
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = 30_000)
+	public void reportsStuckTrialWithoutEmptyingIt() throws IOException, InterruptedException
+	{
+		// Requirement: R-I12
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Liveness liveness = new Liveness();
+			Path base = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "slots-"));
+			SessionSlots slots = new SessionSlots(base, 1, liveness, jvm.fileLocks());
+			SessionSlots.Slot slot = slots.acquire(false);
+			NestedSession nested = startingSession(jvm, slot, true);
+			Path sentinel = Files.writeString(nested.directory().resolve("evidence"), "keep");
+			UUID original = UUID.randomUUID();
+			UUID generation = UUID.randomUUID();
+			writeTrialBinding(slot, original);
+			writeClaimedGeneration(slot, nested, generation, false);
+			slots.retain(slot);
+			liveness.end();
+
+			RetainedTrialResponse status = slots.inspectTrial(original);
+			requireThat(status.status(), "status").isEqualTo(Status.STUCK);
+			requireThat(status.stuckSlot(), "statusSlot").isEqualTo(Optional.of(slot.root()));
+			RetainedTrialResponse discard = slots.discardTrial(original,
+				Optional.of(new Identity(generation, Optional.empty())));
+			requireThat(discard.status(), "discard").isEqualTo(Status.STUCK);
+			requireThat(discard.stuckSlot(), "discardSlot").isEqualTo(Optional.of(slot.root()));
+
+			requireThat(nested.directory().resolve("session.json"), "manifest").isRegularFile();
+			requireThat(sentinel, "sentinel").isRegularFile();
+			requireThat(liveness.terminations(), "terminations").isEqualTo(0);
+			requireThat(slots.acquire(false).number(), "nextSlot").isEqualTo(2);
+		}
+	}
+
+	/**
+	 * Verifies that the broker keeps refusing an uncertain launch whose owner lives, as an unresolved status.
+	 *
+	 * @throws IOException          if the filesystem operation fails
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = 30_000)
+	public void refusesTrialWhoseStartingOwnerLives() throws IOException, InterruptedException
+	{
+		// Requirement: R-I12
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path base = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "slots-"));
+			SessionSlots slots = new SessionSlots(base, 1, new Liveness(), jvm.fileLocks());
+			SessionSlots.Slot slot = slots.acquire(false);
+			NestedSession nested = startingSession(jvm, slot, true);
+			UUID original = UUID.randomUUID();
+			writeTrialBinding(slot, original);
+			writeClaimedGeneration(slot, nested, UUID.randomUUID(), false);
+			slots.retain(slot);
+
+			Status status = null;
+			try
+			{
+				status = slots.inspectTrial(original).status();
+			}
+			catch (IOException e)
+			{
+				requireThat(e.getMessage(), "failure").contains("Harness launch state is unknown");
+			}
+			requireThat(status, "status").isNotEqualTo(Status.STUCK);
+		}
+	}
+
+	/**
+	 * Creates a nested session in a slot whose launch is recorded as possibly having a child, with no harness identity.
+	 *
+	 * @param jvm     the test's JVM scope
+	 * @param slot    the slot
+	 * @param otherOwner {@code true} to record a launcher other than this process
+	 * @return the nested session
+	 * @throws IOException if the session cannot be written
+	 */
+	private static NestedSession startingSession(TestJvmScope jvm, SessionSlots.Slot slot, boolean otherOwner)
+		throws IOException
+	{
+		NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), slot.root(), Clock.systemUTC(),
+			Yielding.fileReplacer()).withFixedSlotId(slot.slotId());
+		NestedSession nested = manager.create("claude");
+		manager.markHarnessStarting(nested);
+		if (otherOwner)
+		{
+			long current = ProcessHandle.current().pid();
+			String currentStart = HarnessProcesses.system().find(current).flatMap(ProcessDescription::start).orElseThrow();
+			Path manifest = nested.directory().resolve("session.json");
+			Files.writeString(manifest, Files.readString(manifest).
+				replace("\"owner_pid\": " + current, "\"owner_pid\": " + (current + 1)).
+				replace("\"owner_started_at\": \"" + currentStart + "\"", "\"owner_started_at\": \"gone\""));
+		}
+		return nested;
+	}
+
+	/**
 	 * Writes the original archive binding that a broker commits before attempting to start a runner.
 	 *
 	 * @param slot      the acquired slot

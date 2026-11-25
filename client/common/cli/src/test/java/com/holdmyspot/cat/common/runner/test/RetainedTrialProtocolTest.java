@@ -156,7 +156,11 @@ public final class RetainedTrialProtocolTest
 	{
 		RetainedTrialRequest inspect = RetainedTrialRequest.status(LAUNCH_ID);
 		RetainedTrialRequest discard = RetainedTrialRequest.discard(LAUNCH_ID, Optional.of(SESSION));
+		RetainedTrialResponse stuck = new RetainedTrialResponse(LAUNCH_ID, Status.STUCK, Optional.empty(),
+			OptionalInt.empty(), Optional.of(Path.of("/slots/d1").toAbsolutePath()));
 		return new Object[][]{
+			{inspect, stuck},
+			{discard, stuck},
 			{inspect, new RetainedTrialResponse(LAUNCH_ID, Status.BUSY, Optional.empty(), OptionalInt.empty())},
 			{inspect, new RetainedTrialResponse(LAUNCH_ID, Status.UNSAFE,
 				Optional.of(new Identity(SLOT_GENERATION, Optional.empty())), OptionalInt.empty())},
@@ -224,6 +228,16 @@ public final class RetainedTrialProtocolTest
 			{RESPONSE_ID, LAUNCH_ID, """
 				"status": "absent", %s
 				""".formatted(identity)},
+			{RESPONSE_ID, LAUNCH_ID, """
+				"status": "stuck"
+				"""},
+			{RESPONSE_ID, LAUNCH_ID, """
+				"status": "stuck", "stuck_slot": "slots/d1"
+				"""},
+			{RESPONSE_ID, LAUNCH_ID, """
+				"status": "busy", "stuck_slot": %s
+				""".formatted(JsonMapper.builder().build().writeValueAsString(
+				Path.of("/slots/d1").toAbsolutePath().toString()))},
 			{RESPONSE_ID, LAUNCH_ID, """
 				"status": "discarded"
 				"""},

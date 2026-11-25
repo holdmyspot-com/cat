@@ -3326,14 +3326,22 @@ public final class Driver implements AutoCloseable
 	 *
 	 * @param status the broker's answer to a status request
 	 * @param discardReady whether the caller cannot use the ready slot
-	 * @return whether the broker confirms the original request no longer has a retained slot and cannot start
-	 * @throws IOException if the broker cannot answer a discard request
+	 * @return whether the broker confirms the original request no longer has a retained slot and cannot start, or has
+	 *   left its slot untouched for the user to remove
+	 * @throws IOException if the broker cannot answer a discard request or the stuck slot cannot be recorded
 	 */
 	private boolean settleTrial(RetainedTrialResponse status, boolean discardReady) throws IOException
 	{
 		if (status.status() == RetainedTrialResponse.Status.ABSENT ||
 			status.status() == RetainedTrialResponse.Status.DISCARDED)
 		{
+			return true;
+		}
+		if (status.status() == RetainedTrialResponse.Status.STUCK)
+		{
+			// The slot stays as it is for the user to remove. The attempt that it held is discarded and runs again in
+			// another slot.
+			StuckSlots.record(context.lockFile(), status.stuckSlot().orElseThrow());
 			return true;
 		}
 		if (status.status() == RetainedTrialResponse.Status.BUSY ||

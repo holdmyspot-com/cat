@@ -118,6 +118,7 @@ import com.holdmyspot.cat.common.optimizer.execution.SliceRunner;
 import com.holdmyspot.cat.common.optimizer.execution.SliceSettings;
 import com.holdmyspot.cat.common.optimizer.execution.SnapshotMismatchException;
 import com.holdmyspot.cat.common.optimizer.execution.Step;
+import com.holdmyspot.cat.common.optimizer.execution.StuckSlots;
 import com.holdmyspot.cat.common.optimizer.execution.VerdictKey;
 import com.holdmyspot.cat.common.optimizer.execution.VerdictRecord;
 import com.holdmyspot.cat.common.optimizer.execution.fixture.test.FaultingFileChannel;
@@ -3544,6 +3545,59 @@ public final class DriverTest
 				requireThat(retry.key(), "retryKey").isEqualTo(original.key());
 				requireThat(retry.infrastructureAttempts().size(), "countedAttempts").isEqualTo(1);
 			}
+		}
+	}
+
+	/**
+	 * A trial whose slot the broker leaves untouched because its launch state is uncertain and its owner is gone
+	 * reruns as the same logical trial, counted once, without a discard request, and the campaign records the slot for
+	 * the user to remove.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test
+	public void rerunsTrialWhoseSlotIsStuck() throws IOException
+	{
+		// Requirement: R-I12
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("driver-stuck-slot"));
+			Path slot = Files.createDirectories(directory.resolve("slots").resolve("d1"));
+			DriverHarness harness = new DriverHarness(directory, developing().ceiling(1).build());
+			FileCampaignStore store = new FileCampaignStore(directory.resolve("stored"), JsonMapper.builder().build(),
+				Yielding.fileReplacer());
+			String campaignId = DriverHarness.CAMPAIGN;
+			store.replaceSnapshot(harness.campaign());
+			RecoverySessions sessions = new RecoverySessions(harness.sessions(), store, campaignId);
+			DriverContext context = recoveryContext(harness, store, sessions);
+			try (Driver driver = Driver.open(context, campaignId).orElseThrow())
+			{
+				driver.step();
+				SessionRequest request = harness.sessions().sessions().getFirst().request();
+				request.turnObserver().orElseThrow().endAfter(1, harness.passed());
+			}
+			TrialRecovery original = sessions.launches.getFirst();
+
+			sessions.status = RetainedTrialResponse.Status.STUCK;
+			sessions.stuckSlot = slot;
+			try (Driver driver = Driver.open(context, campaignId).orElseThrow())
+			{
+				driver.step();
+				requireThat(sessions.claims, "claims").isEmpty();
+				requireThat(sessions.discards, "discards").isEmpty();
+				requireThat(sessions.launches.size(), "freshLaunches").isEqualTo(2);
+				TrialRecovery replacement = sessions.launches.getLast();
+				requireThat(replacement.key(), "sameTrial").isEqualTo(original.key());
+				requireThat(replacement.requestId(), "replacementRequest").isNotEqualTo(original.requestId());
+				requireThat(replacement.attemptOrdinal(), "replacementOrdinal").isEqualTo(2);
+				LogicalTrial retry = trials(store.load(campaignId).orElseThrow(), TrialState.RUNNING).getFirst();
+				requireThat(retry.infrastructureAttempts().size(), "countedAttempts").isEqualTo(1);
+			}
+			List<String> notices = StuckSlots.notices(context.lockFile());
+			requireThat(notices, "notices").size().isEqualTo(1);
+			requireThat(notices.getFirst(), "notice").contains(slot.toString()).contains("by hand");
+			Files.delete(slot);
+			requireThat(StuckSlots.notices(context.lockFile()), "noticesAfterRemoval").isEmpty();
 		}
 	}
 
@@ -7496,6 +7550,7 @@ public final class DriverTest
 		private Optional<Identity> unsafeIdentity = Optional.of(identity);
 		private RetainedTrialResponse.Status status = RetainedTrialResponse.Status.BUSY;
 		private int readyTurns = 1;
+		private Path stuckSlot;
 
 		/**
 		 * Creates a broker fixture for one campaign.
@@ -7547,6 +7602,8 @@ public final class DriverTest
 					OptionalInt.of(readyTurns));
 				case UNSAFE -> new RetainedTrialResponse(request.requestId(), status, unsafeIdentity,
 					OptionalInt.empty());
+				case STUCK -> new RetainedTrialResponse(request.requestId(), status, Optional.empty(),
+					OptionalInt.empty(), Optional.of(stuckSlot));
 				default -> new RetainedTrialResponse(request.requestId(), status, Optional.empty(), OptionalInt.empty());
 			};
 		}

@@ -63,6 +63,7 @@ import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult.Delivered;
 import com.holdmyspot.cat.common.optimizer.execution.CampaignLock;
 import com.holdmyspot.cat.common.optimizer.execution.GuardPilot;
 import com.holdmyspot.cat.common.optimizer.execution.PromptAuthorConflict;
+import com.holdmyspot.cat.common.optimizer.execution.StuckSlots;
 import com.holdmyspot.cat.common.optimizer.inventory.InventoryScanner;
 import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
@@ -8117,6 +8118,34 @@ public final class OptimizerCoreTest
 			Campaign campaign = repository.load(id);
 			requireThat(campaign.lineages().size(), "lineages").isEqualTo(1);
 			requireThat(campaign.awaitsTestRevision(), "awaitsTestRevision").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that {@code status} and {@code continue} name a slot that CAT left untouched because its launch state
+	 * stayed uncertain, say that the user must remove it by hand, and stop naming it once it is gone.
+	 */
+	@Test
+	public void namesStuckSlotUntilItIsRemoved() throws Exception
+	{
+		// Requirement: R-I12
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(output -> output.putArray("scope_conditions")));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			repository.core().approve(id, CertificationScope.LATEST_VERSIONS);
+			repository.sessions().sessionDuration(Duration.ofSeconds(20));
+			Path slot = Files.createDirectories(scope.add(Files.createTempDirectory("stuck-")).resolve("d1"));
+			StuckSlots.record(FileCampaignStore.lockFile(repository.campaigns(), id), slot);
+
+			String status = repository.core().status(id).summary(ZoneOffset.UTC);
+			requireThat(status, "status").contains(slot.toString()).contains("by hand");
+			String continued = repository.core().continueCampaign(id).summary(ZoneOffset.UTC);
+			requireThat(continued, "continue").contains(slot.toString()).contains("by hand");
+
+			Files.delete(slot);
+			requireThat(repository.core().status(id).summary(ZoneOffset.UTC), "afterRemoval").
+				doesNotContain(slot.toString());
 		}
 	}
 
