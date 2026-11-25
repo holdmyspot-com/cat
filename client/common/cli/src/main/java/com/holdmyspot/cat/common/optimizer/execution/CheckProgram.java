@@ -42,9 +42,10 @@ public final class CheckProgram
 	private static final String LAUNCHER = "CatCheckSource.java";
 	private static final String READY = "CAT check source ready";
 	/*
-	 * The compiler quotes a program's source lines in its warnings and errors, and the observed value can reach a judge,
-	 * which must never see the program. The launcher therefore discards the source launcher's compiler output and, when
-	 * the program does not start, reports each error by its location and message only.
+	 * The launcher discards the source launcher's compiler output so that a warning of a program that runs stays out of
+	 * its observed value and, when the program does not start, reports each error as the compiler does, with its
+	 * location, message, source line and caret. The observed value of a program error is kept in the trial's record and
+	 * the user's reports, and a judge is told only that the program could not run.
 	 */
 	private static final String SOURCE = """
 		import com.sun.source.util.JavacTask;
@@ -103,13 +104,7 @@ public final class CheckProgram
 					{
 						if (diagnostic.getKind() != Diagnostic.Kind.ERROR)
 							continue;
-						String location = "";
-						if (diagnostic.getSource() != null)
-						{
-							location = input.relativize(Path.of(diagnostic.getSource().toUri())) + ":" +
-								diagnostic.getLineNumber() + ": ";
-						}
-						System.err.println(location + "error: " + diagnostic.getMessage(Locale.ROOT));
+						System.err.println(diagnostic.toString().replace(input + "/", ""));
 					}
 				}
 				catch (Exception | Error e)

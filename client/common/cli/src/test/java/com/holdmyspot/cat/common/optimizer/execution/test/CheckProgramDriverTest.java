@@ -236,7 +236,7 @@ public final class CheckProgramDriverTest
 				requireThat(driver.awaitEvent(WAIT), "checkCompleted").isTrue();
 				driver.step();
 				if (policy == OnToolFailure.JUDGE)
-					requireJudge(harness, context, finalResult, observed);
+					requireJudge(harness, context, finalResult, observed, programError);
 				else
 					requireThat(judges(harness), "judgeStarts").isEmpty();
 				harness.settle(driver);
@@ -256,6 +256,8 @@ public final class CheckProgramDriverTest
 				requireThat(recorded.outcome().verdict(), "verdict").isEqualTo(Verdict.PASS);
 				requireThat(recorded.outcome().judge().orElseThrow(), "judge").isEqualTo(contract.judge().profile());
 				requireThat(recorded.outcome().failedAssertions(), "failedAssertions").isEmpty();
+				if (programError)
+					requireThat(recorded.outcome().rationale(), "rationale").contains(observed);
 			}
 			else
 			{
@@ -508,9 +510,10 @@ public final class CheckProgramDriverTest
 	 * @param context the context that supplies the JSON reader
 	 * @param completed the checked trial
 	 * @param observed the program's observation
+	 * @param programError whether the check is a program error, whose output the judge must not receive
 	 */
 	private static void requireJudge(DriverHarness harness, DriverContext context, SessionResult.Completed completed,
-		String observed)
+		String observed, boolean programError)
 	{
 		List<SessionRequest> judges = judges(harness);
 		requireThat(judges, "judgeStarts").size().isEqualTo(1);
@@ -532,6 +535,13 @@ public final class CheckProgramDriverTest
 		requireThat(check.path("tool").asString(), "shownTool").isEqualTo(TOOL);
 		requireThat(check.path("on_tool_failure").asString(), "shownPolicy").isEqualTo("judge");
 		requireThat(check.path("passed").asBoolean(true), "shownPass").isFalse();
-		requireThat(check.path("observed").asString(), "observedValue").isEqualTo(observed);
+		if (programError)
+		{
+			requireThat(check.path("observed").asString(), "observedValue").
+				isEqualTo("The check program could not run.");
+			requireThat(turn, "judgePrompt").doesNotContain(observed);
+		}
+		else
+			requireThat(check.path("observed").asString(), "observedValue").isEqualTo(observed);
 	}
 }

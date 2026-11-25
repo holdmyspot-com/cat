@@ -132,7 +132,7 @@ public final class JudgePrompt implements JudgeProtocol
 				put("tool", result.assertion().tool()).
 				put("on_tool_failure", EnumNames.lowerCase(result.assertion().onToolFailure())).
 				put("passed", result.passed()).
-				put("observed", result.observed());
+				put("observed", result.judgeObserved());
 		}
 		ObjectNode caseEvidence = TestCaseJson.encode(json, testCase);
 		caseEvidence.remove(TestCase.EXPECTED_OUTCOME);

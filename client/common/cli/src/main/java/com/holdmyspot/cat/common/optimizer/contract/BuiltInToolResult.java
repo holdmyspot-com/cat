@@ -17,6 +17,11 @@ public record BuiltInToolResult(Assertion assertion, Outcome outcome, String obs
 	public static final String PROGRAM_ERROR_BEHAVIOR = "check_program_error";
 
 	/**
+	 * What a judge is told about a check program that could not run.
+	 */
+	public static final String PROGRAM_ERROR_JUDGE_EVIDENCE = "The check program could not run.";
+
+	/**
 	 * How the built-in tool finished.
 	 */
 	public enum Outcome
@@ -140,6 +145,19 @@ public record BuiltInToolResult(Assertion assertion, Outcome outcome, String obs
 		if (outcome == Outcome.PROGRAM_ERROR)
 			return PROGRAM_ERROR_BEHAVIOR;
 		return assertion.builtInTool().orElseThrow().behavior();
+	}
+
+	/**
+	 * Returns what a judge is shown as the tool's finding. A program error shows only that the program could not run,
+	 * never its output or the cause, which the trial's record and the user's reports keep.
+	 *
+	 * @return the observed value, or {@link #PROGRAM_ERROR_JUDGE_EVIDENCE} for a program error
+	 */
+	public String judgeObserved()
+	{
+		if (outcome == Outcome.PROGRAM_ERROR)
+			return PROGRAM_ERROR_JUDGE_EVIDENCE;
+		return observed;
 	}
 
 	/**

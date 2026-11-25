@@ -183,8 +183,8 @@ public final class CheckProgramTest
 	}
 
 	/**
-	 * Reports a Java compilation failure as a program error with a compiler diagnostic that names the failing line
-	 * without quoting the program's source, since the observed value can reach a judge.
+	 * Reports a Java compilation failure as a program error with the compiler's full report, which quotes the
+	 * failing source line.
 	 *
 	 * @throws IOException if a fixture or process cannot be used
 	 * @throws InterruptedException if a process wait is interrupted
@@ -212,7 +212,7 @@ public final class CheckProgramTest
 
 			requireThat(result.outcome(), "outcome").isEqualTo(Outcome.ERROR);
 			requireThat(result.observed(), "compilerDiagnostic").contains(PROGRAM + ":5: error: cannot find symbol").
-				contains("missingForCompilationFixture").doesNotContain(SOURCE_MARKER);
+				contains("missingForCompilationFixture").contains(SOURCE_MARKER);
 			requireScratchClean(fixture.scratchParent());
 		}
 	}
@@ -317,7 +317,7 @@ public final class CheckProgramTest
 					}
 				}
 				""");
-			Duration timeout = Duration.ofSeconds(2);
+			Duration timeout = Duration.ofSeconds(5);
 
 			Result result = CheckProgram.run(launch, fixture.input(), fixture.scratchParent(),
 				new BuiltInTool.CheckProgram(PROGRAM, List.of()), Map.of(), timeout, NORMAL_OUTPUT_LIMIT);

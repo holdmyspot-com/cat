@@ -1837,16 +1837,26 @@ public final class Driver implements AutoCloseable
 	{
 		List<BuiltInToolResult> failedTools = failedTools(judging.results());
 		Verdict verdict = judgment.verdict();
-		String rationale = judgment.rationale();
 		List<FailedAssertion> failures = judgment.failures();
+		StringBuilder records = new StringBuilder();
 		if (!failedTools.isEmpty())
 		{
 			// A failed tool fails its own assertion, and the judge's verdicts on the others stand as they are
 			verdict = Verdict.FAIL;
-			rationale = turnEndNote(toolRecord("Failed built-in tools:", failedTools), judging.evidence()) + "\n\n" +
-				rationale;
+			records.append(turnEndNote(toolRecord("Failed built-in tools:", failedTools), judging.evidence())).
+				append("\n\n");
 			failures = Stream.concat(failedAssertions(failedTools).stream(), failures.stream()).toList();
 		}
+		List<BuiltInToolResult> unrunPrograms = judging.results().stream().
+			filter(result -> result.outcome() == BuiltInToolResult.Outcome.PROGRAM_ERROR && result.leftToJudge()).
+			toList();
+		if (!unrunPrograms.isEmpty())
+		{
+			// The judge was told only that these programs could not run, so the record keeps their output and cause
+			records.append(toolRecord("Check programs that could not run, decided by the judge:", unrunPrograms)).
+				append("\n\n");
+		}
+		String rationale = records.append(judgment.rationale()).toString();
 		if (verdict != Verdict.FAIL || (judging.key().purpose() != Purpose.DEVELOPMENT &&
 			judging.key().purpose() != Purpose.RACE))
 		{
