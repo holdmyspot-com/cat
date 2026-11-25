@@ -6,6 +6,8 @@ import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
+import com.holdmyspot.cat.common.optimizer.execution.CheckProgram;
+import com.holdmyspot.cat.common.optimizer.execution.contract.test.CheckProgramFixtures;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.StringReader;
@@ -47,9 +49,9 @@ import com.holdmyspot.cat.common.runner.TurnMode;
 import java.util.Set;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
-import com.holdmyspot.cat.common.runner.WorktreeRequestClient;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
-import com.holdmyspot.cat.common.runner.OwnerPolicyClient;
+import com.holdmyspot.cat.common.runner.CheckProgramClient;
+import com.holdmyspot.cat.common.runner.NestedSessionChannel;
 import com.holdmyspot.cat.common.runner.NestedSessionLock;
 import com.holdmyspot.cat.common.runner.fakes.test.ManualTicker;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
@@ -701,33 +703,48 @@ public final class HarnessRunnerBridgeTest
 	}
 
 	/**
-	 * Verifies that the runner of a nested session states, to a command that asks from inside the session's sandbox, the
-	 * policy that its live session was started with, so that the command can bound its check programs by it.
+	 * Verifies that the runner of a nested session runs a check program for a command that asks from inside the
+	 * session's sandbox, under the policy that its live session was started with: a path that the policy denies stays
+	 * unreadable to the program.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
-	@Test(timeOut = 30_000)
+	@Test(timeOut = 120_000)
 	@SuppressWarnings("PMD.CloseResource")
-	public void statesLiveSessionPolicyToItsCommands() throws IOException
+	public void runsCheckProgramUnderLiveSessionPolicy() throws IOException
 	{
 		// Requirement: R-L21
+		CheckProgramFixtures.requireBubblewrap();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			LinkedNestedSession fixture = new LinkedNestedSession(cleanup);
 			Path root = fixture.nestedSession().directory().toRealPath();
+			Path secret = Files.createDirectory(root.resolve("secret"));
+			Path secretFile = Files.writeString(secret.resolve("token.txt"), "do not read\n");
+			Path run = cleanup.add(Files.createTempDirectory("live-session-check")).toRealPath();
 			ParentPolicy owner = new ChildPolicy(List.of(root.resolve("session")), List.of(root.resolve("kept")),
-				List.of(root.resolve("secret")), List.of(), Set.of("api.example.com"), false).asParentPolicy();
+				List.of(secret), List.of(), Set.of("api.example.com"), false).asParentPolicy();
 			SessionRequestAccess.allowing(fixture.nestedSession(), root, 0, Platform.current(),
 				SessionRequestAccess.Shell.POSIX);
 			TestHarnessRunnerScope scope = new TestHarnessRunnerScope();
-			AtomicReference<List<ParentPolicy>> stated = new AtomicReference<>();
-			OwnerPolicyClient client = new OwnerPolicyClient(() -> Optional.of(new NestedChannel(
+			AtomicReference<CheckProgram.Result> ran = new AtomicReference<>();
+			CheckProgramClient client = new CheckProgramClient(() -> Optional.of(new NestedSessionChannel(
 				SessionRequestAccess.requestsDirectory(fixture.nestedSession()))), JsonMapper.builder().build(),
 				scope.heartbeatTicker()::tick);
 			Turn turn = Turn.replies("done").withCheckpoint(printed ->
 			{
-				if (printed == 0)
-					stated.set(client.read());
+				if (printed != 0)
+					return;
+				try
+				{
+					ran.set(CheckProgramFixtures.runDeniedRead(client, JsonMapper.builder().build(), run, secretFile,
+						List.of()));
+				}
+				catch (InterruptedException e)
+				{
+					Thread.currentThread().interrupt();
+					throw new IOException("The check program was interrupted", e);
+				}
 			});
 			try (ScriptedProcess process = new ScriptedProcess(List.of(turn), new ArrayList<>());
 				StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n" +
@@ -740,32 +757,11 @@ public final class HarnessRunnerBridgeTest
 						throw new AssertionError("The command requested a session");
 					});
 			}
-			requireThat(stated.get(), "stated").isEqualTo(List.of(owner));
-		}
-	}
-
-	/**
-	 * The channel to the runner of a nested session.
-	 *
-	 * @param requests the nested session's requests directory
-	 */
-	private record NestedChannel(Path requests) implements WorktreeRequestClient.Channel
-	{
-		@Override
-		public boolean isServed()
-		{
-			return true;
-		}
-
-		@Override
-		public boolean removesResponses()
-		{
-			return false;
-		}
-
-		@Override
-		public void close()
-		{
+			CheckProgram.Result result = ran.get();
+			requireThat(result, "result").isNotNull();
+			requireThat(result.outcome(), "outcome").withContext(result.observed(), "observed").
+				isEqualTo(CheckProgram.Outcome.PASS);
+			requireThat(result.observed(), "observed").contains("secret readable: false");
 		}
 	}
 

@@ -180,12 +180,13 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	}
 
 	@Override
-	public List<ParentPolicy> checkProgramPolicies() throws IOException, PolicyRefusal
+	public Optional<List<ParentPolicy>> unsandboxedCheckProgramPolicies() throws IOException, PolicyRefusal
 	{
 		if (boundary.hasValidatedSession())
-			return boundary.checkProgramPolicies();
-		// The command runs in the session's sandbox, where the Codex process that holds the policy is not visible
-		return ownerPolicies();
+			return Optional.of(boundary.checkProgramPolicies());
+		// The command runs in the session's sandbox, where neither the Codex process that holds the policy nor the
+		// network setup that a check program's sandbox needs is available
+		return Optional.empty();
 	}
 
 	@Override

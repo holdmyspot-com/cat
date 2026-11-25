@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.optimizer.cli;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.TemporaryDirectories;
@@ -20,7 +21,10 @@ import com.holdmyspot.cat.common.optimizer.proposal.ProposalCheck;
 import com.holdmyspot.cat.common.optimizer.report.CertificationStatus;
 import com.holdmyspot.cat.common.optimizer.report.ChoiceItem;
 import com.holdmyspot.cat.common.optimizer.workspace.WorktreeRefusedException;
+import com.holdmyspot.cat.common.runner.CheckProgramClient;
 import com.holdmyspot.cat.common.runner.HarnessSandbox;
+import com.holdmyspot.cat.common.runner.NestedSessionChannel;
+import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.WorktreeRequest;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
@@ -735,19 +739,41 @@ public final class Commands
 	 * Returns the runner of check programs for the contract tools, which run inside a contract author session's
 	 * sandbox. Each run reads only what that sandbox lets the session read, so the runner adds no read policy of its
 	 * own, and stages each example's evidence in a new temporary directory that it deletes afterwards.
+	 * <p>
+	 * A program's own sandbox cannot start inside a nested session's sandbox. When the environment names the requests
+	 * directory of the nested session's runner, the runner runs each program outside that sandbox, under the policy
+	 * that it applied to the session. Otherwise the tool runs each program itself.
 	 *
 	 * @param json        the JSON mapper that writes the staged evidence
 	 * @param platform    the platform that runs the contract tool
-	 * @param environment the session's environment, whose {@code PATH} locates Bubblewrap
+	 * @param environment the session's environment, whose {@code PATH} locates Bubblewrap and which may name the
+	 *                    requests directory of the nested session's runner
+	 * @param pause       paces the checks for the runner's answer
 	 * @return the runner, which fails with the reason if the host cannot run a check program
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public static CheckProgramEvaluation contractCheckPrograms(JsonMapper json, Platform platform,
-		Map<String, String> environment)
+		Map<String, String> environment, Pause pause)
 	{
 		requireThat(json, "json").isNotNull();
 		requireThat(platform, "platform").isNotNull();
 		requireThat(environment, "environment").isNotNull();
+		requireThat(pause, "pause").isNotNull();
+		String requests = environment.get(SessionRequestAccess.REQUESTS_VARIABLE);
+		if (requests != null && !requests.isBlank())
+		{
+			CheckProgramClient client = new CheckProgramClient(() -> Optional.of(new NestedSessionChannel(
+				Path.of(requests))), json, pause);
+			return (test, assertionIds, testCase, record, runs) ->
+			{
+				try (TemporaryDirectories directories = new TemporaryDirectories())
+				{
+					Path staging = directories.add(Files.createTempDirectory("cat-check-program-"));
+					return CheckProgramEvaluation.requested(client, json, staging, List.of()).run(test, assertionIds,
+						testCase, record, runs);
+				}
+			};
+		}
 		return (test, assertionIds, testCase, record, runs) ->
 		{
 			CheckProgram.Launch launch;

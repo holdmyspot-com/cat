@@ -148,17 +148,16 @@ public final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 	}
 
 	/**
-	 * Asks the request server of the host session, or the runner of the nested session, that runs this command for
-	 * the policy of its sandbox. The command runs inside that sandbox, where the Claude Code process that holds the
-	 * policy is not among the processes that the command sees.
+	 * States that a Claude Code session's commands run inside its sandbox, where a check program's own sandbox cannot
+	 * start, because Claude Code refuses user namespaces to sandboxed commands. The request server of the host session,
+	 * or the runner of the nested session, runs the programs instead.
 	 *
-	 * @return the initial and current policy readings used to bound the check programs
-	 * @throws IOException if no receiver serves the session, or the receiver cannot read the policy safely
+	 * @return empty
 	 */
 	@Override
-	public List<ParentPolicy> checkProgramPolicies() throws IOException
+	public Optional<List<ParentPolicy>> unsandboxedCheckProgramPolicies()
 	{
-		return ownerPolicies();
+		return Optional.empty();
 	}
 
 	@Override

@@ -526,7 +526,7 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 	 *
 	 * @return the evaluator, which reports that the owner cannot launch checks if this scope has no launcher
 	 */
-	protected CheckProgramEvaluation checkPrograms()
+	public CheckProgramEvaluation checkPrograms()
 	{
 		return CheckProgramEvaluation.UNAVAILABLE;
 	}

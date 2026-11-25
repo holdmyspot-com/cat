@@ -25,13 +25,14 @@ import com.holdmyspot.cat.common.optimizer.workspace.GitForks;
 import com.holdmyspot.cat.common.optimizer.workspace.GitWorktreeRegistrar;
 import com.holdmyspot.cat.common.optimizer.workspace.WorktreeRefusedException;
 import com.holdmyspot.cat.common.runner.AuthenticationOptions;
+import com.holdmyspot.cat.common.runner.CheckProgramClient;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessMarkers;
 import com.holdmyspot.cat.common.runner.HarnessSandbox;
 import com.holdmyspot.cat.common.runner.LaunchRoute;
+import com.holdmyspot.cat.common.runner.NestedSessionChannel;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
-import com.holdmyspot.cat.common.runner.OwnerPolicyClient;
 import com.holdmyspot.cat.common.runner.RequestServer;
 import com.holdmyspot.cat.common.runner.RetainedNestedSessionClient;
 import com.holdmyspot.cat.common.runner.RetainedTrialRequest;
@@ -289,48 +290,38 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	protected abstract SessionPort evaluatorSessions(RunnerSessions.Settings settings, Bridge bridge);
 
 	/**
-	 * Reads the policies of the authenticated owner that starts this optimizer command.
+	 * Reads the policies of the authenticated owner that starts this optimizer command, when the command runs outside
+	 * the owner's sandbox and so can run check programs itself.
 	 *
-	 * @return the initial and current policy readings used to bound its check programs
-	 * @throws IOException if the owner or its policy cannot be read
+	 * @return the initial and current policy readings used to bound its check programs, or empty if the command runs
+	 *   inside the owner's sandbox, where a check program's own sandbox cannot start and the receiver that serves the
+	 *   owner's requests runs the programs instead
+	 * @throws IOException   if the owner or its policy cannot be read
 	 * @throws PolicyRefusal if the owner or its policy cannot be authenticated
 	 */
-	protected abstract List<ParentPolicy> checkProgramPolicies() throws IOException, PolicyRefusal;
-
-	/**
-	 * Asks whatever serves the requests of the session that runs this command for the policies that bound the
-	 * session's commands, by the route that decides its launches: the nested session's runner inside a nested session
-	 * and the host session's request server outside one. A command that runs in the session's sandbox cannot read the
-	 * policy itself, because the harness process that holds it is not among the processes that the sandbox shows the
-	 * command.
-	 *
-	 * @return the initial and current policy readings, before intersection
-	 * @throws WorktreeRefusedException if the route refuses the command's requests, or no request server serves the
-	 *                                  host session
-	 * @throws IOException              if the receiver cannot read the policy safely, the request cannot be sent or its
-	 *                                  answer cannot be read
-	 * @throws IllegalStateException    if this scope is closed
-	 */
-	protected final List<ParentPolicy> ownerPolicies() throws IOException
-	{
-		ensureOpen();
-		OwnerPolicyClient client = new OwnerPolicyClient(this::worktreeChannel, json(),
-			waiting().every(SessionRequestForwarder.RESPONSE_POLL));
-		return client.read();
-	}
+	protected abstract Optional<List<ParentPolicy>> unsandboxedCheckProgramPolicies() throws IOException, PolicyRefusal;
 
 	@Override
-	protected final CheckProgramEvaluation checkPrograms()
+	public final CheckProgramEvaluation checkPrograms()
 	{
 		return (test, assertionIds, testCase, record, runs) ->
 		{
+			ensureOpen();
 			try
 			{
-				List<ParentPolicy> policies = checkProgramPolicies();
 				List<Path> heldOut = new ArrayList<>(heldOutDirectories());
 				Path heldOutResults = RunnerSessions.Settings.heldOutResultsFolder(resultsFolder());
 				heldOut.add(Files.createDirectories(heldOutResults).toRealPath());
-				CheckProgram.Launch launch = CheckProgram.ownerLaunch(Platform.current(), environment, policies, heldOut);
+				Optional<List<ParentPolicy>> policies = unsandboxedCheckProgramPolicies();
+				if (policies.isEmpty())
+				{
+					CheckProgramClient client = new CheckProgramClient(this::worktreeChannel, json(),
+						waiting().every(SessionRequestForwarder.RESPONSE_POLL));
+					return CheckProgramEvaluation.requested(client, json(), temporaryDirectory(), heldOut).run(test,
+						assertionIds, testCase, record, runs);
+				}
+				CheckProgram.Launch launch = CheckProgram.ownerLaunch(Platform.current(), environment, policies.get(),
+					heldOut);
 				return CheckProgramEvaluation.isolated(launch, json(), temporaryDirectory()).run(test, assertionIds,
 					testCase, record, runs);
 			}
@@ -668,32 +659,6 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	{
 		ensureOpen();
 		return CapCalibration::calibrate;
-	}
-
-	/**
-	 * The channel to the runner of the nested session whose session runs the command. The runner lives as long as the
-	 * nested session, and removes the nested session's responses with it.
-	 *
-	 * @param requests the nested session's requests directory
-	 */
-	private record NestedSessionChannel(Path requests) implements WorktreeRequestClient.Channel
-	{
-		@Override
-		public boolean isServed()
-		{
-			return true;
-		}
-
-		@Override
-		public boolean removesResponses()
-		{
-			return false;
-		}
-
-		@Override
-		public void close()
-		{
-		}
 	}
 
 	/**

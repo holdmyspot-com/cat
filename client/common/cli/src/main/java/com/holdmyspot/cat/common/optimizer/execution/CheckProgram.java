@@ -246,18 +246,43 @@ public final class CheckProgram
 	public static Result run(Launch launch, Path input, Path scratchParent, BuiltInTool.CheckProgram declaration,
 		Map<String, String> textByName, Duration timeout, int outputLimit) throws IOException, InterruptedException
 	{
-		requireThat(launch, "launch").isNotNull();
 		requireThat(declaration, "declaration").isNotNull();
+		requireThat(textByName, "textByName").isNotNull();
+		return run(launch, input, scratchParent, declaration.program(), declaration.filledArguments(textByName), timeout,
+			outputLimit);
+	}
+
+	/**
+	 * Runs a program from a staged, private input directory, using an empty scratch directory.
+	 *
+	 * @param launch the trusted Linux executables and authenticated policy
+	 * @param input the staged input directory
+	 * @param scratchParent a private directory in which the owner may create scratch directories
+	 * @param programPath the path of the program below the input directory
+	 * @param arguments the program's arguments, with their placeholders filled
+	 * @param timeout the positive maximum process time
+	 * @param outputLimit the positive combined stream limit in bytes
+	 * @return the program's decision or error
+	 * @throws NullPointerException if any argument is null
+	 * @throws IllegalArgumentException if a limit is not positive
+	 * @throws IOException if staging or the host sandbox prevents a program from running
+	 * @throws InterruptedException if the owner interrupts the run
+	 */
+	public static Result run(Launch launch, Path input, Path scratchParent, String programPath, List<String> arguments,
+		Duration timeout, int outputLimit) throws IOException, InterruptedException
+	{
+		requireThat(launch, "launch").isNotNull();
+		requireThat(programPath, "programPath").isNotNull();
+		requireThat(arguments, "arguments").isNotNull();
 		requireThat(timeout.isPositive(), "positiveTimeout").isTrue();
 		requireThat(outputLimit, "outputLimit").isPositive();
 		if (!Platform.current().isLinux())
 			throw new IOException("Check programs require the Linux sandbox or WSL2 on Windows");
 
 		Path evidence = input.toRealPath();
-		Path program = evidence.resolve(declaration.program());
+		Path program = evidence.resolve(programPath);
 		if (!Files.isRegularFile(program, NOFOLLOW_LINKS) || !program.toRealPath().startsWith(evidence))
 			throw new IOException("Expected a staged check program: " + program);
-		List<String> arguments = declaration.filledArguments(textByName);
 		try (TemporaryDirectories temporary = new TemporaryDirectories())
 		{
 			Path work = temporary.add(Files.createTempDirectory(scratchParent.toRealPath(), "check-program-"));

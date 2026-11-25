@@ -3,13 +3,16 @@ package com.holdmyspot.cat.common.runner;
 import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.ExclusiveFileLock;
 import com.holdmyspot.cat.common.FileLocks;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.optimizer.execution.CheckProgram;
 import com.holdmyspot.cat.common.optimizer.workspace.GitWorktreeRegistrar;
 import com.holdmyspot.cat.common.runner.RequestArchive.LaunchRequest;
 import com.holdmyspot.cat.common.runner.launcher.RunnerArguments;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
+import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.BufferedReader;
 import java.io.Closeable;
@@ -236,7 +239,7 @@ public final class SessionRequestBroker implements Closeable
 	 * @param catPlugin     the directory of the CAT plugin installed in the nested session's harness session's home,
 	 *                      whose launchers the session's commands run, or {@code null} if the session has none
 	 * @param ownerPolicy   the policy that the nested session's sandbox applies to its commands, or {@code null} if the
-	 *                      runner states none, in which case an owner policy request is refused
+	 *                      runner states none, in which case a check program request is refused
 	 * @param starter       resolves and starts child runners
 	 */
 	public SessionRequestBroker(NestedSession nestedSession, NestedSessionManager manager, HarnessRunnerOptions options,
@@ -423,8 +426,8 @@ public final class SessionRequestBroker implements Closeable
 			return takeWorktree(id, file, directory);
 		if (id.startsWith(DiscardRequest.PREFIX))
 			return takeDiscard(id, file, directory);
-		if (id.startsWith(OwnerPolicyRequest.PREFIX))
-			return takeOwnerPolicy(id, file, directory);
+		if (id.startsWith(CheckProgramRequest.PREFIX))
+			return takeCheckProgram(id, file, directory);
 		if (id.startsWith(RetainedTrialRequest.PREFIX))
 			return takeRetainedTrial(id, file, directory);
 		if (id.startsWith(HookComparisonRequest.PREFIX))
@@ -749,8 +752,8 @@ public final class SessionRequestBroker implements Closeable
 	}
 
 	/**
-	 * Takes an owner policy request, which takes no slot, no permit and no count of the requests that the site allows:
-	 * the broker carries it out on its worktree thread, since reading a host session's policy may start processes.
+	 * Takes a check program request, which takes no slot, no permit and no count of the requests that the site allows:
+	 * the broker runs the program on its own thread, outside the sandbox of the session that asked.
 	 *
 	 * @param id        the request ID
 	 * @param file      the request archive
@@ -758,7 +761,7 @@ public final class SessionRequestBroker implements Closeable
 	 * @return {@code true} if the request was answered or started, or {@code false} if its archive is busy
 	 * @throws IOException if a response cannot be published
 	 */
-	private boolean takeOwnerPolicy(String id, Path file, Path directory) throws IOException
+	private boolean takeCheckProgram(String id, Path file, Path directory) throws IOException
 	{
 		if (stopped)
 		{
@@ -766,10 +769,11 @@ public final class SessionRequestBroker implements Closeable
 			return true;
 		}
 		Path inputs = directory.resolve(INPUTS);
+		CheckProgramRequest request;
 		try
 		{
 			unpack(file, directory, inputs);
-			OwnerPolicyRequest.read(json, inputs);
+			request = CheckProgramRequest.read(json, inputs);
 		}
 		catch (RequestArchiveBusyException _)
 		{
@@ -778,41 +782,57 @@ public final class SessionRequestBroker implements Closeable
 		}
 		catch (IOException | IllegalArgumentException | JacksonException e)
 		{
+			if (Files.exists(inputs, LinkOption.NOFOLLOW_LINKS))
+				TemporaryDirectories.deleteRecursively(inputs);
 			WorktreeResponse.refused(String.valueOf(e.getMessage())).write(json, id, directory);
 			return true;
 		}
-		finally
-		{
-			if (Files.exists(inputs, LinkOption.NOFOLLOW_LINKS))
-				TemporaryDirectories.deleteRecursively(inputs);
-		}
-		worktrees.submit(() -> serveOwnerPolicy(id, directory));
+		children.submit(() -> serveCheckProgram(id, directory, request));
 		return true;
 	}
 
 	/**
-	 * Carries out an owner policy request on the broker's worktree thread and publishes its response.
+	 * Runs a check program under the policy of the session that asked, and publishes its result. The program's input and
+	 * scratch directory live in the request's response directory, which the session may read, and are deleted before the
+	 * answer is published.
 	 *
 	 * @param id        the request ID
 	 * @param directory the request's response directory
+	 * @param request   the validated run, whose input is the extracted copy
 	 */
-	private void serveOwnerPolicy(String id, Path directory)
+	private void serveCheckProgram(String id, Path directory, CheckProgramRequest request)
 	{
 		try
 		{
 			WorktreeResponse response;
+			Path scratch = directory.resolve("scratch");
 			try
 			{
-				String policies = OwnerPolicyRequest.encode(json, site.ownerPolicies());
-				response = new WorktreeResponse(WorktreeRequest.DONE, "", Optional.of(policies));
+				Files.createDirectory(scratch);
+				CheckProgram.Launch launch = CheckProgram.ownerLaunch(Platform.current(), System.getenv(),
+					site.ownerPolicies(), request.heldOut());
+				CheckProgram.Result result = CheckProgram.run(launch, request.input(), scratch, request.program(),
+					request.arguments(), CheckProgram.TIME_LIMIT, CheckProgram.OUTPUT_LIMIT);
+				response = new WorktreeResponse(WorktreeRequest.DONE, "", Optional.of(
+					CheckProgramRequest.encode(json, result)));
 			}
-			catch (SessionRefusedException e)
+			catch (SessionRefusedException | PolicyRefusal e)
 			{
 				response = WorktreeResponse.refused(String.valueOf(e.getMessage()));
 			}
 			catch (IOException e)
 			{
 				response = WorktreeResponse.failed(String.valueOf(e.getMessage()));
+			}
+			catch (InterruptedException _)
+			{
+				Thread.currentThread().interrupt();
+				response = WorktreeResponse.failed("The runner stopped the check program");
+			}
+			finally
+			{
+				TemporaryDirectories.deleteRecursively(directory.resolve(INPUTS));
+				TemporaryDirectories.deleteRecursively(scratch);
 			}
 			response.write(json, id, directory);
 		}
@@ -1696,7 +1716,7 @@ public final class SessionRequestBroker implements Closeable
 				continue;
 			String id = directory.getFileName().toString();
 			if (id.startsWith(WorktreeRequest.PREFIX) || id.startsWith(DiscardRequest.PREFIX) ||
-				id.startsWith(OwnerPolicyRequest.PREFIX) || id.startsWith(RetainedTrialRequest.PREFIX) ||
+				id.startsWith(CheckProgramRequest.PREFIX) || id.startsWith(RetainedTrialRequest.PREFIX) ||
 				id.startsWith(HookComparisonRequest.PREFIX))
 				WorktreeResponse.failed(ENDED).write(json, id, directory);
 			else
@@ -2008,8 +2028,8 @@ public final class SessionRequestBroker implements Closeable
 		WorktreeResponse worktree(WorktreeRequest request);
 
 		/**
-		 * Reads the policy that bounds the commands of the session that the site serves, for the owner policy request of
-		 * a command that cannot read it from inside the session's sandbox.
+		 * Reads the policy that bounds the commands of the session that the site serves, for the check program request of
+		 * a command that cannot run the program itself inside the session's sandbox.
 		 *
 		 * @return the readings of the policy, which the requester intersects
 		 * @throws SessionRefusedException if the policy cannot be read safely, or the site states none; the message says

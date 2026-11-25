@@ -3,9 +3,11 @@ package com.holdmyspot.cat.common.optimizer.cli;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.CommandLineArguments;
+import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.runner.AuthenticationOptions;
 import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
+import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
 import java.util.ArrayList;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -59,7 +61,7 @@ public final class PromptOptimizerCli
 	{
 		args = CommandLineArguments.recover(args);
 		int exitCode = run(args, factory, ZoneId.systemDefault(), Platform.current().environment(System.getenv()),
-			System.out);
+			Pause.sleeping(SessionRequestForwarder.RESPONSE_POLL), System.out);
 		if (exitCode != 0)
 			System.exit(exitCode);
 	}
@@ -83,7 +85,7 @@ public final class PromptOptimizerCli
 	 */
 	public static int run(String[] args, ScopeFactory factory, ZoneId zone, PrintStream out)
 	{
-		return run(args, factory, zone, Map.of(), out);
+		return run(args, factory, zone, Map.of(), Thread::yield, out);
 	}
 
 	/**
@@ -93,25 +95,28 @@ public final class PromptOptimizerCli
 	 * @param args the command and its arguments
 	 * @param factory opens the selected harness's command scope
 	 * @param zone the user's time zone, in which the human summary shows times
-	 * @param environment the process environment, whose {@code PATH} locates Bubblewrap for a contract tool
+	 * @param environment the process environment, whose {@code PATH} locates Bubblewrap for a contract tool and which
+	 *   may name the requests directory of the nested session's runner, which runs the tool's check programs
+	 * @param pause paces a contract tool's wait for the runner's answer
 	 * @param out receives the command's JSON result or failure
 	 * @return 0 for a result, 1 for a refusal or failure, or 2 for invalid input
 	 * @throws NullPointerException if any argument is null
 	 */
-	public static int run(String[] args, ScopeFactory factory, ZoneId zone, Map<String, String> environment,
+	public static int run(String[] args, ScopeFactory factory, ZoneId zone, Map<String, String> environment, Pause pause,
 		PrintStream out)
 	{
 		requireThat(args, "args").isNotNull();
 		requireThat(factory, "factory").isNotNull();
 		requireThat(zone, "zone").isNotNull();
 		requireThat(environment, "environment").isNotNull();
+		requireThat(pause, "pause").isNotNull();
 		requireThat(out, "out").isNotNull();
 		List<String> arguments = List.of(args);
 		if (Commands.isContractTool(arguments))
 		{
 			JsonMapper json = JsonMapper.builder().build();
 			return Commands.executeContractTool(json, arguments,
-				Commands.contractCheckPrograms(json, Platform.current(), environment), out);
+				Commands.contractCheckPrograms(json, Platform.current(), environment, pause), out);
 		}
 		boolean evaluatorInfo = !arguments.isEmpty() && arguments.getFirst().equals(EvaluatorInfo.COMMAND);
 		boolean evaluatorTrial = arguments.size() == 1 && arguments.getFirst().equals(EvaluatorTrial.COMMAND);

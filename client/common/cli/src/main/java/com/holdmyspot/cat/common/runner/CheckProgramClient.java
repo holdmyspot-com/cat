@@ -4,22 +4,20 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
+import com.holdmyspot.cat.common.optimizer.execution.CheckProgram;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.Optional;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Asks whatever serves the requests of the session that runs a command for the policy that bounds the session's
- * commands, as an {@link OwnerPolicyRequest}. A command cannot read the policy itself from inside the session's
- * sandbox.
+ * Asks whatever serves the requests of the session that runs a command to run a check program, as a
+ * {@link CheckProgramRequest}, because a program's own sandbox cannot start inside the session's sandbox.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
-public final class OwnerPolicyClient
+public final class CheckProgramClient
 {
 	private final WorktreeRequestClient.Router router;
 	private final JsonMapper json;
@@ -33,7 +31,7 @@ public final class OwnerPolicyClient
 	 * @param pause  paces the checks for an answer
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public OwnerPolicyClient(WorktreeRequestClient.Router router, JsonMapper json, Pause pause)
+	public CheckProgramClient(WorktreeRequestClient.Router router, JsonMapper json, Pause pause)
 	{
 		requireThat(router, "router").isNotNull();
 		requireThat(json, "json").isNotNull();
@@ -44,22 +42,26 @@ public final class OwnerPolicyClient
 	}
 
 	/**
-	 * Asks for the policy of the session that runs this command and waits for the answer.
+	 * Sends a run and waits for its result.
 	 *
-	 * @return the readings of the policy, which the command intersects
-	 * @throws SessionRefusedException if the receiver refuses to state the policy; the message says why
-	 * @throws IOException             if nothing serves the session's requests, the request cannot be sent, the receiver
-	 *                                 stops before it answers, or the answer is malformed
+	 * @param request the run
+	 * @return the program's result
+	 * @throws NullPointerException    if {@code request} is null
+	 * @throws SessionRefusedException if the receiver refuses to run the program; the message says why
+	 * @throws IOException             if nothing serves the session's requests, the request cannot be sent, the
+	 *                                 receiver cannot run the program or stops before it answers, or the answer is
+	 *                                 malformed
 	 */
-	public List<ParentPolicy> read() throws IOException
+	public CheckProgram.Result run(CheckProgramRequest request) throws IOException
 	{
+		requireThat(request, "request").isNotNull();
 		WorktreeRequestClient.Channel opened = router.open().orElseThrow(() ->
-			new IOException("No request server states the policy of the session that runs this command"));
+			new IOException("No request server runs the check programs of the session that runs this command"));
 		WorktreeResponse response;
 		try (WorktreeRequestClient.Channel channel = opened)
 		{
 			Path requests = channel.requests().toAbsolutePath();
-			String id = new OwnerPolicyRequest().publish(json, requests);
+			String id = request.publish(json, requests);
 			Path directory = requests.getParent().resolve("responses").resolve(id);
 			response = await(channel, directory);
 			if (channel.removesResponses())
@@ -67,11 +69,10 @@ public final class OwnerPolicyClient
 		}
 		return switch (response.status())
 		{
-			case WorktreeRequest.DONE -> OwnerPolicyRequest.decode(json, response.result().orElseThrow(() ->
-				new IOException("The answer to the owner policy request holds no policy")));
+			case WorktreeRequest.DONE -> CheckProgramRequest.decode(json, response.result().orElseThrow(() ->
+				new IOException("The answer to the check program request holds no result")));
 			case WorktreeRequest.REFUSED -> throw new SessionRefusedException(response.reason());
-			default -> throw new IOException("CAT could not read the policy of the session that runs this command: " +
-				response.reason());
+			default -> throw new IOException("CAT could not run the check program: " + response.reason());
 		};
 	}
 
@@ -96,7 +97,7 @@ public final class OwnerPolicyClient
 				response = WorktreeResponse.read(json, directory);
 				if (response.isPresent())
 					return response.get();
-				throw new IOException("The request server ended before it answered the owner policy request: " +
+				throw new IOException("The request server ended before it answered the check program request: " +
 					directory.getFileName());
 			}
 			pause.pause();

@@ -10,6 +10,8 @@ import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TrialRecord;
 import com.holdmyspot.cat.common.optimizer.contract.UndecidableToolException;
+import com.holdmyspot.cat.common.runner.CheckProgramClient;
+import com.holdmyspot.cat.common.runner.CheckProgramRequest;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -47,7 +49,27 @@ public interface CheckProgramEvaluation
 	}
 
 	/**
-	 * Creates an evaluator that uses the owner's authenticated sandbox launch.
+	 * Runs one check program from a staged input directory.
+	 */
+	@FunctionalInterface
+	interface ProgramRunner
+	{
+		/**
+		 * Runs a program once.
+		 *
+		 * @param input     the staged input directory
+		 * @param program   the program's path inside {@code input}
+		 * @param arguments the program's arguments, with their placeholders filled
+		 * @return the program's decision or error
+		 * @throws IOException          if the host cannot run the program
+		 * @throws InterruptedException if the caller interrupts the run
+		 */
+		CheckProgram.Result run(Path input, String program, List<String> arguments)
+			throws IOException, InterruptedException;
+	}
+
+	/**
+	 * Creates an evaluator that uses the owner's authenticated sandbox launch in this process.
 	 *
 	 * @param launch        the executable paths and read policy
 	 * @param json          the input mapper
@@ -58,6 +80,43 @@ public interface CheckProgramEvaluation
 	static CheckProgramEvaluation isolated(CheckProgram.Launch launch, JsonMapper json, Path stagingParent)
 	{
 		requireThat(launch, "launch").isNotNull();
+		requireThat(stagingParent, "stagingParent").isNotNull();
+		return using((input, program, arguments) -> CheckProgram.run(launch, input, stagingParent, program, arguments,
+			CheckProgram.TIME_LIMIT, CheckProgram.OUTPUT_LIMIT), json, stagingParent);
+	}
+
+	/**
+	 * Creates an evaluator whose programs run outside the sandbox of the session that this process runs in, because the
+	 * programs' own sandbox cannot start inside it. A receiver that serves the session's requests runs each program.
+	 *
+	 * @param client        sends each run to the receiver
+	 * @param json          the input mapper
+	 * @param stagingParent a private directory for a trial's staged input
+	 * @param heldOut       the absolute paths that no program may see
+	 * @return the evaluator for completed trials and assertion examples
+	 * @throws NullPointerException if any argument is null
+	 */
+	static CheckProgramEvaluation requested(CheckProgramClient client, JsonMapper json, Path stagingParent,
+		List<Path> heldOut)
+	{
+		requireThat(client, "client").isNotNull();
+		requireThat(heldOut, "heldOut").isNotNull();
+		List<Path> masks = List.copyOf(heldOut);
+		return using((input, program, arguments) -> client.run(new CheckProgramRequest(input, program, arguments,
+			masks)), json, stagingParent);
+	}
+
+	/**
+	 * Creates an evaluator that stages each trial's input and hands each program to a runner.
+	 *
+	 * @param runner        runs one program
+	 * @param json          the input mapper
+	 * @param stagingParent a private directory for a trial's staged input
+	 * @return the evaluator for completed trials and assertion examples
+	 * @throws NullPointerException if any argument is null
+	 */
+	private static CheckProgramEvaluation using(ProgramRunner runner, JsonMapper json, Path stagingParent)
+	{
 		requireThat(json, "json").isNotNull();
 		requireThat(stagingParent, "stagingParent").isNotNull();
 		return (test, assertionIds, testCase, record, runs) ->
@@ -77,13 +136,11 @@ public interface CheckProgramEvaluation
 					if (assertionIds.contains(assertion.id()) &&
 						assertion.builtInTool().orElse(null) instanceof BuiltInTool.CheckProgram program)
 					{
+						List<String> arguments = program.filledArguments(variables);
 						List<CheckProgram.Result> assertionRuns = new ArrayList<>(runs);
 						// Each run gets its own scratch directory, so that one run cannot leave state for the next
 						for (int i = 0; i < runs; ++i)
-						{
-							assertionRuns.add(CheckProgram.run(launch, input, stagingParent, program, variables,
-								CheckProgram.TIME_LIMIT, CheckProgram.OUTPUT_LIMIT));
-						}
+							assertionRuns.add(runner.run(input, program.program(), arguments));
 						results.put(assertion.id(), List.copyOf(assertionRuns));
 					}
 				}

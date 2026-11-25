@@ -11,6 +11,8 @@ import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.git.Git;
+import com.holdmyspot.cat.common.optimizer.execution.CheckProgram;
+import com.holdmyspot.cat.common.optimizer.execution.contract.test.CheckProgramFixtures;
 import com.holdmyspot.cat.common.optimizer.proposal.HookReport;
 import com.holdmyspot.cat.common.optimizer.proposal.HookReport.HookDifference;
 import com.holdmyspot.cat.common.optimizer.workspace.GitWorktreeRegistrar;
@@ -24,7 +26,7 @@ import com.holdmyspot.cat.common.runner.HookComparisonResult;
 import com.holdmyspot.cat.common.runner.NestedSession;
 import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.NestedSessionReceipt;
-import com.holdmyspot.cat.common.runner.OwnerPolicyClient;
+import com.holdmyspot.cat.common.runner.CheckProgramClient;
 import com.holdmyspot.cat.common.runner.RequestServer;
 import com.holdmyspot.cat.common.runner.RequestedRunner;
 import com.holdmyspot.cat.common.runner.RuntimeBinding;
@@ -1542,30 +1544,36 @@ public final class RequestServerTest
 	}
 
 	/**
-	 * Verifies that the server states the policy of the session that it serves to a command that runs in the session's
-	 * sandbox, which cannot read the policy itself: each reading is the session's policy, with the snapshot that the
-	 * server took before it served.
+	 * Verifies that the server runs a check program for a command that runs in the served session's sandbox, under the
+	 * server's reading of the session's policy, so that a path that the session may not read stays unreadable to the
+	 * program, and that it leaves nothing of the run in the session's responses.
 	 *
-	 * @throws IOException if the fixture cannot be created or a request cannot be served
+	 * @throws IOException          if the fixture cannot be created or a request cannot be served
+	 * @throws InterruptedException if the run is interrupted
 	 */
-	@Test(timeOut = 60_000)
-	public void statesOwnerPolicy() throws IOException
+	@Test(timeOut = 120_000)
+	public void runsCheckProgramUnderSessionPolicy() throws IOException, InterruptedException
 	{
 		// Requirement: R-L21
+		CheckProgramFixtures.requireBubblewrap();
 		try (Fixture fixture = new Fixture())
 		{
-			ParentPolicy expected = ParentPolicy.UNSANDBOXED.intersect(fixture.policy(List.of(fixture.project)));
+			Path secret = Files.createDirectory(fixture.root.resolve("secret"));
+			Path secretFile = Files.writeString(secret.resolve("token.txt"), "do not read\n");
+			fixture.policy.allow(new ParentPolicy(true, List.of(fixture.project), List.of(), List.of(secret),
+				List.of(), HostAccess.listed(Set.of(MODEL_HOST)), false, List.of()));
 			try (Fixture.Running server = fixture.start())
 			{
-				OwnerPolicyClient client = new OwnerPolicyClient(
+				CheckProgramClient client = new CheckProgramClient(
 					() -> Optional.of(new ServerChannel(server.requests(), server.exit())), JsonMapper.builder().build(),
 					Thread::yield);
 
-				List<ParentPolicy> policies = client.read();
+				CheckProgram.Result result = CheckProgramFixtures.runDeniedRead(client, JsonMapper.builder().build(),
+					Files.createDirectory(fixture.root.resolve("run")), secretFile, List.of());
 
-				requireThat(policies, "policies").isNotEmpty();
-				for (ParentPolicy policy : policies)
-					requireThat(policy, "policy").isEqualTo(expected);
+				requireThat(result.outcome(), "outcome").withContext(result.observed(), "observed").
+					isEqualTo(CheckProgram.Outcome.PASS);
+				requireThat(result.observed(), "observed").contains("service after").contains("secret readable: false");
 				try (Stream<Path> responses = Files.list(fixture.sessionDirectory().resolve("responses")))
 				{
 					requireThat(responses.toList(), "responses").isEmpty();
@@ -1575,14 +1583,14 @@ public final class RequestServerTest
 	}
 
 	/**
-	 * Verifies that the server refuses to state the policy of its session once the session's sandbox lets its commands
-	 * write the installed plugin, as it refuses a launch, so that no command bounds a check program by a policy that
-	 * the session could change.
+	 * Verifies that the server refuses to run a check program once the session's sandbox lets its commands write the
+	 * installed plugin, as it refuses a launch, so that no program runs on a runtime that the session could change.
 	 *
-	 * @throws IOException if the fixture cannot be created or a request cannot be served
+	 * @throws IOException          if the fixture cannot be created or a request cannot be served
+	 * @throws InterruptedException if the run is interrupted
 	 */
 	@Test(timeOut = 60_000)
-	public void refusesPolicyOfWritablePlugin() throws IOException
+	public void refusesCheckProgramWhenPluginIsWritable() throws IOException, InterruptedException
 	{
 		// Requirement: R-L21
 		try (Fixture fixture = new Fixture())
@@ -1590,14 +1598,15 @@ public final class RequestServerTest
 			try (Fixture.Running server = fixture.start())
 			{
 				fixture.policy.allow(fixture.policy(List.of(fixture.project, fixture.plugin)));
-				OwnerPolicyClient client = new OwnerPolicyClient(
+				CheckProgramClient client = new CheckProgramClient(
 					() -> Optional.of(new ServerChannel(server.requests(), server.exit())), JsonMapper.builder().build(),
 					Thread::yield);
 
 				SessionRefusedException refused = null;
 				try
 				{
-					client.read();
+					CheckProgramFixtures.runDeniedRead(client, JsonMapper.builder().build(),
+						Files.createDirectory(fixture.root.resolve("run")), fixture.root.resolve("unused"), List.of());
 				}
 				catch (SessionRefusedException e)
 				{

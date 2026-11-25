@@ -87,6 +87,16 @@ public final class RequestArchive
 	 */
 	static final int VERSION = 3;
 	private static final int HOOK_COMPARISON_VERSION = 1;
+	private static final int CHECK_PROGRAM_VERSION = 1;
+	private static final String PROGRAM = "program";
+	private static final String ARGUMENTS = "arguments";
+	private static final String HELD_OUT_PATHS = "held_out";
+	private static final Set<String> CHECK_PROGRAM_FIELDS = Set.of("format_version", WORKSPACE, PROGRAM, ARGUMENTS,
+		HELD_OUT_PATHS);
+	/**
+	 * The most arguments of a check program, which the receiver reads into memory with the manifest.
+	 */
+	private static final int MAXIMUM_CHECK_PROGRAM_ARGUMENTS = 256;
 	private static final Set<String> HOOK_COMPARISON_FIELDS = Set.of("format_version", "project", "plugins",
 		TrialPluginInput.PROVENANCE_FIELD);
 	/**
@@ -315,6 +325,91 @@ public final class RequestArchive
 			}
 			return manifest;
 		});
+	}
+
+	/**
+	 * Captures the staged input of a check program, with the program's path and arguments and the directories that the
+	 * program may not see. The input travels as the request's workspace, so its symbolic links whose targets stay inside
+	 * it travel as links.
+	 *
+	 * @param json        the request mapper
+	 * @param destination the final request archive
+	 * @param request     the run
+	 * @param limits      the bounds that the archive must stay within
+	 * @throws IOException if the input is unsafe, oversized or unreadable
+	 */
+	static void packCheckProgram(JsonMapper json, Path destination, CheckProgramRequest request, RequestLimits limits)
+		throws IOException
+	{
+		if (request.arguments().size() > MAXIMUM_CHECK_PROGRAM_ARGUMENTS)
+			throw new IOException("A check program takes at most " + MAXIMUM_CHECK_PROGRAM_ARGUMENTS + " arguments");
+		publish(json, destination, limits, (archive, budget) ->
+		{
+			packTree(archive, request.input(), WORKSPACE, true, budget, NULL_DEVICE, Set.of());
+			ObjectNode manifest = json.createObjectNode().put("format_version", CHECK_PROGRAM_VERSION).
+				put(WORKSPACE, WORKSPACE).put(PROGRAM, request.program());
+			ArrayNode arguments = manifest.putArray(ARGUMENTS);
+			for (String argument : request.arguments())
+				arguments.add(argument);
+			ArrayNode heldOut = manifest.putArray(HELD_OUT_PATHS);
+			for (Path path : request.heldOut())
+				heldOut.add(path.toString());
+			return manifest;
+		});
+	}
+
+	/**
+	 * Reads an extracted check program request. The request chooses no executable, environment, limit or policy: it
+	 * names a program inside its own input and may only add directories that the program does not see.
+	 *
+	 * @param json   the request mapper
+	 * @param inputs the extracted request
+	 * @return the run, whose input is the extracted workspace
+	 * @throws IOException if the manifest holds another field, the program is not a relative path inside the input, or
+	 *                     an argument or a held-out path is not valid
+	 */
+	static CheckProgramRequest readCheckProgram(JsonMapper json, Path inputs) throws IOException
+	{
+		JsonNode value = manifest(json, inputs, CHECK_PROGRAM_FIELDS, "A check program request", CHECK_PROGRAM_VERSION,
+			"Unsupported check program request format");
+		Path workspace = entry(value, inputs, WORKSPACE, Kind.DIRECTORY);
+		try (DirectoryStream<Path> entries = Files.newDirectoryStream(inputs))
+		{
+			for (Path entry : entries)
+			{
+				String name = entry.getFileName().toString();
+				if (!name.equals(MANIFEST) && !name.equals(WORKSPACE))
+					throw new IOException("A check program request holds only its input, not " + name);
+			}
+		}
+		String program = optionalText(value, PROGRAM).orElse("");
+		Path path = Path.of(program);
+		if (program.isBlank() || path.isAbsolute() || !path.normalize().equals(path) || path.startsWith(".."))
+			throw new IOException("A check program must be a normalized relative path inside its input: " + program);
+		JsonNode argumentNodes = value.path(ARGUMENTS);
+		if (!argumentNodes.isArray() || argumentNodes.size() > MAXIMUM_CHECK_PROGRAM_ARGUMENTS)
+		{
+			throw new IOException("A check program request requires an array of at most " +
+				MAXIMUM_CHECK_PROGRAM_ARGUMENTS + " arguments");
+		}
+		List<String> arguments = new ArrayList<>();
+		for (JsonNode argument : argumentNodes)
+		{
+			if (!argument.isString())
+				throw new IOException("A check program's arguments must be text");
+			arguments.add(argument.asString());
+		}
+		JsonNode heldOutNodes = value.path(HELD_OUT_PATHS);
+		if (!heldOutNodes.isArray())
+			throw new IOException("A check program request requires an array of held-out paths");
+		List<Path> heldOut = new ArrayList<>();
+		for (JsonNode node : heldOutNodes)
+		{
+			if (!node.isString() || !Path.of(node.asString()).isAbsolute())
+				throw new IOException("A check program's held-out paths must be absolute paths");
+			heldOut.add(Path.of(node.asString()));
+		}
+		return new CheckProgramRequest(workspace, program, arguments, heldOut);
 	}
 
 	/**

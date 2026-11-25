@@ -236,7 +236,7 @@ public final class ContractCheckTest
 		Path contextFile = writeCheckProgramDraft(project);
 
 		Report report = ContractToolSessions.check(json, contextFile,
-			Commands.contractCheckPrograms(json, platform, Map.of()));
+			Commands.contractCheckPrograms(json, platform, Map.of(), Thread::yield));
 
 		StringJoiner expected = new StringJoiner(System.lineSeparator(), "", System.lineSeparator());
 		expected.add("`contract check` found 2 problem(s):");
