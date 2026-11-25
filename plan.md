@@ -10571,8 +10571,15 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 	(proposal): a revised test is checked the same way, and an edit to a file of `examples/` is a test revision. (g) The
 	proposal's "Assertion examples" section lists each example with its class and how its tool decided it. (h)
 	`DraftDirectoryTest`: a recorded prompt test without `examples/` loads into the draft, and a proposal that keeps it
-	without adding examples is refused. (i) `DeliveryTest`: delivery writes a test's `examples/` with its scenario. Then
-	the clean full offline build, reporting every test taking at least one second.
+	without adding examples is refused. (i) `DeliveryTest`: delivery writes a test's `examples/` with its scenario. (j)
+	Delivery and reload (user ruling, 2026-11-24, `design.md` "Assertion examples", the `examples.json` bullet): an
+	empty example directory and explicitly empty `initial/` and `project/` beside omitted counterparts survive delivery
+	and a reload from a checkout that holds only the tracked files, so the rendered records keep the explicit empty
+	snapshots and apply defaults only to the omitted ones; delivery writes `examples.json` only for a non-empty list and
+	removes a stale one when a revision leaves no empty directory; a prompt test without the file reads as before;
+	malformed content, a path that leaves `examples/`, names a file or names a non-empty directory is refused; the file
+	reaches neither a staged trial nor judged evidence. Then the clean full offline build, reporting every test taking
+	at least one second.
 - **Classes affected:** `PromptTest`, `PromptTestFiles`, `Assertion`, `ProposalSchema`, `BuiltInTool`, `TrialRecord`,
 	`PeerTrialEvidence` and the moved activity reader, `Proposal`, `ProposalCheck`, `ContractTools`, `Markdown`,
 	`TestRevisionCheck`, `Delivery`, new `AssertionExamples` and `BareValue`.

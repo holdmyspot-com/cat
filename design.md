@@ -2848,6 +2848,16 @@ the judge, which decides it once, when the test is written.
 	not regular there, the confirmed contract holds the SHA-256 of each, so an edit to one is a test revision, and
 	delivery writes them with the scenario ([§4.7](#47-delivery)). A recorded prompt test without examples stays valid
 	as input: the contract author adds them, and the proposal shows the addition as an edit.
+- A Git checkout drops a directory that holds no tracked file, so an example's explicitly empty `initial/` or
+	`project/`, or an empty directory inside one, would read back as omitted and take its default (user ruling,
+	2026-11-24). Delivery therefore writes `examples.json` beside `examples/`, holding
+	`{"format_version": 1, "empty_directories": [...]}`: the sorted, `/`-separated paths, relative to `examples/`, of
+	every directory there that has no entry. Delivery writes the file only when the list is not empty and removes a
+	stale one when a revision leaves no empty directory. Reading a prompt test creates each listed directory in the
+	example's membership, and refuses a malformed file, a path that leaves `examples/`, names a file, or names a
+	directory that holds an entry. A prompt test without the file reads as before. CAT owns the file: the contract
+	author does not write it, a draft example's empty directories are themselves its record, and staging and judged
+	evidence leave it out with the rest of the prompt test directory.
 
 The contract author writes the examples when it writes the test, and CAT checks every assertion when the session ends,
 mechanically wherever that suffices:
