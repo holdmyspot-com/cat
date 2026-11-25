@@ -1714,6 +1714,35 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
+	 * Verifies that recovering a nested session whose runner ended without recording a result, such as after a hard
+	 * crash, removes the copy of the Codex login that the runner left in the session's Codex folder.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void abandonedSessionKeepsNoCodexLogin() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			// Requirement: R-I15
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-results-"));
+			// No process is alive, so the runner that owns the nested session has ended
+			Clock oldClock = Clock.fixed(Instant.parse("2026-07-20T00:00:00Z"), UTC);
+			NestedSession nestedSession = manager(jvm, root, oldClock).create("codex");
+			Path login = Files.writeString(Files.createDirectories(nestedSession.directory().resolve("home/.codex")).
+				resolve("auth.json"), "login");
+			Clock currentClock = Clock.fixed(Instant.parse("2026-07-20T00:00:01Z"), UTC);
+
+			manager(jvm, root, currentClock).deleteStaleSessions(Duration.ofDays(7));
+
+			requireThat(Files.readString(nestedSession.directory().resolve("session.json")), "manifest").
+				contains("\"state\": \"failed\"");
+			requireThat(Files.exists(login), "login").isFalse();
+		}
+	}
+
+	/**
 	 * Verifies abandoned-session recovery terminates a recorded harness child before retaining its failed diagnostic.
 	 *
 	 * @throws IOException if the filesystem operation fails

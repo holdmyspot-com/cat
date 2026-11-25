@@ -22,12 +22,13 @@ public final class HarnessCredentials
 {
 	/**
 	 * The login files that a nested session's home may hold, relative to the nested session's directory: Codex's {@code
-	 * auth.json}, which the Codex runner copies into the nested session's home, and Claude Code's {@code
-	 * .credentials.json} in the home's {@code .claude} directory, which the Claude runner never copies and removes if one
-	 * is there.
+	 * auth.json} in the home's {@code .codex} folder, which the Codex runner copies there from its launch's source home,
+	 * and in the home itself, where a session that the runner started before it moved a session's Codex files into
+	 * {@code .codex} holds it, and Claude Code's {@code .credentials.json} in the home's {@code .claude} directory, which
+	 * the Claude runner never copies and removes if one is there.
 	 */
-	private static final List<Path> LOGIN_COPIES = List.of(Path.of("home", "auth.json"),
-		Path.of("home", ".claude", ".credentials.json"));
+	private static final List<Path> LOGIN_COPIES = List.of(Path.of("home", ".codex", "auth.json"),
+		Path.of("home", "auth.json"), Path.of("home", ".claude", ".credentials.json"));
 
 	/**
 	 * Copies regular credential files without traversing symbolic links, replacing same-named files in the isolated home.
