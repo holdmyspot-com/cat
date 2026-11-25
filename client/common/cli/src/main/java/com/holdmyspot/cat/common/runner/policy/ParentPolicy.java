@@ -325,6 +325,25 @@ public record ParentPolicy(boolean sandboxed, List<Path> writeRoots, List<Path> 
 	public void requireTrusted(Path source) throws IOException, PolicyRefusal
 	{
 		requireThat(source, "source").isNotNull();
+		requireTrusted(source, "Remove " + source + " from the paths that the session's sandbox lets its commands " +
+			"write, then start a new session");
+	}
+
+	/**
+	 * Checks that the parent's commands cannot have changed a file that CAT reads, as {@link #requireTrusted(Path)}
+	 * does, but refuses with a fix of the caller's choosing.
+	 *
+	 * @param source the absolute path of the file or folder
+	 * @param fix    what the user does to fix the refusal, as one or more sentences without the last one's final period
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code source} is not absolute or {@code fix} is blank
+	 * @throws IOException              if a symbolic link in a path cannot be read, or a path follows more than 40
+	 *                                  links
+	 * @throws PolicyRefusal            if the parent's commands may write {@code source}
+	 */
+	public void requireTrusted(Path source, String fix) throws IOException, PolicyRefusal
+	{
+		requireThat(source, "source").isNotNull();
 		if (!source.isAbsolute())
 			throw new IllegalArgumentException("source must be absolute: " + source);
 		if (!sandboxed)
@@ -333,8 +352,7 @@ public record ParentPolicy(boolean sandboxed, List<Path> writeRoots, List<Path> 
 			RealPaths.resolveAll(protectedSources)))
 		{
 			throw new PolicyRefusal("the session's sandbox lets its commands write " + source + ", so they could " +
-				"change what CAT reads there", "Remove " + source + " from the paths that the session's sandbox lets " +
-				"its commands write, then start a new session");
+				"change what CAT reads there", fix);
 		}
 	}
 }

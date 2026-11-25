@@ -222,6 +222,76 @@ public final class RequestServerTest
 	}
 
 	/**
+	 * Verifies that a server whose plugin folder is writable and is not the installed plugin's refuses with a reason
+	 * that says to run the installed plugin's launcher, not to remove from the sandbox's writable paths a folder that
+	 * may lie inside the project.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void refusesWritableCopyNotInstalled() throws IOException
+	{
+		// Requirement: R-I11
+		try (Fixture fixture = new Fixture())
+		{
+			Path installed = fixture.root.resolve("installed");
+			fixture.installed = List.of(installed);
+			fixture.policy.allow(fixture.policy(List.of(fixture.project, fixture.plugin)));
+
+			String refusal = fixture.refusal();
+
+			requireThat(refusal, "refusal").contains("the session's sandbox lets its commands write " +
+					fixture.plugin).contains("Run the launcher of the installed plugin, " + installed).
+				doesNotContain("Remove " + fixture.plugin);
+		}
+	}
+
+	/**
+	 * Verifies that a server whose plugin folder is writable, when no plugin is installed, refuses with a reason that
+	 * says to install CAT.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void refusesWritableCopyWithNoInstall() throws IOException
+	{
+		// Requirement: R-I11
+		try (Fixture fixture = new Fixture())
+		{
+			fixture.installed = List.of();
+			fixture.policy.allow(fixture.policy(List.of(fixture.project, fixture.plugin)));
+
+			String refusal = fixture.refusal();
+
+			requireThat(refusal, "refusal").contains("Install CAT").doesNotContain("Remove " + fixture.plugin);
+		}
+	}
+
+	/**
+	 * Verifies that a writable transcript, and a writable installed plugin, keep the reason that names the path to
+	 * remove from the sandbox's writable paths, even when the server's own plugin is not the installed one.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void keepsRemovalAdvice() throws IOException
+	{
+		// Requirement: R-I11
+		try (Fixture fixture = new Fixture())
+		{
+			fixture.policy.allow(fixture.policy(List.of(fixture.project, fixture.transcript.getParent())));
+			requireThat(fixture.refusal(), "transcriptRefusal").contains("Remove " + fixture.transcript +
+				" from the paths that the session's sandbox lets its commands write");
+		}
+		try (Fixture fixture = new Fixture())
+		{
+			fixture.policy.allow(fixture.policy(List.of(fixture.project, fixture.plugin)));
+			requireThat(fixture.refusal(), "installedRefusal").contains("Remove " + fixture.plugin +
+				" from the paths that the session's sandbox lets its commands write");
+		}
+	}
+
+	/**
 	 * Verifies that a server refuses a session whose policy it cannot read.
 	 *
 	 * @throws IOException if the fixture cannot be created
@@ -1586,6 +1656,10 @@ public final class RequestServerTest
 		private final Path project;
 		private final Path home;
 		private final Path plugin;
+		/**
+		 * The folders of the plugin that the harness has installed.
+		 */
+		private List<Path> installed;
 		private final Path transcript;
 		private final FakeProcessTable processes = new FakeProcessTable();
 		private final ProcessIdentity harness;
@@ -1623,6 +1697,7 @@ public final class RequestServerTest
 			Files.writeString(project.resolve("README.md"), "project\n");
 			home = Files.createDirectories(root.resolve("home"));
 			plugin = Files.createDirectories(root.resolve("plugin"));
+			installed = List.of(plugin);
 			transcript = Files.writeString(Files.createDirectories(root.resolve("transcripts")).
 				resolve(SESSION_ID + ".jsonl"), "{}\n");
 			harness = processes.start(4242);
@@ -1711,7 +1786,7 @@ public final class RequestServerTest
 				}
 				return child.start(arguments);
 			};
-			return new RequestServer.Host("claude", running, hostRefusal, plugin,
+			return new RequestServer.Host("claude", running, hostRefusal, plugin, () -> installed,
 				() -> "the session runs the server inside its sandbox", () ->
 			{
 				if (sessionRefusal.isPresent())

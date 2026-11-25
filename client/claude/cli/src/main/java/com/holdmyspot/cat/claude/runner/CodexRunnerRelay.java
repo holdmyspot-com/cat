@@ -66,7 +66,9 @@ public final class CodexRunnerRelay
 						Thread.currentThread().interrupt();
 						throw new IOException("Interrupted while waiting for the runner", e);
 					}
-				}, PluginDirectory.of(CodexRunnerRelay.class), () -> ToolScope.forSession(Path.of(""), environment,
+				}, PluginDirectory.of(CodexRunnerRelay.class),
+					ClaudeRunnerCli.installedCopies(environment),
+					() -> ToolScope.forSession(Path.of(""), environment,
 					SessionHarness.installed(), scope.waiting()), new InputStreamReader(System.in, UTF_8), scope.waiting(),
 				System.out, new PrintWriter(System.err, true, UTF_8));
 		}

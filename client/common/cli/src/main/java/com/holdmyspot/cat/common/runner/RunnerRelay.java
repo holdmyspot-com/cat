@@ -84,6 +84,7 @@ public final class RunnerRelay
 	 * @param selector    selects the harness's CAT artifact
 	 * @param starter     runs the artifact's runner
 	 * @param folder      the folder of the plugin that holds the launcher
+	 * @param installed   finds the folders of the installed plugin of the harness that holds the launcher
 	 * @param scopes      opens the launcher's tool scope, which gives the session's CAT session directory
 	 * @param input       the launch's records when {@code --input} is absent
 	 * @param waiting     the process's waiting, which paces checks for the requested session's progress
@@ -100,12 +101,12 @@ public final class RunnerRelay
 	 */
 	public static int relay(String harness, String plugin, HarnessMarkers markers, String[] args,
 		Map<String, String> environment, ArtifactSelector selector, RunnerStarter starter, Path folder,
-		RequestServer.SessionScope scopes, Reader input, Waiting waiting, OutputStream output, PrintWriter errors)
-		throws IOException
+		InstalledCopies installed, RequestServer.SessionScope scopes, Reader input, Waiting waiting,
+		OutputStream output, PrintWriter errors) throws IOException
 	{
 		requireThat(waiting, "waiting").isNotNull();
-		return relay(harness, plugin, markers, args, environment, Platform.current(), selector, starter, folder, scopes,
-			input, waiting.every(REQUEST_POLL), output, errors);
+		return relay(harness, plugin, markers, args, environment, Platform.current(), selector, starter, folder,
+			installed, scopes, input, waiting.every(REQUEST_POLL), output, errors);
 	}
 
 	/**
@@ -124,6 +125,7 @@ public final class RunnerRelay
 	 * @param selector    selects the harness's CAT artifact
 	 * @param starter     runs the artifact's runner
 	 * @param folder      the folder of the plugin that holds the launcher
+	 * @param installed   finds the folders of the installed plugin of the harness that holds the launcher
 	 * @param scopes      opens the launcher's tool scope, which gives the session's CAT session directory
 	 * @param input       the launch's records when {@code --input} is absent
 	 * @param pause       paces checks for the requested session's progress
@@ -142,8 +144,8 @@ public final class RunnerRelay
 	 */
 	public static int relay(String harness, String plugin, HarnessMarkers markers, String[] args,
 		Map<String, String> environment, Platform platform, ArtifactSelector selector, RunnerStarter starter,
-		Path folder, RequestServer.SessionScope scopes, Reader input, Pause pause, OutputStream output,
-		PrintWriter errors) throws IOException
+		Path folder, InstalledCopies installed, RequestServer.SessionScope scopes, Reader input, Pause pause,
+		OutputStream output, PrintWriter errors) throws IOException
 	{
 		requireThat(harness, "harness").isNotBlank();
 		requireThat(markers, "markers").isNotNull();
@@ -153,6 +155,7 @@ public final class RunnerRelay
 		requireThat(selector, "selector").isNotNull();
 		requireThat(starter, "starter").isNotNull();
 		requireThat(folder, "folder").isNotNull();
+		requireThat(installed, "installed").isNotNull();
 		requireThat(scopes, "scopes").isNotNull();
 		requireThat(pause, "pause").isNotNull();
 		if (ParentSandbox.refusesNetworkOff(harness, environment, errors))
@@ -176,7 +179,7 @@ public final class RunnerRelay
 				{
 					yield HarnessRunnerOptions.REFUSED_LAUNCH_STATUS;
 				}
-				yield RequestServer.forward(harness, args, folder, scopes, input, pause, output, errors);
+				yield RequestServer.forward(harness, args, folder, installed, scopes, input, pause, output, errors);
 			}
 			case LaunchRoute.Served _, LaunchRoute.Bounded _ ->
 			{

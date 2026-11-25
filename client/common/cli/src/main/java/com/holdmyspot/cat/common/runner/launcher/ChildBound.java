@@ -9,7 +9,9 @@ import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
@@ -36,6 +38,10 @@ public final class ChildBound
 	 * The absolute paths that a reading of the parent's policy must keep the parent's commands from writing.
 	 */
 	private final List<Path> trusted;
+	/**
+	 * The fix that a refusal names for a trusted path, for each path that has one of its own.
+	 */
+	private final Map<Path, String> fixes;
 
 	/**
 	 * Creates a bound that reads the parent's policy for each launch.
@@ -45,7 +51,7 @@ public final class ChildBound
 	 */
 	public ChildBound(ParentPolicySource parent)
 	{
-		this(parent, List.of(), List.of());
+		this(parent, List.of(), List.of(), Map.of());
 	}
 
 	/**
@@ -55,15 +61,18 @@ public final class ChildBound
 	 * @param snapshots the original policy readings
 	 * @param trusted  the absolute paths that a reading of the parent's policy must keep the parent's commands from
 	 *                 writing
+	 * @param fixes    the fix that a refusal names for a trusted path, for each path that has one of its own
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	private ChildBound(ParentPolicySource parent, List<ParentPolicy> snapshots, List<Path> trusted)
+	private ChildBound(ParentPolicySource parent, List<ParentPolicy> snapshots, List<Path> trusted,
+		Map<Path, String> fixes)
 	{
 		requireThat(parent, "parent").isNotNull();
 		requireThat(trusted, "trusted").isNotNull();
 		this.parent = parent;
 		this.snapshots = List.copyOf(snapshots);
 		this.trusted = List.copyOf(trusted);
+		this.fixes = Map.copyOf(fixes);
 	}
 
 	/**
@@ -79,12 +88,45 @@ public final class ChildBound
 	 */
 	public ChildBound snapshot(Path trusted) throws SessionRefusedException
 	{
+		return snapshot(trusted, Optional.empty());
+	}
+
+	/**
+	 * Reads the parent's policy now, as {@link #snapshot(Path)} does, but a refusal for {@code trusted} names
+	 * {@code fix}.
+	 *
+	 * @param trusted the absolute path of a file or folder that the parent's commands must not be able to write
+	 * @param fix     what the user does when the parent's commands may write {@code trusted}, as one or more sentences
+	 *                without the last one's final period
+	 * @return the bound
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code trusted} is not absolute or {@code fix} is blank
+	 * @throws SessionRefusedException  if the parent's policy cannot be read safely; the message says how to fix it
+	 */
+	public ChildBound snapshot(Path trusted, String fix) throws SessionRefusedException
+	{
+		requireThat(fix, "fix").isNotBlank();
+		return snapshot(trusted, Optional.of(fix));
+	}
+
+	/**
+	 * Reads the parent's policy now and returns the bound that this reading narrows.
+	 *
+	 * @param trusted the absolute path of a file or folder that the parent's commands must not be able to write
+	 * @param fix     the fix that a refusal for {@code trusted} names, or empty for the usual one
+	 * @return the bound
+	 * @throws SessionRefusedException if the parent's policy cannot be read safely
+	 */
+	private ChildBound snapshot(Path trusted, Optional<String> fix) throws SessionRefusedException
+	{
 		requireThat(trusted, "trusted").isNotNull();
 		if (!trusted.isAbsolute())
 			throw new IllegalArgumentException("trusted must be absolute: " + trusted);
 		List<Path> allTrusted = new ArrayList<>(this.trusted);
 		allTrusted.add(trusted);
-		return new ChildBound(parent, readPolicies(allTrusted, Optional.empty()), allTrusted);
+		Map<Path, String> allFixes = new HashMap<>(fixes);
+		fix.ifPresent(value -> allFixes.put(trusted, value));
+		return new ChildBound(parent, readPolicies(allTrusted, allFixes, Optional.empty()), allTrusted, allFixes);
 	}
 
 	/**
@@ -100,7 +142,7 @@ public final class ChildBound
 	public ParentPolicy parentPolicy(Optional<String> askingThread) throws SessionRefusedException
 	{
 		requireThat(askingThread, "askingThread").isNotNull();
-		return intersect(readPolicies(trusted, askingThread));
+		return intersect(readPolicies(trusted, fixes, askingThread));
 	}
 
 	/**
@@ -115,7 +157,7 @@ public final class ChildBound
 	{
 		requireThat(askingThread, "askingThread").isNotNull();
 		requireThat(check, "check").isNotNull();
-		List<ParentPolicy> policies = readPolicies(trusted, askingThread);
+		List<ParentPolicy> policies = readPolicies(trusted, fixes, askingThread);
 		try
 		{
 			check.requireTrusted(policies);
@@ -176,7 +218,7 @@ public final class ChildBound
 		requireThat(askingThread, "askingThread").isNotNull();
 		requireThat(needs, "needs").isNotNull();
 		requireThat(check, "check").isNotNull();
-		List<ParentPolicy> policies = readPolicies(trusted, askingThread);
+		List<ParentPolicy> policies = readPolicies(trusted, fixes, askingThread);
 		try
 		{
 			check.requireTrusted(policies);
@@ -213,11 +255,13 @@ public final class ChildBound
 	 * Reads the parent's policy, checks the paths it must protect and appends the reading to the existing snapshots.
 	 *
 	 * @param trustedPaths the absolute paths that the reading must keep the parent's commands from writing
+	 * @param trustedFixes the fix that a refusal names for a trusted path, for each path that has one of its own
 	 * @param askingThread the thread whose policy is read, or empty for the parent's main thread
 	 * @return the snapshot readings and the current reading
 	 * @throws SessionRefusedException if the policy cannot be read safely
 	 */
-	private List<ParentPolicy> readPolicies(List<Path> trustedPaths, Optional<String> askingThread)
+	private List<ParentPolicy> readPolicies(List<Path> trustedPaths, Map<Path, String> trustedFixes,
+		Optional<String> askingThread)
 		throws SessionRefusedException
 	{
 		try
@@ -231,7 +275,13 @@ public final class ChildBound
 			for (ParentPolicy policy : policies)
 			{
 				for (Path path : trustedPaths)
-					policy.requireTrusted(path);
+				{
+					String fix = trustedFixes.get(path);
+					if (fix == null)
+						policy.requireTrusted(path);
+					else
+						policy.requireTrusted(path, fix);
+				}
 			}
 			return List.copyOf(policies);
 		}

@@ -25,6 +25,7 @@ import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyBoundFile;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
+import com.holdmyspot.cat.common.runner.policy.RealPaths;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -166,6 +167,7 @@ public final class RequestServer
 	 *                          empty if it can
 	 * @param plugin            the absolute folder of the plugin, which the session's commands must not be able to
 	 *                          write
+	 * @param installed         finds the folders of the installed plugin of the server's harness
 	 * @param sandboxed         returns why the server runs inside the session's sandbox, which a refusal states
 	 * @param sessions          identifies the session that runs the server
 	 * @param scopes            opens the tool scope of the session's project folder, which gives the session's CAT
@@ -176,7 +178,7 @@ public final class RequestServer
 	 * @param pause             paces the checks for requests and for the harness process's end
 	 */
 	public record Host(String harness, Set<String> running, Optional<String> refusal, Path plugin,
-		Supplier<String> sandboxed, SessionFinder sessions, Function<Path, ToolScope> scopes,
+		InstalledCopies installed, Supplier<String> sandboxed, SessionFinder sessions, Function<Path, ToolScope> scopes,
 		RequestedRunner.Resolver starter, ProcessTable processes, Pause pause)
 	{
 		/**
@@ -186,6 +188,7 @@ public final class RequestServer
 		 * @param running           the identifiers of the harnesses whose markers the server's environment holds
 		 * @param refusal           why this server must not run in its process, or empty if it can
 		 * @param plugin            the absolute folder of the plugin
+		 * @param installed         finds the folders of the installed plugin of the server's harness
 		 * @param sandboxed         returns why the server runs inside the session's sandbox
 		 * @param sessions          identifies the session that runs the server
 		 * @param scopes            opens the tool scope of the session's project folder
@@ -201,6 +204,7 @@ public final class RequestServer
 			running = Set.copyOf(running);
 			requireThat(refusal, "refusal").isNotNull();
 			requireThat(plugin, "plugin").isNotNull().isAbsolute();
+			requireThat(installed, "installed").isNotNull();
 			requireThat(sandboxed, "sandboxed").isNotNull();
 			requireThat(sessions, "sessions").isNotNull();
 			requireThat(scopes, "scopes").isNotNull();
@@ -390,6 +394,78 @@ public final class RequestServer
 	}
 
 	/**
+	 * Returns why a client finds no request server, naming the command that starts one. Only the installed plugin's
+	 * request server has the sandbox exception that lets it run outside the session's sandbox, so a client in any other
+	 * copy of CAT names the installed plugin's.
+	 *
+	 * @param plugin    the folder of the plugin that holds the client
+	 * @param installed the folders of the installed plugin
+	 * @return the reason
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if a folder cannot be resolved
+	 */
+	public static String missingServer(Path plugin, List<Path> installed) throws IOException
+	{
+		requireThat(plugin, "plugin").isNotNull();
+		requireThat(installed, "installed").isNotNull();
+		if (isInstalled(plugin, installed))
+			return missingServer(plugin);
+		String reason = "No request server serves this session, and outside a nested session every session starts " +
+			"through it. Only the installed plugin's launchers start sessions, and ";
+		if (installed.isEmpty())
+		{
+			return reason + "no CAT plugin is installed. Install CAT, then start its request server in the " +
+				"background once, as a command of its own, and launch again with its launcher.";
+		}
+		return reason + "this copy of CAT, " + plugin + ", is not the installed plugin: its request server has no " +
+			"sandbox exception, so it would run inside the session's sandbox. Start the installed plugin's request " +
+			"server in the background once, as a command of its own: " + program(installed.getFirst()) +
+			". Then launch again with the installed plugin's launcher.";
+	}
+
+	/**
+	 * Indicates whether a plugin folder is one of the installed plugin's folders.
+	 *
+	 * @param plugin    the folder of a plugin
+	 * @param installed the folders of the installed plugin
+	 * @return {@code true} if {@code plugin} is one of {@code installed}, once links are resolved
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if a symbolic link in a path cannot be read, or a path follows more than 40 links
+	 */
+	private static boolean isInstalled(Path plugin, List<Path> installed) throws IOException
+	{
+		Path real = RealPaths.resolve(plugin);
+		for (Path copy : installed)
+		{
+			if (RealPaths.resolve(copy).equals(real))
+				return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Returns what the user does when the session's commands may write the folder of the plugin that holds the server.
+	 *
+	 * @param plugin    the folder of the plugin that holds the server
+	 * @param installed the folders of the installed plugin
+	 * @return the fix, or empty if {@code plugin} is the installed plugin, whose folder the session's sandbox must not
+	 *   let its commands write
+	 * @throws IOException if a symbolic link in a path cannot be read, or a path follows more than 40 links
+	 */
+	private static Optional<String> writablePluginFix(Path plugin, List<Path> installed) throws IOException
+	{
+		if (isInstalled(plugin, installed))
+			return Optional.empty();
+		if (installed.isEmpty())
+		{
+			return Optional.of("Only the installed plugin's launchers start sessions. Install CAT, then run its " +
+				"launcher instead of this copy's");
+		}
+		return Optional.of("Only the installed plugin's launchers start sessions. Run the launcher of the installed " +
+			"plugin, " + installed.getFirst() + ", instead of this copy's");
+	}
+
+	/**
 	 * Returns why a command that a harness session runs outside a nested session cannot have its optimization worktree's
 	 * registration changed, because no request server serves the session, naming the command that starts one.
 	 *
@@ -414,6 +490,7 @@ public final class RequestServer
 	 * @param harness the harness of the requested session
 	 * @param args    the launch's options
 	 * @param plugin  the folder of the plugin that holds the command
+	 * @param installed finds the folders of the installed plugin of the command's harness
 	 * @param scopes  opens the command's tool scope
 	 * @param input   the launch's records when neither {@code --input} nor {@code --conversation} is given
 	 * @param pause   paces checks for the session's progress
@@ -426,10 +503,11 @@ public final class RequestServer
 	 * @throws IOException              if the session has no CAT session directory, or the launch cannot be
 	 *                                  forwarded
 	 */
-	public static int forward(String harness, String[] args, Path plugin, SessionScope scopes, Reader input,
-		Pause pause, OutputStream output, PrintWriter errors) throws IOException
+	public static int forward(String harness, String[] args, Path plugin, InstalledCopies installed,
+		SessionScope scopes, Reader input, Pause pause, OutputStream output, PrintWriter errors) throws IOException
 	{
 		requireThat(plugin, "plugin").isNotNull();
+		requireThat(installed, "installed").isNotNull();
 		requireThat(scopes, "scopes").isNotNull();
 		requireThat(errors, "errors").isNotNull();
 		try (ToolScope tools = scopes.open())
@@ -437,7 +515,7 @@ public final class RequestServer
 			Optional<Path> requests = servedRequests(tools);
 			if (requests.isEmpty())
 			{
-				errors.println(missingServer(plugin));
+				errors.println(missingServer(plugin, installed.find()));
 				return HarnessRunnerOptions.REFUSED_LAUNCH_STATUS;
 			}
 			return SessionRequestForwarder.forward(SessionRequestForwarder.Route.SERVER, harness, args, input,
@@ -510,8 +588,12 @@ public final class RequestServer
 			ChildBound bound;
 			try
 			{
-				bound = new ChildBound(session.policy()).
-					snapshot(session.transcript()).snapshot(host.plugin());
+				ChildBound transcriptBound = new ChildBound(session.policy()).snapshot(session.transcript());
+				Optional<String> fix = writablePluginFix(host.plugin(), host.installed().find());
+				if (fix.isPresent())
+					bound = transcriptBound.snapshot(host.plugin(), fix.get());
+				else
+					bound = transcriptBound.snapshot(host.plugin());
 				bound.parentPolicy(session.askingThread());
 			}
 			catch (SessionRefusedException e)

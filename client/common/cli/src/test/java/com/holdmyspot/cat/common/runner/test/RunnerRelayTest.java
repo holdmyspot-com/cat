@@ -9,6 +9,7 @@ import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.HarnessMarkers;
+import com.holdmyspot.cat.common.runner.InstalledCopies;
 import com.holdmyspot.cat.common.runner.ParentSandbox;
 import com.holdmyspot.cat.common.runner.RequestServer;
 import com.holdmyspot.cat.common.runner.RunnerRelay;
@@ -55,6 +56,10 @@ public final class RunnerRelayTest
 	 * The folder of the plugin that holds the launcher.
 	 */
 	private static final Path PLUGIN = Path.of("/plugin-a").toAbsolutePath();
+	/**
+	 * Finds the installed plugin, which is the plugin that holds the launcher.
+	 */
+	private static final InstalledCopies INSTALLED = () -> List.of(PLUGIN);
 	/**
 	 * The session's tool scope, which no launch may open.
 	 */
@@ -116,7 +121,7 @@ public final class RunnerRelayTest
 				commands.add(command);
 				requireThat(environment, "environment").isEqualTo(Map.of("PATH", "programs", OWN_MARKER, "1"));
 				return 7;
-			}, PLUGIN, NO_SCOPE, new StringReader(""), NO_PAUSE, new ByteArrayOutputStream(),
+			}, PLUGIN, INSTALLED, NO_SCOPE, new StringReader(""), NO_PAUSE, new ByteArrayOutputStream(),
 			new PrintWriter(new StringWriter()));
 
 		requireThat(status, "status").isEqualTo(7);
@@ -155,7 +160,7 @@ public final class RunnerRelayTest
 			}, (_, _) ->
 			{
 				throw new AssertionError("No runner starts");
-			}, PLUGIN, NO_SCOPE, new StringReader(""), NO_PAUSE, output, new PrintWriter(errors, true));
+			}, PLUGIN, INSTALLED, NO_SCOPE, new StringReader(""), NO_PAUSE, output, new PrintWriter(errors, true));
 
 		requireThat(status, "status").isEqualTo(2);
 		requireThat(errors.toString(), "errors").contains("harness-b-runner").contains(option).
@@ -183,7 +188,7 @@ public final class RunnerRelayTest
 			}, (_, _) ->
 			{
 				throw new AssertionError("No runner starts");
-			}, PLUGIN, NO_SCOPE, new StringReader(""), NO_PAUSE, output, new PrintWriter(errors, true));
+			}, PLUGIN, INSTALLED, NO_SCOPE, new StringReader(""), NO_PAUSE, output, new PrintWriter(errors, true));
 
 		requireThat(status, "status").isEqualTo(2);
 		requireThat(errors.toString(), "errors").contains("harness-b-runner").
@@ -215,7 +220,8 @@ public final class RunnerRelayTest
 				}, (_, _) ->
 				{
 					throw new AssertionError("No runner starts");
-				}, PLUGIN, scopes(project), new StringReader(""), NO_PAUSE, output, new PrintWriter(errors, true));
+				}, PLUGIN, INSTALLED, scopes(project), new StringReader(""), NO_PAUSE, output,
+				new PrintWriter(errors, true));
 
 			requireThat(status, "status").isEqualTo(2);
 			requireThat(errors.toString(), "errors").contains("No request server serves this session").
@@ -254,7 +260,7 @@ public final class RunnerRelayTest
 					}, (_, _) ->
 					{
 						throw new AssertionError("No runner starts");
-					}, PLUGIN, scopes(project),
+					}, PLUGIN, INSTALLED, scopes(project),
 					new StringReader("{\"type\":\"turn\",\"prompt\":\"task\"}\n{\"type\":\"complete\"}\n"),
 					() -> answer(requests), new ByteArrayOutputStream(), new PrintWriter(new StringWriter()));
 
@@ -324,7 +330,7 @@ public final class RunnerRelayTest
 			}, (_, _) ->
 			{
 				throw new AssertionError("No runner starts");
-			}, PLUGIN, NO_SCOPE, new StringReader(""), NO_PAUSE, output, new PrintWriter(errors, true));
+			}, PLUGIN, INSTALLED, NO_SCOPE, new StringReader(""), NO_PAUSE, output, new PrintWriter(errors, true));
 
 		requireThat(status, "status").isEqualTo(2);
 		requireThat(errors.toString(), "errors").contains("--policy-bound").contains("without --policy-bound");
@@ -351,7 +357,7 @@ public final class RunnerRelayTest
 			{
 				commands.add(command);
 				return 0;
-			}, PLUGIN, NO_SCOPE, new StringReader(""), NO_PAUSE, new ByteArrayOutputStream(),
+			}, PLUGIN, INSTALLED, NO_SCOPE, new StringReader(""), NO_PAUSE, new ByteArrayOutputStream(),
 			new PrintWriter(new StringWriter()));
 
 		requireThat(status, "status").isEqualTo(0);
@@ -379,7 +385,7 @@ public final class RunnerRelayTest
 			}, (_, _) ->
 			{
 				throw new AssertionError("No runner starts");
-			}, PLUGIN, NO_SCOPE, new StringReader(""), NO_PAUSE, output, new PrintWriter(errors, true));
+			}, PLUGIN, INSTALLED, NO_SCOPE, new StringReader(""), NO_PAUSE, output, new PrintWriter(errors, true));
 
 		requireThat(status, "status").isEqualTo(2);
 		requireThat(errors.toString(), "errors").contains("Run this command from a Claude Code or Codex session.");
@@ -405,7 +411,7 @@ public final class RunnerRelayTest
 			}, (_, _) ->
 			{
 				throw new AssertionError("No runner starts");
-			}, PLUGIN, NO_SCOPE, new StringReader(""), NO_PAUSE, output, new PrintWriter(errors, true));
+			}, PLUGIN, INSTALLED, NO_SCOPE, new StringReader(""), NO_PAUSE, output, new PrintWriter(errors, true));
 
 		requireThat(status, "status").isEqualTo(2);
 		requireThat(errors.toString(), "errors").contains("harness-b runs this command").
@@ -434,7 +440,7 @@ public final class RunnerRelayTest
 			}, (_, _) ->
 			{
 				throw new AssertionError("No runner starts");
-			}, PLUGIN, NO_SCOPE, new StringReader(""), NO_PAUSE, output, new PrintWriter(errors, true));
+			}, PLUGIN, INSTALLED, NO_SCOPE, new StringReader(""), NO_PAUSE, output, new PrintWriter(errors, true));
 
 		requireThat(status, "status").isEqualTo(2);
 		requireThat(errors.toString(), "errors").contains("harness-b-runner refuses to start a session").
@@ -467,7 +473,8 @@ public final class RunnerRelayTest
 				}, (_, _) ->
 				{
 					throw new AssertionError("No runner starts");
-				}, PLUGIN, NO_SCOPE, new StringReader("{\"type\":\"turn\",\"prompt\":\"task\"}\n{\"type\":\"complete\"}\n"),
+				}, PLUGIN, INSTALLED, NO_SCOPE,
+					new StringReader("{\"type\":\"turn\",\"prompt\":\"task\"}\n{\"type\":\"complete\"}\n"),
 				() -> answer(requests), new ByteArrayOutputStream(), new PrintWriter(new StringWriter()));
 
 			requireThat(status, "status").isEqualTo(0);

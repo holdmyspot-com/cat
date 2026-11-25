@@ -884,8 +884,8 @@ public final class ClaudeRunnerCliTest
 			int status = ClaudeRunnerCli.launch(new String[]{"--project", project.toString(), "--model", "sonnet",
 					"--effort", "low", "--results", home.resolve("results").toString()}, environment,
 				Yielding.waiting(), new StringReader(""), output, new PrintWriter(errors, true), () -> plugin,
-				() -> ToolScope.forSession(project, environment, SessionHarness.installed(), Yielding.waiting(),
-					GitProjects.IGNORING));
+				() -> List.of(plugin), () -> ToolScope.forSession(project, environment, SessionHarness.installed(),
+					Yielding.waiting(), GitProjects.IGNORING));
 
 			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
 			requireThat(errors.toString(), "errors").contains("No request server serves this session").
@@ -895,6 +895,103 @@ public final class ClaudeRunnerCliTest
 				"requestsExist").isFalse();
 			requireThat(Files.exists(home.resolve("results")), "resultsFolderExists").isFalse();
 		}
+	}
+
+	/**
+	 * Verifies that a launch from a copy of CAT that is not the installed plugin, with no request server serving the
+	 * session, is refused with a reason that names the installed plugin's request server, because the copy's own
+	 * request server has no sandbox exception and would run inside the session's sandbox.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void namesInstalledServerFromCopy() throws IOException
+	{
+		// Requirement: R-I11
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("runner-home-")).toRealPath();
+			Path plugin = home.resolve("copy");
+			Path installed = home.resolve("installed");
+
+			String errors = launchWithoutServer(home, plugin, List.of(installed));
+
+			requireThat(errors, "errors").contains("No request server serves this session").
+				contains("Only the installed plugin's launchers start sessions").
+				contains(installed.resolve("bin/request-server").toString()).
+				doesNotContain(plugin.resolve("bin/request-server").toString());
+		}
+	}
+
+	/**
+	 * Verifies that a launch from a copy of CAT, when no plugin is installed and no request server serves the
+	 * session, is refused with a reason that says to install CAT and names no request server of the copy.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void namesInstallCatFromCopy() throws IOException
+	{
+		// Requirement: R-I11
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("runner-home-")).toRealPath();
+			Path plugin = home.resolve("copy");
+
+			String errors = launchWithoutServer(home, plugin, List.of());
+
+			requireThat(errors, "errors").contains("No request server serves this session").contains("Install CAT").
+				doesNotContain(plugin.resolve("bin/request-server").toString());
+		}
+	}
+
+	/**
+	 * Verifies that the installed plugin's own launcher, with no request server serving the session, still names its
+	 * own request server, among other installed copies of CAT.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void namesOwnServerWhenInstalled() throws IOException
+	{
+		// Requirement: R-I11
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("runner-home-")).toRealPath();
+			Path plugin = home.resolve("plugin");
+
+			String errors = launchWithoutServer(home, plugin, List.of(home.resolve("older"), plugin));
+
+			requireThat(errors, "errors").contains("Start it in the background once").
+				contains(plugin.resolve("bin/request-server").toString()).
+				doesNotContain("Only the installed plugin's launchers");
+		}
+	}
+
+	/**
+	 * Runs a launch from a command that Claude Code runs outside a nested session, which no request server serves.
+	 *
+	 * @param home      the test's home directory
+	 * @param plugin    the folder of the plugin that holds the launcher
+	 * @param installed the folders of the installed plugin
+	 * @return what the launcher wrote to its standard error
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	private static String launchWithoutServer(Path home, Path plugin, List<Path> installed) throws IOException
+	{
+		Path project = Files.createDirectories(home.resolve("project/.cat")).getParent();
+		Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
+			"CLAUDECODE", "1", ClaudeCommandSession.SESSION_VARIABLE, SESSION_ID);
+		StringWriter errors = new StringWriter();
+
+		int status = ClaudeRunnerCli.launch(new String[]{"--project", project.toString(), "--model", "sonnet",
+				"--effort", "low", "--results", home.resolve("results").toString()}, environment,
+			Yielding.waiting(), new StringReader(""), new ByteArrayOutputStream(), new PrintWriter(errors, true),
+			() -> plugin, () -> installed, () -> ToolScope.forSession(project, environment,
+				SessionHarness.installed(), Yielding.waiting(), GitProjects.IGNORING));
+
+		requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+		return errors.toString();
 	}
 
 	/**
@@ -940,7 +1037,7 @@ public final class ClaudeRunnerCliTest
 				output, new PrintWriter(errors, true), () ->
 				{
 					throw new AssertionError("No plugin is found");
-				}, () ->
+				}, List::of, () ->
 				{
 					throw new AssertionError("No session's tool scope is opened");
 				});
@@ -1625,7 +1722,7 @@ public final class ClaudeRunnerCliTest
 		PrintWriter writer = new PrintWriter(errors, true);
 		return HarnessRunnerOptions.refusingInvalidArguments(() -> ClaudeRunnerCli.launch(args.toArray(String[]::new),
 			environment, Yielding.waiting(), new StringReader(""), new ByteArrayOutputStream(), writer,
-			() -> root.resolve("plugin"), () ->
+			() -> root.resolve("plugin"), List::of, () ->
 			{
 				throw new AssertionError("No session's tool scope is opened");
 			}), writer);

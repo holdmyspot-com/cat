@@ -6,6 +6,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.codex.CodexSessionHarness;
+import com.holdmyspot.cat.codex.layout.CodexInstallation;
+import com.holdmyspot.cat.codex.optimizer.InstalledPlugins;
 import com.holdmyspot.cat.codex.optimizer.CodexHookProcess;
 import com.holdmyspot.cat.codex.secrets.CodexRunnerCliSecrets;
 import com.holdmyspot.cat.common.CommandLineArguments;
@@ -31,6 +33,7 @@ import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
 import com.holdmyspot.cat.common.runner.HookComparisonLaunch;
 import com.holdmyspot.cat.common.runner.HookComparisonRequest;
 import com.holdmyspot.cat.common.runner.HookComparisonResult;
+import com.holdmyspot.cat.common.runner.InstalledCopies;
 import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
 import com.holdmyspot.cat.common.runner.LaunchRoute;
 import com.holdmyspot.cat.common.runner.MainHarnessRunnerScope;
@@ -278,7 +281,8 @@ public final class CodexRunnerCli
 	{
 		requireThat(environment, "environment").isNotNull();
 		return launch(args, environment, waiting, input, output, errors,
-			() -> PluginDirectory.of(CodexRunnerCli.class), () -> toolScope(Path.of(""), environment, waiting));
+			() -> PluginDirectory.of(CodexRunnerCli.class), installedCopies(environment),
+			() -> toolScope(Path.of(""), environment, waiting));
 	}
 
 	/**
@@ -292,6 +296,7 @@ public final class CodexRunnerCli
 	 * @param output      receives the session's records when the launch names no {@code --output}
 	 * @param errors      receives why the launch was refused or did not complete
 	 * @param plugin      returns the absolute folder of the plugin that holds the launcher
+	 * @param installed   finds the folders of the installed Codex plugin
 	 * @param scopes      opens the tool scope of the session that runs the command, which gives its CAT session
 	 *                    directory
 	 * @return the launch's exit status: {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} if it is refused
@@ -301,10 +306,11 @@ public final class CodexRunnerCli
 	 *                                   forwarded or bounded, or runner startup, the harness, or bridge I/O fails
 	 */
 	public static int launch(String[] args, Map<String, String> environment, Waiting waiting, Reader input,
-		OutputStream output, PrintWriter errors, Supplier<Path> plugin, RequestServer.SessionScope scopes)
-		throws IOException
+		OutputStream output, PrintWriter errors, Supplier<Path> plugin, InstalledCopies installed,
+		RequestServer.SessionScope scopes) throws IOException
 	{
 		requireThat(plugin, "plugin").isNotNull();
+		requireThat(installed, "installed").isNotNull();
 		requireThat(scopes, "scopes").isNotNull();
 		requireThat(args, "args").isNotNull();
 		requireThat(environment, "environment").isNotNull();
@@ -324,10 +330,24 @@ public final class CodexRunnerCli
 				errors.println(reason);
 				yield HarnessRunnerOptions.REFUSED_LAUNCH_STATUS;
 			}
-			case LaunchRoute.Served _ -> RequestServer.forward(HARNESS_ID, options, plugin.get(), scopes, input,
-				waiting.every(REQUEST_POLL), output, errors);
+			case LaunchRoute.Served _ -> RequestServer.forward(HARNESS_ID, options, plugin.get(), installed,
+				scopes, input, waiting.every(REQUEST_POLL), output, errors);
 			case LaunchRoute.Bounded _ -> serveInProcess(args, environment, waiting, input, output, errors);
 		};
+	}
+
+	/**
+	 * Returns what finds the installed Codex plugin through Codex's configuration, in the home that Codex uses for the
+	 * environment.
+	 *
+	 * @param environment the launcher's environment
+	 * @return what finds the installed copies
+	 * @throws NullPointerException if {@code environment} is null
+	 */
+	public static InstalledCopies installedCopies(Map<String, String> environment)
+	{
+		requireThat(environment, "environment").isNotNull();
+		return () -> InstalledPlugins.of(CodexInstallation.resolveHome(environment), "cat@cat");
 	}
 
 	/**

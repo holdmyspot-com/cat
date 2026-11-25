@@ -88,6 +88,7 @@ public final class ClaudeRequestServerCli
 		{
 			RequestServer.Host host = new RequestServer.Host(HARNESS_ID, ClaudeRunnerCli.MARKERS.running(environment),
 				refusal(Platform.current(), environment), plugin,
+				ClaudeRunnerCli.installedCopies(environment),
 				() -> ClaudeServedSession.sandboxed(RequestServer.program(plugin), environment),
 				ClaudeServedSession.sessions(environment),
 				directory -> ToolScope.forSession(directory, environment, SessionHarness.installed(), scope.waiting()),

@@ -63,6 +63,7 @@ public final class CodexRequestServerCli
 		{
 			RequestServer.Host host = new RequestServer.Host(HARNESS_ID, CodexRunnerCli.MARKERS.running(environment),
 				CodexSessionSandbox.refusal(Platform.current()), plugin,
+				CodexRunnerCli.installedCopies(environment),
 				() -> CodexServedSession.sandboxed(RequestServer.program(plugin), environment),
 				CodexServedSession.sessions(environment),
 				directory -> CodexRunnerCli.toolScope(directory, environment, scope.waiting()),

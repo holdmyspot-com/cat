@@ -5,6 +5,8 @@ import static com.holdmyspot.cat.claude.ClaudePluginInfo.HARNESS_ID;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.claude.ClaudeConfiguration;
+import com.holdmyspot.cat.claude.optimizer.InstalledPlugins;
 import com.holdmyspot.cat.common.CommandLineArguments;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.JvmScope;
@@ -23,6 +25,7 @@ import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
+import com.holdmyspot.cat.common.runner.InstalledCopies;
 import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
 import com.holdmyspot.cat.common.runner.LaunchRoute;
 import com.holdmyspot.cat.common.runner.MainHarnessRunnerScope;
@@ -230,8 +233,8 @@ public final class ClaudeRunnerCli
 	{
 		requireThat(environment, "environment").isNotNull();
 		return launch(args, environment, waiting, input, output, errors,
-			() -> PluginDirectory.of(ClaudeRunnerCli.class), () -> ToolScope.forSession(Path.of(""), environment,
-				SessionHarness.installed(), waiting));
+			() -> PluginDirectory.of(ClaudeRunnerCli.class), installedCopies(environment),
+			() -> ToolScope.forSession(Path.of(""), environment, SessionHarness.installed(), waiting));
 	}
 
 	/**
@@ -245,6 +248,7 @@ public final class ClaudeRunnerCli
 	 * @param output      receives the session's records when the launch names no {@code --output}
 	 * @param errors      receives why the launch was refused or did not complete
 	 * @param plugin      returns the absolute folder of the plugin that holds the launcher
+	 * @param installed   finds the folders of the installed Claude Code plugin
 	 * @param scopes      opens the tool scope of the session that runs the command, which gives its CAT session
 	 *                    directory
 	 * @return the launch's exit status: {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} if it is refused
@@ -254,10 +258,11 @@ public final class ClaudeRunnerCli
 	 *                                   forwarded or bounded, or runner startup, the harness, or bridge I/O fails
 	 */
 	public static int launch(String[] args, Map<String, String> environment, Waiting waiting, Reader input,
-		OutputStream output, PrintWriter errors, Supplier<Path> plugin, RequestServer.SessionScope scopes)
-		throws IOException
+		OutputStream output, PrintWriter errors, Supplier<Path> plugin, InstalledCopies installed,
+		RequestServer.SessionScope scopes) throws IOException
 	{
 		requireThat(plugin, "plugin").isNotNull();
+		requireThat(installed, "installed").isNotNull();
 		requireThat(scopes, "scopes").isNotNull();
 		requireThat(args, "args").isNotNull();
 		requireThat(environment, "environment").isNotNull();
@@ -274,10 +279,29 @@ public final class ClaudeRunnerCli
 				errors.println(reason);
 				yield HarnessRunnerOptions.REFUSED_LAUNCH_STATUS;
 			}
-			case LaunchRoute.Served _ -> RequestServer.forward(HARNESS_ID, args, plugin.get(), scopes, input,
-				waiting.every(REQUEST_POLL), output, errors);
+			case LaunchRoute.Served _ -> RequestServer.forward(HARNESS_ID, args, plugin.get(), installed,
+				scopes, input, waiting.every(REQUEST_POLL), output, errors);
 			case LaunchRoute.Bounded _ -> serveInProcess(args, plugin.get(), environment, waiting, input, output,
 				errors);
+		};
+	}
+
+	/**
+	 * Returns what finds the installed Claude Code plugin through Claude Code's install records, in the configuration
+	 * directory that Claude Code uses for the environment.
+	 *
+	 * @param environment the launcher's environment
+	 * @return what finds the installed copies
+	 * @throws NullPointerException if {@code environment} is null
+	 */
+	public static InstalledCopies installedCopies(Map<String, String> environment)
+	{
+		requireThat(environment, "environment").isNotNull();
+		return () ->
+		{
+			Path configuration = ClaudeConfiguration.resolveDirectory(Platform.current().homeDirectory(environment),
+				environment.get("CLAUDE_CONFIG_DIR"));
+			return InstalledPlugins.of(configuration, "cat@cat", JsonMapper.builder().build());
 		};
 	}
 
