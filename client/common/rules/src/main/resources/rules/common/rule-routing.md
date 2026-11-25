@@ -23,6 +23,8 @@ agents: ["main", "subagents"]
 - Keep always loaded only the routes whose decision can arise before any decision-area trigger is recognizable, and
 	reach every other focused rule through one lazily loaded area index whose trigger covers the trigger of every route
 	in that index.
+- Route a command that prints another process's command line, and a placement of a credential file's copy, to its
+	credential rule before the agent runs the command or makes the copy.
 
 ## Guidance
 
@@ -185,6 +187,12 @@ log, identifier, or commit message, including a timestamp that a tool, log, API,
 When starting, waiting for, or resuming an external command that can outlast one tool result, a harness, or a tool
 session, or when defining or changing a resumable workflow's controller or its status or recovery operation, lazy load
 `../include/common/execution-lifecycle.md`.
+
+Before running a command that prints another process's command line, such as `ps -ef`, `ps -o args`, `pgrep -a`, or a
+read of `/proc/<pid>/cmdline`, lazy load `../include/common/process-command-lines.md`.
+
+Before copying, moving, linking, or writing a credential file, such as a token, a key, `auth.json`, or
+`.credentials.json`, to another location, lazy load `../include/common/credential-copies.md`.
 
 When writing a shell command that may need approval or a sandbox exception, or that an approval reviewer agent may
 judge before it runs, such as Claude Code's auto mode classifier or Codex's automatic approval reviewer, lazy load

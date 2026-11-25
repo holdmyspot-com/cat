@@ -791,6 +791,48 @@ public final class BundledRuleAudienceTest
 	}
 
 	/**
+	 * Verifies an agent of either harness, main or subagent, can reach the two credential-hygiene rules from the rule
+	 * routing that it receives at startup, without receiving either rule itself: the rule on printing another process's
+	 * command line has the agent replace the password of every URL in it with {@code ***} and prefer a listing of
+	 * process IDs and command names, and the rule on credential files has the agent keep a copy of one where no session,
+	 * results folder, trial project or commit can reach it and prefer a helper that reads the credential at runtime.
+	 *
+	 * @throws IOException        if the bundled rules cannot be copied, routed, or read
+	 * @throws URISyntaxException if the class path returns a malformed resource location
+	 */
+	@Test
+	public void credentialHygieneRulesAreRouted() throws IOException, URISyntaxException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-bundled-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-bundled-rules-project-"));
+			BundledRules.copy(plugin.resolve("rules"));
+			RuleArtifactRouter.route(plugin, scope.yaml());
+			Path include = plugin.resolve("rules/include/common");
+
+			String commandLines = oneLine(Files.readString(include.resolve("process-command-lines.md")));
+			requireThat(commandLines, "commandLines").startsWith("# Process Command Lines ").
+				contains("`***@`").contains("`ps -o pid,comm`").contains("`/proc/<pid>/cmdline`");
+			String credentialCopies = oneLine(Files.readString(include.resolve("credential-copies.md")));
+			requireThat(credentialCopies, "credentialCopies").startsWith("# Credential Copies ").
+				contains("`auth.json`").contains("`.credentials.json`").contains("reads the credential at runtime");
+
+			ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml());
+			for (String harness : List.of("claude", "codex"))
+			{
+				for (String context : List.of(loader.loadForMainAgent(plugin, project, harness),
+					loader.loadForSubagent(plugin, project, harness, "cat:reviewer")))
+				{
+					requireThat(context, harness + "Context").contains("include/common/process-command-lines.md`").
+						contains("include/common/credential-copies.md`").
+						doesNotContain("# Process Command Lines").doesNotContain("# Credential Copies");
+				}
+			}
+		}
+	}
+
+	/**
 	 * Joins the lines of rendered rules, so that a sentence matches wherever the rule wraps it.
 	 *
 	 * @param rules the rendered rules
