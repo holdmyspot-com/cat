@@ -303,6 +303,106 @@ public final class CodexConnectionConfigurationTest
 	}
 
 	/**
+	 * Verifies that every path that the runner profile of a fresh session makes read-only exists before Codex starts.
+	 * Codex keeps a writable root's {@code .codex} folder read-only, so its sandbox cannot create a placeholder for a
+	 * missing read entry there.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void readEntriesExistInFreshSessionHome() throws IOException
+	{
+		// Requirement: R-I15
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-read-entries-")).toRealPath();
+			Path session = Files.createDirectories(root.resolve("session"));
+			Files.createDirectory(session.resolve("project"));
+			Path home = Files.createDirectory(session.resolve("home"));
+			Path codexFolder = Files.createDirectory(home.resolve(CodexAuthentication.FOLDER));
+			Path destination = codexFolder.resolve("config.toml");
+
+			copyAsRunnerStarts(root.resolve("missing.toml"), destination, session, null);
+
+			List<String> missing = missingReadEntries(destination);
+			requireThat(missing, "missing").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that every path that the runner profile makes read-only exists before Codex starts, after a resume
+	 * moves the Codex files of a session that an earlier runner started, without plugins, into the home's
+	 * {@code .codex} folder.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void readEntriesExistAfterEarlierLayoutMove() throws IOException
+	{
+		// Requirement: R-I15
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-read-entries-")).toRealPath();
+			Path session = Files.createDirectories(root.resolve("session"));
+			Files.createDirectory(session.resolve("project"));
+			Path home = Files.createDirectory(session.resolve("home"));
+			Files.writeString(home.resolve("config.toml"), "model = \"earlier-model\"\n");
+			Files.writeString(home.resolve("hooks.json"), "{\"hooks\":{}}\n");
+			CodexRunner.moveEarlierLayout(home);
+			Path codexFolder = home.resolve(CodexAuthentication.FOLDER);
+			Path retained = codexFolder.resolve("config.toml");
+			Path staged = Files.createTempFile(codexFolder, ".config-", ".toml");
+
+			copyAsRunnerStarts(root.resolve("missing.toml"), staged, session, retained);
+
+			List<String> missing = missingReadEntries(staged);
+			requireThat(missing, "missing").isEmpty();
+		}
+	}
+
+	/**
+	 * Writes a session's configuration as the runner does when it starts the session, with the session's Codex
+	 * folder in its home's {@code .codex} folder.
+	 *
+	 * @param source      the source home's configuration
+	 * @param destination the session's configuration, inside the session's Codex folder
+	 * @param session     the session folder, which holds the {@code home} and {@code project} folders
+	 * @param retained    the configuration that a resumed session keeps its registrations from, or {@code null}
+	 * @throws IOException if the configuration cannot be written
+	 */
+	private static void copyAsRunnerStarts(Path source, Path destination, Path session, Path retained)
+		throws IOException
+	{
+		Path home = session.resolve("home");
+		ChildPolicy policy = ChildPolicy.intersect(ParentPolicy.UNSANDBOXED, new ChildNeeds(session, List.of(),
+			List.of(), Set.of()));
+		CodexConnectionConfiguration.copy(source, destination, home, "", session.resolve("project"),
+			HarnessDependencyCaches.NONE, Files.createDirectories(home.resolve("tmp")), 0, null, Platform.LINUX_X64,
+			CodexParentMultiAgentState.NONE, policy, ExtraPermissions.NONE, retained);
+	}
+
+	/**
+	 * Returns the read-only paths of a configuration's runner profile that do not exist.
+	 *
+	 * @param configuration the session's configuration
+	 * @return the paths
+	 * @throws IOException if the configuration cannot be read
+	 */
+	private static List<String> missingReadEntries(Path configuration) throws IOException
+	{
+		JsonNode filesystem = TomlMapper.builder().build().readTree(Files.readString(configuration)).
+			path("permissions").path("cat-runner").path("filesystem");
+		requireThat(filesystem.isEmpty(), "noRunnerProfile").isFalse();
+		List<String> missing = new ArrayList<>();
+		for (Map.Entry<String, JsonNode> entry : filesystem.properties())
+		{
+			if (entry.getValue().asString().equals("read") && !Files.exists(Path.of(entry.getKey())))
+				missing.add(entry.getKey());
+		}
+		return missing;
+	}
+
+	/**
 	 * Returns parent configurations and the instruction values that an isolated session must receive. Null expected
 	 * values mean the corresponding setting is absent.
 	 *

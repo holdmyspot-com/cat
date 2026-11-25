@@ -1074,21 +1074,25 @@ public final class CodexConnectionConfiguration
 	 * <p>
 	 * The sandbox puts an empty regular file at a read entry's path when nothing exists there, and a configuration
 	 * reader rejects an empty file. The method therefore first writes a {@code hooks.json} that defines no hooks when
-	 * the home has none, and leaves an existing one as it is.
+	 * the home has none, and leaves an existing one as it is. Codex also keeps a writable root's {@code .codex} folder
+	 * read-only, so its sandbox cannot create that placeholder inside the session's Codex folder at all and refuses
+	 * to start the thread. The method therefore also creates an empty plugin folder when the session installs no
+	 * plugins.
 	 *
 	 * @param filesystem   the runner profile's filesystem entries, by TOML-escaped path
 	 * @param isolatedHome the session's Codex folder, which holds its configuration, hooks and plugins
-	 * @throws IOException if the hooks file cannot be written
+	 * @throws IOException if the hooks file or the plugin folder cannot be created
 	 */
 	private static void addIsolatedHomeProtections(Map<String, String> filesystem, Path isolatedHome)
 		throws IOException
 	{
+		Files.createDirectories(isolatedHome);
 		Path hooks = isolatedHome.resolve("hooks.json");
 		if (!Files.exists(hooks, LinkOption.NOFOLLOW_LINKS))
-		{
-			Files.createDirectories(isolatedHome);
 			Files.writeString(hooks, "{\"hooks\":{}}" + System.lineSeparator());
-		}
+		Path plugins = isolatedHome.resolve("plugins");
+		if (!Files.exists(plugins, LinkOption.NOFOLLOW_LINKS))
+			Files.createDirectory(plugins);
 		for (String trusted : List.of("config.toml", "hooks.json", "plugins"))
 			filesystem.put(toml(isolatedHome.resolve(trusted)), "read");
 	}
