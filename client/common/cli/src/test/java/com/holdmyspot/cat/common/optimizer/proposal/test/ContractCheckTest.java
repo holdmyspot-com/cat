@@ -3,7 +3,9 @@ package com.holdmyspot.cat.common.optimizer.proposal.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.optimizer.cli.Commands;
 import com.holdmyspot.cat.common.optimizer.contract.InvalidProposalException;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
 import com.holdmyspot.cat.common.optimizer.execution.CheckProgram;
@@ -155,18 +157,7 @@ public final class ContractCheckTest
 		// Requirement: R-C27
 		// Requirement: R-L15
 		Path project = directories.add(Files.createTempDirectory("contract-check-program-"));
-		Path contextFile = ContractToolSessions.write(json, contractAuthor, PROFILES,
-			ContractToolSessions.derivation(json, proposal -> ((ObjectNode) proposal.at("/tests/1/assertions/0")).
-				put("tool", "check-program checks/Check.java").put("on_tool_failure", "fail")), project);
-		Path test = project.resolve(DraftDirectory.name(ContractToolSessions.PROMPT_SYSTEM)).
-			resolve(".cat/tests/CLAUDE/plain_list");
-		Files.createDirectories(test.resolve("checks"));
-		Files.writeString(test.resolve("checks/Check.java"), "class Check\n{\n}\n", UTF_8);
-		Path examples = test.resolve("examples/keeps_requested_tone");
-		Files.writeString(Files.createDirectories(examples.resolve("pass_item_kind")).resolve("replies.json"),
-			"[[\"A passing reply.\"]]", UTF_8);
-		Files.writeString(Files.createDirectories(examples.resolve("fail_omits_answer")).resolve("replies.json"),
-			"[[\"A failing reply.\"]]", UTF_8);
+		Path contextFile = writeCheckProgramDraft(project);
 		ScriptedCheckPrograms checkPrograms = new ScriptedCheckPrograms(Map.of(
 			"A passing reply.", ScriptedCheckPrograms.agreeing(CheckProgram.Outcome.FAIL, "the passing example"),
 			"A failing reply.", ScriptedCheckPrograms.agreeing(CheckProgram.Outcome.FAIL, "the failing example")));
@@ -198,6 +189,61 @@ public final class ContractCheckTest
 		requireThat(report.exitCode(), "exitCode").isEqualTo(1);
 		requireThat(checkPrograms.calls().stream().map(ScriptedCheckPrograms.Call::runs).toList(), "runs").
 			isEqualTo(List.of(2, 2, 2, 2));
+	}
+
+	/**
+	 * Writes a contract author session whose draft gives the first assertion of {@code plain_list} a check program,
+	 * with a passing example whose first reply is {@code A passing reply.} and a failing example whose first reply is
+	 * {@code A failing reply.}.
+	 *
+	 * @param project the session's project directory
+	 * @return the session's context file
+	 * @throws IOException if a file cannot be written
+	 */
+	private Path writeCheckProgramDraft(Path project) throws IOException
+	{
+		Path contextFile = ContractToolSessions.write(json, contractAuthor, PROFILES,
+			ContractToolSessions.derivation(json, proposal -> ((ObjectNode) proposal.at("/tests/1/assertions/0")).
+				put("tool", "check-program checks/Check.java").put("on_tool_failure", "fail")), project);
+		Path test = project.resolve(DraftDirectory.name(ContractToolSessions.PROMPT_SYSTEM)).
+			resolve(".cat/tests/CLAUDE/plain_list");
+		Files.createDirectories(test.resolve("checks"));
+		Files.writeString(test.resolve("checks/Check.java"), "class Check\n{\n}\n", UTF_8);
+		Path examples = test.resolve("examples/keeps_requested_tone");
+		Files.writeString(Files.createDirectories(examples.resolve("pass_item_kind")).resolve("replies.json"),
+			"[[\"A passing reply.\"]]", UTF_8);
+		Files.writeString(Files.createDirectories(examples.resolve("fail_omits_answer")).resolve("replies.json"),
+			"[[\"A failing reply.\"]]", UTF_8);
+		return contextFile;
+	}
+
+	/**
+	 * Verifies that {@code contract check}, run where Bubblewrap cannot be found, refuses each example of a check
+	 * program and names the missing sandbox, instead of accepting the examples unchecked.
+	 *
+	 * @throws IOException if a file cannot be read or written
+	 */
+	@Test
+	public void refusesCheckProgramWithoutSandbox() throws IOException
+	{
+		// Requirement: R-C27
+		// Requirement: R-L15
+		Path project = directories.add(Files.createTempDirectory("contract-check-sandbox-"));
+		Path contextFile = writeCheckProgramDraft(project);
+
+		Report report = ContractToolSessions.check(json, contextFile,
+			Commands.contractCheckPrograms(json, Platform.LINUX_X64, Map.of()));
+
+		String missing = ": Check programs require Bubblewrap (bwrap) at an absolute location on PATH.";
+		StringJoiner expected = new StringJoiner(System.lineSeparator(), "", System.lineSeparator());
+		expected.add("`contract check` found 2 problem(s):");
+		for (String example : List.of("fail_omits_answer", "pass_item_kind"))
+		{
+			expected.add("- Prompt test `plain_list`, assertion `keeps_requested_tone`, example `" + example + "`" +
+				missing);
+		}
+		requireThat(report.output(), "output").isEqualTo(expected.toString());
+		requireThat(report.exitCode(), "exitCode").isEqualTo(1);
 	}
 
 	/**
