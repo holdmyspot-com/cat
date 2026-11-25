@@ -429,6 +429,43 @@ could not reach its model either. CAT then starts no session for it. On Linux, `
 (`bwrap`) on `PATH` to start a session that reads earlier sessions' results, such as a prompt optimizer's judge: it
 lets that session read those results while it hides the rest of the project.
 
+### A Claude session whose sandbox does not start
+
+Claude Code confines a session's commands in a sandbox on Linux, WSL2 included, and on macOS. When that sandbox cannot
+start, Claude Code reports the failure as the result of the session's first Bash call, and then runs every later command
+without the sandbox, even though CAT's settings forbid unsandboxed commands. CAT therefore checks twice, and each check
+runs once per session, never once per command.
+
+**Before the session starts**, `claude-runner` refuses the launch with status 2 when a known cause would stop the
+sandbox. It creates no session and makes no model call, and its message names the check, the value that it found and the
+fix. On Linux it checks that:
+
+- the temporary folder of the Claude process, which is `/tmp` because CAT passes the process no `TMPDIR`, or a `TMPDIR`
+	that a project or managed settings file's `env` sets, has a path of at most 72 bytes, because the sandbox puts
+	sockets in it and a Unix socket's path has a length limit;
+- `bwrap`, or the file that a settings file's `sandbox.bwrapPath` names, is executable, and `socat` is in a directory of
+	the Claude process's `PATH`;
+- `bwrap --unshare-user --dev-bind / / true` succeeds, so that unprivileged user namespaces work; and
+- the temporary folder is a directory in which CAT can create and remove a file.
+
+On macOS it checks that `/usr/bin/sandbox-exec` exists and runs `/usr/bin/true` under `(version 1)(allow default)`, and
+that the temporary folder's path has at most 68 bytes.
+
+**While the session runs**, the runner reads the result of the session's first Bash call. When it is Claude Code's report
+that its sandbox failed to start (`Sandbox is enabled but failed to initialize: <reason>. Sandboxing is disabled for the
+rest of this session; restart to retry.`, whatever the reason), the runner stops the Claude process at once and sends it
+no further input. The turn ends as an infrastructure failure, never as a pass or a fail outcome. Its reason quotes the
+report and says whether a Bash result followed it, which shows that a command ran after the sandbox was disabled. This
+covers causes that the checks before the start cannot see, such as a sandbox that does not finish starting in time on a
+slow machine. Fix the cause and start a new session.
+
+**Known limitation.** The runner can read the report only once Claude Code has printed it. Bash calls that the model
+issued in the same message as the call that receives the report could run outside the sandbox, with your permissions,
+before the runner stops the session. This window opens only when the sandbox fails for a cause that the checks before the
+start did not catch. In a measured run with the stop, none of the other calls ran: the stream ended after the report, and
+no file outside the project was written. Without the stop, two other calls of the same message ran unsandboxed. Treat the
+measurement as an observation, not a guarantee.
+
 ### Git inside a Codex runner session
 
 The Codex runner gives each session an independent repository in its copied project. The session can stage, commit,
