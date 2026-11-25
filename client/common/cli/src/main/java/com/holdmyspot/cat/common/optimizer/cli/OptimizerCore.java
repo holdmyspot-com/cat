@@ -1237,8 +1237,16 @@ public final class OptimizerCore implements Core
 	{
 		switch (removal)
 		{
-			case Cleanup.Removal.Removed _ -> notices.add("Removed the campaign's files from " +
-				SessionDirectory.ROOT + "/.");
+			case Cleanup.Removal.Removed removed ->
+			{
+				notices.add("Removed the campaign's files from " + SessionDirectory.ROOT + "/.");
+				for (Path slot : removed.stuckSlots())
+				{
+					String stuck = StuckSlots.notice(slot);
+					if (!notices.contains(stuck))
+						notices.add(stuck);
+				}
+			}
 			case Cleanup.Removal.Failed failed -> notices.add(failed.warning());
 			case Cleanup.Removal.Kept _, Cleanup.Removal.Deferred _ ->
 			{

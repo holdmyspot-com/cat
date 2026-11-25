@@ -67,13 +67,24 @@ public final class StuckSlots
 		for (String line : read(lockFile))
 		{
 			if (Files.exists(Path.of(line), LinkOption.NOFOLLOW_LINKS))
-			{
-				notices.add("CAT left the session slot " + line + " untouched, because the launch that it held never " +
-					"recorded whether a harness process started and the process that launched it is gone. It ran " +
-					"that attempt again in another slot. Remove the slot's directory by hand.");
-			}
+				notices.add(notice(Path.of(line)));
 		}
 		return notices;
+	}
+
+	/**
+	 * Returns the notice for a slot that CAT left untouched.
+	 *
+	 * @param slot the slot's path
+	 * @return the notice, which names the slot and says that the user removes it by hand
+	 * @throws NullPointerException if {@code slot} is null
+	 */
+	public static String notice(Path slot)
+	{
+		requireThat(slot, "slot").isNotNull();
+		return "CAT left the session slot " + slot + " untouched, because the launch that it held never " +
+			"recorded whether a harness process started and the process that launched it is gone. It ran " +
+			"that attempt again in another slot. Remove the slot's directory by hand.";
 	}
 
 	/**

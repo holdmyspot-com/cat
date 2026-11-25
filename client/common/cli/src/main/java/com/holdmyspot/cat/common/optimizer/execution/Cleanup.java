@@ -195,15 +195,16 @@ public final class Cleanup
 			return new Removal.Failed("Could not record the removal of the files of campaign " + id + ": " +
 				cause(id, e) + ". The files stay in " + SessionDirectory.ROOT + "/.");
 		}
+		List<Path> stuckSlots = new ArrayList<>();
 		try
 		{
-			if (remove(id))
-				return new Removal.Removed();
+			if (remove(id, stuckSlots))
+				return new Removal.Removed(stuckSlots);
 			return new Removal.Deferred();
 		}
 		catch (IOException e)
 		{
-			return new Removal.Failed(retryWarning(id, e));
+			return new Removal.Failed(withStuckSlots(retryWarning(id, e), stuckSlots));
 		}
 	}
 
@@ -218,13 +219,18 @@ public final class Cleanup
 		List<String> warnings = new ArrayList<>();
 		for (String id : FileCampaignStore.removals(campaigns))
 		{
+			List<Path> stuckSlots = new ArrayList<>();
 			try
 			{
-				remove(id);
+				if (remove(id, stuckSlots))
+				{
+					for (Path slot : stuckSlots)
+						warnings.add(StuckSlots.notice(slot));
+				}
 			}
 			catch (IOException e)
 			{
-				warnings.add(retryWarning(id, e));
+				warnings.add(withStuckSlots(retryWarning(id, e), stuckSlots));
 			}
 		}
 		try
@@ -237,6 +243,21 @@ public final class Cleanup
 				". The next command retries the deletion.");
 		}
 		return warnings;
+	}
+
+	/**
+	 * Appends the notices of the stuck slots that a removal found to its warning.
+	 *
+	 * @param warning the warning
+	 * @param stuckSlots the stuck slots that the removal found before it failed
+	 * @return the warning, followed by one notice line for each slot
+	 */
+	private static String withStuckSlots(String warning, List<Path> stuckSlots)
+	{
+		StringBuilder result = new StringBuilder(warning);
+		for (Path slot : stuckSlots)
+			result.append('\n').append(StuckSlots.notice(slot));
+		return result.toString();
 	}
 
 	/**
@@ -301,10 +322,11 @@ public final class Cleanup
 	 * Runs every removal step of a campaign whose removal is recorded, under the campaign's lock.
 	 *
 	 * @param id the campaign's identifier
+	 * @param stuckSlots receives the slots that the removal left untouched for the user
 	 * @return {@code false} if another process holds the campaign's lock, so a later command removes the files
 	 * @throws IOException if a step fails
 	 */
-	private boolean remove(String id) throws IOException
+	private boolean remove(String id, List<Path> stuckSlots) throws IOException
 	{
 		Path directory = FileCampaignStore.directory(campaigns, id);
 		Optional<CampaignLock> lock = CampaignLock.tryAcquire(fileLocks, FileCampaignStore.lockFile(campaigns, id));
@@ -313,7 +335,7 @@ public final class Cleanup
 		// Deleting the open lock file releases nothing until the lock closes
 		try (CampaignLock _ = lock.get())
 		{
-			discardRetainedTrials(id);
+			discardRetainedTrials(id, stuckSlots);
 			beforeStep.accept(Step.WORKTREE);
 			forks.remove(base, directory);
 
@@ -336,9 +358,10 @@ public final class Cleanup
 	 * Resolves each persisted request while the campaign lock prevents new trial publication.
 	 *
 	 * @param id the campaign's identifier
+	 * @param stuckSlots receives the slots that stay as they are for the user to remove
 	 * @throws IOException if retained trial state is active, ambiguous, or cannot be discarded
 	 */
-	private void discardRetainedTrials(String id) throws IOException
+	private void discardRetainedTrials(String id, List<Path> stuckSlots) throws IOException
 	{
 		Set<UUID> requestIds = new LinkedHashSet<>();
 		for (TrialRecovery recovery : new FileCampaignStore(campaigns, json, replacer).listTrialRecoveries(id))
@@ -355,10 +378,15 @@ public final class Cleanup
 				throw new IOException("The retained trial response names a different request");
 			if (status.status() == RetainedTrialResponse.Status.ABSENT)
 				continue;
-			// A stuck slot stays as it is for the user to remove, and its launch cannot start again. The driver that found
-			// it recorded it for the commands that report the campaign.
+			// A stuck slot stays as it is for the user to remove, and its launch cannot start again. The command that
+			// removes the campaign's files names it, because the files that record it are deleted.
 			if (status.status() == RetainedTrialResponse.Status.STUCK)
+			{
+				Path slot = status.stuckSlot().orElseThrow();
+				if (!stuckSlots.contains(slot))
+					stuckSlots.add(slot);
 				continue;
+			}
 			if (status.status() != RetainedTrialResponse.Status.READY &&
 				status.status() != RetainedTrialResponse.Status.UNSAFE)
 				throw new IOException("The retained trial request is still active or cannot be safely discarded");
@@ -460,9 +488,29 @@ public final class Cleanup
 
 		/**
 		 * The campaign's files are removed.
+		 *
+		 * @param stuckSlots the session slots that the removal left untouched, which the user removes by hand
 		 */
-		record Removed() implements Removal
+		record Removed(List<Path> stuckSlots) implements Removal
 		{
+			/**
+			 * Creates a removal.
+			 *
+			 * @param stuckSlots the session slots that the removal left untouched
+			 * @throws NullPointerException if {@code stuckSlots} is null
+			 */
+			public Removed
+			{
+				stuckSlots = List.copyOf(stuckSlots);
+			}
+
+			/**
+			 * Creates a removal that left no slot untouched.
+			 */
+			public Removed()
+			{
+				this(List.of());
+			}
 		}
 
 		/**

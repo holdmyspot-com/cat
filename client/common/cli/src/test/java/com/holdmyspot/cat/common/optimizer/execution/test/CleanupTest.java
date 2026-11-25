@@ -22,6 +22,7 @@ import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult.Conflicted;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult.Delivered;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult;
 import com.holdmyspot.cat.common.optimizer.execution.Cleanup;
+import com.holdmyspot.cat.common.optimizer.execution.StuckSlots;
 import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
@@ -159,8 +160,8 @@ public final class CleanupTest
 	}
 
 	/**
-	 * A retained request whose slot the broker leaves untouched, because its launch state is uncertain and its owner is
-	 * gone, does not keep the campaign's files: the broker is not asked to discard it, and the removal completes.
+	 * A retained trial whose slot is stuck does not block the removal. The slot stays for the user, and the removal
+	 * names it even though the campaign's files are deleted.
 	 *
 	 * @throws IOException if cleanup fails
 	 */
@@ -172,35 +173,102 @@ public final class CleanupTest
 		{
 			Fixture fixture = Fixture.create(cleanup);
 			Campaign campaign = fixture.store(certified(new DeliveryRequest(CANDIDATE, 1, Outcome.CERTIFIED)));
-			UUID requestId = UUID.randomUUID();
-			TrialKey key = new TrialKey(Purpose.DEVELOPMENT, 1, Sha256.of("snapshot".getBytes(UTF_8)), "test", 1);
-			new FileCampaignStore(fixture.campaigns, JSON, Yielding.fileReplacer()).writeTrialRecovery(CAMPAIGN,
-				new TrialRecovery(key, 1, requestId, 0, Map.of(), false));
+			UUID requestId = storeRecovery(fixture);
 			Path slot = Files.createDirectories(cleanup.add(Files.createTempDirectory("stuck-")).resolve("d1"));
 			List<String> events = new ArrayList<>();
-			SessionPort sessions = (SessionPort) java.lang.reflect.Proxy.newProxyInstance(SessionPort.class.getClassLoader(),
-				new Class<?>[] {SessionPort.class}, (proxy, method, args) ->
-				{
-					if (method.getName().equals("recoversTrials"))
-						return true;
-					if (method.getName().equals("retainedTrial"))
-					{
-						RetainedTrialRequest request = (RetainedTrialRequest) args[0];
-						events.add(request.operation().name());
-						return new RetainedTrialResponse(requestId, RetainedTrialResponse.Status.STUCK, Optional.empty(),
-							OptionalInt.empty(), Optional.of(slot.toAbsolutePath()));
-					}
-					throw new UnsupportedOperationException(method.getName());
-				});
 
-			Cleanup.Removal removal = fixture.cleanup(NO_HOOK, sessions, _ -> List.of()).
+			Cleanup.Removal removal = fixture.cleanup(NO_HOOK, stuckSessions(requestId, slot, events), _ -> List.of()).
 				end(campaign, delivered(Outcome.CERTIFIED));
 
-			requireThat(removal, "removal").isEqualTo(new Cleanup.Removal.Removed());
+			requireThat(removal, "removal").isEqualTo(new Cleanup.Removal.Removed(List.of(slot.toAbsolutePath())));
 			requireThat(events, "operations").isEqualTo(List.of("STATUS"));
 			requireThat(Files.isDirectory(slot), "slotLeftForTheUser").isTrue();
 			fixture.requireRemoved();
 		}
+	}
+
+	/**
+	 * A removal that an earlier command did not finish names the stuck slot that it finds when a later command resumes
+	 * it.
+	 *
+	 * @throws IOException if cleanup fails
+	 */
+	@Test
+	public void resumedRemovalNamesStuckSlot() throws IOException
+	{
+		// Requirement: R-I12
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = Fixture.create(cleanup);
+			Campaign campaign = fixture.store(certified(new DeliveryRequest(CANDIDATE, 1, Outcome.CERTIFIED)));
+			UUID requestId = storeRecovery(fixture);
+			Path slot = Files.createDirectories(cleanup.add(Files.createTempDirectory("stuck-")).resolve("d1"));
+			SessionPort sessions = stuckSessions(requestId, slot, new ArrayList<>());
+			Consumer<Cleanup.Step> crashing = step ->
+			{
+				if (step == Cleanup.Step.WORKTREE)
+					throw new SimulatedCrash(step);
+			};
+			boolean crashed = false;
+			try
+			{
+				fixture.cleanup(crashing, sessions, _ -> List.of()).end(campaign, delivered(Outcome.CERTIFIED));
+			}
+			catch (SimulatedCrash _)
+			{
+				crashed = true;
+			}
+			requireThat(crashed, "crashed").isTrue();
+
+			List<String> warnings = fixture.cleanup(NO_HOOK, sessions, _ -> List.of()).resume();
+
+			requireThat(warnings, "warnings").isEqualTo(List.of(StuckSlots.notice(slot.toAbsolutePath())));
+			requireThat(warnings.getFirst(), "warning").contains(slot.toString()).contains("by hand");
+			requireThat(Files.isDirectory(slot), "slotLeftForTheUser").isTrue();
+			fixture.requireRemoved();
+		}
+	}
+
+	/**
+	 * Stores the recovery of a trial in the fixture's campaign.
+	 *
+	 * @param fixture the fixture
+	 * @return the recovery's request identifier
+	 * @throws IOException if the recovery cannot be stored
+	 */
+	private static UUID storeRecovery(Fixture fixture) throws IOException
+	{
+		UUID requestId = UUID.randomUUID();
+		TrialKey key = new TrialKey(Purpose.DEVELOPMENT, 1, Sha256.of("snapshot".getBytes(UTF_8)), "test", 1);
+		new FileCampaignStore(fixture.campaigns, JSON, Yielding.fileReplacer()).writeTrialRecovery(CAMPAIGN,
+			new TrialRecovery(key, 1, requestId, 0, Map.of(), false));
+		return requestId;
+	}
+
+	/**
+	 * Returns a session port whose retained trial is in a stuck slot.
+	 *
+	 * @param requestId the retained trial's request identifier
+	 * @param slot the stuck slot
+	 * @param events receives the name of each retained-trial operation that it is asked for
+	 * @return the session port
+	 */
+	private static SessionPort stuckSessions(UUID requestId, Path slot, List<String> events)
+	{
+		return (SessionPort) java.lang.reflect.Proxy.newProxyInstance(SessionPort.class.getClassLoader(),
+			new Class<?>[] {SessionPort.class}, (proxy, method, args) ->
+			{
+				if (method.getName().equals("recoversTrials"))
+					return true;
+				if (method.getName().equals("retainedTrial"))
+				{
+					RetainedTrialRequest request = (RetainedTrialRequest) args[0];
+					events.add(request.operation().name());
+					return new RetainedTrialResponse(requestId, RetainedTrialResponse.Status.STUCK, Optional.empty(),
+						OptionalInt.empty(), Optional.of(slot.toAbsolutePath()));
+				}
+				throw new UnsupportedOperationException(method.getName());
+			});
 	}
 
 	/**
