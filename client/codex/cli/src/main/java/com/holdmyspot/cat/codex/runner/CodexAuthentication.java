@@ -91,6 +91,10 @@ public final class CodexAuthentication
 	 */
 	private static final String KEY_FILE = "cat-api-key";
 	/**
+	 * How long Codex waits for the token command that prints the key file, in milliseconds.
+	 */
+	private static final int KEY_FILE_COMMAND_TIMEOUT_MS = 30_000;
+	/**
 	 * The settings of a provider's table that send a secret in headers, which cannot become a bearer token.
 	 */
 	private static final List<String> HEADER_SECRET_SETTINGS = List.of("env_http_headers", "http_headers");
@@ -567,8 +571,14 @@ public final class CodexAuthentication
 		if (keyFileToken != null)
 		{
 			ObjectNode tokenCommand = ((ObjectNode) session.path("model_providers").path(providerId)).putObject("auth");
-			tokenCommand.put("command", "cat");
-			tokenCommand.putArray("args").add(keyFile(codexFolder).toAbsolutePath().toString());
+			CodexKeyFileCommand.Invocation invocation = CodexKeyFileCommand.invocation(
+				keyFile(codexFolder).toAbsolutePath());
+			tokenCommand.put("command", invocation.program());
+			ArrayNode arguments = tokenCommand.putArray("args");
+			for (String argument : invocation.arguments())
+				arguments.add(argument);
+			// A Java program starts slower than the default allows on a loaded machine
+			tokenCommand.put("timeout_ms", KEY_FILE_COMMAND_TIMEOUT_MS);
 		}
 		String text = TomlMapper.builder().build().writeValueAsString(session);
 		if (!text.endsWith("\n"))

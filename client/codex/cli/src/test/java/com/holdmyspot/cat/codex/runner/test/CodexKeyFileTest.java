@@ -1,10 +1,12 @@
 package com.holdmyspot.cat.codex.runner.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.testng.Assert.expectThrows;
 
 import com.holdmyspot.cat.codex.runner.CodexAuthentication;
 import com.holdmyspot.cat.codex.runner.CodexConnectionConfiguration;
+import com.holdmyspot.cat.codex.runner.CodexKeyFileCommand;
 import com.holdmyspot.cat.codex.runner.CodexProcess;
 import com.holdmyspot.cat.codex.runner.CodexRunner;
 import com.holdmyspot.cat.common.Platform;
@@ -26,6 +28,7 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -66,14 +69,19 @@ public final class CodexKeyFileTest
 	/**
 	 * Verifies that the session's key file holds the token, readable by its owner alone, and that the session's
 	 * {@code config.toml} holds neither the token nor the provider's {@code env_key} or
-	 * {@code experimental_bearer_token}, and names a token command that prints the key file.
+	 * {@code experimental_bearer_token}, and names a token command that prints the key file when it runs by its
+	 * absolute path in an environment without a {@code PATH}.
 	 *
 	 * @param line      the provider table's line that supplies the token
 	 * @param variables the runner's variables
-	 * @throws IOException if the fixture cannot be written
+	 * @throws IOException          if the fixture cannot be written
+	 * @throws InterruptedException if the wait for the token command is interrupted
 	 */
 	@Test(dataProvider = "bearerSources")
-	public void keyFileHoldsTokenBehindTokenCommand(String line, Map<String, String> variables) throws IOException
+	// The process ends before the test reads its status, which is how the test waits for it
+	@SuppressWarnings("PMD.CloseResource")
+	public void keyFileHoldsTokenBehindTokenCommand(String line, Map<String, String> variables)
+		throws IOException, InterruptedException
 	{
 		// Requirement: R-I15
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -96,13 +104,64 @@ public final class CodexKeyFileTest
 				doesNotContain("experimental_bearer_token").doesNotContain(VARIABLE);
 			JsonNode provider = TomlMapper.builder().build().readTree(settings).path("model_providers").path("gateway");
 			requireThat(provider.path("base_url").asString(), "baseUrl").isEqualTo("https://gateway.example/v1");
-			requireThat(provider.path("auth").path("command").asString(), "command").isEqualTo("cat");
-			requireThat(provider.path("auth").path("args").size(), "arguments").isEqualTo(1);
-			requireThat(provider.path("auth").path("args").get(0).asString(), "keyFile").
-				isEqualTo(keyFile.toString());
+			Path program = Path.of(provider.path("auth").path("command").asString());
+			requireThat(program.isAbsolute(), "programIsAbsolute").isTrue();
+			requireThat(Files.isExecutable(program), "programIsExecutable").isTrue();
+			List<String> arguments = new ArrayList<>();
+			for (JsonNode argument : provider.path("auth").path("args"))
+				arguments.add(argument.asString());
+			requireThat(arguments.getLast(), "keyFile").isEqualTo(keyFile.toString());
+			List<String> command = new ArrayList<>();
+			command.add(program.toString());
+			command.addAll(arguments);
+			ProcessBuilder builder = new ProcessBuilder(command);
+			builder.environment().clear();
+			Process process = builder.start();
+			String printed = new String(process.getInputStream().readAllBytes(), UTF_8);
+			requireThat(process.waitFor(), "exitStatus").isEqualTo(0);
+			requireThat(printed, "printed").isEqualTo(CodexSourceHomes.SECRET);
 			requireThat(authentication.toString(), "description").doesNotContain(CodexSourceHomes.SECRET);
 			requireThat(authentication.evidence().toString(), "evidence").doesNotContain(CodexSourceHomes.SECRET);
 		}
+	}
+
+	/**
+	 * Returns each platform with the name of the program that its token command runs.
+	 *
+	 * @return each platform and the file name of the runtime's Java program
+	 */
+	@DataProvider
+	public static Object[][] platformPrograms()
+	{
+		return new Object[][]
+		{
+			{Platform.LINUX_X64, "java"},
+			{Platform.MACOS_ARM64, "java"},
+			{Platform.WINDOWS_X64, "java.exe"}
+		};
+	}
+
+	/**
+	 * Verifies that the token command runs the runtime's own Java program by an absolute path, with the module path of
+	 * the running CAT program and no reliance on a program that the {@code PATH} finds, on each platform.
+	 *
+	 * @param platform the platform
+	 * @param name     the file name of the runtime's Java program
+	 */
+	@Test(dataProvider = "platformPrograms")
+	public void tokenCommandRunsBundledRuntime(Platform platform, String name)
+	{
+		// Requirement: R-I15
+		Path javaHome = Path.of(System.getProperty("java.home"));
+		Path keyFile = CodexAuthentication.keyFile(javaHome.resolve("session-home").resolve(".codex"));
+
+		CodexKeyFileCommand.Invocation invocation = CodexKeyFileCommand.invocation(keyFile, platform, javaHome,
+			"modules");
+
+		requireThat(invocation.program(), "program").isEqualTo(javaHome.resolve("bin").resolve(name).toString());
+		requireThat(invocation.arguments(), "arguments").contains("--module-path").contains("modules").
+			contains("-m").contains(keyFile.toString());
+		requireThat(invocation.arguments().getLast(), "last").isEqualTo(keyFile.toString());
 	}
 
 	/**
