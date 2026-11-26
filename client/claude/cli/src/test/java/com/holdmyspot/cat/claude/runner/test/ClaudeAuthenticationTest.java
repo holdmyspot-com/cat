@@ -5,6 +5,7 @@ import static org.testng.Assert.expectThrows;
 
 import com.holdmyspot.cat.claude.runner.ClaudeAuthentication;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.AuthenticationOptions;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
@@ -27,10 +28,6 @@ public final class ClaudeAuthenticationTest
 	 * Reads the fixtures' settings files.
 	 */
 	private static final JsonMapper JSON = JsonMapper.builder().build();
-	/**
-	 * A mode that lets the owner's group read a file, which a file that holds a secret must not allow.
-	 */
-	private static final String GROUP_READABLE = "rw-r-----";
 
 	/**
 	 * Creates the test.
@@ -54,7 +51,7 @@ public final class ClaudeAuthenticationTest
 			Path root = cleanup.add(Files.createTempDirectory("source-secrets-")).toRealPath();
 			Path source = SourceHomes.create(root, "source");
 			Path file = SourceHomes.catCredential(source, SourceHomes.SECRET);
-			Files.setPosixFilePermissions(file, PosixFilePermissions.fromString(GROUP_READABLE));
+			SourceHomes.readableByOthers(file);
 
 			requireRefusal(source, file);
 		}
@@ -76,7 +73,7 @@ public final class ClaudeAuthenticationTest
 
 			Path absoluteSource = SourceHomes.create(root, "absolute");
 			Path absoluteKey = SourceHomes.secret(root.resolve("keys/absolute-key"));
-			Files.setPosixFilePermissions(absoluteKey, PosixFilePermissions.fromString(GROUP_READABLE));
+			SourceHomes.readableByOthers(absoluteKey);
 			SourceHomes.settings(absoluteSource, """
 				{"apiKeyHelper": "cat %s"}
 				""".formatted(absoluteKey));
@@ -84,7 +81,7 @@ public final class ClaudeAuthenticationTest
 
 			Path tildeSource = SourceHomes.create(root, "tilde");
 			Path tildeKey = SourceHomes.secret(tildeSource.resolve("secrets/key"));
-			Files.setPosixFilePermissions(tildeKey, PosixFilePermissions.fromString(GROUP_READABLE));
+			SourceHomes.readableByOthers(tildeKey);
 			SourceHomes.settings(tildeSource, """
 				{"apiKeyHelper": "cat ~/secrets/key"}
 				""");
@@ -111,7 +108,7 @@ public final class ClaudeAuthenticationTest
 			Path tokenSettings = SourceHomes.settings(tokenSource, """
 				{"env": {"ANTHROPIC_API_KEY": "%s"}}
 				""".formatted(SourceHomes.SECRET));
-			Files.setPosixFilePermissions(tokenSettings, PosixFilePermissions.fromString(GROUP_READABLE));
+			SourceHomes.readableByOthers(tokenSettings);
 			requireRefusal(tokenSource, tokenSettings);
 
 			Path helperSource = SourceHomes.create(root, "helper");
@@ -119,7 +116,7 @@ public final class ClaudeAuthenticationTest
 			Path helperSettings = SourceHomes.settings(helperSource, """
 				{"apiKeyHelper": "cat ~/key"}
 				""");
-			Files.setPosixFilePermissions(helperSettings, PosixFilePermissions.fromString("rw-r--r--"));
+			PortableFiles.setMode(helperSettings, PosixFilePermissions.fromString("rw-r--r--"));
 			ClaudeAuthentication authentication = ClaudeAuthentication.read(JSON, named(helperSource),
 				environment(root), Platform.current(), SourceHomes.PLUGIN);
 			requireThat(authentication.secretFiles(), "secretFiles").isEqualTo(List.of(
@@ -139,8 +136,9 @@ public final class ClaudeAuthenticationTest
 		SessionRefusedException refusal = expectThrows(SessionRefusedException.class, () ->
 			ClaudeAuthentication.read(JSON, named(source), environment(source.getParent()), Platform.current(),
 				SourceHomes.PLUGIN));
-		requireThat(refusal.getMessage(), "message").contains(file.toString()).contains("group read").
-			doesNotContain(SourceHomes.SECRET);
+		requireThat(refusal.getMessage(), "message").contains(file.toString()).doesNotContain(SourceHomes.SECRET);
+		for (String reason : SourceHomes.readableByOthersReasons())
+			requireThat(refusal.getMessage(), "message").contains(reason);
 	}
 
 	/**

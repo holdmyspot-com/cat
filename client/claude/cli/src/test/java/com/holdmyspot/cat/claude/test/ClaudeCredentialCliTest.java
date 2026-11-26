@@ -7,8 +7,10 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 import com.holdmyspot.cat.claude.ClaudeCredentialCli;
 import com.holdmyspot.cat.claude.credential.ClaudeCredentialFile;
 import com.holdmyspot.cat.claude.credential.CredentialRefusedException;
+import com.holdmyspot.cat.claude.runner.test.SourceHomes;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -208,14 +210,15 @@ public final class ClaudeCredentialCliTest
 		{
 			Path home = home(cleanup);
 			run(Map.of(), API_KEY, "set", "--home", home.toString());
-			Files.setPosixFilePermissions(ClaudeCredentialFile.path(home), PosixFilePermissions.fromString("rw-r--r--"));
+			SourceHomes.readableByOthers(ClaudeCredentialFile.path(home));
 
 			Result result = run(Map.of(), "", "status", "--home", home.toString(), "--json");
 
 			requireThat(result.status(), "status").isEqualTo(2);
 			JsonNode line = result.jsonLine(json);
 			requireThat(line.path("result").asString(), "result").isEqualTo("unusable");
-			requireThat(line.path("reason").asString(), "reason").contains("group read").contains("other read");
+			for (String reason : SourceHomes.readableByOthersReasons())
+				requireThat(line.path("reason").asString(), "reason").contains(reason);
 			result.requireNoToken(API_KEY);
 		}
 	}
@@ -282,6 +285,12 @@ public final class ClaudeCredentialCliTest
 			run(Map.of(), API_KEY, "set", "--home", home.toString());
 			Path file = ClaudeCredentialFile.path(home);
 			byte[] earlier = Files.readAllBytes(file);
+			if (!PortableFiles.hasModes(file.getParent()))
+			{
+				// Windows keeps creating files in a folder whose read-only attribute is set, so no folder state that a
+				// test can set there makes the write fail
+				return;
+			}
 			Files.setPosixFilePermissions(file.getParent(), PosixFilePermissions.fromString("r-x------"));
 			Result result;
 			try

@@ -59,6 +59,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 import org.testng.annotations.DataProvider;
@@ -1863,12 +1864,7 @@ public final class ClaudeRunnerTest
 			Path otherHome = Files.createDirectories(root.resolve("other-home"));
 			ProcessBuilder shell = new ProcessBuilder("sh", "-c", helper).redirectErrorStream(true);
 			shell.environment().put("HOME", otherHome.toString());
-			try (Process process = shell.start())
-			{
-				String printed = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-				requireThat(process.waitFor(), "status").isZero();
-				requireThat(printed, "printed").isEqualTo(SourceHomes.SECRET);
-			}
+			requireThat(printedByHelper(shell), "printed").isEqualTo(SourceHomes.SECRET);
 
 			List<String> command = ClaudeRunner.command("claude", "haiku", "low", "", List.of(),
 				nestedSession.directory().resolve("home/.claude/projects"), List.of());
@@ -2063,15 +2059,9 @@ public final class ClaudeRunnerTest
 			}
 			requireThat(helper, "helper").isEqualTo("cat '" + keyFile + "'");
 			requireThat(Files.readString(keyFile), "keyFile").isEqualTo(delivered);
-			requireThat(Files.getPosixFilePermissions(keyFile), "mode").
-				isEqualTo(PosixFilePermissions.fromString("rw-------"));
+			SourceHomes.requireOwnerOnly(keyFile);
 			ProcessBuilder shell = new ProcessBuilder("sh", "-c", helper).redirectErrorStream(true);
-			try (Process process = shell.start())
-			{
-				String printed = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-				requireThat(process.waitFor(), "status").isZero();
-				requireThat(printed, "printed").isEqualTo(delivered);
-			}
+			requireThat(printedByHelper(shell), "printed").isEqualTo(delivered);
 			List<String> denyRead = new ArrayList<>();
 			for (JsonNode path : sessionSettings.path("sandbox").path("filesystem").path("denyRead"))
 				denyRead.add(path.asString());
@@ -2207,8 +2197,7 @@ public final class ClaudeRunnerTest
 				writeKeyFile(claudeFolder);
 
 			requireThat(Files.readString(keyFile), "resumed").isEqualTo(SourceHomes.SETUP_TOKEN);
-			requireThat(Files.getPosixFilePermissions(keyFile), "mode").
-				isEqualTo(PosixFilePermissions.fromString("rw-------"));
+			SourceHomes.requireOwnerOnly(keyFile);
 
 			SourceHomes.keyHelper(root).writeKeyFile(claudeFolder);
 
@@ -2387,6 +2376,31 @@ public final class ClaudeRunnerTest
 					doesNotContain("temporary folder");
 			}
 		}
+	}
+
+	/**
+	 * Runs a key helper's shell command and returns what it printed, failing if it does not end in time, as it would
+	 * if it waited for input that no one sends.
+	 *
+	 * @param shell the command, whose standard error goes to its standard output
+	 * @return the output
+	 * @throws IOException          if the command cannot run
+	 * @throws InterruptedException if the wait is interrupted
+	 */
+	// The process ends before the method returns, so there is nothing left to close
+	@SuppressWarnings("PMD.CloseResource")
+	private static String printedByHelper(ProcessBuilder shell) throws IOException, InterruptedException
+	{
+		Process process = shell.start();
+		process.getOutputStream().close();
+		if (!process.waitFor(60, TimeUnit.SECONDS))
+		{
+			process.destroyForcibly();
+			throw new AssertionError("The key helper did not end within 60 seconds");
+		}
+		String printed = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+		requireThat(process.exitValue(), "status").isZero();
+		return printed;
 	}
 
 	/**

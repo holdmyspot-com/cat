@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -43,6 +44,11 @@ import tools.jackson.dataformat.toml.TomlMapper;
  */
 public final class CodexConnectionConfigurationTest
 {
+	/**
+	 * How long a test waits for a token command that it runs, which prints a key in well under a second.
+	 */
+	private static final long COMMAND_TIMEOUT_SECONDS = 60;
+
 	/**
 	 * Verifies that refreshing an interrupted session keeps its own registrations and trust while replacing its former
 	 * connection and permissions with the current parent's settings.
@@ -913,7 +919,7 @@ public final class CodexConnectionConfigurationTest
 	 * @throws IOException          if fixture I/O or the command fails
 	 * @throws InterruptedException if the test is interrupted while the command runs
 	 */
-	@Test
+	@Test(timeOut = 120_000)
 	public void copiesSourceProviderWithWrappedCommand() throws IOException, InterruptedException
 	{
 		// Requirement: R-I15
@@ -980,13 +986,21 @@ public final class CodexConnectionConfigurationTest
 				command.add(argument.asString(""));
 			requireThat(command, "command").contains("cat ~/key");
 			Path otherHome = Files.createDirectories(root.resolve("other-home"));
-			ProcessBuilder shell = new ProcessBuilder("sh", "-c", "exec \"$0\" \"$@\"");
-			shell.command().addAll(command);
-			shell.redirectErrorStream(true).environment().put("HOME", otherHome.toString());
-			try (Process process = shell.start())
+			// Run as Codex runs a token command: by itself, with no shell, whose quoting Windows would change
+			ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
+			builder.environment().put("HOME", otherHome.toString());
+			try (Process process = builder.start())
 			{
+				// A command that reads its standard input would wait for ever for input that no one sends
+				process.getOutputStream().close();
+				if (!process.waitFor(COMMAND_TIMEOUT_SECONDS, TimeUnit.SECONDS))
+				{
+					process.destroyForcibly();
+					throw new AssertionError("The wrapped command did not end within " + COMMAND_TIMEOUT_SECONDS +
+						" seconds");
+				}
 				String printed = new String(process.getInputStream().readAllBytes(), UTF_8);
-				requireThat(process.waitFor(), "status").isZero();
+				requireThat(process.exitValue(), "status").isZero();
 				requireThat(printed, "printed").isEqualTo(CodexSourceHomes.SECRET);
 			}
 		}

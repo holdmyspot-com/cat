@@ -1,12 +1,23 @@
 package com.holdmyspot.cat.claude.runner.test;
 
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
 import com.holdmyspot.cat.claude.runner.ClaudeAuthentication;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.runner.AuthenticationOptions;
+import com.holdmyspot.cat.common.runner.SecretFile;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.AclEntry;
+import java.nio.file.attribute.AclEntryPermission;
+import java.nio.file.attribute.AclEntryType;
+import java.nio.file.attribute.AclFileAttributeView;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.nio.file.attribute.UserPrincipal;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import tools.jackson.databind.json.JsonMapper;
@@ -148,7 +159,9 @@ public final class SourceHomes
 	}
 
 	/**
-	 * Lets a file's owner alone read and write it.
+	 * Lets a file's owner alone read and write it. Where the file system has no POSIX permissions, as on Windows, the
+	 * file keeps the access that it inherits from its folder, which the secret check accepts when the folder's access
+	 * list grants only the owner, {@code SYSTEM} and Administrators.
 	 *
 	 * @param file the file
 	 * @return {@code file}
@@ -156,6 +169,64 @@ public final class SourceHomes
 	 */
 	public static Path ownerOnly(Path file) throws IOException
 	{
-		return Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rw-------"));
+		PortableFiles.setMode(file, PosixFilePermissions.fromString("rw-------"));
+		return file;
+	}
+
+	/**
+	 * Lets users other than a file's owner read it, as a file that holds a secret must not allow: on a file system with
+	 * POSIX permissions, its group and others may read it; on one with access lists, as on Windows, its access list
+	 * also allows {@code Everyone} to read it.
+	 *
+	 * @param file the file
+	 * @return {@code file}
+	 * @throws IOException if the access cannot be set
+	 */
+	public static Path readableByOthers(Path file) throws IOException
+	{
+		if (PortableFiles.hasModes(file))
+		{
+			Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rw-r--r--"));
+			return file;
+		}
+		AclFileAttributeView view = Files.getFileAttributeView(file, AclFileAttributeView.class);
+		UserPrincipal everyone = file.getFileSystem().getUserPrincipalLookupService().
+			lookupPrincipalByName("Everyone");
+		List<AclEntry> acl = new ArrayList<>(view.getAcl());
+		acl.add(AclEntry.newBuilder().setType(AclEntryType.ALLOW).setPrincipal(everyone).
+			setPermissions(AclEntryPermission.READ_DATA, AclEntryPermission.READ_ATTRIBUTES,
+				AclEntryPermission.READ_ACL, AclEntryPermission.SYNCHRONIZE).build());
+		view.setAcl(acl);
+		return file;
+	}
+
+	/**
+	 * Returns the texts that the refusal of a file that {@link #readableByOthers(Path)} made readable must name: what
+	 * the file's permissions or access list grant.
+	 *
+	 * @return the texts
+	 */
+	public static List<String> readableByOthersReasons()
+	{
+		if (Platform.current().isWindows())
+			return List.of("Everyone");
+		return List.of("group read", "other read");
+	}
+
+	/**
+	 * Requires that a file's owner alone may read it: with POSIX permissions, mode {@code 0600}; with access lists, as
+	 * on Windows, an access list that grants no one but the owner, {@code SYSTEM} and Administrators.
+	 *
+	 * @param file the file
+	 * @throws IOException if the file's access cannot be read
+	 */
+	public static void requireOwnerOnly(Path file) throws IOException
+	{
+		if (PortableFiles.hasModes(file))
+		{
+			requireThat(Files.getPosixFilePermissions(file), "mode").
+				isEqualTo(PosixFilePermissions.fromString("rw-------"));
+		}
+		requireThat(SecretFile.problem(file, SecretFile.read(file)), "problem").isEmpty();
 	}
 }

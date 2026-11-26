@@ -35,7 +35,6 @@ import java.io.StringReader;
 import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -1163,8 +1162,7 @@ public final class ClaudeRunnerCliTest
 				""".formatted(SourceHomes.SECRET);
 			switch (fault)
 			{
-				case "mode" -> Files.setPosixFilePermissions(SourceHomes.catCredentialFile(source, valid),
-					PosixFilePermissions.fromString("rw-r--r--"));
+				case "mode" -> SourceHomes.readableByOthers(SourceHomes.catCredentialFile(source, valid));
 				case "link" ->
 				{
 					Path target = SourceHomes.secret(root.resolve("elsewhere/credentials.json"));
@@ -1211,7 +1209,7 @@ public final class ClaudeRunnerCliTest
 		return new Object[][]
 		{
 			// Other users may read the file
-			{"mode", List.of("group read", "other read")},
+			{"mode", SourceHomes.readableByOthersReasons()},
 			// Anyone who may write the folder can change a link's target
 			{"link", List.of("symbolic link")},
 			// The token is neither an Anthropic API key nor a setup token

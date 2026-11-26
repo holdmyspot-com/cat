@@ -9,6 +9,7 @@ import com.holdmyspot.cat.codex.runner.CodexConnectionConfiguration;
 import com.holdmyspot.cat.codex.runner.CodexKeyFileCommand;
 import com.holdmyspot.cat.codex.runner.CodexProcess;
 import com.holdmyspot.cat.codex.runner.CodexRunner;
+import com.holdmyspot.cat.codex.runner.TomlStrings;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
@@ -350,7 +351,8 @@ public final class CodexKeyFileTest
 
 			Path keyFile = CodexAuthentication.keyFile(codexFolder);
 			requireThat(deniedReads, "deniedReads").contains(keyFile);
-			requireThat(Files.readString(configuration), "profile").contains("\"" + keyFile + "\" = \"deny\"");
+			requireThat(Files.readString(configuration), "profile").
+				contains("\"" + TomlStrings.escape(keyFile.toString()) + "\" = \"deny\"");
 		}
 	}
 

@@ -87,7 +87,7 @@ public final class CodexSourceHomeCommandTest
 			Result result = run(source, other, root, "sh", "-c", "cat ~/key; printf '|%s' \"$HOME\"");
 
 			requireThat(result.status(), "status").isEqualTo(0);
-			requireThat(result.output(), "output").isEqualTo("the-secret|" + source);
+			requireThat(result.output(), "output").isEqualTo("the-secret|" + shellPath(source));
 		}
 	}
 
@@ -112,7 +112,7 @@ public final class CodexSourceHomeCommandTest
 				"pwd; printf '<%s>' \"$@\"; echo problem >&2; exit 7", "name", "a b", "", "c'd");
 
 			requireThat(result.status(), "status").isEqualTo(7);
-			requireThat(result.output(), "output").isEqualTo(folder + "\n<a b><><c'd>problem\n");
+			requireThat(result.output(), "output").isEqualTo(shellPath(folder) + "\n<a b><><c'd>problem\n");
 		}
 	}
 
@@ -170,6 +170,21 @@ public final class CodexSourceHomeCommandTest
 		Process process = builder.start();
 		String output = new String(process.getInputStream().readAllBytes(), UTF_8);
 		return new Result(process.waitFor(), output);
+	}
+
+	/**
+	 * Returns a path as the shell that runs the source command prints it. On Windows that is the shell of Git for
+	 * Windows, which names {@code C:\Users\me} as {@code /c/Users/me}.
+	 *
+	 * @param path an absolute path
+	 * @return the path as the shell prints it
+	 */
+	private static String shellPath(Path path)
+	{
+		String text = path.toString();
+		if (!Platform.current().isWindows())
+			return text;
+		return "/" + Character.toLowerCase(text.charAt(0)) + text.substring(2).replace('\\', '/');
 	}
 
 	/**

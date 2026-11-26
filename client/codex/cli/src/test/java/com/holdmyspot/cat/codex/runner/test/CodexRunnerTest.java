@@ -13,6 +13,7 @@ import com.holdmyspot.cat.codex.runner.CodexProcess;
 import com.holdmyspot.cat.codex.runner.CodexRunner.SessionSandbox;
 import com.holdmyspot.cat.codex.runner.CodexRunner;
 import com.holdmyspot.cat.codex.runner.CodexRunnerCli;
+import com.holdmyspot.cat.codex.runner.TomlStrings;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
@@ -758,7 +759,7 @@ public final class CodexRunnerTest
 				model = "gpt-6-luna"
 				[marketplaces.cat]
 				source = "%s"
-				""".formatted(marketplace));
+				""".formatted(TomlStrings.escape(marketplace.toString())));
 			String thread = "019a0000-0000-7000-8000-000000000001";
 			Path rollouts = Files.createDirectories(home.resolve("sessions/2026/11/25"));
 			Files.writeString(rollouts.resolve("rollout-2026-11-25T00-00-00-" + thread + ".jsonl"), "{}\n");
@@ -917,7 +918,8 @@ public final class CodexRunnerTest
 				doesNotContain(configuration);
 			String profile = Files.readString(configuration);
 			for (Path denied : List.of(login, key, codexFolder.resolve("auth.json")))
-				requireThat(profile, "profile").contains("\"" + denied + "\" = \"deny\"");
+				requireThat(profile, "profile").
+					contains("\"" + TomlStrings.escape(denied.toString()) + "\" = \"deny\"");
 		}
 	}
 

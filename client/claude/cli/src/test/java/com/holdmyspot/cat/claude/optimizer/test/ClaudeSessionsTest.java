@@ -1834,8 +1834,8 @@ public final class ClaudeSessionsTest
 			Path installed = Files.createDirectories(home.resolve("installed/.claude-plugin"));
 			Files.writeString(installed.resolve("plugin.json"), "{}");
 			Path records = Files.createDirectories(home.resolve("plugins")).resolve("installed_plugins.json");
-			Files.writeString(records, "{\"version\": 2, \"plugins\": {\"cat@cat\": [{\"installPath\": \"" +
-				installed.getParent() + "\"}]}}");
+			Files.writeString(records, JsonMapper.builder().build().writeValueAsString(Map.of("version", 2, "plugins",
+				Map.of("cat@cat", List.of(Map.of("installPath", installed.getParent().toString()))))));
 			Map<String, String> environment = new HashMap<>(Map.of("CLAUDECODE", "1"));
 			environment.put("PATH", "");
 			environment.put(Platform.current().homeVariable(), home.toString());
