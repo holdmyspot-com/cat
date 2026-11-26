@@ -234,18 +234,19 @@ but the session that starts them needs a credential and a working sandbox:
   readable by you alone, such as after `chmod go= <file>`, and the session's commands cannot read it. The runner
   refuses to start a session without such a credential. "Login" in the [security model](security-model.md#login) gives
   the details.
-- A Codex session uses the Codex authentication of your home folder: the `auth.json` of your Codex folder, the one
-  that `CODEX_HOME` names when it is set, or else `.codex` in your home folder, when it holds an API key, as
-  `codex login --with-api-key` writes it; or else a token command in the `auth` table of the model provider that its
-  `config.toml` selects. Sessions do not use a ChatGPT sign-in, which `codex login` writes: a launch from a home folder
-  whose `auth.json` holds one is refused. A provider's `env_key` works when the variable that it names is set in the
-  environment that the agent runs in, as does an inline `experimental_bearer_token`: the session receives the token
-  through a key file that its commands cannot read. Sessions do not use a provider's `env_http_headers` or
-  `http_headers`, or a login in the operating system's credential store. To bill
-  another credential, have the agent name another home folder with `--home <dir>`, and when the provider's `base_url`
-  or `openai_base_url` names a gateway, tell the agent the kind of login that it bills, as for Claude. Each file that
-  holds the credential must be readable by you alone, and the session's commands cannot read it or the session's
-  copy of `auth.json`.
+- A Codex session uses the Codex login of your home folder, as your own Codex chooses it from your Codex folder, the
+  one that `CODEX_HOME` names when it is set, or else `.codex` in your home folder: a ChatGPT sign-in or an API key in
+  its `auth.json` or in the operating system's keyring, or the credential of the model provider that its
+  `config.toml` selects, such as an `env_key` variable set in the environment that the agent runs in, an inline
+  `experimental_bearer_token`, a token command, a `gateway_oauth` provider's `credential_export` command or header
+  secrets. No session holds your login: a key goes into a key file that the session's commands cannot read, and every
+  other login is served by the request server of your top-level session, which reads your sign-in without refreshing
+  or changing it, so your own Codex keeps working on it. A login in the keyring is used only when your top-level
+  session can reach the keyring itself; otherwise set `cli_auth_credentials_store = "file"` in your Codex
+  `config.toml` and sign in again. To bill another credential, have the agent name another home folder with
+  `--home <dir>`, and when the provider's `base_url` or `openai_base_url` names a gateway, tell the agent the kind of
+  login that it bills, as for Claude. Each file that holds the credential must be readable by you alone, and the
+  session's commands cannot read it. "Login" in the [security model](security-model.md#login) gives the details.
 - A Codex session that a runner starts reaches its model, so Codex's sandbox needs network access on. On Linux,
   `codex-runner` also needs bubblewrap (`bwrap`) on your `PATH`.
 

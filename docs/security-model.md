@@ -354,51 +354,81 @@ class, never their values.
 A Codex session also uses the authentication of a source home, which a launch chooses with `--home <dir>` and
 `--gateway-login-class` as for a Claude session. Its Codex folder is `<dir>/.codex` with `--home`, and otherwise the
 folder that `CODEX_HOME` names when the environment that starts the runner sets it, or else `.codex` in your home
-folder. The session takes only these parts of that folder, and Codex chooses among them by its own rules:
+folder. CAT chooses the session's login among these parts of that folder by Codex's own rules:
 
-- the `model_provider`, `openai_base_url` and `forced_login_method` settings of `config.toml` and the
-  `[model_providers.<id>]` table of the provider that `model_provider` selects, which go into the session's own
-  `config.toml`. When that table's `auth` table names a token command, the session's Codex runs it with the source home
-  as its home folder, in its own process and outside the command sandbox;
-- `auth.json`, when it holds an API key, as `codex login --with-api-key` writes it. The runner copies it into the
-  session's `.codex` folder, readable by you alone, and removes the copy when the session's Codex app-server ends; a
-  resume copies it again from the resuming launch's source home. Codex never refreshes an API key, so the copy stays
-  valid.
+- the `model_provider`, `openai_base_url`, `forced_login_method`, `cli_auth_credentials_store` and `web_search`
+  settings of `config.toml`, and the `[model_providers.<id>]` table of the provider that `model_provider` selects;
+- the selected provider's own credential: the variable that its `env_key` names, an inline
+  `experimental_bearer_token`, its `auth` token command, the `credential_export` command of its `gateway_oauth`
+  sign-in, or the secret headers of its `http_headers` and `env_http_headers`;
+- otherwise your Codex login: an API key or a ChatGPT sign-in in `auth.json`, as `codex login` writes it; the same
+  login in the operating system's keyring (the Secret Service on Linux, the Keychain on macOS, the credential store
+  on Windows, each under the name `Codex Auth`) when `cli_auth_credentials_store` is `keyring` or `auto`; or, when
+  the store is `file` and the folder holds no `auth.json`, `CODEX_API_KEY` or `OPENAI_API_KEY` from the environment
+  that starts the runner. An access token or a personal access token in `auth.json` is a key.
 
-The session's `.codex` folder is the `CODEX_HOME` of its Codex and of its commands. An `auth.json` that holds a ChatGPT
-sign-in, as `codex login` writes it, is refused: Codex refreshes such a sign-in and replaces its refresh token, so a
-session and your own Codex cannot share it, and a copy would stop one of them. Log in with an API key, or give the
-selected provider a token command. No hook, MCP server, profile or other setting of the source's `config.toml` reaches
-the session. The session's Codex receives neither `CODEX_API_KEY` nor `OPENAI_API_KEY` from the environment that
-starts the runner, and a system or managed Codex configuration that sets `openai_base_url`, `forced_login_method`,
-`model_provider` or `model_providers` refuses the session, because it would replace the source home's credential or
-host. Every Codex session that a session requests, directly or through a session of the other harness, uses the same
-source home.
+The session's `.codex` folder, the `CODEX_HOME` of its Codex and of its commands, never holds a login that can change.
+Its `config.toml` sets `cli_auth_credentials_store = "ephemeral"`, so its Codex stores no login, carries the source's
+`web_search` value (`cached` when the source sets none), and selects the session's copy of the provider without its
+secrets, whose `auth` table runs CAT's token command. A key that cannot change, an API key or the value of `env_key`
+or of `experimental_bearer_token`, goes into the session's key file, `cat-api-key` in the session's `.codex` folder,
+readable by you alone, and CAT's token command prints it. Every other login is served by the login service of the
+request server that serves your top-level session, and only that server reads the login or runs the source's
+commands:
+
+- A ChatGPT sign-in, in `auth.json` or in the keyring, is read read-only at each request, and the service serves its
+  access token, which the session sends with your ChatGPT account's header. The service never refreshes the sign-in
+  and never writes the file or the keyring item, so the session and your own Codex share it and your Codex alone
+  refreshes it. When the access token has expired and the source holds no newer one, the session's turn fails with a
+  message that names your login: open Codex on that source home, or sign in to it again, so that it renews the
+  sign-in.
+- A provider's token command and a `gateway_oauth` provider's `credential_export` command run in the server, with the
+  source home as their home folder. The server keeps the token for the provider's `refresh_interval_ms`, or Codex's
+  default of 300000 when it sets none, and runs the command for each request when it is 0. The session's settings and
+  environment do not name the command.
+- A provider's secret headers are added by a forwarder of the server that listens on a loopback address: the session
+  sends its requests to the forwarder with a token of its own, and the forwarder passes them on to the provider's
+  `base_url` with the headers and the bearer token added and the session's token removed.
+- A login in the keyring is served only when your top-level session can itself reach the keyring: when it runs
+  unsandboxed; on Linux, when its sandbox lets its commands reach local services (Codex with full network access,
+  Claude Code with `sandbox.network.allowAllUnixSockets`) and does not deny reading the session bus's socket; on macOS,
+  when its sandbox lets its commands reach local services; and on Windows, only unsandboxed. Every launch, whichever
+  nested session requests it, is checked against the policy of the top-level session's main thread.
+
+The service listens on a socket in a folder of the request server's session directory that only you can open. The
+socket's address, and the key with which a runner opens a session's login, go from the server to each runner, and from
+each runner to the runners that it starts, in their environment alone, and are in no request, no response and no file
+that a session reads. When a runner opens a session's login, the service issues a credential for that session alone,
+which the runner writes into the key file; CAT's token command presents it, and the service answers with a bearer token
+and nothing else. When the session's Codex app-server ends, the runner removes the key file and ends the credential, so
+the service serves that session no more tokens; a resume writes a new key file and opens a new credential. The service
+ends with the request server. A session's commands cannot run `codex login` or `codex logout`.
+
+No hook, MCP server, profile or other setting of the source's `config.toml` reaches the session. The session's Codex
+receives neither `CODEX_API_KEY` nor `OPENAI_API_KEY` from the environment that starts the runner, and a system or
+managed Codex configuration that sets `openai_base_url`, `forced_login_method`, `model_provider` or `model_providers`
+refuses the session, because it would replace the source home's credential or host. Every Codex session that a session
+requests, directly or through a session of the other harness, uses the same source home.
 
 When the selected provider's `base_url` or `openai_base_url` names a gateway, the launch names the kind of login that
-it bills with `--gateway-login-class`, as for a Claude gateway. The secret files of a Codex source are `auth.json` and
-a file that the token command names by an absolute path or a `~/` path, and they pass the same checks as those of a
-Claude source. The commands and file tools of the session, and of every session that it requests, cannot read them or
-the session's copy of `auth.json`.
+it bills with `--gateway-login-class`, as for a Claude gateway. The secret files of a Codex source are the `auth.json`
+that the session's login uses, a `config.toml` that holds an inline secret, and a file that a token command or a
+`credential_export` command names by an absolute path or a `~/` path, and they pass the same checks as those of a
+Claude source. The commands and file tools of the session, and of every session that it requests, cannot read them,
+the session's key file or the folder of the login service's socket.
 
-A selected provider that takes its token from the variable that its `env_key` names, or that holds an inline
-`experimental_bearer_token`, is also used. The runner writes the token into the session's key file, `cat-api-key` in the
-session's own `.codex` folder, as it does for Claude, and gives the session's copy of the provider an `auth` token
-command that prints that file, in place of `env_key` and `experimental_bearer_token`. Codex runs the token command
-itself, outside the command sandbox, while the session's commands, hooks and file tools, and those of every session that
-it requests, cannot read the key file. The variable never reaches the app-server's environment, which Codex gives to
-every hook, and the token is not in the session's `config.toml`. The runner removes the key file when the session ends
-and writes it again when the session resumes.
-
-Before it starts the session, and with status 2, `codex-runner` refuses a source home whose Codex folder holds neither
-an `auth.json` with an API key nor a token command of the selected provider, a `model_provider` without its table, a
-gateway without `--gateway-login-class`, and a secret file that fails the checks. It also refuses a selected provider
-whose `env_key` names a variable that the runner's environment does not set, and one that sets `env_http_headers` or
-holds an `http_headers` secret, because a secret that is sent in headers cannot become a bearer token. It refuses
-a provider's `gateway_oauth` sign-in without `credential_export`, and a `cli_auth_credentials_store` of `keyring` or
-`auto` with no `auth.json`, because the login is then in a store that the runner cannot copy. Its message names the
-file, the option or the setting, and never quotes a secret. The session's `session.json`, its receipt and each response
-record the source home, the names of the copied parts and the login class, never their values.
+Before it starts the session, and with status 2, `codex-runner` refuses a source home that holds no login that CAT can
+serve, with a message that names the files that it read, the keyring item and the variables; a `model_provider`
+without its table; a gateway without `--gateway-login-class`; a `gateway_oauth` sign-in without `credential_export`; an
+`env_key` or `env_http_headers` entry that names a variable that the runner's environment does not set; secret headers
+without the provider's `base_url`, or with `requires_openai_auth`; a `cli_auth_credentials_store` that names no store
+that CAT reads; a `forced_login_method` that the source's login does not match; and a secret file that fails the
+checks. It also refuses a login that the login service serves when the runner was not started by a request server or
+cannot reach its service, and a keyring login that your top-level session cannot reach, naming the keyring store and
+the reason: start the top-level session with that access, set `cli_auth_credentials_store = "file"` in the source
+home and sign in again, or name another source home with `--home`. Its message never quotes a secret. The session's
+`session.json`, its receipt and each response record the source home, the names of the parts that CAT read, such as
+`.codex/auth.json` or `keyring:Codex Auth`, and the login class, never their values.
 
 ### The request server
 
