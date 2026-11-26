@@ -39,16 +39,16 @@ import org.testng.annotations.Test;
  */
 public final class CheckProgramTest
 {
-	private static final String PROGRAM = "checks/Check.java";
+	static final String PROGRAM = "checks/Check.java";
 	private static final String INPUT_FILE = "project/message.txt";
-	private static final Duration NORMAL_TIMEOUT = Duration.ofSeconds(30);
+	static final Duration NORMAL_TIMEOUT = Duration.ofSeconds(30);
 	/**
 	 * The shortened deadline of the timeout test. CAT starts the clock when it launches the sandbox, so the program must
 	 * start its Java launcher, compile its source and print before the deadline for the test to see its output. On a host
 	 * that other test threads load, that takes several seconds, so the deadline leaves several times that margin.
 	 */
 	private static final Duration SHORT_TIMEOUT = Duration.ofSeconds(20);
-	private static final int NORMAL_OUTPUT_LIMIT = 16 * 1024;
+	static final int NORMAL_OUTPUT_LIMIT = 16 * 1024;
 	private static final String SOURCE_MARKER = "private check source marker";
 	private static final String DENIED_PATHS_HELD = "Denied paths held";
 	/**
@@ -650,7 +650,7 @@ public final class CheckProgramTest
 	 * @return the real path of the Java executable
 	 * @throws IOException if the executable path cannot be resolved
 	 */
-	private static Path javaExecutable() throws IOException
+	static Path javaExecutable() throws IOException
 	{
 		return Path.of(System.getProperty("java.home"), "bin", "java").toRealPath();
 	}
@@ -663,7 +663,7 @@ public final class CheckProgramTest
 	 * @return the staged input and scratch parent
 	 * @throws IOException if the fixture cannot be written
 	 */
-	private static Fixture fixture(Path root, String source) throws IOException
+	static Fixture fixture(Path root, String source) throws IOException
 	{
 		Path input = Files.createDirectory(root.resolve("program input"));
 		Files.createDirectories(input.resolve(PROGRAM).getParent());
@@ -683,7 +683,7 @@ public final class CheckProgramTest
 	 * @param scratchParent the directory in which a run creates its scratch
 	 * @throws IOException if the scratch parent cannot be listed
 	 */
-	private static void requireScratchClean(Path scratchParent) throws IOException
+	static void requireScratchClean(Path scratchParent) throws IOException
 	{
 		try (Stream<Path> entries = Files.list(scratchParent))
 		{
@@ -697,7 +697,7 @@ public final class CheckProgramTest
 	 * @param input the staged input
 	 * @param scratchParent holds temporary run directories
 	 */
-	private record Fixture(Path input, Path scratchParent)
+	record Fixture(Path input, Path scratchParent)
 	{
 	}
 

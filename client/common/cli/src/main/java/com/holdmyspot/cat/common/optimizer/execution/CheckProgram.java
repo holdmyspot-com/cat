@@ -25,6 +25,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalInt;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
@@ -120,6 +122,8 @@ public final class CheckProgram
 		""".formatted(READY);
 	private static final byte[] READY_LINE = (READY + "\n").getBytes(UTF_8);
 	private static final Duration CLEANUP_LIMIT = Duration.ofSeconds(5);
+	/** How often a run that is not ready yet has its process tree looked at. */
+	private static final Duration LOOK_INTERVAL = Duration.ofMillis(250);
 
 	/**
 	 * The trusted launch executables and the owner's effective read restrictions.
@@ -129,8 +133,10 @@ public final class CheckProgram
 	 * @param javaExecutable the absolute path to Java from CAT's runtime
 	 * @param policy the authenticated owner's filesystem policy
 	 * @param heldOut the absolute paths of the held-out content and results to mask independently of the policy
+	 * @param startup the times that earlier runs of this sandbox and Java executable took to become ready
 	 */
-	public record Launch(Path sandbox, Path javaExecutable, ParentPolicy policy, List<Path> heldOut)
+	public record Launch(Path sandbox, Path javaExecutable, ParentPolicy policy, List<Path> heldOut,
+		StartupHistory startup)
 	{
 		/**
 		 * Records the launch conditions.
@@ -139,6 +145,7 @@ public final class CheckProgram
 		 * @param javaExecutable the absolute path to Java from CAT's runtime
 		 * @param policy the authenticated owner's filesystem policy
 		 * @param heldOut the absolute paths of the held-out content and results to mask
+		 * @param startup the times that earlier runs of this sandbox and Java executable took to become ready
 		 * @throws NullPointerException if any argument or held-out path is null
 		 * @throws IllegalArgumentException if an executable or held-out path is not absolute
 		 */
@@ -149,6 +156,23 @@ public final class CheckProgram
 			requireThat(policy, "policy").isNotNull();
 			heldOut = List.copyOf(heldOut);
 			requireThat(heldOut.stream().allMatch(Path::isAbsolute), "absoluteHeldOutPaths").isTrue();
+			requireThat(startup, "startup").isNotNull();
+		}
+
+		/**
+		 * Records the launch conditions, with the start-up history that every launch of the same sandbox and Java
+		 * executable shares in this process.
+		 *
+		 * @param sandbox the absolute path to the protected sandbox executable
+		 * @param javaExecutable the absolute path to Java from CAT's runtime
+		 * @param policy the authenticated owner's filesystem policy
+		 * @param heldOut the absolute paths of the held-out content and results to mask
+		 * @throws NullPointerException if any argument or held-out path is null
+		 * @throws IllegalArgumentException if an executable or held-out path is not absolute
+		 */
+		public Launch(Path sandbox, Path javaExecutable, ParentPolicy policy, List<Path> heldOut)
+		{
+			this(sandbox, javaExecutable, policy, heldOut, StartupHistory.shared(sandbox, javaExecutable));
 		}
 	}
 
@@ -302,6 +326,7 @@ public final class CheckProgram
 		Path program = evidence.resolve(programPath);
 		if (!Files.isRegularFile(program, NOFOLLOW_LINKS) || !program.toRealPath().startsWith(evidence))
 			throw new IOException("Expected a staged check program: " + program);
+		requireLaunchFilesExist(launch);
 		try (TemporaryDirectories temporary = new TemporaryDirectories())
 		{
 			Path work = temporary.add(Files.createTempDirectory(scratchParent.toRealPath(), "check-program-"));
@@ -319,7 +344,46 @@ public final class CheckProgram
 			long start = System.nanoTime();
 			try (Process process = builder.start())
 			{
-				return execute(process, start, timeout, outputLimit);
+				return execute(launch, process, start, timeout, outputLimit);
+			}
+		}
+	}
+
+	/**
+	 * Checks, before anything starts, that the files that every run needs exist and can be executed, so that a missing
+	 * or damaged file is reported by its path instead of as a run that never became ready.
+	 *
+	 * @param launch the authenticated launch conditions
+	 * @throws CheckProgramStartFailure if the sandbox program, the Java executable, the program that runs it or the
+	 *   runtime's module image is missing or cannot be executed
+	 */
+	private static void requireLaunchFilesExist(Launch launch) throws CheckProgramStartFailure
+	{
+		Path sandbox = launch.sandbox();
+		if (!Files.isExecutable(sandbox))
+		{
+			throw new CheckProgramStartFailure(CheckProgramStartFailure.Reason.SANDBOX_CANNOT_START,
+				"The check program sandbox could not start: the sandbox program " + sandbox + " is missing or not " +
+				"executable.");
+		}
+		Path java = launch.javaExecutable();
+		for (Path launcher : List.of(java, ENV))
+		{
+			if (!Files.isExecutable(launcher))
+			{
+				throw new CheckProgramStartFailure(CheckProgramStartFailure.Reason.LAUNCHER_UNUSABLE,
+					"The check program launcher cannot run: " + launcher + " is missing or not executable.");
+			}
+		}
+		Path runtime = java.getParent().getParent();
+		if (runtime != null)
+		{
+			Path image = runtime.resolve("lib").resolve("modules");
+			if (!Files.isRegularFile(image))
+			{
+				throw new CheckProgramStartFailure(CheckProgramStartFailure.Reason.LAUNCHER_UNUSABLE,
+					"The check program launcher cannot run: the Java runtime of " + java + " has no module image at " +
+					image + ".");
 			}
 		}
 	}
@@ -339,7 +403,7 @@ public final class CheckProgram
 		ParentPolicy policy = launch.policy();
 		for (Path executable : List.of(launch.sandbox(), launch.javaExecutable(), ENV))
 		{
-			if (!Files.isExecutable(executable) || !policy.mayRead(executable))
+			if (!policy.mayRead(executable))
 				throw new IOException("Check program sandbox cannot use executable: " + executable);
 		}
 		if (!policy.mayRead(input) || !policy.mayRead(work))
@@ -425,31 +489,50 @@ public final class CheckProgram
 	/**
 	 * Bounds the running sandbox's process and output and interprets its result.
 	 *
+	 * @param launch the authenticated launch conditions
 	 * @param process the confined process
 	 * @param start the monotonic reading from before launch
 	 * @param timeout the maximum process time
 	 * @param outputLimit the combined captured byte limit
 	 * @return the program's result
-	 * @throws IOException if the sandbox, its launcher or its output transport fails
+	 * @throws CheckProgramStartFailure if the run ended before its source launcher was ready
+	 * @throws IOException if the sandbox or its output transport fails
 	 * @throws InterruptedException if the owner interrupts the run
 	 */
-	private static Result execute(Process process, long start, Duration timeout, int outputLimit)
+	private static Result execute(Launch launch, Process process, long start, Duration timeout, int outputLimit)
 		throws IOException, InterruptedException
 	{
 		AtomicLong total = new AtomicLong();
+		CompletableFuture<Duration> readyAfter = new CompletableFuture<>();
 		FutureTask<Capture> stdout = new FutureTask<>(() -> capture(process.getInputStream(), false, total, outputLimit,
-			process));
+			process, start, readyAfter));
 		FutureTask<Capture> stderr = new FutureTask<>(() -> capture(process.getErrorStream(), true, total, outputLimit,
-			process));
+			process, start, readyAfter));
 		Thread.startVirtualThread(stdout);
 		Thread.startVirtualThread(stderr);
 		try
 		{
 			process.getOutputStream().close();
-			Duration remaining = timeout.minusNanos(System.nanoTime() - start);
-			boolean timedOut = !remaining.isPositive() || !process.waitFor(remaining);
+			List<StartupSample> samples = new ArrayList<>();
+			boolean exited = false;
+			boolean timedOut = false;
+			while (!exited && !timedOut)
+			{
+				Duration remaining = timeout.minusNanos(System.nanoTime() - start);
+				if (!remaining.isPositive())
+					timedOut = true;
+				else if (LOOK_INTERVAL.compareTo(remaining) < 0)
+					exited = process.waitFor(LOOK_INTERVAL);
+				else
+					exited = process.waitFor(remaining);
+				if (!exited && !readyAfter.isDone())
+				{
+					samples.add(StartupSample.observe(process.toHandle(), Duration.ofNanos(System.nanoTime() - start),
+						launch.sandbox()));
+				}
+			}
 			if (timedOut)
-				process.destroyForcibly();
+				destroyTree(process);
 			if (!process.waitFor(CLEANUP_LIMIT))
 				throw new IOException("Check program sandbox did not stop");
 			Duration elapsed = Duration.ofNanos(System.nanoTime() - start);
@@ -457,7 +540,17 @@ public final class CheckProgram
 			Capture err = stderr.get(CLEANUP_LIMIT.toNanos(), TimeUnit.NANOSECONDS);
 			String output = out.text(outputLimit) + err.text(Math.max(0, outputLimit - out.bytes().length));
 			if (!err.ready())
-				throw new IOException("Check program sandbox did not start its source launcher: " + output);
+			{
+				OptionalInt exitStatus = OptionalInt.empty();
+				if (!timedOut)
+					exitStatus = OptionalInt.of(process.exitValue());
+				String sandboxName = "bwrap";
+				if (Platform.current().isMacos())
+					sandboxName = "sandbox-exec";
+				throw StartupDiagnosis.diagnose(new StartupDiagnosis.Evidence(timeout, elapsed, timedOut, exitStatus,
+					output, samples, launch.startup().summary(), sandboxName));
+			}
+			launch.startup().recordReady(readyAfter.getNow(elapsed));
 			if (total.get() > outputLimit)
 				return new Result(Outcome.ERROR, withCause(output, "Check program exceeded its output limit"), elapsed);
 			if (timedOut)
@@ -486,8 +579,22 @@ public final class CheckProgram
 		finally
 		{
 			if (process.isAlive())
-				process.destroyForcibly();
+				destroyTree(process);
 		}
+	}
+
+	/**
+	 * Kills the sandbox process and every process below it. Killing the sandbox process alone does not always end the
+	 * program that it started, which would keep the output streams open.
+	 *
+	 * @param process the sandbox process
+	 */
+	private static void destroyTree(Process process)
+	{
+		List<ProcessHandle> below = process.descendants().toList();
+		process.destroyForcibly();
+		for (ProcessHandle descendant : below)
+			descendant.destroyForcibly();
 	}
 
 	/**
@@ -498,9 +605,12 @@ public final class CheckProgram
 	 * @param total the number of bytes captured across both streams, including a chunk that exceeded the limit
 	 * @param limit the combined byte limit
 	 * @param process the sandboxed process to stop when the limit is exceeded
+	 * @param start the monotonic reading from before launch
+	 * @param readyAfter completed with the time from launch to the readiness line, when the stream shows it
 	 * @return the captured bytes and the stream's completion state
 	 */
-	private static Capture capture(InputStream stream, boolean expectReady, AtomicLong total, int limit, Process process)
+	private static Capture capture(InputStream stream, boolean expectReady, AtomicLong total, int limit, Process process,
+		long start, CompletableFuture<Duration> readyAfter)
 	{
 		ByteArrayOutputStream captured = new ByteArrayOutputStream();
 		boolean ready = false;
@@ -510,7 +620,9 @@ public final class CheckProgram
 			{
 				byte[] prefix = stream.readNBytes(READY_LINE.length);
 				ready = Arrays.equals(prefix, READY_LINE);
-				if (!ready)
+				if (ready)
+					readyAfter.complete(Duration.ofNanos(System.nanoTime() - start));
+				else
 				{
 					captured.write(prefix, 0, Math.min(prefix.length, limit));
 					total.addAndGet(prefix.length);
@@ -522,7 +634,7 @@ public final class CheckProgram
 				captured.write(chunk, 0, Math.min(length, limit - captured.size()));
 				if (total.addAndGet(length) > limit)
 				{
-					process.destroyForcibly();
+					destroyTree(process);
 					break;
 				}
 			}
