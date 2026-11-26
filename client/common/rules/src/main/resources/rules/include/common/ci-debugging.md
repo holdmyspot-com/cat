@@ -21,6 +21,8 @@
 	the complete required workflow runs once, after the fix passes, as the acceptance gate.
 - A job that the machine killed abruptly is fitted to the machine's memory on evidence, not by lowering its parallelism
 	until it is slow.
+- A recommendation to change a CI job, gate or test configuration rests on what that configuration currently does, so
+	that it does not repeat a setting that is already in place or contradict one that is.
 - Preserve hosted acceptance evidence when the required platform, identity, artifact, or service boundary is unavailable
 	locally or is part of the required outcome.
 
@@ -31,6 +33,10 @@ command, determining inputs, consumed artifact, harness configuration, and platf
 investigate. Read the retained log, receipt, and artifacts first, and preserve them. When that log shows a download
 from an upstream server that failed because the server could not be reached, lazy load `upstream-fallbacks.md` before
 you choose a fix.
+
+Before you recommend or make a change to a CI job, gate or test configuration, read what it currently does, such as its
+retry, parallelism and timeout settings in the workflow and in the tool's configuration, and the log lines that show
+them. Base the recommendation on that.
 
 Reproduce the failure locally first. If a supported local invocation can exercise that same relevant boundary from
 retained or reproducible inputs, run it locally before dispatching a replacement hosted run. Use its result to narrow

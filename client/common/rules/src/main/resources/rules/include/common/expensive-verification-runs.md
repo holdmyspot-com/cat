@@ -9,6 +9,8 @@
 	wait for an in-progress run that already answers the question.
 - Before committing resources to an expensive run, confirm its prerequisites and any claimed comparability between
 	targets with the earliest inexpensive observations the workflow supports.
+- An expensive run is started with the inputs that its question needs, and a wrong input is found when the run starts
+	instead of when it ends.
 - Spend a slow or scarce target's run only when it is likely to answer for the revision that ships: after the other
 	targets pass while the workflow is being changed or repaired, and without waiting for them once the round is
 	expected to pass.
@@ -56,6 +58,10 @@ contract. Before running a pilot or the full suite, confirm what each target wil
 materializes something only during execution, check it at the first supported point it can be observed. Resolve any
 mismatch before collecting comparable results. Verify any boundary the inexpensive check cannot exercise in the required
 run. Report a target whose required observation is unavailable as unverified.
+
+Before you dispatch a long or expensive run, check each input you pass against what the run is meant to show, such as a
+dry-run flag, the target ref and the platform selection. After it starts, read the inputs back from the run's recorded
+parameters and cancel it at once if one is wrong.
 
 Name the revision that the run verifies. When a change that you have decided to make, or that is in progress, will
 replace that revision, such as a rebase or merge onto a new base, a dependency or upstream update, or a fix you are
