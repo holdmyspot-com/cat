@@ -19,6 +19,7 @@ import java.nio.file.attribute.FileAttribute;
 import java.nio.file.attribute.PosixFileAttributes;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.nio.file.attribute.UserPrincipal;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.LinkedHashSet;
@@ -153,13 +154,13 @@ public final class SecretFile
 	/**
 	 * Returns the access that a new file that holds a secret gets as it is created, so that it is never readable by
 	 * another user: on a file system with POSIX permissions, mode {@code 0600}; on one with access lists, an access list
-	 * that grants the owner of the folder that holds it, alone.
+	 * that grants the account that owns the files that this process creates in the folder, alone.
 	 *
 	 * @param folder the existing folder that will hold the file
 	 * @return the attribute to pass to the call that creates the file
 	 * @throws NullPointerException if {@code folder} is null
-	 * @throws IOException          if the file system reports neither POSIX permissions nor access lists, or the
-	 *                              folder's owner cannot be read
+	 * @throws IOException          if the file system reports neither POSIX permissions nor access lists, or the owner of
+	 *                              a new file in the folder cannot be learned
 	 */
 	public static FileAttribute<?> ownerOnlyFile(Path folder) throws IOException
 	{
@@ -203,13 +204,14 @@ public final class SecretFile
 	/**
 	 * Returns the access that a new folder that holds secrets gets as it is created, so that no other user may list or
 	 * enter it: on a file system with POSIX permissions, mode {@code 0700}; on one with access lists, an access list that
-	 * grants the owner of its parent folder, alone, and that the folder's new files and folders inherit.
+	 * grants the account that owns the files that this process creates in the parent folder, alone, and that the
+	 * folder's new files and folders inherit.
 	 *
 	 * @param parent the existing folder that will hold the new folder
 	 * @return the attribute to pass to the call that creates the folder
 	 * @throws NullPointerException if {@code parent} is null
-	 * @throws IOException          if the file system reports neither POSIX permissions nor access lists, or the
-	 *                              parent's owner cannot be read
+	 * @throws IOException          if the file system reports neither POSIX permissions nor access lists, or the owner of
+	 *                              a new file in the parent cannot be learned
 	 */
 	public static FileAttribute<?> ownerOnlyFolder(Path parent) throws IOException
 	{
@@ -220,11 +222,11 @@ public final class SecretFile
 	/**
 	 * Returns the access that a new file or folder that holds a secret gets as it is created.
 	 *
-	 * @param parent   the existing folder that will hold it, whose owner the access list names
+	 * @param parent   the existing folder that will hold it
 	 * @param mode     the mode on a file system with POSIX permissions
 	 * @param aclFlags the inheritance of the access list's entry on a file system with access lists
 	 * @return the attribute
-	 * @throws IOException if the file system reports neither, or the parent's owner cannot be read
+	 * @throws IOException if the file system reports neither, or the owner of a new file in the parent cannot be learned
 	 */
 	private static FileAttribute<?> ownerOnly(Path parent, Set<PosixFilePermission> mode, Set<AclEntryFlag> aclFlags)
 		throws IOException
@@ -235,7 +237,7 @@ public final class SecretFile
 			return PosixFilePermissions.asFileAttribute(mode);
 		if (views.contains("acl"))
 		{
-			AclEntry owner = AclEntry.newBuilder().setType(AclEntryType.ALLOW).setPrincipal(Files.getOwner(parent)).
+			AclEntry owner = AclEntry.newBuilder().setType(AclEntryType.ALLOW).setPrincipal(newFileOwner(parent)).
 				setPermissions(EnumSet.allOf(AclEntryPermission.class)).setFlags(aclFlags).build();
 			return new FileAttribute<List<AclEntry>>()
 			{
@@ -254,6 +256,28 @@ public final class SecretFile
 		}
 		throw new IOException("The file system of " + parent + " reports neither POSIX permissions nor an access " +
 			"list, so CAT cannot create a file there that its owner alone may read.");
+	}
+
+	/**
+	 * Returns the account that owns a file that this process creates in a folder, which the access list of a new file
+	 * or folder for a secret must name. It can differ from the folder's own owner: on Windows a folder that the
+	 * Administrators group owns, as a temporary folder can be, holds new files that the user who creates them owns.
+	 *
+	 * @param folder the existing folder
+	 * @return the owner
+	 * @throws IOException if an empty file cannot be created in the folder, or its owner cannot be read
+	 */
+	private static UserPrincipal newFileOwner(Path folder) throws IOException
+	{
+		Path probe = Files.createTempFile(folder, ".owner-", ".tmp");
+		try
+		{
+			return Files.getOwner(probe, NOFOLLOW_LINKS);
+		}
+		finally
+		{
+			Files.delete(probe);
+		}
 	}
 
 	/**
