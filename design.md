@@ -4664,6 +4664,22 @@ every project, so `install` creates none and reports that the startup files stay
 profile and restores the earlier selection (user rulings, 2026-11-08: "do that", then "Follow sandbox_mode" and "Ask
 first").
 
+**The other harness's CAT folders, in either install order.** Claude Code's `install` also gets a
+`sandbox.filesystem.denyWrite` entry for the other harness's marketplace folder, version folders and data directory, so
+that a session's commands cannot change the CAT files that the other harness runs, and a `sandbox.filesystem.allowWrite`
+entry for the capacity locks. The entries name the folders that the other harness's home selects, the home that its
+`CODEX_HOME` or `CLAUDE_CONFIG_DIR` names, otherwise the one under the user's home folder, whether or not the other
+harness has installed CAT yet, so the order of the two installs does not matter; an install, an update (including the
+run of the new version's installer above) and a repair add each one that the settings lack. Codex gets no such entry,
+because its sandbox already denies the folders of Claude Code's CAT installation and its own entries depend on the
+permission profile that the user selects. `status` reports the installation as inconsistent, and says to run `install`,
+when the harness's configuration lacks an entry that `install` maintains for these folders, for the capacity locks or for
+the startup files, so that an entry that something else removed from `settings.json` after `install` added it, such as a
+running Claude Code session that writes its own copy of the settings, does not go unreported. A `status` whose
+environment does not give the user's home folder cannot name those paths, so it reports the installer's entries only. For
+Codex, whose entries depend on the selected profile, `status` checks none of them (found 2026-11-26: the Claude settings
+lacked the entries for Codex's CAT folders while `status` reported the installation as consistent).
+
 **Clients.** Outside a nested session, a runner launcher that a harness session runs, `request-session`, and every other
 CAT command that starts sessions, the prompt optimizer included, packs each launch as a session request, as inside a
 nested session, into `requests/` in the session's CAT session directory, waits for the response there, and writes the
