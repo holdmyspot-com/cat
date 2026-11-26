@@ -15,8 +15,8 @@
 
 set -euo pipefail
 
-readonly -a RELEASE_PLATFORMS=(linux-x64 linux-arm64 macos-x64 macos-arm64 windows-x64)
-readonly -a RELEASE_HARNESSES=(claude codex)
+RELEASE_PLATFORMS=(linux-x64 linux-arm64 macos-x64 macos-arm64 windows-x64)
+RELEASE_HARNESSES=(claude codex)
 
 # Prints a message to standard error.
 # Arguments: the message.
@@ -122,7 +122,8 @@ check_build_artifacts()
 	local platform
 	local name
 	local expected_json
-	local -a problems=()
+	local problems=""
+	local newline=$'\n'
 
 	expected_json="$(printf 'cat-%s\n' "${RELEASE_PLATFORMS[@]}" | jq -R . | jq -s .)"
 	for platform in "${RELEASE_PLATFORMS[@]}"; do
@@ -132,22 +133,22 @@ check_build_artifacts()
 			continue
 		fi
 		if jq -e --arg name "${name}" 'any(.artifacts[]; .name == $name)' "${artifacts_file}" > /dev/null; then
-			problems+=("The artifact ${name} has expired.")
+			problems="${problems}  The artifact ${name} has expired.${newline}"
 		else
-			problems+=("The artifact ${name} does not exist.")
+			problems="${problems}  The artifact ${name} does not exist.${newline}"
 		fi
 	done
 	while IFS= read -r name; do
-		problems+=("The artifact ${name} is not a platform that CAT releases.")
+		problems="${problems}  The artifact ${name} is not a platform that CAT releases.${newline}"
 	done < <(jq -r --argjson expected "${expected_json}" '
 		.artifacts[] | select(.name | startswith("cat-")) | select(.name as $name | $expected | index($name) | not) |
 		.name' "${artifacts_file}")
-	if ((${#problems[@]} == 0)); then
+	if [[ -z "${problems}" ]]; then
 		return 0
 	fi
 	{
 		echo "Build run ${run_id} does not hold the release's packages:"
-		printf '  %s\n' "${problems[@]}"
+		printf '%s' "${problems}"
 		echo "Artifacts expire after their retention period. Re-run Build run ${run_id} to build and upload them" \
 			"again. A Build job uploads nothing when the secret CAT_RELEASE_SIGNING_KEY is unavailable to it."
 	} >&2
