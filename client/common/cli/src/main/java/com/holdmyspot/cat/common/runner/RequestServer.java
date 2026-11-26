@@ -7,6 +7,7 @@ import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.InstalledCopies;
 import com.holdmyspot.cat.common.LockFileOpener;
 import com.holdmyspot.cat.common.Pause;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
@@ -19,6 +20,8 @@ import com.holdmyspot.cat.common.runner.launcher.ParentPolicySource;
 import com.holdmyspot.cat.common.runner.launcher.ProcessIdentity;
 import com.holdmyspot.cat.common.runner.launcher.ProcessTable;
 import com.holdmyspot.cat.common.runner.launcher.RunnerChildNeeds;
+import com.holdmyspot.cat.common.runner.login.CodexLoginService;
+import com.holdmyspot.cat.common.runner.login.CodexLoginSource;
 import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
@@ -39,9 +42,11 @@ import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
@@ -159,6 +164,41 @@ public final class RequestServer
 	}
 
 	/**
+	 * Starts the login service through which the server serves the Codex logins of the launches that it starts, and of
+	 * the launches that their sessions request in turn.
+	 */
+	@FunctionalInterface
+	public interface LoginServices
+	{
+		/**
+		 * Returns the login services of the server's own process: each reads the logins of the platform's keyring and
+		 * of a source home's files, and runs a source provider's command with the server's environment.
+		 *
+		 * @param environment the server's environment
+		 * @return the login services
+		 * @throws NullPointerException if {@code environment} is null
+		 */
+		static LoginServices system(Map<String, String> environment)
+		{
+			requireThat(environment, "environment").isNotNull();
+			Map<String, String> copy = Map.copyOf(environment);
+			Platform platform = Platform.current();
+			return (parent, topLevel) -> CodexLoginService.start(parent, topLevel,
+				CodexLoginSource.system(platform, copy), platform, copy, Clock.systemUTC());
+		}
+
+		/**
+		 * Starts the service.
+		 *
+		 * @param parent   the folder that holds the service's folder
+		 * @param topLevel reads the policy of the session that runs the server, for its main thread
+		 * @return the service, which the caller closes
+		 * @throws IOException if the service cannot start
+		 */
+		CodexLoginService start(Path parent, CodexLoginService.TopLevelPolicy topLevel) throws IOException;
+	}
+
+	/**
 	 * What the plugin that holds the server gives it.
 	 *
 	 * @param harness           the identifier of the plugin's harness
@@ -173,14 +213,17 @@ public final class RequestServer
 	 * @param sessions          identifies the session that runs the server
 	 * @param scopes            opens the tool scope of the session's project folder, which gives the session's CAT
 	 *                          session directory
-	 * @param starter           starts the runner of a requested session's harness, without the harness markers in
-	 *                          its environment
+	 * @param logins            starts the login service that serves the Codex logins of the session's launches
+	 * @param starter           returns the starter of the runner of a requested session's harness, given the
+	 *                          variables that the runner adds to its environment to reach the login service; the
+	 *                          runner's environment holds no harness markers
 	 * @param processes         tells whether the session's harness process still runs
 	 * @param pause             paces the checks for requests and for the harness process's end
 	 */
 	public record Host(String harness, Set<String> running, Optional<String> refusal, Path plugin,
 		InstalledCopies installed, Supplier<String> sandboxed, SessionFinder sessions, Function<Path, ToolScope> scopes,
-		RequestedRunner.Resolver starter, ProcessTable processes, Pause pause)
+		LoginServices logins, Function<Map<String, String>, RequestedRunner.Resolver> starter, ProcessTable processes,
+		Pause pause)
 	{
 		/**
 		 * Creates what a plugin gives its server.
@@ -193,7 +236,9 @@ public final class RequestServer
 		 * @param sandboxed         returns why the server runs inside the session's sandbox
 		 * @param sessions          identifies the session that runs the server
 		 * @param scopes            opens the tool scope of the session's project folder
-		 * @param starter           starts the runner of a requested session's harness
+		 * @param logins            starts the login service that serves the Codex logins of the session's launches
+		 * @param starter           returns the starter of the runner of a requested session's harness, given the
+		 *                          variables that reach the login service
 		 * @param processes         tells whether the session's harness process still runs
 		 * @param pause             paces the checks for requests and for the harness process's end
 		 * @throws NullPointerException     if any of the arguments are null
@@ -209,6 +254,7 @@ public final class RequestServer
 			requireThat(sandboxed, "sandboxed").isNotNull();
 			requireThat(sessions, "sessions").isNotNull();
 			requireThat(scopes, "scopes").isNotNull();
+			requireThat(logins, "logins").isNotNull();
 			requireThat(starter, "starter").isNotNull();
 			requireThat(processes, "processes").isNotNull();
 			requireThat(pause, "pause").isNotNull();
@@ -756,7 +802,9 @@ public final class RequestServer
 
 	/**
 	 * Serves the session's requests until its harness process ends, then stops every session that the server started
-	 * and answers each request that remains with the reason {@code ended}.
+	 * and answers each request that remains with the reason {@code ended}. A login service in the session directory
+	 * serves the Codex logins of the sessions that the server starts, and of the sessions that they request, until the
+	 * server ends.
 	 *
 	 * @param session   the session
 	 * @param directory the session's CAT session directory
@@ -766,7 +814,8 @@ public final class RequestServer
 	 * @param fileLocks coordinates startup and cleanup locks
 	 * @param cleanup removes temporary policy probe directories
 	 * @param comparison binds a native hook comparison if the serving plugin supports it
-	 * @throws IOException if the request directories cannot be created or a request cannot be answered
+	 * @throws IOException if the request directories cannot be created, the login service cannot start or a request
+	 *                     cannot be answered
 	 */
 	private static void serve(Session session, SessionDirectory directory, ChildBound bound, Host host,
 		PrintWriter errors, FileLocks fileLocks, TemporaryDirectories cleanup, Optional<ComparisonHost> comparison)
@@ -776,9 +825,31 @@ public final class RequestServer
 		Path responses = directory(directory.directory().resolve(RESPONSES));
 		SessionSlots slots = new SessionSlots(directory.directory().resolve(RUNS), HarnessCapacity.MAXIMUM_CONCURRENCY,
 			new ProcessHandleLiveness(), fileLocks);
-		ServerSite site = new ServerSite(requests, responses, slots, fileLocks, bound, session.askingThread(), directory,
-			new WorktreeService(new GitWorktreeRegistrar()), host.harness(), host.starter(), cleanup,
-			comparison.map(service -> service.open(session, bound, host.starter())));
+		// The service checks a keyring login against the policy of the session's main thread, which bounds every
+		// launch of the session, whichever thread or nested session asks for it
+		try (CodexLoginService logins = host.logins().start(directory.directory(),
+			() -> bound.parentPolicy(Optional.empty())))
+		{
+			// The address and key reach each runner through its environment alone, so no request or response holds them
+			RequestedRunner.Resolver runners = host.starter().apply(logins.runnerVariables());
+			ServerSite site = new ServerSite(requests, responses, slots, fileLocks, bound, session.askingThread(),
+				directory, new WorktreeService(new GitWorktreeRegistrar()), host.harness(), runners, cleanup,
+				comparison.map(service -> service.open(session, bound, runners)));
+			serve(session, site, host, errors);
+		}
+	}
+
+	/**
+	 * Serves the session's requests through a site until its harness process ends.
+	 *
+	 * @param session the session
+	 * @param site    the site that the broker serves
+	 * @param host    what the plugin gives the server
+	 * @param errors  receives a line once the server serves the session
+	 * @throws IOException if a request cannot be answered
+	 */
+	private static void serve(Session session, ServerSite site, Host host, PrintWriter errors) throws IOException
+	{
 		try (SessionRequestBroker broker = new SessionRequestBroker(site))
 		{
 			errors.println("The request server serves this " + productName(host.harness()) +

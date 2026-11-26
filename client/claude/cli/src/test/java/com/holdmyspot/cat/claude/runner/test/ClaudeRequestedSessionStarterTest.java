@@ -167,7 +167,7 @@ public final class ClaudeRequestedSessionStarterTest extends RequestedSessionSta
 			}, new ManualClock(Instant.EPOCH), processes);
 			this.jvm = new TestJvmScope(build.temporaryDirectory(), executables);
 			Path artifact = Path.of("/plugins/cat/1.0").toAbsolutePath();
-			this.starter = ClaudeRequestServerCli.starter(jvm, artifact, environment);
+			this.starter = ClaudeRequestServerCli.starter(jvm, artifact, environment, Map.of());
 			this.launcher = artifact.resolve("bin/claude-runner");
 		}
 

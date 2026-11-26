@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.runner.login.test;
 import static com.holdmyspot.cat.common.runner.login.test.LoginFixtures.ACCOUNT_ID;
 import static com.holdmyspot.cat.common.runner.login.test.LoginFixtures.REFRESH_TOKEN;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.testng.Assert.expectThrows;
 
 import com.holdmyspot.cat.common.Platform;
@@ -211,6 +212,37 @@ public final class CodexLoginServiceTest
 					containsExactly(List.of(CodexLoginService.SOCKET_VARIABLE, CodexLoginService.KEY_VARIABLE));
 			}
 			requireThat(Files.exists(folder), "folderExists").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that a service whose folder's parent has a path too long for a socket's address, as a project's session
+	 * directory can, still starts and serves, with its socket in an owner-only folder whose path a socket's address
+	 * holds.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void startsBelowLongParent() throws IOException
+	{
+		// Requirement: R-I15
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Source source = source(cleanup);
+			String key = "sk-fixture-long-parent";
+			LoginFixtures.writeReadOnly(source.codex().resolve(CodexLoginSource.LOGIN_FILE), LoginFixtures.apiKey(key));
+			Path parent = cleanup.add(Files.createTempDirectory("login-server-"));
+			while (parent.toAbsolutePath().toString().getBytes(UTF_8).length <= 120)
+				parent = Files.createDirectory(parent.resolve("a-folder-of-a-project"));
+			try (CodexLoginService service = CodexLoginService.start(parent, () -> ParentPolicy.UNSANDBOXED,
+				new CodexLoginSource(new LoginFixtures.Keyring(null)), Platform.current(), Map.of(), () -> NOW))
+			{
+				requireThat(service.socket().toString().getBytes(UTF_8).length, "socketPathBytes").
+					isLessThanOrEqualTo(100);
+				requireThat(LoginFixtures.ownerOnly(service.folder()), "ownerOnly").isTrue();
+				CodexLoginClient.Opened opened = open(service, source.stored(CodexLoginPlan.Store.FILE));
+				requireThat(CodexLoginClient.token(service.socket(), opened.credential()), "token").isEqualTo(key);
+			}
 		}
 	}
 

@@ -20,6 +20,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -67,7 +68,9 @@ public final class CodexRequestServerCli
 				() -> CodexServedSession.sandboxed(RequestServer.program(plugin), environment),
 				CodexServedSession.sessions(environment),
 				directory -> CodexRunnerCli.toolScope(directory, environment, scope.waiting()),
-				starter(scope, plugin, environment), new ProcessHandleTable(HarnessProcesses.system()),
+				RequestServer.LoginServices.system(environment),
+				variables -> starter(scope, plugin, environment, variables),
+				new ProcessHandleTable(HarnessProcesses.system()),
 				Pause.sleeping(POLL));
 			status = RequestServer.serve(args, host, new PrintWriter(System.err, true, StandardCharsets.UTF_8));
 		}
@@ -79,19 +82,26 @@ public final class CodexRequestServerCli
 	 * requested harness: the {@code codex-runner} of this plugin, or the {@code claude-runner} of the Claude
 	 * artifact that the {@code claude-artifact} launcher finds.
 	 *
-	 * @param scope       the borrowed process scope, which starts each runner
-	 * @param artifact    this plugin's folder
-	 * @param environment the host environment, which each runner receives without the harness markers that
-	 *                    {@link CodexRunnerCli#MARKERS} reads, so that it is not taken for a harness session's launch
+	 * @param scope          the borrowed process scope, which starts each runner
+	 * @param artifact       this plugin's folder
+	 * @param environment    the host environment, which each runner receives without the harness markers that
+	 *                       {@link CodexRunnerCli#MARKERS} reads, so that it is not taken for a harness session's
+	 *                       launch
+	 * @param loginVariables the variables through which each runner, and each runner that it starts, reaches the
+	 *                       server's login service
 	 * @return the starter
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public static RequestedRunner.Resolver starter(JvmScope scope, Path artifact, Map<String, String> environment)
+	public static RequestedRunner.Resolver starter(JvmScope scope, Path artifact, Map<String, String> environment,
+		Map<String, String> loginVariables)
 	{
 		requireThat(scope, "scope").isNotNull();
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(environment, "environment").isNotNull();
-		Map<String, String> copy = Map.copyOf(CodexRunnerCli.MARKERS.without(environment));
+		requireThat(loginVariables, "loginVariables").isNotNull();
+		Map<String, String> runner = new HashMap<>(CodexRunnerCli.MARKERS.without(environment));
+		runner.putAll(loginVariables);
+		Map<String, String> copy = Map.copyOf(runner);
 		return harness -> CodexRunnerCli.requestedRunner(scope, artifact, harness, copy).select(copy);
 	}
 

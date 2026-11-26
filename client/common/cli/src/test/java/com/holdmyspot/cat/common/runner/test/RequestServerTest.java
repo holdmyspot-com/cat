@@ -38,6 +38,7 @@ import com.holdmyspot.cat.common.runner.launcher.ProcessIdentity;
 import com.holdmyspot.cat.common.runner.launcher.RunnerArguments;
 import com.holdmyspot.cat.common.runner.launcher.test.FakeParentPolicySource;
 import com.holdmyspot.cat.common.runner.launcher.test.FakeProcessTable;
+import com.holdmyspot.cat.common.runner.login.CodexLoginService;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.HostAccess;
@@ -391,6 +392,64 @@ public final class RequestServerTest
 				fixture.processes.end(fixture.harness);
 				requireThat(server.end(), "exit").isEqualTo(0);
 			}
+		}
+	}
+
+	/**
+	 * Verifies that the server starts one login service for its session, gives each runner that it starts the
+	 * service's address and key and no request or response file holds them, gives the service the policy of the
+	 * session's main thread even when a thread of the session runs the server, and closes the service when it ends.
+	 *
+	 * @throws IOException          if the fixture cannot be created or a request cannot be served
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	// The server closes the service that it started
+	@SuppressWarnings("PMD.CloseResource")
+	@Test(timeOut = 60_000)
+	public void givesLoginServiceToRunners() throws IOException, InterruptedException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			Path threadFolder = Files.createDirectories(fixture.project.resolve("thread"));
+			fixture.askingThread = Optional.of("thread-1");
+			fixture.policy.allowThread("thread-1", fixture.policy(List.of(threadFolder)));
+			AtomicReference<FakeHarnessCli> child = new AtomicReference<>();
+			fixture.child = arguments ->
+			{
+				Files.writeString(Path.of(option(arguments, "--receipt")), "{}");
+				FakeHarnessCli process = new FakeHarnessCli(exitOnCompleteRecord(fixture.json, child));
+				child.set(process);
+				return process;
+			};
+			CodexLoginService service;
+			try (Fixture.Running server = fixture.start())
+			{
+				JsonNode response = server.request(fixture.manifest());
+				requireThat(response.path("status").asString(), "status").withContext(response, "response").
+					isEqualTo("completed");
+
+				requireThat(fixture.loginServices.size(), "loginServices").isEqualTo(1);
+				service = fixture.loginServices.getFirst();
+				requireThat(fixture.runnerVariables, "runnerVariables").isNotEmpty();
+				for (Map<String, String> variables : fixture.runnerVariables)
+					requireThat(variables, "variables").isEqualTo(service.runnerVariables());
+				requireThat(Files.exists(service.socket()), "socketExists").isTrue();
+				requireThat(fixture.topLevels.getFirst().read().writeRoots(), "topLevelWriteRoots").
+					isEqualTo(List.of(fixture.project));
+				List<String> secrets = List.copyOf(service.runnerVariables().values());
+				try (Stream<Path> paths = Files.walk(fixture.sessionDirectory()))
+				{
+					for (Path file : paths.filter(Files::isRegularFile).toList())
+					{
+						String content = new String(Files.readAllBytes(file), StandardCharsets.ISO_8859_1);
+						for (String secret : secrets)
+							requireThat(content.contains(secret), "holdsServiceVariable").withContext(file, "file").isFalse();
+					}
+				}
+				fixture.processes.end(fixture.harness);
+				requireThat(server.end(), "exit").isEqualTo(0);
+			}
+			requireThat(Files.exists(service.socket()), "socketRemains").isFalse();
 		}
 	}
 
@@ -1760,6 +1819,18 @@ public final class RequestServerTest
 		 */
 		private List<Path> needsLogins = List.of();
 		private final AtomicInteger peerSelections = new AtomicInteger();
+		/**
+		 * The login services that the server started.
+		 */
+		private final List<CodexLoginService> loginServices = new CopyOnWriteArrayList<>();
+		/**
+		 * The readers of the top-level session's policy that the server gave its login services.
+		 */
+		private final List<CodexLoginService.TopLevelPolicy> topLevels = new CopyOnWriteArrayList<>();
+		/**
+		 * The login-service variables of each runner that the server selected, in the order that it selected them.
+		 */
+		private final List<Map<String, String>> runnerVariables = new CopyOnWriteArrayList<>();
 		private Child child = _ ->
 		{
 			throw new AssertionError("No session was expected");
@@ -1873,8 +1944,15 @@ public final class RequestServerTest
 					throw sessionRefusal.get();
 				return new RequestServer.Session(policy, transcript, project, askingThread, harness);
 			}, directory -> ToolScope.forSession(directory, environment, List.of(HARNESS_A), Yielding.waiting(),
-				GitProjects.IGNORING), harness ->
+				GitProjects.IGNORING), (parent, topLevel) ->
+			{
+				topLevels.add(topLevel);
+				CodexLoginService service = RequestServer.LoginServices.system(Map.of()).start(parent, topLevel);
+				loginServices.add(service);
+				return service;
+			}, variables -> harness ->
 				{
+					runnerVariables.add(Map.copyOf(variables));
 					Path artifact = plugin;
 					if (harness.equals("codex") && peer.isPresent())
 					{

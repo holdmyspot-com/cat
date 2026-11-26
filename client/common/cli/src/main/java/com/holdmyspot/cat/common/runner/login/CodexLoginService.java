@@ -176,8 +176,9 @@ public final class CodexLoginService implements AutoCloseable
 	}
 
 	/**
-	 * Starts a service whose socket is in an owner-only folder that it creates in a server's folder, or in the
-	 * temporary folder when that path would be longer than a socket's address holds.
+	 * Starts a service whose socket is in an owner-only folder that it creates in a server's folder, or, when that path
+	 * would be longer than a socket's address holds, in the first of the temporary folder and, on platforms other than
+	 * Windows, {@code /tmp} whose path is short enough.
 	 *
 	 * @param parent      the server's folder
 	 * @param topLevel    reads the top-level session's policy
@@ -200,10 +201,7 @@ public final class CodexLoginService implements AutoCloseable
 		requireThat(platform, "platform").isNotNull();
 		requireThat(environment, "environment").isNotNull();
 		requireThat(clock, "clock").isNotNull();
-		Path folderParent = parent.toAbsolutePath();
-		// A socket's address holds about a hundred bytes, and the folder's name adds about twenty
-		if (folderParent.toString().getBytes(UTF_8).length > MAXIMUM_SOCKET_PATH - 24)
-			folderParent = Path.of(System.getProperty("java.io.tmpdir")).toAbsolutePath();
+		Path folderParent = socketParent(parent.toAbsolutePath(), platform);
 		Path folder = Files.createTempDirectory(folderParent, "login-", SecretFile.ownerOnlyFolder(folderParent));
 		Path socket = folder.resolve(SOCKET_NAME);
 		if (socket.toString().getBytes(UTF_8).length > MAXIMUM_SOCKET_PATH)
@@ -227,6 +225,37 @@ public final class CodexLoginService implements AutoCloseable
 			clock);
 		service.acceptor.start();
 		return service;
+	}
+
+	/**
+	 * Returns the folder in which the service creates its own folder: the first of the server's folder, the temporary
+	 * folder and, on platforms other than Windows, {@code /tmp}, whose path leaves room in a socket's address for the
+	 * service's folder and its socket. A session directory, and a temporary folder that a session chose, can be too
+	 * deep, while {@code /tmp} exists on every such platform with a short path.
+	 *
+	 * @param parent   the server's folder, as an absolute path
+	 * @param platform the platform that the server runs on
+	 * @return the folder
+	 * @throws IOException if no folder's path is short enough
+	 */
+	private static Path socketParent(Path parent, Platform platform) throws IOException
+	{
+		List<Path> candidates = new ArrayList<>(List.of(parent,
+			Path.of(System.getProperty("java.io.tmpdir")).toAbsolutePath()));
+		if (!platform.isWindows())
+			candidates.add(Path.of("/tmp"));
+		for (Path candidate : candidates)
+		{
+			// The service's folder adds a separator and up to 25 bytes of name, and the socket two more
+			if (candidate.toString().getBytes(UTF_8).length <= MAXIMUM_SOCKET_PATH - 28 &&
+				Files.isDirectory(candidate))
+			{
+				return candidate;
+			}
+		}
+		throw new IOException("The login service cannot create its socket: the paths of " + candidates + " are " +
+			"all longer than a socket's address holds. Run the session in a project, or with a temporary folder, " +
+			"whose path is shorter.");
 	}
 
 	/**

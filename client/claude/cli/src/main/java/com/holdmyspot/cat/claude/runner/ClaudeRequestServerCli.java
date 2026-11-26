@@ -29,6 +29,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -92,7 +93,9 @@ public final class ClaudeRequestServerCli
 				() -> ClaudeServedSession.sandboxed(RequestServer.program(plugin), environment),
 				ClaudeServedSession.sessions(environment),
 				directory -> ToolScope.forSession(directory, environment, SessionHarness.installed(), scope.waiting()),
-				starter(scope, plugin, environment), new ProcessHandleTable(HarnessProcesses.system()),
+				RequestServer.LoginServices.system(environment),
+				variables -> starter(scope, plugin, environment, variables),
+				new ProcessHandleTable(HarnessProcesses.system()),
 				Pause.sleeping(POLL));
 			Optional<RequestServer.ComparisonHost> comparison = Optional.empty();
 			if (Platform.current().isLinux())
@@ -124,19 +127,26 @@ public final class ClaudeRequestServerCli
 	 * requested harness: the {@code claude-runner} of this plugin, or the {@code codex-runner} of the Codex
 	 * artifact that the {@code codex-artifact} launcher finds.
 	 *
-	 * @param scope       the borrowed process scope, which starts each runner
-	 * @param artifact    this plugin's folder
-	 * @param environment the host environment, which each runner receives without the harness markers that
-	 *                    {@link ClaudeRunnerCli#MARKERS} reads, so that it is not taken for a harness session's launch
+	 * @param scope          the borrowed process scope, which starts each runner
+	 * @param artifact       this plugin's folder
+	 * @param environment    the host environment, which each runner receives without the harness markers that
+	 *                       {@link ClaudeRunnerCli#MARKERS} reads, so that it is not taken for a harness session's
+	 *                       launch
+	 * @param loginVariables the variables through which each runner, and each runner that it starts, reaches the
+	 *                       server's login service
 	 * @return the starter
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public static RequestedRunner.Resolver starter(JvmScope scope, Path artifact, Map<String, String> environment)
+	public static RequestedRunner.Resolver starter(JvmScope scope, Path artifact, Map<String, String> environment,
+		Map<String, String> loginVariables)
 	{
 		requireThat(scope, "scope").isNotNull();
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(environment, "environment").isNotNull();
-		Map<String, String> copy = Map.copyOf(ClaudeRunnerCli.MARKERS.without(environment));
+		requireThat(loginVariables, "loginVariables").isNotNull();
+		Map<String, String> runner = new HashMap<>(ClaudeRunnerCli.MARKERS.without(environment));
+		runner.putAll(loginVariables);
+		Map<String, String> copy = Map.copyOf(runner);
 		return harness -> ClaudeRunnerCli.requestedRunner(scope, artifact, harness, copy).select(copy);
 	}
 
