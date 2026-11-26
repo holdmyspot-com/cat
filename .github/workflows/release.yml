@@ -8,149 +8,55 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
-  build:
-    name: Build ${{ matrix.platform }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: linux-x64
-            runner: ubuntu-26.04
-          - platform: linux-arm64
-            runner: ubuntu-26.04-arm
-          - platform: macos-x64
-            runner: macos-26-intel
-          - platform: macos-arm64
-            runner: macos-26
-          - platform: windows-x64
-            runner: windows-2025
-    runs-on: ${{ matrix.runner }}
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-java@v6
-        with:
-          distribution: zulu
-          java-version: '27'
-          cache: maven
-          cache-dependency-path: client/pom.xml
-      # Fails before the long build when the tag is not "v" followed by the Maven project version. The root POM's
-      # release-tag profile runs the check with the enforcer plugin that the build uses, so it downloads nothing that
-      # the build would not, and Maven prints the mismatch to the log.
-      - name: Verify release tag
-        run: client/mvnw -q -f client/pom.xml --non-recursive validate "-Dcat.release.tag=${GITHUB_REF_NAME}"
-      - name: Install test tools on Linux
-        if: runner.os == 'Linux'
-        run: .github/scripts/install-linux-test-tools.sh
-      - name: Install test tools on macOS
-        if: runner.os == 'macOS'
-        run: brew install bats-core shellcheck
-      # Chocolatey's community feed can be unavailable to GitHub's runners, and choco then reports success without
-      # installing anything, so ShellCheck comes from its own GitHub release, pinned by checksum.
-      - name: Install test tools on Windows
-        if: runner.os == 'Windows'
-        run: |
-          shellcheck_directory="$(cygpath --unix "${RUNNER_TEMP}")/shellcheck"
-          archive="${shellcheck_directory}/shellcheck.zip"
-          mkdir -p "${shellcheck_directory}"
-          curl -fsSL --retry 3 --retry-all-errors -o "${archive}" \
-            https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.zip
-          echo "8a4e35ab0b331c85d73567b12f2a444df187f483e5079ceffa6bda1faa2e740e  ${archive}" |
-            sha256sum --check --strict
-          pwsh -NoProfile -Command "Expand-Archive -LiteralPath '$(cygpath --windows "${archive}")' -DestinationPath \
-            '$(cygpath --windows "${shellcheck_directory}")'"
-          cygpath --windows "${shellcheck_directory}" >> "${GITHUB_PATH}"
-          "${shellcheck_directory}/shellcheck.exe" --version
-          npm install --global bats@1.13.0
-          bats --version
-      # The build embeds the public half of the release signing key, so that CAT can check the release's signed manifest
-      - name: Derive release public key
-        id: release-key
-        env:
-          CAT_RELEASE_SIGNING_KEY: ${{ secrets.CAT_RELEASE_SIGNING_KEY }}
-        run: |
-          if [ -z "${CAT_RELEASE_SIGNING_KEY}" ]; then
-            echo "The secret CAT_RELEASE_SIGNING_KEY is empty or unavailable to this workflow." >&2
-            exit 1
-          fi
-          key_file="${RUNNER_TEMP}/cat-release-signing-key.pem"
-          (umask 077 && printf '%s\n' "${CAT_RELEASE_SIGNING_KEY}" > "${key_file}")
-          public_key="$(openssl pkey -in "${key_file}" -pubout -outform DER | base64 | tr -d '\r\n')"
-          rm -f "${key_file}"
-          if [ -z "${public_key}" ]; then
-            echo "CAT_RELEASE_SIGNING_KEY holds no private key that openssl can read." >&2
-            exit 1
-          fi
-          echo "public-key=${public_key}" >> "${GITHUB_OUTPUT}"
-      - name: Verify and package
-        env:
-          CAT_RELEASE_PUBLIC_KEY: ${{ steps.release-key.outputs.public-key }}
-        # Each plugin version names the release commit by its first 12 hexadecimal digits
-        run: >-
-          client/mvnw -f client/pom.xml verify "-Dcat.release.public-key=${CAT_RELEASE_PUBLIC_KEY}"
-          "-Dcat.build=${GITHUB_SHA::12}"
-      - name: Verify native release checksums
-        if: runner.os != 'macOS'
-        working-directory: client/common/distribution/target/release
-        run: sha256sum --check --strict SHA256SUMS.txt
-      - name: Verify bootstrap boundaries
-        if: runner.os != 'Windows'
-        run: >-
-          bats client/common/distribution/src/test/bats/bootstrap-common.bats
-          client/common/distribution/src/test/bats/bootstrap-claude.bats
-          client/common/distribution/src/test/bats/bootstrap-codex.bats
-          client/common/distribution/src/test/bats/installer-launcher.bats
-      # Claude Code installs CAT from Git Bash on Windows, and Codex from PowerShell through cat.ps1, which
-      # bootstrap-windows.bats tests.
-      # bootstrap-codex.bats runs the Windows Codex plugin's hooks through their .cmd launchers, as Codex does, because
-      # that plugin has no POSIX launchers. A Windows installation's installer launchers are PowerShell scripts, which
-      # installer-launcher-windows.bats tests in place of installer-launcher.bats and its POSIX launchers.
-      - name: Verify bootstrap boundaries on Windows
-        if: runner.os == 'Windows'
-        run: >-
-          bats client/common/distribution/src/test/bats/bootstrap-common.bats
-          client/common/distribution/src/test/bats/bootstrap-claude.bats
-          client/common/distribution/src/test/bats/bootstrap-codex.bats
-          client/common/distribution/src/test/bats/bootstrap-windows.bats
-          client/common/distribution/src/test/bats/installer-launcher-windows.bats
-      # The POSIX launcher templates; the Windows plugins' batch launchers are tested by the Maven build
-      - name: Verify the jlink launcher template
-        if: runner.os != 'Windows'
-        run: bats client/common/distribution/src/test/bats/jlink-launchers.bats
-      - name: Verify the Codex plugin's part launchers
-        if: runner.os != 'Windows'
-        run: bats client/common/distribution/src/test/bats/codex-plugin-launchers.bats
-      - name: Upload native release files
-        uses: actions/upload-artifact@v7
-        with:
-          name: cat-${{ matrix.platform }}
-          if-no-files-found: error
-          retention-days: 1
-          path: |
-            client/common/distribution/target/release/cat-*-*.tar.gz
-            client/common/distribution/target/release/SHA256SUMS.txt
-            client/common/distribution/target/release/cat-release-assets-*.json
-
+  # Publishes the packages that the Build workflow built for the tag's commit instead of building them again. The
+  # packages are taken only from a Build run of this repository on a push whose head is that commit; a run on a pull
+  # request is never used. When the commit has no such run, or its artifacts have expired, the job fails and says how
+  # to get them: push the commit to a branch and wait for its Build, or re-run that Build, and then re-run this job.
   publish:
     name: Publish release
-    needs: build
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
         with:
           sparse-checkout: |
             .github/release-notes.md
+            .github/scripts/
             client/common/lifecycle/src/main/release/
           sparse-checkout-cone-mode: false
+      - name: Find the Build run of the release commit
+        id: build-run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          scripts=.github/scripts
+          api="repos/${GITHUB_REPOSITORY}/actions"
+          runs_file="${RUNNER_TEMP}/build-runs.json"
+          artifacts_file="${RUNNER_TEMP}/build-artifacts.json"
+          gh api "${api}/workflows/build.yml/runs?head_sha=${GITHUB_SHA}&event=push&per_page=100" > "${runs_file}"
+          run_id="$("${scripts}/release-packages.sh" select-run "${GITHUB_SHA}" "${GITHUB_REPOSITORY}" "${runs_file}")"
+          gh api "${api}/runs/${run_id}/artifacts?per_page=100" > "${artifacts_file}"
+          "${scripts}/release-packages.sh" check-artifacts "${run_id}" "${artifacts_file}"
+          echo "run-id=${run_id}" >> "${GITHUB_OUTPUT}"
       - name: Download native release files
         uses: actions/download-artifact@v8
         with:
+          run-id: ${{ steps.build-run.outputs.run-id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
           pattern: cat-*
           path: native
+      # The archives must be the five platforms' ten, built from the tag's version and commit, holding the public half
+      # of this release's signing key, so that CAT can check the manifest that this job signs
+      - name: Verify the Build's packages
+        env:
+          CAT_RELEASE_SIGNING_KEY: ${{ secrets.CAT_RELEASE_SIGNING_KEY }}
+        run: |
+          public_key="$(.github/scripts/release-packages.sh public-key)"
+          .github/scripts/release-packages.sh verify-packages native "${GITHUB_REF_NAME}" "${GITHUB_SHA::12}" \
+            "${public_key}"
       - name: Assemble release
         run: |
           mkdir release
@@ -229,24 +135,3 @@ jobs:
         run: >-
           gh release create "${GITHUB_REF_NAME}" release/* --repo "${GITHUB_REPOSITORY}"
           --title "CAT ${GITHUB_REF_NAME}" --notes-file "${RUNNER_TEMP}/release-notes.md" --generate-notes
-
-  # Artifact storage is billed by the hour, so delete the native release files once the release is published instead
-  # of keeping them for their retention period. When a build or the publish job fails, the files stay for their
-  # one-day retention, so that re-running the failed jobs can still publish every platform's files.
-  cleanup:
-    name: Delete native release files
-    needs: publish
-    if: needs.publish.result == 'success'
-    runs-on: ubuntu-26.04
-    permissions:
-      actions: write
-    steps:
-      - name: Delete native release files
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts" \
-            --jq '.artifacts[] | select(.name | startswith("cat-")) | .id' |
-          while read -r id; do
-            gh api --method DELETE "repos/${GITHUB_REPOSITORY}/actions/artifacts/${id}"
-          done

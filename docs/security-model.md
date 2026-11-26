@@ -15,6 +15,11 @@ its own installer, `bin/installer`, and its own Java runtime, `bin/runtime/`, so
 change a release. Claude Code and Codex each have their own installation, which never changes the other's and may run a
 different release.
 
+The release workflow publishes the archives that the release commit's own Build run, on a push to a branch of the
+repository, built and tested; it never uses a run on a pull request. Before it signs the manifest, it checks that those
+archives are the ten expected, that each carries the tag's version, the release commit as its build stamp and the
+public half of the signing key as its only default trust anchor, and that each matches its checksum.
+
 The installer verifies the exact manifest bytes against a key in its protected policy, then checks every downloaded
 plugin archive against the signed size and SHA-256 digest. A checksum beside an unauthenticated archive is
 insufficient. A maintainer signature and the policy's version limits jointly approve a release. The default policy,

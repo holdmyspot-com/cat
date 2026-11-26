@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - '**'
-    tags-ignore:
-      - 'v*'
   pull_request:
 
 permissions:
@@ -64,8 +62,33 @@ jobs:
           "${shellcheck_directory}/shellcheck.exe" --version
           npm install --global bats@1.13.0
           bats --version
+      # A push to a branch builds the release's packages, which embed the public half of the release signing key, so
+      # that CAT can check a release's signed manifest, and the commit's first 12 hexadecimal digits as the build
+      # stamp. The Release workflow publishes these packages for the commit that its tag names. A pull request, and a
+      # push where the secret is unavailable, as in a fork, builds and tests without the key and uploads nothing.
+      - name: Derive release public key
+        id: release-key
+        if: github.event_name == 'push'
+        env:
+          CAT_RELEASE_SIGNING_KEY: ${{ secrets.CAT_RELEASE_SIGNING_KEY }}
+        run: |
+          if [ -z "${CAT_RELEASE_SIGNING_KEY}" ]; then
+            echo "::warning::The secret CAT_RELEASE_SIGNING_KEY is unavailable, so this build uploads no release" \
+              "packages."
+            echo "public-key=" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          echo "public-key=$(.github/scripts/release-packages.sh public-key)" >> "${GITHUB_OUTPUT}"
       - name: Verify
-        run: client/mvnw -f client/pom.xml verify
+        env:
+          CAT_RELEASE_PUBLIC_KEY: ${{ steps.release-key.outputs.public-key }}
+        run: |
+          if [ -n "${CAT_RELEASE_PUBLIC_KEY}" ]; then
+            client/mvnw -f client/pom.xml verify "-Dcat.release.public-key=${CAT_RELEASE_PUBLIC_KEY}" \
+              "-Dcat.build=${GITHUB_SHA::12}"
+          else
+            client/mvnw -f client/pom.xml verify
+          fi
       # The job log names a failing module but not why its tests could not run; the reports and dump files hold that.
       - name: Keep the test reports of a failed Windows build
         if: failure() && runner.os == 'Windows'
@@ -107,3 +130,24 @@ jobs:
       - name: Verify the Codex plugin's part launchers
         if: runner.os != 'Windows'
         run: bats client/common/distribution/src/test/bats/codex-plugin-launchers.bats
+      # The tests of the checks that Release makes of these packages
+      - name: Verify the release package checks
+        if: runner.os != 'Windows'
+        run: bats client/common/distribution/src/test/bats/release-packages.bats
+      - name: Verify native release checksums
+        if: steps.release-key.outputs.public-key != '' && runner.os != 'macOS'
+        working-directory: client/common/distribution/target/release
+        run: sha256sum --check --strict SHA256SUMS.txt
+      # Release downloads these files from the Build run of its tag's commit. Artifact storage is billed by the hour,
+      # so they are kept for three days: time to tag a commit whose Build passed, and to re-run Release after a failure.
+      - name: Upload native release files
+        if: steps.release-key.outputs.public-key != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: cat-${{ matrix.platform }}
+          if-no-files-found: error
+          retention-days: 3
+          path: |
+            client/common/distribution/target/release/cat-*-*.tar.gz
+            client/common/distribution/target/release/SHA256SUMS.txt
+            client/common/distribution/target/release/cat-release-assets-*.json
