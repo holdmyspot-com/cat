@@ -4,6 +4,8 @@
 
 - Preserve a focused behavioral test's contract from its demonstrated failure before production implementation through
 	the implementation that makes it pass.
+- A change to behavior that depends on the platform is checked on each affected platform before more work builds on it,
+	so that untested changes do not pile up there.
 - Make the decision to use TDD explicit before the first production-behavior edit, rather than relying on the task's
 	label or the agent's implicit classification.
 
@@ -38,3 +40,6 @@ behavioral contract.
 
 If a test cannot be written first because the behavior exists only at an external boundary, explain the constraint and
 add the smallest reliable boundary test after implementing the behavior.
+
+After a change to platform-specific code, run CI on the affected platforms before building more on that change. Do not
+let changes accumulate untested on a platform.

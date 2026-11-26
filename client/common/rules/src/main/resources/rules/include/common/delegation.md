@@ -143,7 +143,8 @@ wait for one another's.
 For every write-capable delegation, supply a task contract with an exact write allowlist, verification commands,
 workspace mode, and acceptance evidence. The contract requires the delegate's completion report to name, for each
 outcome it claims, the check that decides it, as a command or a precise observation, that check's result, and where the
-check's full output is. The contract gives the delegate authority to complete the implementation, its focused
+check's full output is. The contract states that the report claims only what those checks cover and lists every other
+outcome as unverified. The contract gives the delegate authority to complete the implementation, its focused
 verification, and routine repairs within that scope, through to its own gate. Require an intermediate parent decision
 only for an unresolved contract question, authority boundary, or consequential design choice that the task names. Accept
 and integrate the result at the completed assignment boundary; do not insert approval stops between steps the contract
