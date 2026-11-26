@@ -278,7 +278,7 @@ public final class BuildAdmissionTest
 			}
 			finally
 			{
-				fixture.releaseProcesses();
+				fixture.releaseBlockedProcesses();
 			}
 			fixture.join(call);
 			requireThat(call.failure.get(), "overlapFailure").isNull();
@@ -326,7 +326,7 @@ public final class BuildAdmissionTest
 			}
 			finally
 			{
-				fixture.releaseProcesses();
+				fixture.releaseBlockedProcesses();
 			}
 			fixture.join(active);
 			fixture.join(batch);
@@ -416,7 +416,7 @@ public final class BuildAdmissionTest
 			}
 			finally
 			{
-				fixture.releaseProcesses();
+				fixture.releaseBlockedProcesses();
 			}
 			fixture.join(call);
 			requireThat(processes.stream().noneMatch(fixture::isAlive), "ownedWorkersWereJoined").isTrue();
@@ -484,7 +484,7 @@ public final class BuildAdmissionTest
 			}
 			finally
 			{
-				fixture.releaseProcesses();
+				fixture.releaseBlockedProcesses();
 			}
 			fixture.join(firstCall);
 			fixture.join(secondCall);
@@ -523,7 +523,7 @@ public final class BuildAdmissionTest
 			}
 			finally
 			{
-				fixture.releaseProcesses();
+				fixture.releaseBlockedProcesses();
 			}
 			fixture.awaitProcesses(1);
 			fixture.join(call);
@@ -913,11 +913,21 @@ public final class BuildAdmissionTest
 		}
 
 		/**
-		 * Releases every process owned by the fixture.
+		 * Releases every process owned by the fixture, including one that completes itself.
 		 */
 		private void releaseProcesses()
 		{
 			processesByPid.keySet().forEach(pid -> processesByPid.get(pid).release());
+		}
+
+		/**
+		 * Releases the processes that only the test completes. A process that completes itself once its wait begins
+		 * is left alone: the controller may launch it while the test releases, and completing it before the worker
+		 * observes it would fail the worker instead of the behavior under test.
+		 */
+		private void releaseBlockedProcesses()
+		{
+			processesByPid.values().stream().filter(process -> !process.plan.automatic()).forEach(BatchProcess::release);
 		}
 
 		/**
