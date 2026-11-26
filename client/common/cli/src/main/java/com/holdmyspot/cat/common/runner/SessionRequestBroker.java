@@ -8,6 +8,7 @@ import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.execution.CheckProgram;
+import com.holdmyspot.cat.common.optimizer.execution.CheckProgramStartFailure;
 import com.holdmyspot.cat.common.optimizer.workspace.GitWorktreeRegistrar;
 import com.holdmyspot.cat.common.runner.RequestArchive.LaunchRequest;
 import com.holdmyspot.cat.common.runner.launcher.RunnerArguments;
@@ -917,6 +918,12 @@ public final class SessionRequestBroker implements Closeable
 			catch (SessionRefusedException | PolicyRefusal e)
 			{
 				response = WorktreeResponse.refused(String.valueOf(e.getMessage()));
+			}
+			catch (CheckProgramStartFailure e)
+			{
+				// The reason travels with the message, so that the command that asked can tell a cause from a timeout
+				response = new WorktreeResponse(WorktreeRequest.FAILED, String.valueOf(e.getMessage()),
+					Optional.of(e.reason().name()));
 			}
 			catch (IOException e)
 			{

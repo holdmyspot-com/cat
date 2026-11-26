@@ -85,6 +85,11 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>
  * Pilot trials are targeted: they enter no count, record no campaign event and spend no allowance.
  * <p>
+ * A check program that cannot start for a cause that CAT names, a sandbox that cannot start, a launcher that is
+ * missing, damaged or exited, or a launcher that is stalled, stops the pilot at once: it starts no further session and
+ * pauses for the user's choice to retry or to stop, with the cause as the reason, and the trial is not charged an
+ * infrastructure attempt.
+ * <p>
  * A session that ends without an outcome is an infrastructure attempt, and its logical trial runs again with the same
  * test case. After {@value Campaign#INFRASTRUCTURE_FAILURE_LIMIT} infrastructure failures of one logical trial, the
  * pilot pauses: it starts no further session, and its result says that the user must choose to retry or to stop. A
@@ -2140,6 +2145,14 @@ public final class GuardPilot
 				pilot.failed(trial.position(), "The built-in tools could not be decided: " + Driver.describe(e));
 				return;
 			}
+			catch (CheckProgramStartFailure e)
+			{
+				if (e.isInfrastructure())
+					infrastructureFailed(trial, "The built-in tools could not be decided: " + Driver.describe(e));
+				else
+					startFailed(trial, e);
+				return;
+			}
 			catch (IOException e)
 			{
 				infrastructureFailed(trial, "The built-in tools could not be decided: " + Driver.describe(e));
@@ -2408,6 +2421,27 @@ public final class GuardPilot
 			retire(job, new Discard(reason, true));
 			if (job.pilot().recovery(job.position()).infrastructureAttempts().size() < Campaign.INFRASTRUCTURE_FAILURE_LIMIT)
 				queue.addFirst(fresh(job));
+		}
+
+		/**
+		 * Stops the pilot at once because a check program could not start for a cause that CAT names: no further session
+		 * starts and the pilot pauses for the user's choice, with the cause as its reason. The trial's launch is
+		 * retired without an infrastructure attempt, because nothing about the trial failed, so retrying runs the same
+		 * logical trial again.
+		 *
+		 * @param trial   the trial whose check program could not start
+		 * @param failure the start failure, which names the cause
+		 * @throws IOException if the checkpoint fails or the original launch has not settled
+		 */
+		private void startFailed(TrialJob trial, CheckProgramStartFailure failure) throws IOException
+		{
+			retire(trial, new Discard("The check program could not start: " + failure.getMessage(), false));
+			if (stopReason == null)
+			{
+				stopReason = "Pilot trial " + (trial.position() + 1) + " of `" + trial.pilot().key() + "` stopped the " +
+					"pilot at once because its check program could not start: " + failure.getMessage();
+				paused = true;
+			}
 		}
 
 		/**

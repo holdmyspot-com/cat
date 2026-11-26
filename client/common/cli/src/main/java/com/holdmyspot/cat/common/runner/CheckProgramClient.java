@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.execution.CheckProgram;
+import com.holdmyspot.cat.common.optimizer.execution.CheckProgramStartFailure;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -48,6 +49,8 @@ public final class CheckProgramClient
 	 * @return the program's result
 	 * @throws NullPointerException    if {@code request} is null
 	 * @throws SessionRefusedException if the receiver refuses to run the program; the message says why
+	 * @throws CheckProgramStartFailure if the receiver ran the program and it did not become ready, with the cause that
+	 *                                 the receiver found
 	 * @throws IOException             if nothing serves the session's requests, the request cannot be sent, the
 	 *                                 receiver cannot run the program or stops before it answers, or the answer is
 	 *                                 malformed
@@ -72,8 +75,25 @@ public final class CheckProgramClient
 			case WorktreeRequest.DONE -> CheckProgramRequest.decode(json, response.result().orElseThrow(() ->
 				new IOException("The answer to the check program request holds no result")));
 			case WorktreeRequest.REFUSED -> throw new SessionRefusedException(response.reason());
-			default -> throw new IOException("CAT could not run the check program: " + response.reason());
+			default -> throw failure(response);
 		};
+	}
+
+	/**
+	 * Returns the failure that a runner's answer reports: a start failure with its cause if the runner named one, and
+	 * otherwise a failure whose cause is only the runner's text.
+	 *
+	 * @param response the answer that reports a failure
+	 * @return the failure to throw
+	 */
+	private static IOException failure(WorktreeResponse response)
+	{
+		for (CheckProgramStartFailure.Reason reason : CheckProgramStartFailure.Reason.values())
+		{
+			if (response.result().equals(Optional.of(reason.name())))
+				return new CheckProgramStartFailure(reason, response.reason());
+		}
+		return new IOException("CAT could not run the check program: " + response.reason());
 	}
 
 	/**

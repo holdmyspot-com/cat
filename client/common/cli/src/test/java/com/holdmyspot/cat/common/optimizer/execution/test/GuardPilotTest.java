@@ -36,6 +36,7 @@ import com.holdmyspot.cat.common.optimizer.execution.AssertionVerdict;
 import com.holdmyspot.cat.common.optimizer.execution.CheckProgram.Outcome;
 import com.holdmyspot.cat.common.optimizer.execution.CheckProgram.Result;
 import com.holdmyspot.cat.common.optimizer.execution.CheckProgramEvaluation;
+import com.holdmyspot.cat.common.optimizer.execution.CheckProgramStartFailure;
 import com.holdmyspot.cat.common.optimizer.execution.CheckProgramProblem;
 import com.holdmyspot.cat.common.optimizer.execution.Driver;
 import com.holdmyspot.cat.common.optimizer.execution.GuardPilot;
@@ -1426,6 +1427,127 @@ public final class GuardPilotTest
 			requireThat(safety.passes("safe_reply"), "safeReplyPasses").isEqualTo(safety.trialCount());
 			requireThat(safety.trials().getFirst().record(), "record").contains("missing state");
 			requireThat(sessions.judgedReplies(), "judgedReplies").doesNotContain(reply);
+		}
+	}
+
+	/**
+	 * Supplies the start-up failures that name a cause.
+	 *
+	 * @return the failure's reason and message
+	 */
+	@DataProvider
+	public static Object[][] startFailuresWithACause()
+	{
+		return new Object[][]{
+			{CheckProgramStartFailure.Reason.SANDBOX_CANNOT_START, "The check program sandbox could not start: bwrap " +
+				"exited with status 1 after 0.1 s: bwrap: No permissions to creating new namespace"},
+			{CheckProgramStartFailure.Reason.LAUNCHER_UNUSABLE, "The check program launcher cannot run: " +
+				"/opt/runtime/bin/java is missing or not executable."},
+			{CheckProgramStartFailure.Reason.LAUNCHER_STALLED, "The check program launcher is stalled: its processes " +
+				"were in the launcher starting stage"}
+		};
+	}
+
+	/**
+	 * A check program that cannot start for a cause that CAT names stops the pilot at once, however many attempts the
+	 * trial has left: no further session starts, the pilot pauses for the user's choice with the cause as its reason,
+	 * and the trial is not charged an infrastructure attempt, so that retrying runs it again.
+	 *
+	 * @param reason  the failure's reason
+	 * @param message the failure's message
+	 * @throws IOException          if the test directory cannot be used
+	 * @throws InterruptedException if the pilot is interrupted
+	 */
+	@Test(dataProvider = "startFailuresWithACause")
+	public void startFailureWithACauseStopsPilotAtOnce(CheckProgramStartFailure.Reason reason, String message)
+		throws IOException, InterruptedException
+	{
+		// Requirement: R-L23
+		String assertion = "records_state";
+		Contract contract = checkProgramContract(assertion);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-start-failure"));
+			SessionScript sessions = new SessionScript(directory, request ->
+			{
+				if (isSafety(request))
+					return SAFE;
+				return "pass";
+			});
+			AtomicInteger evaluations = new AtomicInteger();
+			CheckProgramEvaluation failing = (_, _, _, _, _) ->
+			{
+				evaluations.incrementAndGet();
+				throw new CheckProgramStartFailure(reason, message);
+			};
+			GuardPilot pilot = new GuardPilot(sessions.port(), Map.of(), workspace(directory), PROMPT, sessions.judge(),
+				verdicts(new InMemoryCampaignStore()), new ProposalSchema(json), json, 1, failing);
+
+			Map<String, PilotResult> pilots = pilot.run(contract, List.of(), control(), Set.of(), SELECTION, Map.of(),
+				new SplittableRandom(3));
+
+			PilotResult safety = pilots.get("safety");
+			requireThat(evaluations.get(), "evaluations").isEqualTo(1);
+			requireThat(safety.paused(), "paused").isTrue();
+			requireThat(safety.stopReason(), "stopReason").contains(message).contains("`safety`").
+				doesNotContain("ended without an outcome");
+			requireThat(GuardPilot.pauseReason(pilots), "pauseReason").isEqualTo(Optional.of(safety.stopReason()));
+			requireThat(safety.trials(), "decidedTrials").isEmpty();
+			for (PilotTrialRecovery recovery : safety.pendingTrials().values())
+				requireThat(recovery.infrastructureAttempts(), "infrastructureAttempts").isEmpty();
+
+			CheckProgramEvaluation working = (_, _, _, _, runs) -> Map.of(assertion, Collections.nCopies(runs,
+				new Result(Outcome.PASS, "ready", Duration.ofSeconds(1))));
+			GuardPilot retry = new GuardPilot(sessions.port(), Map.of(), workspace(directory), PROMPT, sessions.judge(),
+				verdicts(new InMemoryCampaignStore()), new ProposalSchema(json), json, 4, working);
+			PilotResult retried = retry.run(contract, List.of(), control(), Set.of(), SELECTION,
+				GuardPilot.retryPaused(pilots), new SplittableRandom(4)).get("safety");
+
+			requireThat(retried.paused(), "pausedAfterRetry").isFalse();
+			requireThat(retried.trials(), "trialsAfterRetry").size().isEqualTo(retried.trialCount());
+		}
+	}
+
+	/**
+	 * A check program that is only not ready in time stays an infrastructure attempt: the trial runs again, and when
+	 * one logical trial has ended without an outcome three times, the pilot pauses and the reason holds each attempt's
+	 * message.
+	 *
+	 * @throws IOException          if the test directory cannot be used
+	 * @throws InterruptedException if the pilot is interrupted
+	 */
+	@Test
+	public void notReadyCheckProgramCountsTowardTheLimit() throws IOException, InterruptedException
+	{
+		// Requirement: R-L23
+		String assertion = "records_state";
+		Contract contract = checkProgramContract(assertion);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-not-ready"));
+			SessionScript sessions = new SessionScript(directory, request ->
+			{
+				if (isSafety(request))
+					return SAFE;
+				return "pass";
+			});
+			AtomicInteger evaluations = new AtomicInteger();
+			String message = "The check program launcher was not ready when the time limit of 60 s ended after 60.1 s.";
+			CheckProgramEvaluation slow = (_, _, _, _, _) ->
+			{
+				evaluations.incrementAndGet();
+				throw new CheckProgramStartFailure(CheckProgramStartFailure.Reason.NOT_READY, message);
+			};
+			GuardPilot pilot = new GuardPilot(sessions.port(), Map.of(), workspace(directory), PROMPT, sessions.judge(),
+				verdicts(new InMemoryCampaignStore()), new ProposalSchema(json), json, 1, slow);
+
+			PilotResult safety = pilot.run(contract, List.of(), control(), Set.of(), SELECTION, Map.of(),
+				new SplittableRandom(3)).get("safety");
+
+			requireThat(evaluations.get(), "evaluations").isEqualTo(3);
+			requireThat(safety.paused(), "paused").isTrue();
+			requireThat(safety.stopReason(), "stopReason").contains("ended without an outcome 3 times").
+				contains(message);
 		}
 	}
 

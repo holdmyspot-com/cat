@@ -12,6 +12,7 @@ import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.git.Git;
 import com.holdmyspot.cat.common.optimizer.execution.CheckProgram;
+import com.holdmyspot.cat.common.optimizer.execution.CheckProgramStartFailure;
 import com.holdmyspot.cat.common.optimizer.execution.contract.test.CheckProgramFixtures;
 import com.holdmyspot.cat.common.optimizer.proposal.HookReport;
 import com.holdmyspot.cat.common.optimizer.proposal.HookReport.HookDifference;
@@ -1670,6 +1671,51 @@ public final class RequestServerTest
 				{
 					requireThat(responses.toList(), "responses").isEmpty();
 				}
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a check program that cannot start reaches the command that asked as a start failure with its
+	 * cause, not as a plain failure whose cause is only text, so that the guard pilot can stop at once. The program's
+	 * sandbox cannot execute {@code env}, which the request holds out.
+	 *
+	 * @throws IOException          if the fixture cannot be created or a request cannot be served
+	 * @throws InterruptedException if the run is interrupted
+	 */
+	@Test(timeOut = 120_000)
+	public void keepsTheCauseOfAStartThatFailed() throws IOException, InterruptedException
+	{
+		// Requirement: R-L23
+		CheckProgramFixtures.requireBubblewrap();
+		try (Fixture fixture = new Fixture())
+		{
+			Path secret = Files.createDirectory(fixture.root.resolve("secret"));
+			Path secretFile = Files.writeString(secret.resolve("token.txt"), "do not read\n");
+			Path env = Path.of("/usr/bin/env").toRealPath();
+			fixture.policy.allow(new ParentPolicy(true, List.of(fixture.project), List.of(), List.of(secret),
+				List.of(), HostAccess.listed(Set.of(MODEL_HOST)), false, List.of()));
+			try (Fixture.Running server = fixture.start())
+			{
+				CheckProgramClient client = new CheckProgramClient(
+					() -> Optional.of(new ServerChannel(server.requests(), server.exit())), JsonMapper.builder().build(),
+					Thread::yield);
+
+				CheckProgramStartFailure failure = null;
+				try
+				{
+					CheckProgramFixtures.runDeniedRead(client, JsonMapper.builder().build(),
+						Files.createDirectory(fixture.root.resolve("run")), secretFile, List.of(env));
+				}
+				catch (CheckProgramStartFailure e)
+				{
+					failure = e;
+				}
+
+				requireThat(failure, "failure").isNotNull();
+				requireThat(failure.reason(), "reason").isEqualTo(CheckProgramStartFailure.Reason.SANDBOX_CANNOT_START);
+				requireThat(failure.isInfrastructure(), "isInfrastructure").isFalse();
+				requireThat(failure.getMessage(), "message").contains("bwrap:").contains("/usr/bin/env");
 			}
 		}
 	}
