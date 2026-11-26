@@ -4,6 +4,7 @@ import com.holdmyspot.cat.codex.runner.CodexAuthentication;
 import com.holdmyspot.cat.codex.runner.CodexConnectionConfiguration;
 import com.holdmyspot.cat.codex.runner.CodexParentMultiAgentState;
 import com.holdmyspot.cat.codex.runner.CodexRunner;
+import com.holdmyspot.cat.codex.runner.CodexSessionLogin;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.runner.AuthenticationOptions;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
@@ -61,8 +62,17 @@ public final class CodexSessionCommandLimitsTest extends SessionCommandLimitsCon
 		SessionRequestAccess requestAccess = SessionRequestAccess.allowing(fixture.nestedSession(), fixture.artifact(),
 			sessionRequests, Platform.current(), shell).orElse(null);
 		Path temporaryDirectory = Files.createDirectories(sessionHome.resolve("tmp"));
+		String loginSettings;
+		Map<String, String> appServerEnvironment;
+		try (CodexSessionLogin login = authentication.open(Map.of()))
+		{
+			loginSettings = login.settings(sessionHome.resolve(".codex"));
+			appServerEnvironment = CodexRunner.processEnvironment(fixture.userEnvironment(),
+				HarnessDependencyCaches.NONE, sessionHome, fixture.nestedSession().directory(), temporaryDirectory,
+				Platform.current(), login);
+		}
 		CodexConnectionConfiguration.copy(userCodexHome.resolve("config.toml"), configuration, sessionHome,
-			authentication.settings(sessionHome.resolve(".codex")),
+			loginSettings,
 			fixture.nestedSession().directory().resolve("project"), HarnessDependencyCaches.NONE, temporaryDirectory, 0,
 			requestAccess, Platform.current(), CodexParentMultiAgentState.NONE, ChildPolicy.intersect(
 				ParentPolicy.UNSANDBOXED, new ChildNeeds(fixture.nestedSession().directory(), List.of(), List.of(),
@@ -73,9 +83,7 @@ public final class CodexSessionCommandLimitsTest extends SessionCommandLimitsCon
 				Platform.current(), fixture.userEnvironment(), requestAccess));
 		JsonNode root = TomlMapper.builder().build().readTree(Files.readString(configuration));
 
-		Map<String, String> commandEnvironment = new HashMap<>(CodexRunner.processEnvironment(
-			fixture.userEnvironment(), HarnessDependencyCaches.NONE, sessionHome, fixture.nestedSession().directory(),
-			temporaryDirectory, Platform.current(), authentication));
+		Map<String, String> commandEnvironment = new HashMap<>(appServerEnvironment);
 		JsonNode policy = root.path("shell_environment_policy");
 		for (JsonNode excluded : policy.path("exclude"))
 			commandEnvironment.remove(excluded.stringValue());

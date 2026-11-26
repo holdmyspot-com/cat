@@ -608,40 +608,46 @@ public final class CodexRunnerCli
 			// policy, and so the bound, denies by design
 			if (!authenticationOptions.inherited())
 				authentication.requireReadable(bound);
-			ExtraPermissions extraPermissions = HarnessRunnerOptions.readExtraPermissions(scope.json(),
-				options.extraPermissions());
-			FileReplacer replacer = FileReplacer.retrying(process.waiting());
-			NestedSessionManager opened = NestedSessionManager.openResultsFolder(process.fileLocks(), options.resultsFolder(),
-				Clock.systemUTC(), replacer, options.slotId(),
-				HarnessRunnerOptions.startupPermit(args).orElse(null));
-			// A nested session in a slot keeps the slot's identifier, so that its paths repeat from one session to the next
-			NestedSessionManager manager = inSlot(opened, options.slotId(), args);
-			try
+			// The login opens before the launch reads a nested session or takes a slot, so that a refused login changes
+			// nothing; the login service checks it and issues the session's credential, which ends with the runner
+			try (CodexSessionLogin login = authentication.open(environment))
 			{
-				HarnessCapacity.Permit permit;
-				HarnessCapacity capacity = capacityForMaximum.apply(options.maximumConcurrency());
-				if (options.capacityWait() == null)
-					permit = capacity.acquire();
-				else
-					permit = capacity.acquire(options.capacityWait());
-				try (HarnessCapacity.Permit _ = permit)
+				ExtraPermissions extraPermissions = HarnessRunnerOptions.readExtraPermissions(scope.json(),
+					options.extraPermissions());
+				FileReplacer replacer = FileReplacer.retrying(process.waiting());
+				NestedSessionManager opened = NestedSessionManager.openResultsFolder(process.fileLocks(),
+					options.resultsFolder(), Clock.systemUTC(), replacer, options.slotId(),
+					HarnessRunnerOptions.startupPermit(args).orElse(null));
+				// A nested session in a slot keeps the slot's identifier, so that its paths repeat from one session to the
+				// next
+				NestedSessionManager manager = inSlot(opened, options.slotId(), args);
+				try
 				{
-					AtomicReference<ChildPolicy> policy = new AtomicReference<>();
-					List<TrialPluginInput> trialPlugins = options.trialPluginInputs(CodexRunner.MANIFEST);
-					HarnessRunnerBridge.serve(() -> new CodexRunner(process.waiting()).start(cat, options.project(),
-						options.workspace(), trialPlugins, manager, "codex", environment, options.model(),
-						options.effort(), options.installCat(), agent, options.readOnlyEvidence(), options.deniedReads(),
-						toolOutputTokenLimit, options.sessionTranscripts(), options.sessionRequests(), bound, policy::set,
-						extraPermissions, options.resumeSlot(), authentication),
-						manager, options, scope.json(), replacer, input, output, (harness, arguments, directory) ->
-						requestedRunner(scope, options.artifact(), harness, environment).start(PolicyBoundFile.
-							boundArguments(scope.json(), arguments, directory, policy.get()), directory,
-							MARKERS.without(environment)));
+					HarnessCapacity.Permit permit;
+					HarnessCapacity capacity = capacityForMaximum.apply(options.maximumConcurrency());
+					if (options.capacityWait() == null)
+						permit = capacity.acquire();
+					else
+						permit = capacity.acquire(options.capacityWait());
+					try (HarnessCapacity.Permit _ = permit)
+					{
+						AtomicReference<ChildPolicy> policy = new AtomicReference<>();
+						List<TrialPluginInput> trialPlugins = options.trialPluginInputs(CodexRunner.MANIFEST);
+						HarnessRunnerBridge.serve(() -> new CodexRunner(process.waiting()).start(cat, options.project(),
+							options.workspace(), trialPlugins, manager, "codex", environment, options.model(),
+							options.effort(), options.installCat(), agent, options.readOnlyEvidence(),
+							options.deniedReads(), toolOutputTokenLimit, options.sessionTranscripts(),
+							options.sessionRequests(), bound, policy::set, extraPermissions, options.resumeSlot(), login),
+							manager, options, scope.json(), replacer, input, output, (harness, arguments, directory) ->
+							requestedRunner(scope, options.artifact(), harness, environment).start(PolicyBoundFile.
+								boundArguments(scope.json(), arguments, directory, policy.get()), directory,
+								MARKERS.without(environment)));
+					}
 				}
-			}
-			finally
-			{
-				manager.closeStartupLease();
+				finally
+				{
+					manager.closeStartupLease();
+				}
 			}
 		}
 	}

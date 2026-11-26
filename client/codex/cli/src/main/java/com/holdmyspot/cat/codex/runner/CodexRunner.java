@@ -40,6 +40,7 @@ import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SetupCommands;
 import com.holdmyspot.cat.common.runner.TrialPluginInput;
 import com.holdmyspot.cat.common.runner.TurnMode;
+import com.holdmyspot.cat.common.runner.login.CodexLoginService;
 import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
@@ -96,6 +97,10 @@ public final class CodexRunner
 	 */
 	private static final String SANDBOX_LOOPBACK_FAILURE = "bwrap: loopback: Failed RTM_NEWADDR";
 	private static final String SANDBOX_UID_MAP_FAILURE = "bwrap: setting up uid map: Permission denied";
+	/**
+	 * The file in a session's Codex rules folder that refuses {@code codex login} and {@code codex logout}.
+	 */
+	private static final String LOGIN_RULES = "cat-nested-login.rules";
 	private static final int MAXIMUM_COMMAND_OUTPUT_BYTES = 1_048_576;
 	/**
 	 * The most bytes of a nested session's configuration that a move from the earlier layout rewrites.
@@ -159,9 +164,11 @@ public final class CodexRunner
 	 *   continues, or {@code null} to start a thread in a new nested session. A resumed nested session keeps its project
 	 *   and its installed plugins, and its thread keeps the developer instructions and agent contract that its start gave
 	 *   it, but runs under {@code model} and {@code effort} and the sandbox that {@code bound} allows now.
-	 * @param authentication the credential that the session takes from its launch's source home. The session's Codex
-	 *   folder, {@code .codex} in the nested session's home, receives its settings and a copy of its {@code auth.json},
-	 *   which the session's commands may not read and which is removed when the app-server ends or the launch fails.
+	 * @param login the opened login that the session takes from its launch's source home. The session's Codex folder,
+	 *   {@code .codex} in the nested session's home, receives its settings, its key file, which the session's commands
+	 *   may not read and which is removed when the app-server ends or the launch fails, and the rules that refuse
+	 *   {@code codex login} and {@code codex logout} to the session's commands. The login ends when the app-server
+	 *   ends.
 	 * @return the live owned Codex run session
 	 * @throws SessionRefusedException if the session's sandbox would be wider than its policy or cannot confine it
 	 * @throws IOException             if validation, copying, or process startup fails
@@ -172,7 +179,7 @@ public final class CodexRunner
 		boolean installCat, CodexAgentDefinition agent, List<Path> readOnlyEvidence, List<Path> deniedReads,
 		int toolOutputTokenLimit, boolean sessionTranscripts, int sessionRequests, ParentPolicy bound,
 		Consumer<ChildPolicy> policyListener, ExtraPermissions extraPermissions,
-		String resumedSession, CodexAuthentication authentication) throws IOException
+		String resumedSession, CodexSessionLogin login) throws IOException
 	{
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(project, "project").isNotNull();
@@ -187,7 +194,7 @@ public final class CodexRunner
 		requireThat(bound, "bound").isNotNull();
 		requireThat(policyListener, "policyListener").isNotNull();
 		requireThat(extraPermissions, "extraPermissions").isNotNull();
-		requireThat(authentication, "authentication").isNotNull();
+		requireThat(login, "login").isNotNull();
 		if (agent != null && !installCat)
 			throw new IOException("A direct CAT agent requires --install-cat");
 		artifact = HarnessArtifact.validate(artifact, Path.of(".codex-plugin/plugin.json"));
@@ -220,9 +227,11 @@ public final class CodexRunner
 			Files.createDirectories(codexFolder);
 			Path temporaryDirectory = Files.createDirectories(isolatedHome.resolve("tmp"));
 			Path hostHome = CodexInstallation.resolveHome(environment);
-			// Copied before the sandbox is computed, which denies the session's commands only the files that exist
-			authentication.copyLogin(codexFolder);
-			authentication.writeKeyFile(codexFolder);
+			// Written before the sandbox is computed, which denies the session's commands only the files that exist.
+			// A launch of an earlier version copied the source's login into the session's Codex folder
+			Files.deleteIfExists(codexFolder.resolve(CodexAuthentication.LOGIN));
+			login.writeKeyFile(codexFolder);
+			writeLoginRules(codexFolder);
 			Path isolatedConfiguration = configuration(codexFolder);
 			HarnessDependencyCaches caches = HarnessDependencyCache.verify(environment);
 			SessionRequestAccess.Shell shell = SessionRequestAccess.Shell.POSIX;
@@ -234,7 +243,7 @@ public final class CodexRunner
 			CodexParentMultiAgentState parentState = CodexParentMultiAgentState.read(scope.json(), hostHome,
 				environment.get(THREAD_ID));
 			// The session's commands may reach only the host that its own Codex sends model requests to
-			String modelHost = authentication.modelHost();
+			String modelHost = login.modelHost();
 			ChildPolicy policy = sessionPolicy(bound, new ChildNeeds(nestedSession.directory().toAbsolutePath(),
 				caches.directories(), List.of(), Set.of(modelHost)).with(extraPermissions), requestAccess,
 				codexFolder);
@@ -251,7 +260,7 @@ public final class CodexRunner
 				if (resumes)
 					retainedConfiguration = isolatedConfiguration;
 				CodexConnectionConfiguration.copy(configuration(hostHome), stagedConfiguration, isolatedHome,
-					authentication.settings(codexFolder), worktree, caches, temporaryDirectory, toolOutputTokenLimit,
+					login.settings(codexFolder), worktree, caches, temporaryDirectory, toolOutputTokenLimit,
 					requestAccess, Platform.current(), parentState, policy, extraPermissions, retainedConfiguration);
 				if (!Platform.current().isWindows())
 				{
@@ -268,7 +277,7 @@ public final class CodexRunner
 				Files.deleteIfExists(stagedConfiguration);
 			}
 			Map<String, String> isolatedEnvironment = processEnvironment(environment, caches, isolatedHome,
-				nestedSession.directory(), temporaryDirectory, Platform.current(), authentication);
+				nestedSession.directory(), temporaryDirectory, Platform.current(), login);
 			requireNetworkProxy(arguments -> commandOutput(executable, arguments, worktree, isolatedEnvironment,
 				executables, manager, nestedSession), featureFlags(pluginsInstalled), policy.hosts());
 			// A resumed nested session keeps the plugins that its start installed in its home
@@ -299,7 +308,7 @@ public final class CodexRunner
 			if (!boundHooks.isEmpty())
 				command = protectHookBindings(command, hookBindings, bound, environment);
 			manager.initialize(nestedSession, artifact, project, "codex_app_server", command,
-				authentication.evidence());
+				login.evidence());
 			lock = manager.acquireLock(nestedSession);
 			HarnessSessionTranscripts transcripts = null;
 			if (sessionTranscripts)
@@ -340,7 +349,7 @@ public final class CodexRunner
 				{
 					throw refusalOf(e);
 				}
-				LiveNestedSession session = new LiveNestedSession(nestedSession, removingLoginCopy(process, codexFolder),
+				LiveNestedSession session = new LiveNestedSession(nestedSession, endingLogin(process, codexFolder, login),
 					scope, lock, catPlugin, policy.asParentPolicy());
 				child.release();
 				return session;
@@ -532,27 +541,27 @@ public final class CodexRunner
 	 * @param temporaryDirectory the nested session's temporary directory, which the nested session's configuration names
 	 *                           as the shell commands' {@code TMPDIR}
 	 * @param platform           the platform that the app-server runs on
-	 * @param authentication     the credential that the session takes from its source home
+	 * @param login              the opened login that the session takes from its source home
 	 * @return the environment, which the caller may change
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code sessionFolder} is relative
 	 */
 	public static Map<String, String> processEnvironment(Map<String, String> environment,
 		HarnessDependencyCaches caches, Path sessionHome, Path sessionFolder, Path temporaryDirectory,
-		Platform platform, CodexAuthentication authentication)
+		Platform platform, CodexSessionLogin login)
 	{
 		requireThat(environment, "environment").isNotNull();
 		requireThat(caches, "caches").isNotNull();
 		requireThat(sessionHome, "sessionHome").isNotNull();
 		requireThat(temporaryDirectory, "temporaryDirectory").isNotNull();
 		requireThat(platform, "platform").isNotNull();
-		requireThat(authentication, "authentication").isNotNull();
+		requireThat(login, "login").isNotNull();
 		Map<String, String> isolatedEnvironment = new HashMap<>(HarnessEnvironment.scrub(environment));
 		// Each nested session gets an isolated HOME, but packages belong in the parent's explicitly writable shared caches
 		// so independent trials do not redownload the same immutable registry artifacts.
 		isolatedEnvironment.putAll(caches.environment());
 		isolatedEnvironment.put(CODEX_HOME, sessionHome.resolve(CodexAuthentication.FOLDER).toString());
-		isolatedEnvironment.putAll(authentication.environment());
+		isolatedEnvironment.putAll(login.environment());
 		HarnessEnvironment.preventGitDiscoveryAbove(isolatedEnvironment, sessionFolder);
 		// The session's commands send their sessions to this nested session's runner
 		isolatedEnvironment.put(HarnessEnvironment.NESTED_SESSION_VARIABLE, HarnessEnvironment.NESTED_SESSION_VALUE);
@@ -586,8 +595,7 @@ public final class CodexRunner
 		requireThat(environment, "environment").isNotNull();
 		requireThat(authentication, "authentication").isNotNull();
 		HarnessDependencyCaches caches = HarnessDependencyCache.verify(environment);
-		return new ChildNeedsReport(caches.directories(), Set.of(authentication.modelHost()),
-			authentication.sourceFiles());
+		return new ChildNeedsReport(caches.directories(), authentication.modelHosts(), authentication.sourceFiles());
 	}
 
 	/**
@@ -673,33 +681,56 @@ public final class CodexRunner
 	}
 
 	/**
-	 * Returns a session's harness process whose close also deletes the session's copy of its source's
-	 * {@code auth.json} and its key file, once the session's app-server has exited and before the caller retains or
-	 * empties the session's slot, so that they rest in the slot only while the app-server runs.
+	 * Returns a session's harness process whose close also deletes the session's key file and ends its login, once the
+	 * session's app-server has exited and before the caller retains or empties the session's slot, so that the key
+	 * file rests in the slot, and the login service serves the session, only while the app-server runs.
 	 *
 	 * @param session     the session's harness process
-	 * @param codexFolder the session's Codex folder, which holds the copy and the key file
+	 * @param codexFolder the session's Codex folder, which holds the key file
+	 * @param login       the session's login
 	 * @return the harness process
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public static HarnessProcess removingLoginCopy(HarnessProcess session, Path codexFolder)
+	public static HarnessProcess endingLogin(HarnessProcess session, Path codexFolder, CodexSessionLogin login)
 	{
 		requireThat(session, "session").isNotNull();
 		requireThat(codexFolder, "codexFolder").isNotNull();
-		return new LoginCopyRemoval(session, codexFolder);
+		requireThat(login, "login").isNotNull();
+		return new LoginEnding(session, codexFolder, login);
 	}
 
 	/**
-	 * Deletes a session's login copy and key file after its launch failed.
+	 * Writes the rules of a session's Codex that refuse {@code codex login} and {@code codex logout} to the session's
+	 * commands: a nested session has no store to write a login to, and a logout would end no login of its own.
 	 *
 	 * @param codexFolder the session's Codex folder
-	 * @param primary     the launch failure, which receives a failure to delete the copy
+	 * @throws NullPointerException if {@code codexFolder} is null
+	 * @throws IOException          if the rules cannot be written
+	 */
+	public static void writeLoginRules(Path codexFolder) throws IOException
+	{
+		requireThat(codexFolder, "codexFolder").isNotNull();
+		Path rules = Files.createDirectories(codexFolder.resolve("rules"));
+		StringBuilder text = new StringBuilder(128);
+		for (String operation : List.of("login", "logout"))
+		{
+			text.append("prefix_rule(pattern=[\"codex\", \"").append(operation).append("\"], decision=\"forbidden\")").
+				append('\n');
+		}
+		Files.writeString(rules.resolve(LOGIN_RULES), text.toString());
+	}
+
+	/**
+	 * Deletes a session's key file after its launch failed.
+	 *
+	 * @param codexFolder the session's Codex folder
+	 * @param primary     the launch failure, which receives a failure to delete the file
 	 */
 	private static void deleteLoginCopy(Path codexFolder, Throwable primary)
 	{
 		try
 		{
-			removeCredentialCopies(codexFolder);
+			CodexAuthentication.removeKeyFile(codexFolder);
 		}
 		catch (IOException e)
 		{
@@ -708,50 +739,26 @@ public final class CodexRunner
 	}
 
 	/**
-	 * Removes a session's login copy and its key file, the second even if removing the first failed.
-	 *
-	 * @param codexFolder the session's Codex folder
-	 * @throws IOException if either file cannot be removed
+	 * A session's harness process whose close also deletes the session's key file and ends its login.
 	 */
-	private static void removeCredentialCopies(Path codexFolder) throws IOException
-	{
-		try
-		{
-			CodexAuthentication.removeLogin(codexFolder);
-		}
-		catch (IOException e)
-		{
-			try
-			{
-				CodexAuthentication.removeKeyFile(codexFolder);
-			}
-			catch (IOException suppressed)
-			{
-				e.addSuppressed(suppressed);
-			}
-			throw e;
-		}
-		CodexAuthentication.removeKeyFile(codexFolder);
-	}
-
-	/**
-	 * A session's harness process whose close also deletes the session's login copy and key file.
-	 */
-	private static final class LoginCopyRemoval implements HarnessProcess
+	private static final class LoginEnding implements HarnessProcess
 	{
 		private final HarnessProcess session;
 		private final Path codexFolder;
+		private final CodexSessionLogin login;
 
 		/**
 		 * Creates a harness process.
 		 *
 		 * @param session     the session's harness process
 		 * @param codexFolder the session's Codex folder
+		 * @param login       the session's login
 		 */
-		private LoginCopyRemoval(HarnessProcess session, Path codexFolder)
+		private LoginEnding(HarnessProcess session, Path codexFolder, CodexSessionLogin login)
 		{
 			this.session = session;
 			this.codexFolder = codexFolder;
+			this.login = login;
 		}
 
 		@Override
@@ -810,10 +817,10 @@ public final class CodexRunner
 		}
 
 		/**
-		 * Closes the session's harness process, which ends its app-server, then deletes the login copy and the key file,
+		 * Closes the session's harness process, which ends its app-server, then deletes the key file and ends the login,
 		 * even if the close failed.
 		 *
-		 * @throws IOException if the close fails or the copy cannot be deleted
+		 * @throws IOException if the close fails, the key file cannot be deleted or the login service cannot be reached
 		 */
 		@Override
 		public void close() throws IOException
@@ -825,9 +832,38 @@ public final class CodexRunner
 			catch (IOException | RuntimeException e)
 			{
 				deleteLoginCopy(codexFolder, e);
+				try
+				{
+					login.close();
+				}
+				catch (IOException closing)
+				{
+					e.addSuppressed(closing);
+				}
 				throw e;
 			}
-			removeCredentialCopies(codexFolder);
+			IOException failure = null;
+			try
+			{
+				CodexAuthentication.removeKeyFile(codexFolder);
+			}
+			catch (IOException e)
+			{
+				failure = e;
+			}
+			try
+			{
+				login.close();
+			}
+			catch (IOException e)
+			{
+				if (failure == null)
+					failure = e;
+				else
+					failure.addSuppressed(e);
+			}
+			if (failure != null)
+				throw failure;
 		}
 	}
 
@@ -1092,15 +1128,14 @@ public final class CodexRunner
 	 * every file and directory under the results folder except the session's project, home, link-targets directory and
 	 * evidence, the directory where Codex logs the session's events unless the session may request sessions, and every
 	 * harness's login and configuration files in the session's home and in the user's home, as {@link
-	 * SessionCommandLimits#harnessFiles(Map, Platform)} names them, except two files in the session's own Codex home: its
-	 * {@code config.toml}, which holds no login and from which CAT's {@code read-part} command reads the session's tool
-	 * output limit, and its {@code auth.json}, the copy of the user's login that the runner puts there, which a Codex
-	 * process that the session starts from a command, such as the prompt optimizer's sessions, reads. The session
-	 * therefore cannot read the runner's records of its own nested session or of any other nested session, the workspace
-	 * files of any nested session, any login but that copy, such as the user's own Codex and Claude logins, or the user's
-	 * configuration. The method creates the session log directory, because the sandbox skips a denied path that does not
-	 * exist yet; for the same reason, it leaves out a login or configuration file that does not exist. The session's
-	 * key file, which its own Codex process reads through the token command, is denied to the session's commands.
+	 * SessionCommandLimits#harnessFiles(Map, Platform)} names them, except the {@code config.toml} of the session's own
+	 * Codex home, which holds no login and from which CAT's {@code read-part} command reads the session's tool output
+	 * limit. The session therefore cannot read the runner's records of its own nested session or of any other nested
+	 * session, the workspace files of any nested session, any login, such as the user's own Codex and Claude logins, or
+	 * the user's configuration. The method creates the session log directory, because the sandbox skips a denied path
+	 * that does not exist yet; for the same reason, it leaves out a login or configuration file that does not exist.
+	 * The session's key file, which its own Codex process reads through the token command, and the folder of the
+	 * request server's login service, whose socket the token command reaches, are denied to the session's commands.
 	 * <p>
 	 * A session that may request sessions is not denied the session log directory, because the commands that it
 	 * runs include the prompt optimizer's {@code nestedSession}, which reads the session's rollout there to learn that
@@ -1205,8 +1240,8 @@ public final class CodexRunner
 		commandEnvironment.put(CODEX_HOME, codexFolder.toString());
 		List<Path> harnessFiles = new ArrayList<>(SessionCommandLimits.harnessFiles(environment, platform));
 		harnessFiles.addAll(SessionCommandLimits.harnessFiles(commandEnvironment, platform));
-		// CAT's read-part command reads the session's tool output limit from the session's configuration. The session's
-		// copy of its source's login stays denied: a Codex process that a command starts, such as a prompt optimizer's
+		// CAT's read-part command reads the session's tool output limit from the session's configuration. Any login in
+		// the session's Codex folder stays denied: a Codex process that a command starts, such as a prompt optimizer's
 		// session, starts through CAT's runner, which takes the credential from the source home itself
 		Set<Path> readable = Set.of(configuration(codexFolder));
 		for (Path file : harnessFiles)
@@ -1220,6 +1255,15 @@ public final class CodexRunner
 		Path keyFile = CodexAuthentication.keyFile(codexFolder);
 		if (Files.exists(keyFile, NOFOLLOW_LINKS))
 			result.add(keyFile);
+		// The token command reaches the request server's login service through its socket; the session's commands may
+		// not, so that only the token command presents the session's credential
+		String socket = environment.getOrDefault(CodexLoginService.SOCKET_VARIABLE, "");
+		if (!socket.isBlank())
+		{
+			Path serviceFolder = Path.of(socket).toAbsolutePath().getParent();
+			if (serviceFolder != null && Files.isDirectory(serviceFolder, NOFOLLOW_LINKS))
+				result.add(serviceFolder);
+		}
 		return List.copyOf(result);
 	}
 

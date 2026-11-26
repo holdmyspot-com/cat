@@ -5,6 +5,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.codex.runner.CodexAuthentication;
 import com.holdmyspot.cat.codex.runner.CodexRunner;
+import com.holdmyspot.cat.codex.runner.CodexSessionLogin;
 import com.holdmyspot.cat.codex.runner.test.CodexSourceHomes;
 import com.holdmyspot.cat.codex.secrets.CodexSessionStartHookSecrets;
 import com.holdmyspot.cat.codex.secrets.CodexSubagentStartHookSecrets;
@@ -184,12 +185,15 @@ public final class CodexSessionStartHookTest
 			CodexSourceHomes.apiKeyLogin(source.resolve(".codex"));
 			CodexAuthentication authentication = CodexAuthentication.read(new AuthenticationOptions(Optional.of(source),
 				Optional.empty(), false), Map.of(), Platform.current());
-			CodexRunner.processEnvironment(Map.of("PATH", "/usr/bin"), HarnessDependencyCaches.NONE, sessionFolder,
-				sessionFolder, sessionFolder, Platform.LINUX_X64, authentication).forEach((name, value) ->
+			try (CodexSessionLogin login = authentication.open(Map.of()))
 			{
-				if (name.startsWith("CAT_"))
-					environment.put(name, value);
-			});
+				CodexRunner.processEnvironment(Map.of("PATH", "/usr/bin"), HarnessDependencyCaches.NONE, sessionFolder,
+					sessionFolder, sessionFolder, Platform.LINUX_X64, login).forEach((name, value) ->
+				{
+					if (name.startsWith("CAT_"))
+						environment.put(name, value);
+				});
+			}
 			for (String name : HarnessEnvironment.RUNNER_VARIABLES)
 				environment.putIfAbsent(name, "subscription");
 			environment.put("PLUGIN_ROOT", plugin.toString());

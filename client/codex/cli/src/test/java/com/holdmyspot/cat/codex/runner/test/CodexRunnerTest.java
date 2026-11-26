@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.codex.runner.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.testng.Assert.expectThrows;
 
 import com.holdmyspot.cat.codex.installer.CodexIntegration;
@@ -13,6 +14,8 @@ import com.holdmyspot.cat.codex.runner.CodexProcess;
 import com.holdmyspot.cat.codex.runner.CodexRunner.SessionSandbox;
 import com.holdmyspot.cat.codex.runner.CodexRunner;
 import com.holdmyspot.cat.codex.runner.CodexRunnerCli;
+import com.holdmyspot.cat.codex.runner.CodexSessionLogin;
+import com.holdmyspot.cat.codex.runner.CodexTokenCommand;
 import com.holdmyspot.cat.codex.runner.TomlStrings;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PortableFiles;
@@ -38,14 +41,17 @@ import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestBroker;
 import com.holdmyspot.cat.common.runner.SetupCommands;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.login.CodexLoginService;
 import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -53,6 +59,7 @@ import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Clock;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -518,7 +525,7 @@ public final class CodexRunnerTest
 
 			Map<String, String> appServer = CodexRunner.processEnvironment(Map.of("PATH", "/usr/bin",
 				"TMPDIR", root.resolve("host-tmp").toString()), HarnessDependencyCaches.NONE, home, sessionFolder,
-				temporaryDirectory, Platform.LINUX_X64, apiKeySource(root, "source"));
+				temporaryDirectory, Platform.LINUX_X64, apiKeyLogin(root, "source"));
 
 			requireThat(shellTemporaryDirectory, "shellTemporaryDirectory").isEqualTo(temporaryDirectory.toString());
 			requireThat(appServer.get("TMPDIR"), "appServerTemporaryDirectory").isEqualTo(shellTemporaryDirectory);
@@ -572,7 +579,7 @@ public final class CodexRunnerTest
 			Path home = root.resolve("session/home");
 			Map<String, String> appServer = CodexRunner.processEnvironment(Map.of("PATH", "/usr/bin",
 				HarnessEnvironment.NESTED_SESSION_VARIABLE, ""), HarnessDependencyCaches.NONE, home, home.getParent(),
-				home.resolve("tmp"), Platform.LINUX_X64, apiKeySource(root, "source"));
+				home.resolve("tmp"), Platform.LINUX_X64, apiKeyLogin(root, "source"));
 
 			requireThat(appServer.get(HarnessEnvironment.NESTED_SESSION_VARIABLE), "marker").isEqualTo("1");
 		}
@@ -596,7 +603,7 @@ public final class CodexRunnerTest
 
 			Map<String, String> appServer = CodexRunner.processEnvironment(Map.of("PATH", "/usr/bin", "CODEX_API_KEY",
 				CodexSourceHomes.SECRET, "OPENAI_API_KEY", CodexSourceHomes.SECRET), HarnessDependencyCaches.NONE, home,
-				home.getParent(), home.resolve("tmp"), Platform.LINUX_X64, apiKeySource(root, "source"));
+				home.getParent(), home.resolve("tmp"), Platform.LINUX_X64, apiKeyLogin(root, "source"));
 
 			requireThat(appServer.keySet(), "variables").doesNotContain("CODEX_API_KEY").doesNotContain("OPENAI_API_KEY");
 			requireThat(appServer.values(), "values").doesNotContain(CodexSourceHomes.SECRET);
@@ -624,7 +631,7 @@ public final class CodexRunnerTest
 			Path configuration = home.resolve(".codex/config.toml");
 
 			CodexConnectionConfiguration.copy(root.resolve("host.toml"), configuration, home,
-				apiKeySource(root, "source").settings(home.resolve(".codex")), root.resolve("session/project"),
+				apiKeyLogin(root, "source").settings(home.resolve(".codex")), root.resolve("session/project"),
 				HarnessDependencyCaches.NONE, temporaryDirectory, 0, null, Platform.LINUX_X64,
 				CodexParentMultiAgentState.NONE, ChildPolicy.intersect(ParentPolicy.UNSANDBOXED,
 					new ChildNeeds(root, List.of(), List.of(), Set.of())), ExtraPermissions.NONE, null);
@@ -642,98 +649,102 @@ public final class CodexRunnerTest
 	}
 
 	/**
-	 * Verifies that for a source with an API-key {@code auth.json} the session's {@code .codex} folder receives a copy
-	 * equal to it and readable by its owner alone, and that for a source without one it receives none while the
-	 * runner's own Codex folder holds one.
-	 *
-	 * @throws IOException if the fixture cannot be written
-	 */
-	@Test
-	public void copiesSourceLoginOwnerOnly() throws IOException
-	{
-		// Requirement: R-I15
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-codex-login-copy-")).toRealPath();
-			Path codexFolder = Files.createDirectories(root.resolve("session/home/.codex"));
-			Path login = CodexSourceHomes.apiKeyLogin(CodexSourceHomes.create(root, "source").resolve(".codex"));
-
-			apiKeySource(root, "source").copyLogin(codexFolder);
-
-			Path copy = codexFolder.resolve("auth.json");
-			requireThat(Files.readString(copy), "copy").isEqualTo(Files.readString(login));
-			if (Files.getFileStore(copy).supportsFileAttributeView("posix"))
-			{
-				requireThat(PosixFilePermissions.toString(Files.getPosixFilePermissions(copy)), "permissions").
-					isEqualTo("rw-------");
-			}
-
-			Path other = Files.createDirectories(root.resolve("other/home/.codex"));
-			Map<String, String> environment = CodexSourceHomes.runnerEnvironment(root);
-			tokenCommandSource(root, "command-source").copyLogin(other);
-			requireThat(Files.exists(Path.of(environment.get(Platform.current().homeVariable()), ".codex/auth.json")),
-				"runnerLogin").isTrue();
-			requireThat(Files.exists(other.resolve("auth.json")), "otherCopy").isFalse();
-		}
-	}
-
-	/**
-	 * Verifies that the session's login copy exists while its app-server runs and is gone once the session is closed.
-	 * The stand-in for the app-server is {@code cat}, which exits when its input closes.
+	 * Verifies that once a session's app-server ends, its key file is gone and the login service no longer serves its
+	 * credential, while the app-server ran it did; and that a resume, which opens the login again, writes a key file
+	 * whose new credential is served. The stand-in for the app-server is {@code cat}, which exits when its input
+	 * closes.
 	 *
 	 * @throws IOException if the fixture or the process fails
 	 */
-	@Test(timeOut = 10_000)
+	@Test(timeOut = 30_000)
 	// The test closes the session itself, because the close is the step whose effect it checks
 	@SuppressWarnings("PMD.CloseResource")
-	public void removesLoginCopyWhenAppServerEnds() throws IOException
+	public void endsLoginWhenAppServerEnds() throws IOException
 	{
 		// Requirement: R-I15
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
-			TemporaryDirectories cleanup = new TemporaryDirectories())
+			TemporaryDirectories cleanup = new TemporaryDirectories();
+			CodexLoginService service = CodexLoginServices.start(cleanup, new CodexLoginServices.Keyring(null)))
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-codex-login-removal-")).toRealPath();
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-login-end-")).toRealPath();
 			Path codexFolder = Files.createDirectories(root.resolve("session/home/.codex"));
-			apiKeySource(root, "source").copyLogin(codexFolder);
-			Path copy = codexFolder.resolve("auth.json");
+			Path source = CodexSourceHomes.create(root, "source");
+			CodexSourceHomes.ownerOnly(Files.writeString(source.resolve(".codex/auth.json"),
+				CodexLoginServices.signIn()));
+			Map<String, String> environment = CodexLoginServices.runnerEnvironment(service, Map.of());
+			CodexAuthentication authentication = CodexAuthentication.read(named(source, null), environment,
+				Platform.current());
+			CodexSessionLogin login = authentication.open(environment);
+			login.writeKeyFile(codexFolder);
+			Path keyFile = CodexAuthentication.keyFile(codexFolder);
+			Path saved = Files.writeString(root.resolve("saved-key-file"), Files.readString(keyFile));
 			Process appServer = new ProcessBuilder("cat").start();
-			HarnessProcess session = CodexRunner.removingLoginCopy(new CodexProcess(appServer, scope, false, null),
-				codexFolder);
-			requireThat(Files.exists(copy), "whileRunning").isTrue();
+			HarnessProcess session = CodexRunner.endingLogin(new CodexProcess(appServer, scope, false, null),
+				codexFolder, login);
+			requireThat(token(saved), "whileRunning").isEqualTo(CodexLoginServices.ACCESS_TOKEN);
 
 			session.close();
 
 			requireThat(appServer.isAlive(), "appServerAlive").isFalse();
-			requireThat(Files.exists(copy, LinkOption.NOFOLLOW_LINKS), "copyExists").isFalse();
+			requireThat(Files.exists(keyFile, LinkOption.NOFOLLOW_LINKS), "keyFileExists").isFalse();
+			requireThat(token(saved), "afterEnd").isNull();
+
+			try (CodexSessionLogin resumed = authentication.open(environment))
+			{
+				resumed.writeKeyFile(codexFolder);
+				requireThat(token(keyFile), "resumed").isEqualTo(CodexLoginServices.ACCESS_TOKEN);
+				requireThat(Files.readString(keyFile), "newCredential").isNotEqualTo(Files.readString(saved));
+			}
 		}
 	}
 
 	/**
-	 * Verifies that a resume copies the resuming launch's source login over the copy that an earlier launch left, and
-	 * that a resume whose source holds no {@code auth.json} removes such a copy.
+	 * Returns the token that a session's token command prints for a key file.
+	 *
+	 * @param keyFile the key file
+	 * @return the token, or {@code null} if the command fails
+	 */
+	private static String token(Path keyFile)
+	{
+		ByteArrayOutputStream output = new ByteArrayOutputStream();
+		ByteArrayOutputStream errors = new ByteArrayOutputStream();
+		int status = CodexTokenCommand.run(new String[]{keyFile.toString()}, output,
+			new PrintStream(errors, true, UTF_8));
+		if (status != 0)
+		{
+			requireThat(errors.toString(UTF_8), "errors").doesNotContain(CodexLoginServices.ACCESS_TOKEN);
+			return null;
+		}
+		return output.toString(UTF_8);
+	}
+
+	/**
+	 * Verifies that a session's Codex folder receives the rules that refuse {@code codex login} and
+	 * {@code codex logout} to its commands, and that writing them again leaves the same rules.
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
 	@Test
-	public void resumeCopiesResumingSourceLogin() throws IOException
+	public void refusesNestedLoginCommands() throws IOException
 	{
 		// Requirement: R-I15
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-codex-login-resume-")).toRealPath();
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-login-rules-")).toRealPath();
 			Path codexFolder = Files.createDirectories(root.resolve("session/home/.codex"));
-			apiKeySource(root, "first").copyLogin(codexFolder);
-			Path second = CodexSourceHomes.create(root, "second");
-			Path secondLogin = CodexSourceHomes.ownerOnly(Files.writeString(second.resolve(".codex/auth.json"), """
-				{"auth_mode": "apikey", "OPENAI_API_KEY": "%s-second"}
-				""".formatted(CodexSourceHomes.SECRET)));
 
-			CodexAuthentication.read(named(second, null), Map.of(), Platform.current()).copyLogin(codexFolder);
-			requireThat(Files.readString(codexFolder.resolve("auth.json")), "resumed").
-				isEqualTo(Files.readString(secondLogin));
+			CodexRunner.writeLoginRules(codexFolder);
+			CodexRunner.writeLoginRules(codexFolder);
 
-			tokenCommandSource(root, "third").copyLogin(codexFolder);
-			requireThat(Files.exists(codexFolder.resolve("auth.json")), "removed").isFalse();
+			List<String> rules = new ArrayList<>();
+			try (Stream<Path> files = Files.list(codexFolder.resolve("rules")))
+			{
+				for (Path file : files.toList())
+					rules.addAll(Files.readAllLines(file));
+			}
+			requireThat(rules, "rules").isEqualTo(List.of(
+				"prefix_rule(pattern=[\"codex\", \"login\"], decision=\"forbidden\")",
+				"prefix_rule(pattern=[\"codex\", \"logout\"], decision=\"forbidden\")"));
 		}
 	}
 
@@ -786,7 +797,7 @@ public final class CodexRunnerTest
 	/**
 	 * Verifies that the evidence of a source home names the home, the settings and files that the session takes and
 	 * the class, that the nested session's {@code session.json} records it, and that neither it, the session's
-	 * settings nor the authentication's description holds a fixture secret.
+	 * settings nor the descriptions of the authentication and the session's login hold a fixture secret.
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
@@ -795,7 +806,8 @@ public final class CodexRunnerTest
 	{
 		// Requirement: R-I15
 		try (TestJvmScope jvm = new TestJvmScope();
-			TemporaryDirectories cleanup = new TemporaryDirectories())
+			TemporaryDirectories cleanup = new TemporaryDirectories();
+			CodexLoginService service = CodexLoginServices.start(cleanup, new CodexLoginServices.Keyring(null)))
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-codex-evidence-")).
 				toRealPath();
@@ -823,14 +835,20 @@ public final class CodexRunnerTest
 
 			requireThat(authentication.evidence().home(), "home").isEqualTo(source);
 			requireThat(authentication.evidence().parts(), "parts").isEqualTo(List.of("model_provider",
-				"openai_base_url", "forced_login_method", "model_providers.gateway", ".codex/auth.json"));
+				"openai_base_url", "forced_login_method", "model_providers.gateway", "model_providers.gateway.auth"));
 			requireThat(authentication.evidence().loginClass(), "loginClass").isEqualTo(HostLogin.API_KEY);
 			String recorded = Files.readString(nestedSession.directory().resolve("session.json"));
 			requireThat(recorded, "recorded").contains("model_providers.gateway").
 				doesNotContain(CodexSourceHomes.SECRET);
-			requireThat(authentication.settings(root.resolve("session/home/.codex")), "settings").
-				doesNotContain(CodexSourceHomes.SECRET);
 			requireThat(authentication.toString(), "description").doesNotContain(CodexSourceHomes.SECRET);
+			Map<String, String> environment = CodexLoginServices.runnerEnvironment(service, Map.of());
+			try (CodexSessionLogin login = authentication.open(environment))
+			{
+				requireThat(login.evidence(), "loginEvidence").isEqualTo(authentication.evidence());
+				requireThat(login.settings(root.resolve("session/home/.codex")), "settings").
+					doesNotContain(CodexSourceHomes.SECRET).doesNotContain("cat ~/key");
+				requireThat(login.toString(), "loginDescription").doesNotContain(CodexSourceHomes.SECRET);
+			}
 		}
 	}
 
@@ -867,23 +885,24 @@ public final class CodexRunnerTest
 	}
 
 	/**
-	 * Verifies that the source's {@code auth.json} and its copy, and a file that the provider's token command names,
-	 * are in the session's denied reads and its permission profile's denied paths, and in the denied reads of every
-	 * session that it requests, while the session's own {@code config.toml} stays readable.
+	 * Verifies that a file that the source provider's token command names, an {@code auth.json} that an earlier launch
+	 * left in the session's Codex folder and the folder of the login service's socket are in the session's denied
+	 * reads and its permission profile's denied paths, that the source's file is in the denied reads of every session
+	 * that it requests, and that the session's own {@code config.toml} stays readable.
 	 *
 	 * @throws IOException if the fixture or the configuration cannot be built
 	 */
 	@Test
-	public void deniesSourceSecretsAndLoginCopy() throws IOException
+	public void deniesSourceSecretsAndLoginService() throws IOException
 	{
 		// Requirement: R-I15
 		try (TestJvmScope jvm = new TestJvmScope();
-			TemporaryDirectories cleanup = new TemporaryDirectories())
+			TemporaryDirectories cleanup = new TemporaryDirectories();
+			CodexLoginService service = CodexLoginServices.start(cleanup, new CodexLoginServices.Keyring(null)))
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-codex-denials-")).
 				toRealPath();
 			Path source = CodexSourceHomes.create(root, "source");
-			Path login = CodexSourceHomes.apiKeyLogin(source.resolve(".codex"));
 			Path key = CodexSourceHomes.secret(source.resolve("key"));
 			CodexSourceHomes.configuration(source.resolve(".codex"), """
 				model_provider = "gateway"
@@ -893,7 +912,9 @@ public final class CodexRunnerTest
 				command = "sh"
 				args = ["-c", "cat ~/key"]
 				""");
-			Map<String, String> environment = CodexSourceHomes.runnerEnvironment(root);
+			Map<String, String> environment = new HashMap<>(CodexSourceHomes.runnerEnvironment(root));
+			environment.putAll(service.runnerVariables());
+			Path socketFolder = service.socket().getParent();
 			CodexAuthentication authentication = CodexAuthentication.read(named(source, HostLogin.API_KEY), environment,
 				Platform.current());
 			HarnessRunnerOptions options = authentication.withDeniedReads(CodexRunnerCli.options(new String[]{"serve",
@@ -903,7 +924,7 @@ public final class CodexRunnerTest
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("codex");
 			Path codexFolder = Files.createDirectories(nestedSession.directory().resolve("home/.codex"));
-			authentication.copyLogin(codexFolder);
+			CodexSourceHomes.apiKeyLogin(codexFolder);
 			Path configuration = codexFolder.resolve("config.toml");
 			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), configuration,
 				nestedSession.directory().resolve("project"));
@@ -912,12 +933,11 @@ public final class CodexRunnerTest
 				options.deniedReads(), Platform.LINUX_X64, environment);
 			CodexConnectionConfiguration.addSessionProfile(configuration, List.of(), deniedReads);
 
-			List<Path> secrets = List.of(login, key);
-			requireThat(options.deniedReads(), "requestedSessionDenials").containsAll(secrets);
-			requireThat(deniedReads, "deniedReads").containsAll(secrets).contains(codexFolder.resolve("auth.json")).
-				doesNotContain(configuration);
+			requireThat(options.deniedReads(), "requestedSessionDenials").contains(key);
+			requireThat(deniedReads, "deniedReads").contains(key).contains(codexFolder.resolve("auth.json")).
+				contains(socketFolder).doesNotContain(configuration);
 			String profile = Files.readString(configuration);
-			for (Path denied : List.of(login, key, codexFolder.resolve("auth.json")))
+			for (Path denied : List.of(key, codexFolder.resolve("auth.json"), socketFolder))
 				requireThat(profile, "profile").
 					contains("\"" + TomlStrings.escape(denied.toString()) + "\" = \"deny\"");
 		}
@@ -1919,26 +1939,16 @@ public final class CodexRunnerTest
 	}
 
 	/**
-	 * Creates a source home whose selected provider prints its token with a command and that holds no
-	 * {@code auth.json}, and reads its authentication.
+	 * Creates a source home whose {@code .codex/auth.json} holds an API key, unless it holds one already, and opens its
+	 * login, which needs no login service and whose closing has no effect.
 	 *
 	 * @param root the folder that receives the source home
 	 * @param name the source home's name
-	 * @return the authentication
+	 * @return the login
 	 * @throws IOException if the fixture cannot be written or the source is refused
 	 */
-	private static CodexAuthentication tokenCommandSource(Path root, String name) throws IOException
+	private static CodexSessionLogin apiKeyLogin(Path root, String name) throws IOException
 	{
-		Path source = CodexSourceHomes.create(root, name);
-		CodexSourceHomes.secret(source.resolve("key"));
-		CodexSourceHomes.configuration(source.resolve(".codex"), """
-			model_provider = "gateway"
-			[model_providers.gateway]
-			base_url = "https://gateway.example/v1"
-			[model_providers.gateway.auth]
-			command = "sh"
-			args = ["-c", "cat ~/key"]
-			""");
-		return CodexAuthentication.read(named(source, HostLogin.API_KEY), Map.of(), Platform.current());
+		return apiKeySource(root, name).open(Map.of());
 	}
 }

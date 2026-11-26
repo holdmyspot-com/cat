@@ -16,7 +16,6 @@ import com.holdmyspot.cat.common.runner.policy.RealPaths;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 
 import java.io.IOException;
-import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
@@ -39,7 +38,6 @@ import java.util.stream.Collectors;
 
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 import tools.jackson.dataformat.toml.TomlMapper;
 
@@ -58,14 +56,6 @@ public final class CodexConnectionConfiguration
 	 * The {@code [features]} entry that makes Codex limit a profile's network to its {@code domains}.
 	 */
 	static final String NETWORK_PROXY_FEATURE = "network_proxy";
-	/**
-	 * The host that Codex sends model requests to under a ChatGPT login when no base URL is configured.
-	 */
-	private static final String CHATGPT_MODEL_HOST = "chatgpt.com";
-	/**
-	 * The host that Codex sends model requests to under an API key when no base URL is configured.
-	 */
-	private static final String API_MODEL_HOST = "api.openai.com";
 	/**
 	 * The Codex configuration layer that a system administrator installs on Linux and macOS. The session's own
 	 * configuration overrides its values, but Codex merges its tables, such as a permission profile's, into the
@@ -168,79 +158,6 @@ public final class CodexConnectionConfiguration
 		if (selected.isEmpty())
 			return Optional.empty();
 		return Optional.of(mapper.writeValueAsString(selected));
-	}
-
-	/**
-	 * Returns the host that a session's Codex sends its model requests to, from the source configuration and login that
-	 * the session takes: the host of the base URL of the selected provider's table, otherwise of
-	 * {@code openai_base_url}, otherwise the host that Codex reaches for the login. That is the API host when the
-	 * configuration forces an API login or the login file holds an API key, and the ChatGPT host otherwise.
-	 *
-	 * @param sourceConfiguration the source's {@code config.toml}, which may not exist
-	 * @param sourceLogin         the source's {@code auth.json}, which may not exist
-	 * @return the host, in lower case
-	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException          if a file cannot be read or parsed, or a base URL names no host
-	 */
-	public static String modelHost(Path sourceConfiguration, Path sourceLogin) throws IOException
-	{
-		requireThat(sourceConfiguration, "sourceConfiguration").isNotNull();
-		requireThat(sourceLogin, "sourceLogin").isNotNull();
-		if (Files.isRegularFile(sourceConfiguration))
-		{
-			JsonNode configuration = parse(sourceConfiguration, BoundedInput.readUtf8(sourceConfiguration,
-				MAXIMUM_CONFIGURATION_BYTES, "Codex configuration"), "connection settings");
-			String providerId = configuration.path("model_provider").asString("openai");
-			JsonNode providerUrl = configuration.path("model_providers").path(providerId).path("base_url");
-			if (providerUrl.isString())
-				return urlHost(sourceConfiguration, "model_providers." + providerId + ".base_url", providerUrl.asString());
-			JsonNode baseUrl = configuration.path("openai_base_url");
-			if (baseUrl.isString())
-				return urlHost(sourceConfiguration, "openai_base_url", baseUrl.asString());
-			if (configuration.path("forced_login_method").asString("").equals("api"))
-				return API_MODEL_HOST;
-		}
-		if (Files.isRegularFile(sourceLogin))
-		{
-			String text = BoundedInput.readUtf8(sourceLogin, MAXIMUM_CONFIGURATION_BYTES, "Codex login");
-			JsonNode apiKey;
-			try
-			{
-				apiKey = JsonMapper.builder().build().readTree(text).path("OPENAI_API_KEY");
-			}
-			catch (JacksonException e)
-			{
-				throw new IOException("Cannot parse the Codex login " + sourceLogin, e);
-			}
-			if (apiKey.isString() && !apiKey.asString().isBlank())
-				return API_MODEL_HOST;
-		}
-		return CHATGPT_MODEL_HOST;
-	}
-
-	/**
-	 * Returns the host of a base URL.
-	 *
-	 * @param source  the configuration that names the URL
-	 * @param setting the setting that names the URL
-	 * @param baseUrl the URL
-	 * @return the host, in lower case
-	 * @throws IOException if the URL is malformed or names no host
-	 */
-	private static String urlHost(Path source, String setting, String baseUrl) throws IOException
-	{
-		String host;
-		try
-		{
-			host = URI.create(baseUrl.strip()).getHost();
-		}
-		catch (IllegalArgumentException e)
-		{
-			throw new IOException(source + " sets " + setting + " to a malformed URL: " + baseUrl, e);
-		}
-		if (host == null || host.isBlank())
-			throw new IOException(source + " sets " + setting + " to a URL without a host: " + baseUrl);
-		return host.toLowerCase(Locale.ROOT);
 	}
 
 	/**

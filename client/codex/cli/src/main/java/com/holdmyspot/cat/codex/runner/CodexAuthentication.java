@@ -1,54 +1,60 @@
 package com.holdmyspot.cat.codex.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
-import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.optimizer.adapter.CredentialFile;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.runner.AuthenticationEvidence;
 import com.holdmyspot.cat.common.runner.AuthenticationOptions;
-import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.SecretFile;
 import com.holdmyspot.cat.common.runner.SourceHome;
+import com.holdmyspot.cat.common.runner.login.CodexKeyring;
+import com.holdmyspot.cat.common.runner.login.CodexLoginClient;
+import com.holdmyspot.cat.common.runner.login.CodexLoginPlan;
+import com.holdmyspot.cat.common.runner.login.CodexLoginService;
+import com.holdmyspot.cat.common.runner.login.CodexLoginSource;
+import com.holdmyspot.cat.common.runner.login.LoginRefusal;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import tools.jackson.core.JacksonException;
+import tools.jackson.core.JsonToken;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
-import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 import tools.jackson.dataformat.toml.TomlMapper;
 
 /**
- * The Codex authentication that a nested session takes from its launch's source home: the source's {@code auth.json}
- * when it holds an API key, and the settings of the source's {@code config.toml} that choose the model provider and its
- * credential, which are {@code model_provider}, {@code openai_base_url}, {@code forced_login_method} and the table of
- * the provider that {@code model_provider} selects.
- * <p>
- * The session's Codex chooses among these parts by its own rules. The runner copies them, and nothing else of the
- * source's Codex folder, into the session's Codex folder: the settings into the session's {@code config.toml}, with
- * the provider's token command wrapped so that it runs with the source home as its home folder, and the
- * {@code auth.json} as a copy that its owner alone may read, which the session's commands may not read and which is
- * removed when the session's app-server ends.
- * <p>
- * A selected provider that takes its token from the variable that its {@code env_key} names, or that holds it inline as
- * an {@code experimental_bearer_token}, receives it through the session's key file instead: the session's copy of the
- * provider drops both settings and gains an {@code auth} token command that prints the key file, which Codex runs
- * outside the command sandbox, so that the token is neither in the session's {@code config.toml} nor in any
+ * The Codex login that a nested session takes from its launch's source home, chosen as the user's own Codex chooses
+ * it from the source's {@code config.toml}, {@code auth.json}, the operating system's keyring and the runner's
  * environment.
+ * <p>
+ * A nested session never holds a login that can change. A key that cannot change (an API key, the value that a
+ * provider's {@code env_key} names, or an inline {@code experimental_bearer_token}) reaches the session through its key
+ * file. Every other login (a ChatGPT sign-in in {@code auth.json} or in the keyring, a provider's own token command,
+ * a {@code gateway_oauth} provider's {@code credential_export} command, and a provider whose secret travels in
+ * headers) is served by the login service of the request server that serves the top-level session, which alone reads
+ * the source login and runs the source's commands; the session's key file then holds a per-session credential for that
+ * service.
+ * In either case the session's provider runs CAT's token command, which prints the key or asks the service.
+ * <p>
+ * {@link #read} decides the route from the source's files without reading a sign-in; {@link #open} opens the
+ * session's login, through the service when the route needs it, and returns what the session's Codex folder receives.
  * <p>
  * The description of an instance holds no secret.
  * <p>
@@ -67,7 +73,7 @@ public final class CodexAuthentication
 	/**
 	 * The name of Codex's login file in its folder.
 	 */
-	public static final String LOGIN = "auth.json";
+	public static final String LOGIN = CodexLoginSource.LOGIN_FILE;
 	/**
 	 * The name of Codex's configuration file in its folder.
 	 */
@@ -77,31 +83,46 @@ public final class CodexAuthentication
 	 */
 	private static final int MAXIMUM_FILE_BYTES = 1_048_576;
 	/**
-	 * The provider that Codex selects when {@code model_provider} is not set.
+	 * The built-in provider that Codex selects when {@code model_provider} is not set.
 	 */
 	private static final String DEFAULT_PROVIDER = "openai";
 	/**
-	 * The top-level settings of {@code config.toml} that choose the session's credential or its model host, in the
-	 * order in which the session receives them.
+	 * The identifier of the custom provider that stands for the built-in one in a session's configuration.
 	 */
-	private static final List<String> TOP_LEVEL_SETTINGS = List.of("model_provider", "openai_base_url",
-		"forced_login_method");
+	private static final String SESSION_PROVIDER = "cat-openai";
+	/**
+	 * The base URL of the OpenAI API, which the built-in provider reaches with a key.
+	 */
+	private static final String API_BASE_URL = "https://api.openai.com/v1";
+	/**
+	 * The base URL that the built-in provider reaches with a ChatGPT sign-in.
+	 */
+	private static final String CHATGPT_BASE_URL = "https://chatgpt.com/backend-api/codex";
+	/**
+	 * The header that names a ChatGPT sign-in's account.
+	 */
+	static final String ACCOUNT_HEADER = "ChatGPT-Account-ID";
+	/**
+	 * The top-level settings of {@code config.toml} that choose the session's login or its model host.
+	 */
+	private static final List<String> LOGIN_SETTINGS = List.of("model_provider", "openai_base_url",
+		"forced_login_method", "cli_auth_credentials_store");
+	/**
+	 * The variables of the runner's environment that hold an API key, in the order in which they are read.
+	 */
+	private static final List<String> KEY_VARIABLES = List.of("CODEX_API_KEY", "OPENAI_API_KEY");
 	/**
 	 * The name of the key file in a session's Codex folder.
 	 */
 	private static final String KEY_FILE = "cat-api-key";
 	/**
-	 * How long Codex waits for the token command that prints the key file, in milliseconds.
+	 * How long Codex runs a source provider's token command when the provider sets no timeout, in milliseconds.
 	 */
-	private static final int KEY_FILE_COMMAND_TIMEOUT_MS = 30_000;
+	private static final long DEFAULT_COMMAND_TIMEOUT_MS = 5000;
 	/**
-	 * The settings of a provider's table that send a secret in headers, which cannot become a bearer token.
+	 * How long a source provider's token output serves when the provider sets no interval, in milliseconds.
 	 */
-	private static final List<String> HEADER_SECRET_SETTINGS = List.of("env_http_headers", "http_headers");
-	/**
-	 * The values of {@code cli_auth_credentials_store} that keep the login in the operating system's store.
-	 */
-	private static final Set<String> SYSTEM_STORES = Set.of("keyring", "auto");
+	private static final long DEFAULT_REFRESH_INTERVAL_MS = 300_000;
 	/**
 	 * The top-level setting that gates the hosted web search tool.
 	 */
@@ -110,86 +131,139 @@ public final class CodexAuthentication
 	 * The {@code web_search} value that Codex uses when a configuration sets none.
 	 */
 	private static final String DEFAULT_WEB_SEARCH = "cached";
+	/**
+	 * The keyring item's part of the evidence.
+	 */
+	private static final String KEYRING_PART = "keyring:" + CodexKeyring.SERVICE;
+
+	/**
+	 * How the session receives its login.
+	 */
+	private sealed interface Route
+	{
+	}
+
+	/**
+	 * A key that cannot change, which the session's key file holds.
+	 *
+	 * @param key  the key
+	 * @param part the evidence's name of where the key came from
+	 */
+	private record Key(String key, String part) implements Route
+	{
+		@Override
+		public String toString()
+		{
+			return "Key{part=" + part + "}";
+		}
+	}
+
+	/**
+	 * A login that the request server's login service serves.
+	 *
+	 * @param plan the plan that the service opens
+	 */
+	private record Served(CodexLoginPlan plan) implements Route
+	{
+		@Override
+		public String toString()
+		{
+			return "Served{plan=" + plan.getClass().getSimpleName() + "}";
+		}
+	}
 
 	private final SourceHome source;
 	private final Path folder;
 	private final Path configuration;
-	private final ObjectNode settings;
+	private final String providerId;
+	private final ObjectNode provider;
+	private final boolean openaiLogin;
+	private final Optional<String> openaiBaseUrl;
+	private final String forcedLoginMethod;
+	private final Optional<HostLogin> declared;
+	private final Route route;
 	private final List<String> settingNames;
-	private final Path login;
-	private final HostLogin loginClass;
-	private final String modelHost;
+	private final List<String> loginParts;
 	private final List<Path> secretFiles;
 	private final List<Path> sourceFiles;
-	private final String providerId;
-	private final String keyFileToken;
 	private final String webSearch;
 
 	/**
 	 * Creates an authentication.
 	 *
-	 * @param source        the source home
-	 * @param folder        the source's Codex folder
-	 * @param configuration the source's {@code config.toml}, which may not exist
-	 * @param settings      the settings that the session takes, as dotted keys of the configuration's root
-	 * @param settingNames  the names of the settings that the session takes, in order
-	 * @param login         the source's {@code auth.json} when it holds an API key, or {@code null}
-	 * @param loginClass    the class of the session's login
-	 * @param modelHost     the host of the session's model requests
-	 * @param secretFiles   the source files that hold a secret
-	 * @param sourceFiles   the source files that the runner reads for the session's credential
-	 * @param providerId    the identifier of the selected provider
-	 * @param keyFileToken  the token that the session's key file holds, or {@code null} if the selected provider does
-	 *                      not supply one through {@code env_key} or {@code experimental_bearer_token}
-	 * @param webSearch     the source's {@code web_search} value
+	 * @param source            the source home
+	 * @param folder            the source's Codex folder
+	 * @param configuration     the source's {@code config.toml}, which may not exist
+	 * @param providerId        the identifier of the selected provider
+	 * @param provider          the selected custom provider's table, or {@code null} for the built-in provider
+	 * @param openaiLogin       {@code true} if the session uses the source's OpenAI login: a stored login, an API key
+	 *                          or a key in the runner's environment
+	 * @param openaiBaseUrl     the source's {@code openai_base_url}, or empty
+	 * @param forcedLoginMethod the source's {@code forced_login_method}, or empty text
+	 * @param declared          the gateway class that the launch declares, or empty
+	 * @param route             how the session receives its login
+	 * @param settingNames      the names of the source's settings that chose the login, in order
+	 * @param loginParts        the evidence's names of the logins that the runner or the service reads
+	 * @param secretFiles       the source files that hold a secret
+	 * @param sourceFiles       the source files that the runner or the service reads for the session's credential
+	 * @param webSearch         the source's {@code web_search} value
 	 */
-	private CodexAuthentication(SourceHome source, Path folder, Path configuration, ObjectNode settings,
-		List<String> settingNames, Path login, HostLogin loginClass, String modelHost, List<Path> secretFiles,
-		List<Path> sourceFiles, String providerId, String keyFileToken, String webSearch)
+	@SuppressWarnings("checkstyle:ParameterNumber")
+	private CodexAuthentication(SourceHome source, Path folder, Path configuration, String providerId,
+		ObjectNode provider, boolean openaiLogin, Optional<String> openaiBaseUrl, String forcedLoginMethod,
+		Optional<HostLogin> declared, Route route, List<String> settingNames, List<String> loginParts,
+		List<Path> secretFiles, List<Path> sourceFiles, String webSearch)
 	{
 		this.source = source;
 		this.folder = folder;
 		this.configuration = configuration;
-		this.settings = settings;
+		this.providerId = providerId;
+		this.provider = provider;
+		this.openaiLogin = openaiLogin;
+		this.openaiBaseUrl = openaiBaseUrl;
+		this.forcedLoginMethod = forcedLoginMethod;
+		this.declared = declared;
+		this.route = route;
 		this.settingNames = settingNames;
-		this.login = login;
-		this.loginClass = loginClass;
-		this.modelHost = modelHost;
+		this.loginParts = loginParts;
 		this.secretFiles = secretFiles;
 		this.sourceFiles = sourceFiles;
-		this.providerId = providerId;
-		this.keyFileToken = keyFileToken;
 		this.webSearch = webSearch;
 	}
 
 	/**
-	 * Reads the authentication of a launch's source home. The source's Codex folder is {@code .codex} in a home that
-	 * the launch names; otherwise it is the folder that the runner's {@code CODEX_HOME} names, or else {@code .codex}
-	 * in the runner's home folder.
+	 * Reads the login of a launch's source home. The source's Codex folder is {@code .codex} in a home that the launch
+	 * names; otherwise it is the folder that the runner's {@code CODEX_HOME} names, or else {@code .codex} in the
+	 * runner's home folder.
 	 * <p>
-	 * A source file holds a secret when it is {@code auth.json} or a file that the selected provider's token command
-	 * names in its arguments by an absolute path or a path under {@code ~/}, which names the source home. Each one must
-	 * hold its secret safely, as {@link SecretFile} decides from its metadata.
+	 * The selected provider decides: a custom provider's header secrets, {@code gateway_oauth} with
+	 * {@code credential_export}, own {@code auth} command, {@code experimental_bearer_token} or {@code env_key}, in that
+	 * order, or else the source's OpenAI login, which is also the built-in provider's. The OpenAI login is the login that
+	 * {@code cli_auth_credentials_store} keeps: the keyring for {@code keyring} and {@code auto}, which the login service
+	 * reads; otherwise {@code auth.json}, which holds a ChatGPT sign-in that the service serves or an API key; and
+	 * without it the runner's {@code CODEX_API_KEY} or else {@code OPENAI_API_KEY}. The runner tells a sign-in from an
+	 * API key by the types of the file's top-level values and reads only an API key.
 	 * <p>
-	 * When the selected provider holds an inline {@code experimental_bearer_token}, that token is the session's key file
-	 * content; otherwise, when it sets {@code env_key}, the content is the value of that variable in {@code environment}.
+	 * A source file holds a secret when it is {@code auth.json}, the keyring's age-encrypted file, a file that the
+	 * selected provider's token or {@code credential_export} command names in its arguments by an absolute path or a
+	 * path under {@code ~/}, or {@code config.toml} when the selected provider holds {@code experimental_bearer_token}
+	 * or {@code http_headers}. Each one must hold its secret safely, as {@link SecretFile} decides from its metadata.
 	 *
 	 * @param options     the launch's choice of source home and gateway login class
 	 * @param environment the runner's environment, which holds the variable that the selected provider's
-	 *                    {@code env_key} names
+	 *                    {@code env_key} names and the API key variables
 	 * @param platform    the platform whose home variable names the runner's home folder
 	 * @return the authentication
 	 * @throws NullPointerException    if any of the arguments are null
 	 * @throws SessionRefusedException if the source home does not exist; if its {@code config.toml} or
-	 *                                 {@code auth.json} cannot be parsed; if the selected provider has no table, sets
-	 *                                 {@code env_http_headers}, holds an inline {@code http_headers}, names in
-	 *                                 {@code env_key} a variable that {@code environment} does not set, or signs in
-	 *                                 through {@code gateway_oauth} without {@code credential_export}; if the source
-	 *                                 keeps its login in the operating system's store; if its {@code auth.json} holds a
-	 *                                 ChatGPT sign-in or no API key; if it holds no authentication; if a base URL names
-	 *                                 no host, or the launch declares no class of login for it; or if a file that holds
-	 *                                 a secret does not hold it safely. The reason names the files or the setting and
-	 *                                 never quotes a secret.
+	 *                                 {@code auth.json} cannot be parsed; if the selected provider has no table, signs
+	 *                                 in through {@code gateway_oauth} without {@code credential_export}, names in
+	 *                                 {@code env_key} or {@code env_http_headers} a variable that {@code environment}
+	 *                                 does not set, or sends header secrets without a base URL or with the OpenAI
+	 *                                 login; if {@code cli_auth_credentials_store} names no store; if the source holds
+	 *                                 no login; if a base URL names no host, or the launch declares no class of login
+	 *                                 for it; or if a file that holds a secret does not hold it safely. The reason
+	 *                                 names the files or the setting and never quotes a secret.
 	 * @throws IOException             if a source file cannot be read
 	 */
 	public static CodexAuthentication read(AuthenticationOptions options, Map<String, String> environment,
@@ -201,95 +275,63 @@ public final class CodexAuthentication
 		SourceHome source = options.sourceHome(environment, platform);
 		Path folder = source.folder(FOLDER, FOLDER_VARIABLE, environment);
 		Path configuration = folder.resolve(CONFIGURATION);
-		Path loginFile = folder.resolve(LOGIN);
 		JsonNode values = readConfiguration(configuration);
 		String providerId = values.path("model_provider").asString(DEFAULT_PROVIDER);
-		JsonNode provider = values.path("model_providers").path(providerId);
-		if (!provider.isObject() && !providerId.equals(DEFAULT_PROVIDER))
+		JsonNode table = values.path("model_providers").path(providerId);
+		boolean builtin = providerId.equals(DEFAULT_PROVIDER);
+		if (!builtin && !table.isObject())
 		{
 			throw new SessionRefusedException("CAT does not start the session: " + configuration + " sets " +
 				"model_provider to a provider without a [model_providers." + providerId + "] table, so CAT cannot " +
 				"tell where the session's requests go or which credential they use. Add the provider's table, or name " +
 				"another source home with " + AuthenticationOptions.HOME_OPTION + ".");
 		}
-		String settingPrefix = "model_providers." + providerId + ".";
-		Optional<String> headerSecret = headerSecretSetting(provider);
-		if (headerSecret.isPresent())
+		ObjectNode provider = null;
+		if (!builtin)
+			provider = (ObjectNode) table;
+		Optional<String> openaiBaseUrl = Optional.ofNullable(values.path("openai_base_url").asString(null));
+		Optional<HostLogin> declared = options.gatewayLoginClass();
+		ReadState state = new ReadState(source, folder, configuration, providerId, environment);
+		Route route;
+		boolean openaiLogin = false;
+		if (provider == null)
 		{
-			throw new SessionRefusedException("CAT does not start the session: " + configuration + " sets " +
-				settingPrefix + headerSecret.get() + " for the selected provider " + providerId + ". A secret that " +
-				"is sent in headers cannot become the bearer token that the session's key file holds. Give the " +
-				"provider env_key, an experimental_bearer_token or a token command in its auth table instead, or " +
-				"name another source home with " + AuthenticationOptions.HOME_OPTION + ".");
+			route = state.openaiLogin(values);
+			openaiLogin = true;
 		}
-		String keyFileToken = keyFileToken(provider, configuration, settingPrefix, providerId, environment);
-		JsonNode gatewaySignIn = provider.path("gateway_oauth");
-		if (!gatewaySignIn.isMissingNode() && gatewaySignIn.path("credential_export").isMissingNode())
+		else
 		{
-			throw new SessionRefusedException("CAT does not start the session: " + configuration + " sets " +
-				settingPrefix + "gateway_oauth without credential_export, so the provider's sign-in is stored where " +
-				"the runner cannot copy it into the session. Give it a credential_export command or a token command, " +
-				"or name another source home with " + AuthenticationOptions.HOME_OPTION + ".");
+			Optional<Route> own = state.providerLogin(provider);
+			if (own.isPresent())
+				route = own.get();
+			else
+			{
+				route = state.openaiLogin(values);
+				openaiLogin = true;
+			}
 		}
-		boolean loginExists = Files.exists(loginFile, NOFOLLOW_LINKS);
-		String store = values.path("cli_auth_credentials_store").asString("");
-		if (SYSTEM_STORES.contains(store) && !loginExists)
+
+		Optional<String> baseUrl = Optional.empty();
+		String baseUrlSetting = "";
+		if (provider != null && provider.path("base_url").isString())
 		{
-			throw new SessionRefusedException("CAT does not start the session: " + configuration + " sets " +
-				"cli_auth_credentials_store = \"" + store + "\" and " + loginFile + " does not exist, so the source's " +
-				"Codex login is in the operating system's credential store, which the runner cannot copy into a " +
-				"session. Log in with cli_auth_credentials_store = \"file\", or name another source home with " +
-				AuthenticationOptions.HOME_OPTION + ".");
+			baseUrl = Optional.of(provider.path("base_url").asString());
+			baseUrlSetting = "model_providers." + providerId + ".base_url";
 		}
-		Path apiKeyLogin = null;
-		if (loginExists)
+		else if (provider == null && route instanceof Key && openaiBaseUrl.isPresent())
 		{
-			requireApiKeyLogin(loginFile);
-			apiKeyLogin = loginFile;
-		}
-		JsonNode tokenCommand = provider.path("auth");
-		boolean hasTokenCommand = tokenCommand.isObject() && tokenCommand.path("command").isString();
-		boolean hasExport = !gatewaySignIn.isMissingNode();
-		if (apiKeyLogin == null && !hasTokenCommand && !hasExport && keyFileToken == null)
-		{
-			throw new SessionRefusedException("CAT does not start the session: the source home " +
-				source.directory() + " holds no Codex authentication. The runner read " + configuration + ", whose " +
-				"selected provider " + providerId + " has no token command, env_key or experimental_bearer_token, and " +
-				"found no " + loginFile + ". Log in " +
-				"with an API key, as codex login --with-api-key does, or give the selected provider a token command, " +
-				"or name another source home with " + AuthenticationOptions.HOME_OPTION + ".");
-		}
-		String baseUrl = provider.path("base_url").asString(null);
-		String baseUrlSetting = settingPrefix + "base_url";
-		if (baseUrl == null)
-		{
-			baseUrl = values.path("openai_base_url").asString(null);
+			baseUrl = openaiBaseUrl;
 			baseUrlSetting = "openai_base_url";
 		}
-		Optional<HostLogin> declared = options.gatewayLoginClass();
-		if (baseUrl != null && declared.isEmpty())
+		if (baseUrl.isPresent())
 		{
-			throw new SessionRefusedException("CAT does not start the session: " + configuration + " sets " +
-				baseUrlSetting + ", which sends the session's requests to a gateway, and no file records which kind " +
-				"of login the gateway bills. Name it with " + AuthenticationOptions.LOGIN_CLASS_OPTION +
-				" subscription or " + AuthenticationOptions.LOGIN_CLASS_OPTION + " api_key.");
+			urlHost(configuration, baseUrlSetting, baseUrl.get());
+			if (declared.isEmpty())
+				throw undeclaredGateway(configuration, baseUrlSetting);
 		}
-		String modelHost;
-		try
-		{
-			modelHost = CodexConnectionConfiguration.modelHost(configuration, loginFile);
-		}
-		catch (SessionRefusedException e)
-		{
-			throw e;
-		}
-		catch (IOException e)
-		{
-			throw new SessionRefusedException("CAT does not start the session: " + e.getMessage() + ". Name the " +
-				"gateway's URL there.", e);
-		}
-		List<Path> secretFiles = secretFiles(source, apiKeyLogin, tokenCommand);
-		for (Path file : secretFiles)
+		if (provider == null && openaiBaseUrl.isPresent())
+			urlHost(configuration, "openai_base_url", openaiBaseUrl.get());
+		for (Path file : state.secretFiles)
 		{
 			Optional<String> problem = SecretFile.problem(file, SecretFile.read(file));
 			if (problem.isPresent())
@@ -298,36 +340,19 @@ public final class CodexAuthentication
 		Set<Path> sourceFiles = new LinkedHashSet<>();
 		if (Files.exists(configuration))
 			sourceFiles.add(configuration);
-		sourceFiles.addAll(secretFiles);
-		ObjectNode settings = TomlMapper.builder().build().createObjectNode();
+		sourceFiles.addAll(state.secretFiles);
 		List<String> settingNames = new ArrayList<>();
-		for (String name : TOP_LEVEL_SETTINGS)
+		for (String name : LOGIN_SETTINGS)
 		{
 			if (values.has(name))
-			{
-				settings.set(name, values.get(name));
 				settingNames.add(name);
-			}
 		}
-		if (provider.isObject())
-		{
-			ObjectNode copied = ((ObjectNode) provider).deepCopy();
-			if (keyFileToken != null)
-			{
-				copied.remove("env_key");
-				copied.remove("experimental_bearer_token");
-			}
-			else if (hasTokenCommand)
-				copied.set("auth", wrapped(source, tokenCommand));
-			settings.putObject("model_providers").set(providerId, copied);
+		if (provider != null)
 			settingNames.add("model_providers." + providerId);
-		}
-		HostLogin loginClass = HostLogin.API_KEY;
-		if (baseUrl != null)
-			loginClass = declared.orElseThrow();
-		return new CodexAuthentication(source, folder, configuration, settings, List.copyOf(settingNames),
-			apiKeyLogin, loginClass, modelHost, secretFiles, List.copyOf(sourceFiles), providerId, keyFileToken,
-			values.path(WEB_SEARCH).asString(DEFAULT_WEB_SEARCH));
+		return new CodexAuthentication(source, folder, configuration, providerId, provider, openaiLogin,
+			openaiBaseUrl, values.path("forced_login_method").asString(""), declared, route,
+			List.copyOf(settingNames), List.copyOf(state.loginParts), List.copyOf(state.secretFiles),
+			List.copyOf(sourceFiles), values.path(WEB_SEARCH).asString(DEFAULT_WEB_SEARCH));
 	}
 
 	/**
@@ -355,156 +380,430 @@ public final class CodexAuthentication
 	}
 
 	/**
-	 * Returns the setting of the selected provider's table that sends a secret in headers.
+	 * Returns the refusal of a base URL whose login class the launch does not declare.
 	 *
-	 * @param provider the selected provider's table, or a missing node
-	 * @return the setting's name, or empty if the provider sets none of them
-	 */
-	private static Optional<String> headerSecretSetting(JsonNode provider)
-	{
-		for (String setting : HEADER_SECRET_SETTINGS)
-		{
-			JsonNode value = provider.path(setting);
-			if (value.isMissingNode() || value.isNull())
-				continue;
-			if (value.isObject() && value.isEmpty())
-				continue;
-			return Optional.of(setting);
-		}
-		return Optional.empty();
-	}
-
-	/**
-	 * Returns the token that the session's key file holds: the selected provider's inline
-	 * {@code experimental_bearer_token}, or else the value of the variable that its {@code env_key} names.
-	 *
-	 * @param provider      the selected provider's table, or a missing node
 	 * @param configuration the source's {@code config.toml}
-	 * @param settingPrefix the prefix of the provider's settings in messages
-	 * @param providerId    the identifier of the selected provider
-	 * @param environment   the runner's environment
-	 * @return the token, or {@code null} if the provider sets neither setting
-	 * @throws SessionRefusedException if {@code env_key} names a variable that the environment does not set or sets to
-	 *                                 blank text
+	 * @param setting       the setting that names the base URL
+	 * @return the refusal
 	 */
-	private static String keyFileToken(JsonNode provider, Path configuration, String settingPrefix, String providerId,
-		Map<String, String> environment) throws SessionRefusedException
+	private static SessionRefusedException undeclaredGateway(Path configuration, String setting)
 	{
-		String name = provider.path("env_key").asString("");
-		String fromEnvironment = null;
-		if (!name.isBlank())
-		{
-			fromEnvironment = environment.get(name);
-			if (fromEnvironment == null || fromEnvironment.isBlank())
-			{
-				throw new SessionRefusedException("CAT does not start the session: " + configuration + " sets " +
-					settingPrefix + "env_key to " + name + " for the selected provider " + providerId + ", and the " +
-					"runner's environment does not set " + name + ". Set it where the runner starts, or name another " +
-					"source home with " + AuthenticationOptions.HOME_OPTION + ".");
-			}
-		}
-		String inline = provider.path("experimental_bearer_token").asString("");
-		if (!inline.isBlank())
-			return inline;
-		return fromEnvironment;
+		return new SessionRefusedException("CAT does not start the session: " + configuration + " sets " + setting +
+			", which sends the session's requests to a gateway, and no file records which kind of login the gateway " +
+			"bills. Name it with " + AuthenticationOptions.LOGIN_CLASS_OPTION + " subscription or " +
+			AuthenticationOptions.LOGIN_CLASS_OPTION + " api_key.");
 	}
 
 	/**
-	 * Refuses a source login that holds no API key.
+	 * Returns the host of a base URL.
 	 *
-	 * @param loginFile the source's {@code auth.json}, which exists
-	 * @throws SessionRefusedException if the file cannot be parsed, holds a ChatGPT sign-in or holds no API key
-	 * @throws IOException             if the file cannot be read
+	 * @param configuration the configuration that names the URL
+	 * @param setting       the setting that names the URL
+	 * @param baseUrl       the URL
+	 * @return the host, in lower case
+	 * @throws SessionRefusedException if the URL is malformed or names no host
 	 */
-	private static void requireApiKeyLogin(Path loginFile) throws IOException
+	private static String urlHost(Path configuration, String setting, String baseUrl) throws SessionRefusedException
 	{
-		JsonNode document;
+		String host;
 		try
 		{
-			document = JsonMapper.builder().build().readTree(BoundedInput.readUtf8(loginFile, MAXIMUM_FILE_BYTES,
-				"Codex login"));
+			host = URI.create(baseUrl.strip()).getHost();
 		}
-		catch (JacksonException _)
+		catch (IllegalArgumentException e)
 		{
-			throw new SessionRefusedException("CAT does not start the session: the source's Codex login " + loginFile +
-				" cannot be parsed, so CAT cannot tell which login it holds. Log in again.");
+			throw new SessionRefusedException("CAT does not start the session: " + configuration + " sets " + setting +
+				" to a malformed URL: " + baseUrl + ". Name the gateway's URL there.", e);
 		}
-		String mode = document.path("auth_mode").asString("");
-		JsonNode tokens = document.path("tokens");
-		boolean signIn = (tokens.isObject()) || (!mode.isEmpty() && !mode.equalsIgnoreCase("apikey"));
-		if (signIn)
+		if (host == null || host.isBlank())
 		{
-			throw new SessionRefusedException("CAT does not start the session: the source's Codex login " + loginFile +
-				" holds a ChatGPT sign-in, which Codex refreshes and which concurrent Codex processes cannot share. " +
-				"Log in with an API key, as codex login --with-api-key does, or name another source home with " +
-				AuthenticationOptions.HOME_OPTION + ".");
+			throw new SessionRefusedException("CAT does not start the session: " + configuration + " sets " + setting +
+				" to a URL without a host: " + baseUrl + ". Name the gateway's URL there.");
 		}
-		JsonNode key = document.path("OPENAI_API_KEY");
-		if (!key.isString() || key.asString().isBlank())
-		{
-			throw new SessionRefusedException("CAT does not start the session: the source's Codex login " + loginFile +
-				" holds no API key. Log in with an API key, as codex login --with-api-key does, or name another " +
-				"source home with " + AuthenticationOptions.HOME_OPTION + ".");
-		}
+		return host.toLowerCase(Locale.ROOT);
 	}
 
 	/**
-	 * Returns a provider's token command, wrapped so that it runs with the source home as its home folder, through
-	 * {@link CodexSourceHomeCommand}, which needs neither {@code env} nor a {@code PATH} lookup.
-	 *
-	 * @param source  the source home
-	 * @param command the provider's {@code auth} table
-	 * @return the wrapped table, whose other settings are the source's
+	 * What {@link #read} collects while it decides the route.
 	 */
-	private static ObjectNode wrapped(SourceHome source, JsonNode command)
+	private static final class ReadState
 	{
-		ObjectNode wrapped = ((ObjectNode) command).deepCopy();
-		List<String> sourceArguments = new ArrayList<>();
-		for (JsonNode argument : command.path("args"))
-			sourceArguments.add(argument.asString());
-		CodexKeyFileCommand.Invocation invocation = CodexSourceHomeCommand.invocation(source.directory(),
-			command.path("command").asString(), sourceArguments);
-		wrapped.put("command", invocation.program());
-		ArrayNode arguments = wrapped.putArray("args");
-		for (String argument : invocation.arguments())
-			arguments.add(argument);
-		// A Java program starts slower than Codex's default timeout allows on a loaded machine
-		wrapped.put("timeout_ms", Math.max(KEY_FILE_COMMAND_TIMEOUT_MS, command.path("timeout_ms").asLong(0)));
-		return wrapped;
-	}
+		private final SourceHome source;
+		private final Path folder;
+		private final Path configuration;
+		private final String providerId;
+		private final String settingPrefix;
+		private final Map<String, String> environment;
+		private final Set<Path> secretFiles = new LinkedHashSet<>();
+		private final List<String> loginParts = new ArrayList<>();
 
-	/**
-	 * Returns the source files that hold a secret.
-	 *
-	 * @param source       the source home, which {@code ~/} names in the token command's arguments
-	 * @param login        the source's {@code auth.json} when it holds an API key, or {@code null}
-	 * @param tokenCommand the selected provider's {@code auth} table, or a missing node
-	 * @return the files, each once
-	 */
-	private static List<Path> secretFiles(SourceHome source, Path login, JsonNode tokenCommand)
-	{
-		Set<Path> files = new LinkedHashSet<>();
-		if (login != null)
-			files.add(login);
-		for (JsonNode argument : tokenCommand.path("args"))
+		/**
+		 * Creates a state.
+		 *
+		 * @param source        the source home
+		 * @param folder        the source's Codex folder
+		 * @param configuration the source's {@code config.toml}
+		 * @param providerId    the identifier of the selected provider
+		 * @param environment   the runner's environment
+		 */
+		ReadState(SourceHome source, Path folder, Path configuration, String providerId,
+			Map<String, String> environment)
 		{
-			if (!argument.isString())
-				continue;
-			for (String word : argument.asString().strip().split("\\s+"))
+			this.source = source;
+			this.folder = folder;
+			this.configuration = configuration;
+			this.providerId = providerId;
+			this.settingPrefix = "model_providers." + providerId + ".";
+			this.environment = environment;
+		}
+
+		/**
+		 * Returns the route of a custom provider's own credential.
+		 *
+		 * @param provider the provider's table
+		 * @return the route, or empty if the provider has no credential of its own
+		 * @throws SessionRefusedException if the provider signs in through {@code gateway_oauth} without
+		 *                                 {@code credential_export}, names a variable that the environment does not
+		 *                                 set, or sends header secrets without a base URL or with the OpenAI login
+		 */
+		Optional<Route> providerLogin(ObjectNode provider) throws SessionRefusedException
+		{
+			JsonNode gatewaySignIn = provider.path("gateway_oauth");
+			JsonNode export = gatewaySignIn.path("credential_export");
+			if (!gatewaySignIn.isMissingNode() && !export.isObject())
 			{
-				String unquoted = word.replaceAll("^['\"]|['\"]$", "");
-				Path file;
-				if (unquoted.startsWith("~/"))
-					file = source.directory().resolve(unquoted.substring(2));
-				else if (unquoted.startsWith("/"))
-					file = Path.of(unquoted);
-				else
-					continue;
-				if (Files.isRegularFile(file))
-					files.add(file.normalize());
+				throw new SessionRefusedException("CAT does not start the session: " + configuration + " sets " +
+					settingPrefix + "gateway_oauth without credential_export for the selected provider " + providerId +
+					", so the provider's sign-in is stored where CAT cannot serve it to the session. Give it a " +
+					"credential_export command or a token command, or name another source home with " +
+					AuthenticationOptions.HOME_OPTION + ".");
+			}
+			Optional<CodexLoginPlan.Command> command = Optional.empty();
+			if (export.isObject())
+			{
+				command = Optional.of(command(export, settingPrefix + "gateway_oauth.credential_export",
+					export.path("refresh_interval_ms").asLong(gatewaySignIn.path("refresh_interval_ms").
+						asLong(DEFAULT_REFRESH_INTERVAL_MS))));
+				loginParts.add(settingPrefix + "gateway_oauth.credential_export");
+			}
+			else
+			{
+				JsonNode auth = provider.path("auth");
+				if (auth.isObject() && auth.path("command").isString())
+				{
+					command = Optional.of(command(auth, settingPrefix + "auth",
+						auth.path("refresh_interval_ms").asLong(DEFAULT_REFRESH_INTERVAL_MS)));
+					loginParts.add(settingPrefix + "auth");
+				}
+			}
+			Optional<String> key = providerKey(provider);
+			Map<String, String> headers = headers(provider);
+			if (!headers.isEmpty())
+			{
+				JsonNode baseUrl = provider.path("base_url");
+				if (!baseUrl.isString())
+				{
+					throw new SessionRefusedException("CAT does not start the session: " + configuration + " sets " +
+						"header secrets for the selected provider " + providerId + " and no " + settingPrefix +
+						"base_url, so CAT's forwarder cannot tell where to pass the session's requests on. Name the " +
+						"provider's base_url.");
+				}
+				if (key.isEmpty() && command.isEmpty() && provider.path("requires_openai_auth").asBoolean(false))
+				{
+					throw new SessionRefusedException("CAT does not start the session: " + configuration + " sets " +
+						"header secrets and requires_openai_auth for the selected provider " + providerId + ", and CAT's " +
+						"forwarder does not add the OpenAI login to the headers. Give the provider env_key, an " +
+						"experimental_bearer_token or a token command, or name another source home with " +
+						AuthenticationOptions.HOME_OPTION + ".");
+				}
+				URI target;
+				try
+				{
+					target = URI.create(baseUrl.asString().strip());
+					return Optional.of(new Served(new CodexLoginPlan.Forward(target, headers, key, command)));
+				}
+				catch (IllegalArgumentException e)
+				{
+					throw new SessionRefusedException("CAT does not start the session: " + configuration + " sets " +
+						settingPrefix + "base_url to a URL that CAT's forwarder cannot reach: " + baseUrl.asString() +
+						". Name the provider's HTTP or HTTPS URL there.", e);
+				}
+			}
+			if (command.isPresent())
+				return Optional.of(new Served(command.get()));
+			return key.map(value -> new Key(value, settingPrefix.substring(0, settingPrefix.length() - 1)));
+		}
+
+		/**
+		 * Returns the plan of a source command that the login service runs.
+		 *
+		 * @param table           the command's table, with {@code command}, {@code args}, {@code cwd} and
+		 *                        {@code timeout_ms}
+		 * @param setting         the table's setting, which a refusal names
+		 * @param refreshInterval how long the command's output serves, in milliseconds
+		 * @return the plan
+		 * @throws SessionRefusedException if the table names no program or a negative interval
+		 */
+		private CodexLoginPlan.Command command(JsonNode table, String setting, long refreshInterval)
+			throws SessionRefusedException
+		{
+			String program = table.path("command").asString("");
+			if (program.isBlank() || refreshInterval < 0)
+			{
+				throw new SessionRefusedException("CAT does not start the session: " + configuration + " sets " +
+					setting + " without a command or with a negative refresh_interval_ms. Correct the setting.");
+			}
+			List<String> arguments = new ArrayList<>();
+			for (JsonNode argument : table.path("args"))
+				arguments.add(argument.asString());
+			Optional<Path> directory = Optional.empty();
+			String cwd = table.path("cwd").asString("");
+			if (!cwd.isBlank())
+			{
+				try
+				{
+					directory = Optional.of(source.directory().resolve(cwd));
+				}
+				catch (InvalidPathException e)
+				{
+					throw new SessionRefusedException("CAT does not start the session: " + configuration + " sets " +
+						setting + ".cwd to a path that this platform cannot name: " + cwd + ". Correct the setting.", e);
+				}
+			}
+			long timeout = table.path("timeout_ms").asLong(DEFAULT_COMMAND_TIMEOUT_MS);
+			if (timeout <= 0)
+				timeout = DEFAULT_COMMAND_TIMEOUT_MS;
+			addCommandFiles(arguments);
+			return new CodexLoginPlan.Command(program, arguments, directory, timeout, refreshInterval,
+				source.directory());
+		}
+
+		/**
+		 * Adds the files that a command's arguments name by an absolute path or a path under {@code ~/} to the files
+		 * that hold a secret.
+		 *
+		 * @param arguments the command's arguments
+		 */
+		private void addCommandFiles(List<String> arguments)
+		{
+			for (String argument : arguments)
+			{
+				for (String word : argument.strip().split("\\s+"))
+				{
+					String unquoted = word.replaceAll("^['\"]|['\"]$", "");
+					Path file;
+					try
+					{
+						if (unquoted.startsWith("~/"))
+							file = source.directory().resolve(unquoted.substring(2));
+						else if (Path.of(unquoted).isAbsolute())
+							file = Path.of(unquoted);
+						else
+							continue;
+					}
+					catch (InvalidPathException _)
+					{
+						continue;
+					}
+					if (Files.isRegularFile(file))
+						secretFiles.add(file.normalize());
+				}
 			}
 		}
-		return List.copyOf(files);
+
+		/**
+		 * Returns a provider's key: its inline {@code experimental_bearer_token}, or else the value of the variable
+		 * that its {@code env_key} names. The source's {@code config.toml} holds a secret when the token is inline.
+		 *
+		 * @param provider the provider's table
+		 * @return the key, or empty if the provider sets neither setting
+		 * @throws SessionRefusedException if {@code env_key} names a variable that the environment does not set or sets
+		 *                                 to blank text
+		 */
+		private Optional<String> providerKey(JsonNode provider) throws SessionRefusedException
+		{
+			String name = provider.path("env_key").asString("");
+			String fromEnvironment = null;
+			if (!name.isBlank())
+			{
+				fromEnvironment = environment.get(name);
+				if (fromEnvironment == null || fromEnvironment.isBlank())
+				{
+					throw new SessionRefusedException("CAT does not start the session: " + configuration + " sets " +
+						settingPrefix + "env_key to " + name + " for the selected provider " + providerId + ", and the " +
+						"runner's environment does not set " + name + ". Set it where the runner starts, or name " +
+						"another source home with " + AuthenticationOptions.HOME_OPTION + ".");
+				}
+			}
+			String inline = provider.path("experimental_bearer_token").asString("");
+			if (!inline.isBlank())
+			{
+				secretFiles.add(configuration);
+				return Optional.of(inline);
+			}
+			return Optional.ofNullable(fromEnvironment);
+		}
+
+		/**
+		 * Returns the secret headers that a provider sends: its inline {@code http_headers}, and the values of the
+		 * variables that its {@code env_http_headers} names. The source's {@code config.toml} holds a secret when the
+		 * headers are inline.
+		 *
+		 * @param provider the provider's table
+		 * @return the headers and their values
+		 * @throws SessionRefusedException if {@code env_http_headers} names a variable that the environment does not set
+		 */
+		private Map<String, String> headers(JsonNode provider) throws SessionRefusedException
+		{
+			Map<String, String> headers = new LinkedHashMap<>();
+			JsonNode inline = provider.path("http_headers");
+			if (inline.isObject() && !inline.isEmpty())
+			{
+				secretFiles.add(configuration);
+				for (Map.Entry<String, JsonNode> header : inline.properties())
+					headers.put(header.getKey(), header.getValue().asString(""));
+			}
+			JsonNode variables = provider.path("env_http_headers");
+			if (variables.isObject())
+			{
+				for (Map.Entry<String, JsonNode> header : variables.properties())
+				{
+					String variable = header.getValue().asString("");
+					String value = environment.get(variable);
+					if (value == null || value.isBlank())
+					{
+						throw new SessionRefusedException("CAT does not start the session: " + configuration + " sets " +
+							settingPrefix + "env_http_headers." + header.getKey() + " to " + variable + " for the " +
+							"selected provider " + providerId + ", and the runner's environment does not set " +
+							variable + ". Set it where the runner starts, or name another source home with " +
+							AuthenticationOptions.HOME_OPTION + ".");
+					}
+					headers.put(header.getKey(), value);
+				}
+			}
+			return headers;
+		}
+
+		/**
+		 * Returns the route of the source's OpenAI login.
+		 *
+		 * @param values the source's configuration
+		 * @return the route
+		 * @throws SessionRefusedException if {@code cli_auth_credentials_store} names no store, {@code auth.json} cannot
+		 *                                 be parsed or holds no login, or the source holds no login
+		 * @throws IOException             if {@code auth.json} cannot be read
+		 */
+		Route openaiLogin(JsonNode values) throws IOException
+		{
+			String storeSetting = values.path("cli_auth_credentials_store").asString("");
+			Path loginFile = folder.resolve(LOGIN);
+			if (storeSetting.equals("keyring") || storeSetting.equals("auto"))
+			{
+				CodexLoginPlan.Store store = CodexLoginPlan.Store.of(storeSetting);
+				loginParts.add(KEYRING_PART);
+				Path ageFile = folder.resolve("secrets").resolve("codex_auth.age");
+				if (Files.isRegularFile(ageFile))
+					secretFiles.add(ageFile);
+				if (store == CodexLoginPlan.Store.AUTO && Files.exists(loginFile))
+				{
+					secretFiles.add(loginFile);
+					loginParts.add(relative(loginFile));
+				}
+				return new Served(new CodexLoginPlan.Stored(source.directory(), folder, store));
+			}
+			if (!storeSetting.isEmpty() && !storeSetting.equals("file") && !storeSetting.equals("ephemeral"))
+			{
+				throw new SessionRefusedException("CAT does not start the session: " + configuration + " sets " +
+					"cli_auth_credentials_store to " + storeSetting + ", which names no store that CAT reads. Set it " +
+					"to file, keyring or auto.");
+			}
+			if (storeSetting.isEmpty() || storeSetting.equals("file"))
+			{
+				Optional<Route> stored = fileLogin(loginFile);
+				if (stored.isPresent())
+					return stored.get();
+			}
+			for (String variable : KEY_VARIABLES)
+			{
+				String value = environment.get(variable);
+				if (value != null && !value.isBlank())
+				{
+					loginParts.add("environment:" + variable);
+					return new Key(value, "environment:" + variable);
+				}
+			}
+			String store = "file";
+			if (!storeSetting.isEmpty())
+				store = storeSetting;
+			throw new SessionRefusedException("CAT does not start the session: the source home " +
+				source.directory() + " holds no Codex login that CAT can serve. The runner read " + configuration +
+				", whose selected provider " + providerId + " has no token command, env_key or " +
+				"experimental_bearer_token and whose cli_auth_credentials_store is " + store + ", so the keyring item " +
+				"\"" + CodexKeyring.SERVICE + "\" was not read; found no " + loginFile + "; and found neither " +
+				String.join(" nor ", KEY_VARIABLES) + " in its environment. Sign in to Codex on that source home, " +
+				"log in with an API key as codex login --with-api-key does, or name another source home with " +
+				AuthenticationOptions.HOME_OPTION + ".");
+		}
+
+		/**
+		 * Returns the route of the login in the source's {@code auth.json}: a ChatGPT sign-in, which the login service
+		 * serves, or an API key, which the runner reads.
+		 *
+		 * @param loginFile the source's {@code auth.json}
+		 * @return the route, or empty if the file does not exist
+		 * @throws SessionRefusedException if the file cannot be parsed or holds no login
+		 * @throws IOException             if the file cannot be read
+		 */
+		private Optional<Route> fileLogin(Path loginFile) throws IOException
+		{
+			if (!Files.exists(loginFile))
+				return Optional.empty();
+			secretFiles.add(loginFile);
+			loginParts.add(relative(loginFile));
+			Map<String, JsonToken> types;
+			try
+			{
+				types = CredentialFile.topLevelTypes(loginFile, JsonMapper.builder().build());
+			}
+			catch (JacksonException _)
+			{
+				throw new SessionRefusedException("CAT does not start the session: the source's Codex login " +
+					loginFile + " cannot be parsed, so CAT cannot tell which login it holds. Sign in to Codex again.");
+			}
+			if (types.get("tokens") == JsonToken.START_OBJECT)
+			{
+				return Optional.of(new Served(new CodexLoginPlan.Stored(source.directory(), folder,
+					CodexLoginPlan.Store.FILE)));
+			}
+			if (types.get("OPENAI_API_KEY") != JsonToken.VALUE_STRING)
+			{
+				throw new SessionRefusedException("CAT does not start the session: the source's Codex login " +
+					loginFile + " holds neither a ChatGPT sign-in nor an API key. Sign in to Codex again, or name " +
+					"another source home with " + AuthenticationOptions.HOME_OPTION + ".");
+			}
+			try
+			{
+				return Optional.of(new Key(CodexLoginSource.readFile(loginFile).secret(), relative(loginFile)));
+			}
+			catch (LoginRefusal e)
+			{
+				throw new SessionRefusedException("CAT does not start the session: " + e.getMessage(), e);
+			}
+		}
+
+		/**
+		 * Returns the evidence's name of a source file: its path relative to the source home, or its absolute path.
+		 *
+		 * @param file the file
+		 * @return the name
+		 */
+		private String relative(Path file)
+		{
+			Path absolute = file.toAbsolutePath().normalize();
+			if (absolute.startsWith(source.directory()))
+				return source.directory().relativize(absolute).toString().replace('\\', '/');
+			return absolute.toString();
+		}
 	}
 
 	/**
@@ -518,35 +817,43 @@ public final class CodexAuthentication
 	}
 
 	/**
-	 * Returns the variables that the runner adds to the app-server's environment for the session's authentication:
-	 * {@code CAT_HOST_LOGIN}, which states the class of the session's login to the session's commands.
+	 * Returns the hosts that the session's Codex may send its model requests to: the host of the selected provider's
+	 * base URL; otherwise, for a key, the host of {@code openai_base_url} or the OpenAI API's; for a ChatGPT sign-in,
+	 * the ChatGPT host; and for a keyring login, whose kind only the login service reads, both.
 	 *
-	 * @return the variables
+	 * @return the hosts, in lower case
+	 * @throws SessionRefusedException if a base URL names no host
 	 */
-	public Map<String, String> environment()
+	public Set<String> modelHosts() throws SessionRefusedException
 	{
-		return Map.of(HarnessEnvironment.HOST_LOGIN_VARIABLE, AuthenticationOptions.classValue(loginClass));
+		if (provider != null && provider.path("base_url").isString())
+		{
+			return Set.of(urlHost(configuration, "model_providers." + providerId + ".base_url",
+				provider.path("base_url").asString()));
+		}
+		Set<String> hosts = new LinkedHashSet<>();
+		boolean signIn = route instanceof Served(CodexLoginPlan.Stored stored) &&
+			stored.store() == CodexLoginPlan.Store.FILE;
+		boolean unknown = route instanceof Served(CodexLoginPlan.Stored stored) &&
+			stored.store() != CodexLoginPlan.Store.FILE;
+		if (!signIn)
+			hosts.add(keyHost());
+		if (signIn || unknown)
+			hosts.add(URI.create(CHATGPT_BASE_URL).getHost());
+		return Set.copyOf(hosts);
 	}
 
 	/**
-	 * Returns the host that the session's Codex sends its model requests to.
+	 * Returns the host that the built-in provider reaches with a key.
 	 *
-	 * @return the host, in lower case
+	 * @return the host
+	 * @throws SessionRefusedException if {@code openai_base_url} names no host
 	 */
-	public String modelHost()
+	private String keyHost() throws SessionRefusedException
 	{
-		return modelHost;
-	}
-
-	/**
-	 * Returns the class of the session's login: the declared class when the source names a base URL, otherwise an API
-	 * key.
-	 *
-	 * @return the class
-	 */
-	public HostLogin loginClass()
-	{
-		return loginClass;
+		if (provider == null && openaiBaseUrl.isPresent())
+			return urlHost(configuration, "openai_base_url", openaiBaseUrl.get());
+		return URI.create(API_BASE_URL).getHost();
 	}
 
 	/**
@@ -560,143 +867,14 @@ public final class CodexAuthentication
 	}
 
 	/**
-	 * Returns the source files that the runner reads for the session's credential: the source's {@code config.toml}
-	 * when it exists, and the files that hold a secret.
+	 * Returns the source files that the runner or the login service reads for the session's credential: the source's
+	 * {@code config.toml} when it exists, and the files that hold a secret.
 	 *
 	 * @return the files
 	 */
 	public List<Path> sourceFiles()
 	{
 		return sourceFiles;
-	}
-
-	/**
-	 * Returns the settings that the session's {@code config.toml} takes from the source, as TOML dotted keys that belong
-	 * at the file's root, before any table header. A provider whose token the session's key file holds has an
-	 * {@code auth} token command that prints that file, in place of its {@code env_key} and
-	 * {@code experimental_bearer_token}. The settings also carry the source's top-level {@code web_search} value, or
-	 * {@code cached} when the source sets none, which gates the hosted web search tool of the session's provider.
-	 *
-	 * @param codexFolder the session's Codex folder, which holds the key file
-	 * @return the TOML text
-	 * @throws NullPointerException if {@code codexFolder} is null
-	 */
-	public String settings(Path codexFolder)
-	{
-		requireThat(codexFolder, "codexFolder").isNotNull();
-		ObjectNode session = settings.deepCopy();
-		session.put(WEB_SEARCH, webSearch);
-		if (keyFileToken != null)
-		{
-			ObjectNode tokenCommand = ((ObjectNode) session.path("model_providers").path(providerId)).putObject("auth");
-			CodexKeyFileCommand.Invocation invocation = CodexKeyFileCommand.invocation(
-				keyFile(codexFolder).toAbsolutePath());
-			tokenCommand.put("command", invocation.program());
-			ArrayNode arguments = tokenCommand.putArray("args");
-			for (String argument : invocation.arguments())
-				arguments.add(argument);
-			// A Java program starts slower than the default allows on a loaded machine
-			tokenCommand.put("timeout_ms", KEY_FILE_COMMAND_TIMEOUT_MS);
-		}
-		String text = TomlMapper.builder().build().writeValueAsString(session);
-		if (!text.endsWith("\n"))
-			text += System.lineSeparator();
-		return text;
-	}
-
-	/**
-	 * Returns the key file of a session's Codex folder, which holds the token that the session's token command prints
-	 * while the session's app-server runs.
-	 *
-	 * @param codexFolder the session's Codex folder
-	 * @return the key file
-	 * @throws NullPointerException if {@code codexFolder} is null
-	 */
-	public static Path keyFile(Path codexFolder)
-	{
-		requireThat(codexFolder, "codexFolder").isNotNull();
-		return codexFolder.resolve(KEY_FILE);
-	}
-
-	/**
-	 * Writes the session's key file before its app-server starts or resumes. The file is created new with access for its
-	 * owner alone, set as it is created, and receives the token from memory. A key file that an earlier launch left is
-	 * removed first, so a resume writes the resuming launch's token; for a provider that supplies no token through
-	 * {@code env_key} or {@code experimental_bearer_token}, no key file remains.
-	 *
-	 * @param codexFolder the session's Codex folder, which exists
-	 * @throws NullPointerException if {@code codexFolder} is null
-	 * @throws IOException          if the file cannot be removed, created or written; a file that was created is then
-	 *                              removed
-	 */
-	public void writeKeyFile(Path codexFolder) throws IOException
-	{
-		Path file = keyFile(codexFolder);
-		removeKeyFile(codexFolder);
-		if (keyFileToken == null)
-			return;
-		byte[] bytes = keyFileToken.getBytes(UTF_8);
-		try
-		{
-			SecretFile.create(file, bytes);
-		}
-		finally
-		{
-			Arrays.fill(bytes, (byte) 0);
-		}
-	}
-
-	/**
-	 * Removes the session's key file, if any.
-	 *
-	 * @param codexFolder the session's Codex folder
-	 * @throws NullPointerException if {@code codexFolder} is null
-	 * @throws IOException          if the file cannot be removed
-	 */
-	public static void removeKeyFile(Path codexFolder) throws IOException
-	{
-		Files.deleteIfExists(keyFile(codexFolder));
-	}
-
-	/**
-	 * Writes the session's copy of the source's {@code auth.json} before its app-server starts or resumes. A copy that
-	 * an earlier launch left is removed first, so a resume copies the resuming launch's file; for a source without an
-	 * API-key {@code auth.json}, no copy remains. The copy is created new with access for its owner alone, set as it is
-	 * created.
-	 *
-	 * @param codexFolder the session's Codex folder, which exists
-	 * @throws NullPointerException if {@code codexFolder} is null
-	 * @throws IOException          if the copy cannot be removed, created or written; a copy that was created is then
-	 *                              removed
-	 */
-	public void copyLogin(Path codexFolder) throws IOException
-	{
-		requireThat(codexFolder, "codexFolder").isNotNull();
-		removeLogin(codexFolder);
-		if (login == null)
-			return;
-		byte[] bytes = Files.readAllBytes(login);
-		try
-		{
-			SecretFile.create(codexFolder.resolve(LOGIN), bytes);
-		}
-		finally
-		{
-			Arrays.fill(bytes, (byte) 0);
-		}
-	}
-
-	/**
-	 * Removes the session's copy of the source's {@code auth.json}, if any.
-	 *
-	 * @param codexFolder the session's Codex folder
-	 * @throws NullPointerException if {@code codexFolder} is null
-	 * @throws IOException          if the copy cannot be removed
-	 */
-	public static void removeLogin(Path codexFolder) throws IOException
-	{
-		requireThat(codexFolder, "codexFolder").isNotNull();
-		Files.deleteIfExists(codexFolder.resolve(LOGIN));
 	}
 
 	/**
@@ -716,7 +894,7 @@ public final class CodexAuthentication
 	/**
 	 * Refuses a launch whose bound, which its starter computed from the requesting session's policy, denies reading a
 	 * source file: a session may use only a credential that it may read, and a launch never extends its requester's
-	 * reach.
+	 * reach. A keyring item is no file; the login service checks the top-level session's reach of the keyring instead.
 	 *
 	 * @param bound the policy that bounds the session
 	 * @throws NullPointerException    if {@code bound} is null
@@ -733,7 +911,7 @@ public final class CodexAuthentication
 			if (denial.isPresent())
 			{
 				throw new SessionRefusedException("CAT does not start the session: the sandbox of the session that " +
-					"requests it denies reading " + denial.get() + ", which holds " + file + ", a file that the runner " +
+					"requests it denies reading " + denial.get() + ", which holds " + file + ", a file that CAT " +
 					"reads from the source home " + source.directory() + " for the session's credential. A launch " +
 					"never uses a credential that its requester may not read. Let the requesting session's sandbox " +
 					"read " + file + ", or name another source home with " + AuthenticationOptions.HOME_OPTION + ".");
@@ -742,29 +920,305 @@ public final class CodexAuthentication
 	}
 
 	/**
-	 * Returns the record of the session's authentication: the source home, the names of the settings that the session
-	 * takes and the path of the source's {@code auth.json} when the session takes it, and the class of its login.
+	 * Returns the record of the session's authentication before its login opens: the source home, the names of the
+	 * source settings that chose the login and of the logins that CAT reads, and the class of the login. The class of
+	 * a login that the keyring holds is known only once the login service reads it; until then it is a subscription,
+	 * which is what Codex keeps there for a ChatGPT sign-in, or the declared class for a base URL that the source set.
 	 *
 	 * @return the evidence
 	 */
 	public AuthenticationEvidence evidence()
 	{
+		HostLogin loginClass;
+		if (route instanceof Key)
+			loginClass = keyClass();
+		else if (provider != null && provider.path("base_url").isString())
+			loginClass = declared.orElseThrow();
+		else if (openaiLogin)
+			loginClass = HostLogin.SUBSCRIPTION;
+		else
+			loginClass = keyClass();
 		List<String> parts = new ArrayList<>(settingNames);
-		if (login != null)
-		{
-			Path absolute = login.toAbsolutePath().normalize();
-			if (absolute.startsWith(source.directory()))
-				parts.add(source.directory().relativize(absolute).toString().replace('\\', '/'));
-			else
-				parts.add(absolute.toString());
-		}
+		parts.addAll(loginParts);
 		return new AuthenticationEvidence(source.directory(), parts, loginClass);
+	}
+
+	/**
+	 * Returns the class of a key: the declared class when the source names a base URL for it, otherwise an API key.
+	 *
+	 * @return the class
+	 */
+	private HostLogin keyClass()
+	{
+		boolean gateway = (provider != null && provider.path("base_url").isString()) ||
+			(provider == null && openaiBaseUrl.isPresent());
+		if (gateway)
+			return declared.orElseThrow();
+		return HostLogin.API_KEY;
+	}
+
+	/**
+	 * Opens the session's login. A key needs no service. Every other login is opened by the request server's login
+	 * service that the runner's environment names, which checks it, reads it and returns the session's credential; a
+	 * login that the keyring holds is served only while the top-level session can reach the keyring.
+	 *
+	 * @param environment the runner's environment, which names the login service
+	 * @return the session's login, which the caller closes when the session's app-server ends
+	 * @throws NullPointerException    if {@code environment} is null
+	 * @throws SessionRefusedException if the login needs the login service and the environment names none, or the
+	 *                                 service is gone or refuses the login; if {@code forced_login_method} names
+	 *                                 another kind of login; or if the launch declares no class for a key that the
+	 *                                 source sends to its {@code openai_base_url}. The reason holds no secret.
+	 */
+	public CodexSessionLogin open(Map<String, String> environment) throws SessionRefusedException
+	{
+		requireThat(environment, "environment").isNotNull();
+		String sessionProvider = providerId;
+		if (provider == null)
+			sessionProvider = SESSION_PROVIDER;
+		return switch (route)
+		{
+			case Key key ->
+			{
+				requireLoginMethod(false);
+				yield CodexSessionLogin.ofKey(sessionProvider, sessionProvider(false, Optional.empty(),
+					Optional.empty()), webSearch, key.key(), modelHost(false), keyClass(), evidence());
+			}
+			case Served served -> openServed(served.plan(), environment, sessionProvider);
+		};
+	}
+
+	/**
+	 * Opens a login that the login service serves.
+	 *
+	 * @param plan            the login's plan
+	 * @param environment     the runner's environment
+	 * @param sessionProvider the identifier of the session's provider
+	 * @return the session's login
+	 * @throws SessionRefusedException if the service is not named, is gone or refuses, or the opened login does not
+	 *                                 suit the source's settings
+	 */
+	private CodexSessionLogin openServed(CodexLoginPlan plan, Map<String, String> environment,
+		String sessionProvider) throws SessionRefusedException
+	{
+		String socketText = environment.getOrDefault(CodexLoginService.SOCKET_VARIABLE, "");
+		String serviceKey = environment.getOrDefault(CodexLoginService.KEY_VARIABLE, "");
+		if (socketText.isBlank() || serviceKey.isBlank())
+		{
+			throw new SessionRefusedException("CAT does not start the session: the source home " +
+				source.directory() + " keeps a Codex login that only the request server's login service reads and " +
+				"serves (" + String.join(", ", loginParts) + "), and the runner was started without one: " +
+				CodexLoginService.SOCKET_VARIABLE + " is not set. Start the session through the request server of a " +
+				"CAT session, or name a source home that holds an API key with " + AuthenticationOptions.HOME_OPTION +
+				".");
+		}
+		Path socket = Path.of(socketText);
+		CodexLoginClient.Opened opened;
+		try
+		{
+			opened = CodexLoginClient.open(socket, serviceKey, plan);
+		}
+		catch (LoginRefusal e)
+		{
+			String reason = e.getMessage();
+			if (!reason.startsWith("CAT does not start the session: "))
+				reason = "CAT does not start the session: " + reason;
+			throw new SessionRefusedException(reason, e);
+		}
+		catch (IOException e)
+		{
+			throw new SessionRefusedException("CAT does not start the session: the request server's login service at " +
+				socket + " cannot be reached (" + e.getClass().getSimpleName() + "), so the session's login cannot " +
+				"be served. The request server that started the runner has ended; start the session again.", e);
+		}
+		try
+		{
+			boolean storedLogin = plan instanceof CodexLoginPlan.Stored;
+			if (storedLogin)
+				requireLoginMethod(opened.signIn());
+			boolean signIn = storedLogin && opened.signIn();
+			HostLogin loginClass;
+			if (provider != null && provider.path("base_url").isString())
+				loginClass = declared.orElseThrow();
+			else if (signIn)
+				loginClass = HostLogin.SUBSCRIPTION;
+			else if (provider == null && openaiBaseUrl.isPresent())
+			{
+				if (declared.isEmpty())
+					throw undeclaredGateway(configuration, "openai_base_url");
+				loginClass = declared.get();
+			}
+			else
+				loginClass = HostLogin.API_KEY;
+			List<String> parts = new ArrayList<>(settingNames);
+			if (plan instanceof CodexLoginPlan.Stored stored && stored.store() == CodexLoginPlan.Store.AUTO)
+			{
+				if (opened.inKeyring())
+					parts.add(KEYRING_PART);
+				else
+					parts.addAll(loginParts.stream().filter(part -> !part.equals(KEYRING_PART)).toList());
+			}
+			else
+				parts.addAll(loginParts);
+			AuthenticationEvidence evidence = new AuthenticationEvidence(source.directory(), parts, loginClass);
+			Optional<String> accountId = Optional.empty();
+			if (signIn)
+				accountId = opened.accountId();
+			return CodexSessionLogin.ofService(sessionProvider, sessionProvider(signIn, accountId,
+				opened.forwarder()), webSearch, socket, opened.credential(), commandTimeout(plan), modelHost(signIn),
+				loginClass, evidence);
+		}
+		catch (SessionRefusedException e)
+		{
+			try
+			{
+				CodexLoginClient.close(socket, opened.credential());
+			}
+			catch (IOException closing)
+			{
+				e.addSuppressed(closing);
+			}
+			throw e;
+		}
+	}
+
+	/**
+	 * Refuses an OpenAI login of the kind that the source's {@code forced_login_method} excludes.
+	 *
+	 * @param signIn {@code true} for a ChatGPT sign-in, {@code false} for a key
+	 * @throws SessionRefusedException if {@code forced_login_method} names the other kind
+	 */
+	private void requireLoginMethod(boolean signIn) throws SessionRefusedException
+	{
+		if (!openaiLogin)
+			return;
+		String required;
+		if (signIn)
+			required = "chatgpt";
+		else
+			required = "api";
+		if (forcedLoginMethod.isEmpty() || forcedLoginMethod.equals(required))
+			return;
+		String kind;
+		if (signIn)
+			kind = "a ChatGPT sign-in";
+		else
+			kind = "an API key";
+		throw new SessionRefusedException("CAT does not start the session: " + configuration + " sets " +
+			"forced_login_method to " + forcedLoginMethod + ", and the source home's login is " + kind + ", which the " +
+			"user's own Codex would refuse. Sign in to Codex on that source home with the forced method, or name " +
+			"another source home with " + AuthenticationOptions.HOME_OPTION + ".");
+	}
+
+	/**
+	 * Returns the table of the session's provider, without its token command: the source's own table without its
+	 * secrets and commands, or the custom provider that stands for the built-in one.
+	 *
+	 * @param signIn    {@code true} if the session reaches the built-in provider with a ChatGPT sign-in
+	 * @param accountId the sign-in's account ID, or empty
+	 * @param forwarder the base URL of the forwarder that the session reaches, or empty
+	 * @return the table
+	 */
+	private ObjectNode sessionProvider(boolean signIn, Optional<String> accountId, Optional<URI> forwarder)
+	{
+		ObjectNode table;
+		if (provider == null)
+		{
+			table = TomlMapper.builder().build().createObjectNode();
+			table.put("name", "OpenAI");
+			if (signIn)
+				table.put("base_url", CHATGPT_BASE_URL);
+			else
+				table.put("base_url", openaiBaseUrl.orElse(API_BASE_URL));
+			table.put("wire_api", "responses");
+		}
+		else
+		{
+			table = provider.deepCopy();
+			for (String setting : List.of("env_key", "experimental_bearer_token", "requires_openai_auth",
+				"gateway_oauth", "auth", "env_key_instructions"))
+			{
+				table.remove(setting);
+			}
+			if (forwarder.isPresent())
+			{
+				table.remove("http_headers");
+				table.remove("env_http_headers");
+				table.put("base_url", forwarder.get().toString());
+			}
+		}
+		if (accountId.isPresent())
+			table.withObjectProperty("http_headers").put(ACCOUNT_HEADER, accountId.get());
+		return table;
+	}
+
+	/**
+	 * Returns the host that the session's Codex sends its model requests to.
+	 *
+	 * @param signIn {@code true} if the session reaches the built-in provider with a ChatGPT sign-in
+	 * @return the host
+	 * @throws SessionRefusedException if a base URL names no host
+	 */
+	private String modelHost(boolean signIn) throws SessionRefusedException
+	{
+		if (provider != null && provider.path("base_url").isString())
+		{
+			return urlHost(configuration, "model_providers." + providerId + ".base_url",
+				provider.path("base_url").asString());
+		}
+		if (signIn)
+			return URI.create(CHATGPT_BASE_URL).getHost();
+		return keyHost();
+	}
+
+	/**
+	 * Returns how long the session's token command may wait for the login service, which may run a source command
+	 * first.
+	 *
+	 * @param plan the login's plan
+	 * @return the timeout, in milliseconds
+	 */
+	private static long commandTimeout(CodexLoginPlan plan)
+	{
+		return switch (plan)
+		{
+			case CodexLoginPlan.Command command -> CodexSessionLogin.TOKEN_COMMAND_TIMEOUT_MS + command.timeoutMillis();
+			case CodexLoginPlan.Forward forward -> CodexSessionLogin.TOKEN_COMMAND_TIMEOUT_MS +
+				forward.bearerCommand().map(CodexLoginPlan.Command::timeoutMillis).orElse(0L);
+			case CodexLoginPlan.Stored _ -> CodexSessionLogin.TOKEN_COMMAND_TIMEOUT_MS;
+		};
+	}
+
+	/**
+	 * Returns the key file of a session's Codex folder, which holds the session's key or its credential for the login
+	 * service while the session's app-server runs.
+	 *
+	 * @param codexFolder the session's Codex folder
+	 * @return the key file
+	 * @throws NullPointerException if {@code codexFolder} is null
+	 */
+	public static Path keyFile(Path codexFolder)
+	{
+		requireThat(codexFolder, "codexFolder").isNotNull();
+		return codexFolder.resolve(KEY_FILE);
+	}
+
+	/**
+	 * Removes the session's key file, if any.
+	 *
+	 * @param codexFolder the session's Codex folder
+	 * @throws NullPointerException if {@code codexFolder} is null
+	 * @throws IOException          if the file cannot be removed
+	 */
+	public static void removeKeyFile(Path codexFolder) throws IOException
+	{
+		Files.deleteIfExists(keyFile(codexFolder));
 	}
 
 	@Override
 	public String toString()
 	{
 		return "CodexAuthentication{source=" + source.directory() + ", folder=" + folder + ", configuration=" +
-			configuration + ", parts=" + evidence().parts() + ", loginClass=" + loginClass + "}";
+			configuration + ", provider=" + providerId + ", route=" + route + ", parts=" + evidence().parts() + "}";
 	}
 }

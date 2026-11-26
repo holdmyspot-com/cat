@@ -27,8 +27,11 @@ import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
 import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.ParentSandbox;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
+import com.holdmyspot.cat.common.runner.login.CodexLoginService;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
+import com.holdmyspot.cat.common.runner.policy.HostAccess;
+import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyBoundFile;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.ByteArrayOutputStream;
@@ -1364,9 +1367,10 @@ public final class CodexRunnerCliTest
 	}
 
 	/**
-	 * Verifies that a launch whose source home holds no Codex authentication is refused with the refusal status before
-	 * it creates a nested session, naming the files that the runner read and {@code --home}, and no Claude fix,
-	 * although the runner's own environment and home folder hold a credential: only the source home's files decide.
+	 * Verifies that a launch whose source home holds no Codex authentication, and whose runner's environment holds no
+	 * key, is refused with the refusal status before it creates a nested session, naming the files, the keyring item and
+	 * the variables that the runner read and {@code --home}, and no Claude fix, although the runner's own home folder
+	 * holds a credential: only the source home decides.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
@@ -1382,16 +1386,16 @@ public final class CodexRunnerCliTest
 			Path runnerHome = CodexSourceHomes.create(root, "runner");
 			CodexSourceHomes.apiKeyLogin(runnerHome.resolve(".codex"));
 			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(),
-				runnerHome.toString(), "OPENAI_API_KEY", CodexSourceHomes.SECRET, "CODEX_API_KEY",
-				CodexSourceHomes.SECRET);
+				runnerHome.toString());
 			StringWriter errors = new StringWriter();
 
 			int status = launchWithAuthentication(root, List.of("--home", source.toString()), environment, errors);
 
 			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
 			requireThat(errors.toString(), "errors").contains(configuration.toString()).
-				contains(source.resolve(".codex/auth.json").toString()).contains("--home").
-				doesNotContain("claude").doesNotContain(CodexSourceHomes.SECRET);
+				contains(source.resolve(".codex/auth.json").toString()).contains("Codex Auth").contains("CODEX_API_KEY").
+				contains("OPENAI_API_KEY").contains("--home").doesNotContain("claude").
+				doesNotContain(CodexSourceHomes.SECRET);
 			requireThat(Files.exists(root.resolve("results")), "resultsFolderExists").isFalse();
 		}
 	}
@@ -1526,136 +1530,149 @@ public final class CodexRunnerCliTest
 	}
 
 	/**
-	 * Returns source configurations whose credential lies outside the files that the runner reads, each with the
-	 * setting that the refusal names and whether the source holds an {@code auth.json} that holds an API key.
-	 *
-	 * @return each configuration, setting and login
-	 */
-	@DataProvider
-	public static Object[][] credentialsOutsideSource()
-	{
-		return new Object[][]
-		{
-			{"""
-				model_provider = "gateway"
-				[model_providers.gateway]
-				base_url = "https://gateway.example/v1"
-				[model_providers.gateway.gateway_oauth]
-				issuer = "https://gateway.example"
-				""", "model_providers.gateway.gateway_oauth"},
-			{"cli_auth_credentials_store = \"keyring\"\n", "cli_auth_credentials_store"},
-			{"cli_auth_credentials_store = \"auto\"\n", "cli_auth_credentials_store"}
-		};
-	}
-
-	/**
 	 * Verifies that a launch whose selected source provider signs in through {@code gateway_oauth} without
-	 * {@code credential_export}, or whose source keeps its login in the operating system's store with no
-	 * {@code auth.json}, is refused with the refusal status, naming the configuration file and the setting.
+	 * {@code credential_export} is refused with the refusal status, naming the configuration file and the setting.
 	 *
-	 * @param configuration the source's configuration
-	 * @param setting       the setting that the refusal names
 	 * @throws IOException if the test filesystem cannot be used
 	 */
-	@Test(dataProvider = "credentialsOutsideSource")
-	public void refusesCredentialOutsideSourceFiles(String configuration, String setting) throws IOException
+	@Test
+	public void refusesGatewaySignInWithoutExport() throws IOException
 	{
 		// Requirement: R-I15
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("codex-source-home-")).toRealPath();
 			Path source = CodexSourceHomes.create(root, "source");
-			Path file = CodexSourceHomes.configuration(source.resolve(".codex"), configuration);
+			Path file = CodexSourceHomes.configuration(source.resolve(".codex"), """
+				model_provider = "gateway"
+				[model_providers.gateway]
+				base_url = "https://gateway.example/v1"
+				[model_providers.gateway.gateway_oauth]
+				issuer = "https://gateway.example"
+				""");
 			StringWriter errors = new StringWriter();
 
 			int status = launchWithAuthentication(root, List.of("--home", source.toString(), "--gateway-login-class",
 				"api_key"), CodexSourceHomes.runnerEnvironment(root), errors);
 
 			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
-			requireThat(errors.toString(), "errors").contains(file.toString()).contains(setting).
-				doesNotContain(CodexSourceHomes.SECRET);
+			requireThat(errors.toString(), "errors").contains(file.toString()).
+				contains("model_providers.gateway.gateway_oauth").doesNotContain(CodexSourceHomes.SECRET);
 			requireThat(Files.exists(root.resolve("results")), "resultsFolderExists").isFalse();
 		}
 	}
 
 	/**
-	 * Verifies that a launch whose source {@code auth.json} holds a ChatGPT sign-in is refused with the refusal status,
-	 * naming the file, without quoting the sign-in's tokens.
+	 * Returns source homes whose login the request server's login service serves: a ChatGPT sign-in in
+	 * {@code auth.json}, one in the keyring, and providers that send their secret in headers.
 	 *
-	 * @throws IOException if the test filesystem cannot be used
-	 */
-	@Test
-	public void refusesCodexSignIn() throws IOException
-	{
-		// Requirement: R-I15
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("codex-source-home-")).toRealPath();
-			Path source = CodexSourceHomes.create(root, "source");
-			Path login = CodexSourceHomes.signInLogin(source.resolve(".codex"));
-			StringWriter errors = new StringWriter();
-
-			int status = launchWithAuthentication(root, List.of("--home", source.toString()),
-				CodexSourceHomes.runnerEnvironment(root), errors);
-
-			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
-			requireThat(errors.toString(), "errors").contains(login.toString()).contains("ChatGPT").
-				doesNotContain(CodexSourceHomes.SECRET);
-			requireThat(Files.exists(root.resolve("results")), "resultsFolderExists").isFalse();
-		}
-	}
-
-	/**
-	 * Returns the selected provider's settings that send a secret in headers, which cannot become a bearer token, each
-	 * with its name.
-	 *
-	 * @return each provider table's extra line and the setting
+	 * @return each source's configuration, its {@code auth.json} content or {@code null}, and its declared class or
+	 *   {@code null}
 	 */
 	@DataProvider
-	public static Object[][] providerSecretSettings()
+	public static Object[][] servedLogins()
 	{
+		String headerProvider = """
+			model_provider = "gateway"
+			[model_providers.gateway]
+			base_url = "https://gateway.example/v1"
+			%s
+			""";
 		return new Object[][]
 		{
-			{"env_http_headers = { \"Authorization\" = \"GATEWAY_HEADER\" }", "env_http_headers"},
-			{"http_headers = { \"Authorization\" = \"Bearer " + CodexSourceHomes.SECRET + "\" }", "http_headers"}
+			{"", CodexLoginServices.signIn(), null},
+			{"cli_auth_credentials_store = \"keyring\"\n", null, null},
+			{"cli_auth_credentials_store = \"auto\"\n", null, null},
+			{headerProvider.formatted("env_http_headers = { \"Authorization\" = \"GATEWAY_HEADER\" }"), null,
+				"api_key"},
+			{headerProvider.formatted("http_headers = { \"Authorization\" = \"Bearer " + CodexSourceHomes.SECRET +
+				"\" }"), null, "api_key"}
 		};
 	}
 
 	/**
-	 * Verifies that a launch whose selected source provider sets {@code env_http_headers} or holds an inline
-	 * {@code http_headers} secret is refused with the refusal status before it creates a nested session, naming the
-	 * provider and the setting, with no secret in the message.
+	 * Verifies that a launch whose login the login service serves goes on to start its session, as far as a test
+	 * without a CAT artifact goes, when the runner's environment names the service; and that the reason of a launch
+	 * that fails holds no fixture secret.
 	 *
-	 * @param line    the provider table's line that sets the secret
-	 * @param setting the setting
+	 * @param configuration the source's configuration
+	 * @param login         the source's {@code auth.json} content, or {@code null} for none
+	 * @param declared      the declared class, or {@code null}
 	 * @throws IOException if the test filesystem cannot be used
 	 */
-	@Test(dataProvider = "providerSecretSettings")
-	public void refusesProviderSecretSetting(String line, String setting) throws IOException
+	@Test(dataProvider = "servedLogins", timeOut = 60_000)
+	public void startsLaunchWithServedLogin(String configuration, String login, String declared) throws IOException
 	{
 		// Requirement: R-I15
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			CodexLoginService service = CodexLoginServices.start(cleanup,
+				new CodexLoginServices.Keyring(CodexLoginServices.signIn())))
 		{
 			Path root = cleanup.add(Files.createTempDirectory("codex-source-home-")).toRealPath();
 			Path source = CodexSourceHomes.create(root, "source");
-			CodexSourceHomes.apiKeyLogin(source.resolve(".codex"));
-			Path file = CodexSourceHomes.configuration(source.resolve(".codex"), """
-				model_provider = "gateway"
-				[model_providers.gateway]
-				base_url = "https://gateway.example/v1"
-				%s
-				""".formatted(line));
+			CodexSourceHomes.ownerOnly(CodexSourceHomes.configuration(source.resolve(".codex"), configuration));
+			if (login != null)
+				CodexSourceHomes.ownerOnly(Files.writeString(source.resolve(".codex/auth.json"), login));
 			Map<String, String> environment = new HashMap<>(CodexSourceHomes.runnerEnvironment(root));
-			environment.put("GATEWAY_KEY", CodexSourceHomes.SECRET);
+			environment.put("GATEWAY_HEADER", CodexSourceHomes.SECRET);
+			environment.putAll(service.runnerVariables());
+			List<String> options = new ArrayList<>(List.of("--home", source.toString()));
+			if (declared != null)
+				options.addAll(List.of("--gateway-login-class", declared));
 			StringWriter errors = new StringWriter();
 
-			int status = launchWithAuthentication(root, List.of("--home", source.toString(), "--gateway-login-class",
-				"api_key"), environment, errors);
+			IOException failure = expectThrows(IOException.class, () -> launchWithAuthentication(root, options,
+				environment, errors));
+
+			// The session starts and fails only because the test runs no CAT artifact
+			requireThat(failure, "failure").isNotInstanceOf(SessionRefusedException.class);
+			requireThat(errors.toString(), "errors").isEmpty();
+			for (String secret : List.of(CodexSourceHomes.SECRET, CodexLoginServices.ACCESS_TOKEN,
+				CodexLoginServices.REFRESH_TOKEN))
+			{
+				requireThat(String.valueOf(failure.getMessage()), "failure").doesNotContain(secret);
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a launch whose source keeps its login in the keyring is refused with the refusal status when the
+	 * top-level session cannot reach the keyring, naming the keyring and that reach, with no token in the reason; and
+	 * that a launch whose login the service serves is refused, naming the service, when the runner's environment names
+	 * none.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test(timeOut = 60_000)
+	public void refusesServedLoginThatCannotOpen() throws IOException
+	{
+		// Requirement: R-I15
+		ParentPolicy noLocalServices = new ParentPolicy(true, List.of(), List.of(), List.of(), List.of(),
+			HostAccess.ALL, false, false, List.of());
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			CodexLoginService service = CodexLoginServices.start(cleanup,
+				new CodexLoginServices.Keyring(CodexLoginServices.signIn()), noLocalServices))
+		{
+			Path root = cleanup.add(Files.createTempDirectory("codex-source-home-")).toRealPath();
+			Path source = CodexSourceHomes.create(root, "source");
+			CodexSourceHomes.configuration(source.resolve(".codex"), "cli_auth_credentials_store = \"keyring\"\n");
+			Map<String, String> environment = new HashMap<>(CodexSourceHomes.runnerEnvironment(root));
+			environment.putAll(service.runnerVariables());
+			StringWriter errors = new StringWriter();
+
+			int status = launchWithAuthentication(root, List.of("--home", source.toString()), environment, errors);
 
 			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
-			requireThat(errors.toString(), "errors").contains(file.toString()).
-				contains("model_providers.gateway." + setting).doesNotContain(CodexSourceHomes.SECRET);
+			requireThat(errors.toString(), "errors").contains("keyring").
+				contains("the top-level session cannot reach that keyring").
+				doesNotContain(CodexLoginServices.ACCESS_TOKEN).doesNotContain(CodexLoginServices.REFRESH_TOKEN);
 			requireThat(Files.exists(root.resolve("results")), "resultsFolderExists").isFalse();
+
+			StringWriter unserved = new StringWriter();
+			status = launchWithAuthentication(root, List.of("--home", source.toString()),
+				CodexSourceHomes.runnerEnvironment(root), unserved);
+			requireThat(status, "unservedStatus").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(unserved.toString(), "unserved").contains("login service");
 		}
 	}
 
@@ -1902,7 +1919,8 @@ public final class CodexRunnerCliTest
 			denials.add(json.writeValueAsString(denial.toString()));
 		Path bound = Files.writeString(root.resolve("authentication-bound.json"), """
 			{"format_version": 1, "write_roots": [%s], "write_denials": [], "read_denials": [%s],
-			 "read_reallowances": [], "hosts": ["api.openai.com", "gateway.example"], "allow_local_binding": false}
+			 "read_reallowances": [], "hosts": ["api.openai.com", "chatgpt.com", "gateway.example"],
+			 "allow_local_binding": false}
 			""".formatted(json.writeValueAsString(root.toString()), String.join(", ", denials)));
 		List<String> args = new ArrayList<>(List.of("serve", "--project", project.toString(), "--results",
 			root.resolve("results").toString(), "--model", "gpt-6-luna", "--effort", "low",

@@ -1,7 +1,6 @@
 package com.holdmyspot.cat.codex.runner.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.testng.Assert.expectThrows;
 
 import com.holdmyspot.cat.codex.optimizer.InstalledPlugins;
@@ -9,6 +8,7 @@ import com.holdmyspot.cat.codex.runner.CodexAuthentication;
 import com.holdmyspot.cat.codex.runner.CodexConnectionConfiguration;
 import com.holdmyspot.cat.codex.runner.CodexParentMultiAgentState;
 import com.holdmyspot.cat.codex.runner.CodexRunner;
+import com.holdmyspot.cat.codex.runner.CodexSessionLogin;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
@@ -31,7 +31,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -44,11 +43,6 @@ import tools.jackson.dataformat.toml.TomlMapper;
  */
 public final class CodexConnectionConfigurationTest
 {
-	/**
-	 * How long a test waits for a token command that it runs, which prints a key in well under a second.
-	 */
-	private static final long COMMAND_TIMEOUT_SECONDS = 60;
-
 	/**
 	 * Verifies that refreshing an interrupted session keeps its own registrations and trust while replacing its former
 	 * connection and permissions with the current parent's settings.
@@ -858,76 +852,20 @@ public final class CodexConnectionConfigurationTest
 	}
 
 	/**
-	 * Returns source Codex settings and the login that each names as the session's model host.
+	 * Verifies that the session's configuration holds the session's provider, which is the source's selected
+	 * provider's table with CAT's token command, and none of the source's hooks, MCP servers, profiles, other providers
+	 * or login settings, nor the runner's own login settings, nor the source provider's own command.
 	 *
-	 * @return the source configuration, the source login file's content or {@code null} when there is none, and the
-	 *   model host
-	 */
-	@DataProvider
-	public Object[][] modelHosts()
-	{
-		String apiKey = "{\"auth_mode\": \"apikey\", \"OPENAI_API_KEY\": \"" + CodexSourceHomes.SECRET + "\"}";
-		String signIn = "{\"auth_mode\": \"chatgpt\", \"OPENAI_API_KEY\": null, \"tokens\": {}}";
-		return new Object[][]
-		{
-			{"openai_base_url = \"http://LocalHost:2455/backend-api/codex\"\n", apiKey, "localhost"},
-			{"""
-				model_provider = "gateway"
-				openai_base_url = "https://ignored.example/v1"
-				[model_providers.gateway]
-				base_url = "https://Gateway.Example/v1"
-				""", null, "gateway.example"},
-			{"", apiKey, "api.openai.com"},
-			{"forced_login_method = \"api\"\n", apiKey, "api.openai.com"},
-			{"", signIn, "chatgpt.com"},
-			{"", null, "chatgpt.com"}
-		};
-	}
-
-	/**
-	 * Verifies that a session's model host is the host of the base URL of the source's selected provider, otherwise
-	 * of the source's {@code openai_base_url}, otherwise the host that Codex reaches for the source's login.
-	 *
-	 * @param configuration the source's Codex configuration
-	 * @param login         the source's login file, or {@code null} if it has none
-	 * @param host          the expected model host
 	 * @throws IOException if fixture I/O fails
 	 */
-	@Test(dataProvider = "modelHosts")
-	public void findsModelHost(String configuration, String login, String host) throws IOException
-	{
-		// Requirement: R-I15
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-codex-model-host-"));
-			Path source = Files.writeString(root.resolve("config.toml"), configuration);
-			Path loginFile = root.resolve("auth.json");
-			if (login != null)
-				Files.writeString(loginFile, login);
-
-			requireThat(CodexConnectionConfiguration.modelHost(source, loginFile), "modelHost").isEqualTo(host);
-		}
-	}
-
-	/**
-	 * Verifies that the session's configuration holds the source's {@code model_provider}, {@code openai_base_url},
-	 * {@code forced_login_method} and selected provider's table, with the provider's token command wrapped so that it
-	 * runs with the source home as its home folder, and none of the source's hooks, MCP servers, profiles or other
-	 * providers, nor the runner's own login settings; and that the wrapped command, run with another home folder,
-	 * prints the key that the source's command reads from {@code ~/key}.
-	 *
-	 * @throws IOException          if fixture I/O or the command fails
-	 * @throws InterruptedException if the test is interrupted while the command runs
-	 */
-	@Test(timeOut = 120_000)
-	public void copiesSourceProviderWithWrappedCommand() throws IOException, InterruptedException
+	@Test
+	public void copiesSessionProvider() throws IOException
 	{
 		// Requirement: R-I15
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-source-provider-")).toRealPath();
 			Path source = CodexSourceHomes.create(root, "source");
-			CodexSourceHomes.secret(source.resolve("key"));
 			CodexSourceHomes.configuration(source.resolve(".codex"), """
 				model_provider = "gateway"
 				openai_base_url = "https://openai-proxy.example/v1"
@@ -936,9 +874,7 @@ public final class CodexConnectionConfigurationTest
 				name = "Gateway"
 				base_url = "https://gateway.example/v1"
 				wire_api = "responses"
-				[model_providers.gateway.auth]
-				command = "sh"
-				args = ["-c", "cat ~/key"]
+				env_key = "GATEWAY_KEY"
 				[model_providers.other]
 				base_url = "https://other.example/v1"
 				[hooks.state]
@@ -952,57 +888,37 @@ public final class CodexConnectionConfigurationTest
 				openai_base_url = "https://runner.example/v1"
 				forced_login_method = "chatgpt"
 				""");
+			Map<String, String> environment = Map.of("GATEWAY_KEY", CodexSourceHomes.SECRET);
 			CodexAuthentication authentication = CodexAuthentication.read(new AuthenticationOptions(Optional.of(source),
-				Optional.of(HostLogin.API_KEY), false), Map.of(), Platform.current());
+				Optional.of(HostLogin.API_KEY), false), environment, Platform.current());
 			Path home = Files.createDirectories(root.resolve("session/home"));
 			Path destination = home.resolve(".codex/config.toml");
 			Files.createDirectories(destination.getParent());
 			ChildPolicy policy = ChildPolicy.intersect(ParentPolicy.UNSANDBOXED, new ChildNeeds(root.resolve("session"),
 				List.of(), List.of(), Set.of()));
 
-			CodexConnectionConfiguration.copy(host, destination, home, authentication.settings(home.resolve(".codex")),
-				root.resolve("session/project"), HarnessDependencyCaches.NONE, home.resolve("tmp"), 0, null,
-				Platform.LINUX_X64, CodexParentMultiAgentState.NONE, policy, ExtraPermissions.NONE, null);
+			try (CodexSessionLogin login = authentication.open(environment))
+			{
+				CodexConnectionConfiguration.copy(host, destination, home, login.settings(home.resolve(".codex")),
+					root.resolve("session/project"), HarnessDependencyCaches.NONE, home.resolve("tmp"), 0, null,
+					Platform.LINUX_X64, CodexParentMultiAgentState.NONE, policy, ExtraPermissions.NONE, null);
+			}
 
 			String text = Files.readString(destination);
 			JsonNode configuration = TomlMapper.builder().build().readTree(text);
 			requireThat(configuration.path("model_provider").asString(""), "modelProvider").isEqualTo("gateway");
-			requireThat(configuration.path("openai_base_url").asString(""), "openaiBaseUrl").
-				isEqualTo("https://openai-proxy.example/v1");
-			requireThat(configuration.path("forced_login_method").asString(""), "forcedLoginMethod").isEqualTo("api");
+			for (String setting : List.of("openai_base_url", "forced_login_method", "mcp_servers", "profiles"))
+				requireThat(configuration.has(setting), setting).isFalse();
 			List<String> providers = new ArrayList<>(configuration.path("model_providers").propertyNames());
 			requireThat(providers, "providers").isEqualTo(List.of("gateway"));
 			JsonNode gateway = configuration.path("model_providers").path("gateway");
+			requireThat(gateway.path("name").asString(""), "name").isEqualTo("Gateway");
 			requireThat(gateway.path("base_url").asString(""), "baseUrl").isEqualTo("https://gateway.example/v1");
 			requireThat(gateway.path("wire_api").asString(""), "wireApi").isEqualTo("responses");
-			for (String setting : List.of("mcp_servers", "profiles"))
-				requireThat(configuration.has(setting), setting).isFalse();
+			requireThat(gateway.has("env_key"), "envKey").isFalse();
 			requireThat(text, "configuration").doesNotContain("source-hook").doesNotContain("runner.example").
+				doesNotContain("openai-proxy.example").doesNotContain("other.example").
 				doesNotContain(CodexSourceHomes.SECRET);
-
-			List<String> command = new ArrayList<>();
-			command.add(gateway.path("auth").path("command").asString(""));
-			for (JsonNode argument : gateway.path("auth").path("args"))
-				command.add(argument.asString(""));
-			requireThat(command, "command").contains("cat ~/key");
-			Path otherHome = Files.createDirectories(root.resolve("other-home"));
-			// Run as Codex runs a token command: by itself, with no shell, whose quoting Windows would change
-			ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
-			builder.environment().put("HOME", otherHome.toString());
-			try (Process process = builder.start())
-			{
-				// A command that reads its standard input would wait for ever for input that no one sends
-				process.getOutputStream().close();
-				if (!process.waitFor(COMMAND_TIMEOUT_SECONDS, TimeUnit.SECONDS))
-				{
-					process.destroyForcibly();
-					throw new AssertionError("The wrapped command did not end within " + COMMAND_TIMEOUT_SECONDS +
-						" seconds");
-				}
-				String printed = new String(process.getInputStream().readAllBytes(), UTF_8);
-				requireThat(process.exitValue(), "status").isZero();
-				requireThat(printed, "printed").isEqualTo(CodexSourceHomes.SECRET);
-			}
 		}
 	}
 
@@ -1822,10 +1738,13 @@ public final class CodexConnectionConfigurationTest
 			ChildPolicy policy = ChildPolicy.intersect(ParentPolicy.UNSANDBOXED, new ChildNeeds(root.resolve("session"),
 				List.of(), List.of(), Set.of()));
 
-			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, home,
-				authentication.settings(home.resolve(".codex")), root.resolve("session/project"),
-				HarnessDependencyCaches.NONE, home.resolve("tmp"), 0, null, Platform.LINUX_X64,
-				CodexParentMultiAgentState.NONE, policy, ExtraPermissions.NONE, null);
+			try (CodexSessionLogin login = authentication.open(Map.of()))
+			{
+				CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, home,
+					login.settings(home.resolve(".codex")), root.resolve("session/project"),
+					HarnessDependencyCaches.NONE, home.resolve("tmp"), 0, null, Platform.LINUX_X64,
+					CodexParentMultiAgentState.NONE, policy, ExtraPermissions.NONE, null);
+			}
 
 			JsonNode configuration = TomlMapper.builder().build().readTree(Files.readString(destination));
 			requireThat(configuration.path("web_search").asString(""), "webSearch").isEqualTo(expected);

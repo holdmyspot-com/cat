@@ -5,15 +5,20 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.codex.optimizer.Credentials;
 import com.holdmyspot.cat.codex.runner.CodexAuthentication;
+import com.holdmyspot.cat.codex.runner.CodexSessionLogin;
+import com.holdmyspot.cat.codex.runner.test.CodexLoginServices;
 import com.holdmyspot.cat.codex.runner.test.CodexSourceHomes;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.runner.AuthenticationOptions;
+import com.holdmyspot.cat.common.runner.login.CodexLoginService;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -108,29 +113,53 @@ public final class CredentialsTest
 	}
 
 	/**
-	 * Verifies that a source home's class is {@code api_key} for an API-key {@code auth.json} and the declared class for
-	 * a provider with a base URL, and that the runner's own login file, which holds a ChatGPT sign-in, does not change
-	 * it; and that the class that the source's session states in {@code CAT_HOST_LOGIN} is that class.
+	 * Verifies the class of each kind of source login, with no declared class for a key or a ChatGPT sign-in: an API
+	 * key in {@code auth.json} or the runner's environment is {@code api_key}, a ChatGPT sign-in in {@code auth.json}
+	 * or the keyring is {@code subscription}, an API key in the keyring is {@code api_key} once the login service reads
+	 * it, and a provider with a base URL takes the declared class. The runner's own login file, which holds a ChatGPT
+	 * sign-in, changes none of them; the class that the session states in {@code CAT_HOST_LOGIN} is the class; and the
+	 * evidence names {@code .codex/auth.json}, {@code keyring:Codex Auth} or the provider table, and never a value.
 	 *
 	 * @throws IOException if the fixture cannot be written or the source is refused
 	 */
-	@Test
+	@Test(timeOut = 60_000)
 	public void classifiesSourceHomeLogin() throws IOException
 	{
 		// Requirement: R-I15
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		String keyringKey = "{\"auth_mode\": \"apikey\", \"OPENAI_API_KEY\": \"" + CodexSourceHomes.SECRET + "\"}";
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			CodexLoginService fileService = CodexLoginServices.start(cleanup, new CodexLoginServices.Keyring(null));
+			CodexLoginService signInKeyring = CodexLoginServices.start(cleanup,
+				new CodexLoginServices.Keyring(CodexLoginServices.signIn()));
+			CodexLoginService keyKeyring = CodexLoginServices.start(cleanup, new CodexLoginServices.Keyring(keyringKey)))
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-source-class-")).toRealPath();
 			Path runner = CodexSourceHomes.create(root, "runner");
 			CodexSourceHomes.signInLogin(runner.resolve(".codex"));
-			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), runner.toString());
+			Map<String, String> runnerHome = Map.of(Platform.current().homeVariable(), runner.toString());
+			Map<String, String> fileRunner = CodexLoginServices.runnerEnvironment(fileService, runnerHome);
 
 			Path apiKey = CodexSourceHomes.create(root, "api-key");
 			CodexSourceHomes.apiKeyLogin(apiKey.resolve(".codex"));
-			CodexAuthentication fromKey = CodexAuthentication.read(new AuthenticationOptions(Optional.of(apiKey),
-				Optional.empty(), false), environment, Platform.current());
-			requireThat(fromKey.loginClass(), "apiKeyClass").isEqualTo(HostLogin.API_KEY);
-			requireThat(fromKey.environment().get("CAT_HOST_LOGIN"), "apiKeyStated").isEqualTo("api_key");
+			requireClass(apiKey, Optional.empty(), fileRunner, HostLogin.API_KEY, ".codex/auth.json");
+
+			Path variable = CodexSourceHomes.create(root, "variable");
+			Map<String, String> withKey = new HashMap<>(runnerHome);
+			withKey.put("CODEX_API_KEY", CodexSourceHomes.SECRET);
+			requireClass(variable, Optional.empty(), CodexLoginServices.runnerEnvironment(fileService, withKey),
+				HostLogin.API_KEY, "environment:CODEX_API_KEY");
+
+			Path signIn = CodexSourceHomes.create(root, "sign-in");
+			CodexSourceHomes.ownerOnly(Files.writeString(signIn.resolve(".codex/auth.json"),
+				CodexLoginServices.signIn()));
+			requireClass(signIn, Optional.empty(), fileRunner, HostLogin.SUBSCRIPTION, ".codex/auth.json");
+
+			Path keyring = CodexSourceHomes.create(root, "keyring");
+			CodexSourceHomes.configuration(keyring.resolve(".codex"), "cli_auth_credentials_store = \"keyring\"\n");
+			requireClass(keyring, Optional.empty(), CodexLoginServices.runnerEnvironment(signInKeyring, runnerHome),
+				HostLogin.SUBSCRIPTION, "keyring:Codex Auth");
+			requireClass(keyring, Optional.empty(), CodexLoginServices.runnerEnvironment(keyKeyring, runnerHome),
+				HostLogin.API_KEY, "keyring:Codex Auth");
 
 			Path gateway = CodexSourceHomes.create(root, "gateway");
 			CodexSourceHomes.secret(gateway.resolve("key"));
@@ -142,12 +171,41 @@ public final class CredentialsTest
 				command = "sh"
 				args = ["-c", "cat ~/key"]
 				""");
-			CodexAuthentication fromGateway = CodexAuthentication.read(new AuthenticationOptions(Optional.of(gateway),
-				Optional.of(HostLogin.SUBSCRIPTION), false), environment, Platform.current());
-			requireThat(fromGateway.loginClass(), "gatewayClass").isEqualTo(HostLogin.SUBSCRIPTION);
-			requireThat(fromGateway.environment().get("CAT_HOST_LOGIN"), "gatewayStated").isEqualTo("subscription");
-			requireThat(Credentials.classify(gateway.resolve(".codex"), fromGateway.environment(), JSON),
-				"classified").isEqualTo(HostLogin.SUBSCRIPTION);
+			requireClass(gateway, Optional.of(HostLogin.SUBSCRIPTION), fileRunner, HostLogin.SUBSCRIPTION,
+				"model_providers.gateway");
+		}
+	}
+
+	/**
+	 * Checks the class of a source home's login once it opens, the class that the session states and the evidence.
+	 *
+	 * @param source      the source home
+	 * @param declared    the declared class, or empty
+	 * @param environment the runner's environment
+	 * @param loginClass  the expected class
+	 * @param part        a part that the evidence names
+	 * @throws IOException if the source is refused
+	 */
+	private static void requireClass(Path source, Optional<HostLogin> declared, Map<String, String> environment,
+		HostLogin loginClass, String part) throws IOException
+	{
+		CodexAuthentication authentication = CodexAuthentication.read(new AuthenticationOptions(Optional.of(source),
+			declared, false), environment, Platform.current());
+		try (CodexSessionLogin login = authentication.open(environment))
+		{
+			String name = source.getFileName().toString();
+			requireThat(login.loginClass(), name + "Class").isEqualTo(loginClass);
+			requireThat(login.evidence().loginClass(), name + "EvidenceClass").isEqualTo(loginClass);
+			requireThat(login.evidence().parts(), name + "Parts").contains(part);
+			Map<String, String> stated = login.environment();
+			requireThat(Credentials.classify(source.resolve(".codex"), stated, JSON), name + "Stated").
+				isEqualTo(loginClass);
+			for (String secret : List.of(CodexSourceHomes.SECRET, CodexLoginServices.ACCESS_TOKEN,
+				CodexLoginServices.REFRESH_TOKEN))
+			{
+				requireThat(login.evidence().toString(), name + "Evidence").doesNotContain(secret);
+				requireThat(authentication.evidence().toString(), name + "ReadEvidence").doesNotContain(secret);
+			}
 		}
 	}
 
