@@ -192,7 +192,8 @@ Before running a command that prints another process's command line, such as `ps
 read of `/proc/<pid>/cmdline`, lazy load `../include/common/process-command-lines.md`.
 
 Before copying, moving, linking, or writing a credential file, such as a token, a key, `auth.json`, or
-`.credentials.json`, to another location, lazy load `../include/common/credential-copies.md`.
+`.credentials.json`, to another location, or printing an environment value or a file that may hold a credential, such as
+with `env`, `printenv`, or `cat` of a settings file, lazy load `../include/common/credential-copies.md`.
 
 When writing a shell command that may need approval or a sandbox exception, or that an approval reviewer agent may
 judge before it runs, such as Claude Code's auto mode classifier or Codex's automatic approval reviewer, lazy load

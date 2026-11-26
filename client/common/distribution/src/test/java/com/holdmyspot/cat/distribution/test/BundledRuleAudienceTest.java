@@ -816,7 +816,8 @@ public final class BundledRuleAudienceTest
 				contains("`***@`").contains("`ps -o pid,comm`").contains("`/proc/<pid>/cmdline`");
 			String credentialCopies = oneLine(Files.readString(include.resolve("credential-copies.md")));
 			requireThat(credentialCopies, "credentialCopies").startsWith("# Credential Copies ").
-				contains("`auth.json`").contains("`.credentials.json`").contains("reads the credential at runtime");
+				contains("`auth.json`").contains("`.credentials.json`").contains("reads the credential at runtime").
+					contains("`env | cut -d= -f1`").contains("recommend rotating it");
 
 			ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml());
 			for (String harness : List.of("claude", "codex"))
@@ -826,6 +827,7 @@ public final class BundledRuleAudienceTest
 				{
 					requireThat(context, harness + "Context").contains("include/common/process-command-lines.md`").
 						contains("include/common/credential-copies.md`").
+							contains("printing an environment value").
 						doesNotContain("# Process Command Lines").doesNotContain("# Credential Copies");
 				}
 			}
