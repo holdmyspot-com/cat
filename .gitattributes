@@ -10,3 +10,6 @@ mvnw text eol=lf
 # Windows batch files need CRLF line endings
 *.cmd text eol=crlf
 *.bat text eol=crlf
+
+# The age files that the Codex keyring tests decrypt are binary
+*.age binary

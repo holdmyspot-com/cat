@@ -7,6 +7,7 @@ module com.holdmyspot.cat.common.cli.test
 	requires tools.jackson.dataformat.yaml;
 	requires java.management;
 	requires jdk.httpserver;
+	requires java.net.http;
 	requires org.testng;
 	requires org.apache.commons.compress;
 

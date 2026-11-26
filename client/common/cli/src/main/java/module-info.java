@@ -8,6 +8,8 @@ module com.holdmyspot.cat.common.cli
 	requires transitive tools.jackson.databind;
 	requires tools.jackson.dataformat.yaml;
 	requires java.xml;
+	requires java.net.http;
+	requires jdk.httpserver;
 
 	exports com.holdmyspot.cat.common;
 	exports com.holdmyspot.cat.common.build to com.holdmyspot.cat.common.cli.test;
