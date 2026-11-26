@@ -42,6 +42,12 @@ public final class CheckProgramTest
 	private static final String PROGRAM = "checks/Check.java";
 	private static final String INPUT_FILE = "project/message.txt";
 	private static final Duration NORMAL_TIMEOUT = Duration.ofSeconds(30);
+	/**
+	 * The shortened deadline of the timeout test. CAT starts the clock when it launches the sandbox, so the program must
+	 * start its Java launcher, compile its source and print before the deadline for the test to see its output. On a host
+	 * that other test threads load, that takes several seconds, so the deadline leaves several times that margin.
+	 */
+	private static final Duration SHORT_TIMEOUT = Duration.ofSeconds(20);
 	private static final int NORMAL_OUTPUT_LIMIT = 16 * 1024;
 	private static final String SOURCE_MARKER = "private check source marker";
 	private static final String DENIED_PATHS_HELD = "Denied paths held";
@@ -292,7 +298,8 @@ public final class CheckProgramTest
 	}
 
 	/**
-	 * Stops a sleeping program at the shortened deadline and retains the output emitted before it slept.
+	 * Stops a sleeping program at the shortened deadline and retains the output emitted before it slept. The deadline
+	 * exceeds the start-up time of a loaded host, which decides whether the program prints before it.
 	 *
 	 * @throws IOException if a fixture or process cannot be used
 	 * @throws InterruptedException if a process wait is interrupted
@@ -313,11 +320,11 @@ public final class CheckProgramTest
 					{
 						System.out.println("before-sleep");
 						System.out.flush();
-						Thread.sleep(10_000);
+						Thread.sleep(600_000);
 					}
 				}
 				""");
-			Duration timeout = Duration.ofSeconds(5);
+			Duration timeout = SHORT_TIMEOUT;
 
 			Result result = CheckProgram.run(launch, fixture.input(), fixture.scratchParent(),
 				new BuiltInTool.CheckProgram(PROGRAM, List.of()), Map.of(), timeout, NORMAL_OUTPUT_LIMIT);
