@@ -375,7 +375,7 @@ public final class RequestServerTest
 				int status = SessionRequestForwarder.forward("claude", new String[]{"--project",
 						fixture.project.toString(), "--model", "haiku", "--effort", "low"},
 					new StringReader("{\"type\":\"turn\",\"prompt\":\"hello\"}\n{\"type\":\"complete\"}\n"),
-					server.requests(), Thread::yield, output, new PrintWriter(errors, true));
+					server.requests(), server.pause(), output, new PrintWriter(errors, true));
 				requireThat(status, "status").withContext(errors, "errors").isEqualTo(0);
 
 				List<String> arguments = started.get();
@@ -454,6 +454,45 @@ public final class RequestServerTest
 	}
 
 	/**
+	 * Verifies that a launch sent to a server that has ended fails within the test's time limit instead of waiting
+	 * for an answer that never comes, so that a server that stops early fails its test rather than hanging the build.
+	 *
+	 * @throws IOException          if the fixture cannot be created
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = 60_000)
+	public void failsLaunchToEndedServer() throws IOException, InterruptedException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			fixture.child = _ ->
+			{
+				throw new AssertionError("The ended server started a session");
+			};
+			try (Fixture.Running server = fixture.start())
+			{
+				fixture.processes.end(fixture.harness);
+				requireThat(server.end(), "exit").isEqualTo(0);
+				IOException failure = null;
+				try
+				{
+					SessionRequestForwarder.forward("claude", new String[]{"--project", fixture.project.toString(),
+							"--model", "haiku", "--effort", "low"},
+						new StringReader("{\"type\":\"turn\",\"prompt\":\"hello\"}\n{\"type\":\"complete\"}\n"),
+						server.requests(), server.pause(), OutputStream.nullOutputStream(),
+						new PrintWriter(new StringWriter(), true));
+				}
+				catch (IOException e)
+				{
+					failure = e;
+				}
+				requireThat(failure, "failure").isNotNull();
+				requireThat(failure.getMessage(), "message").contains("The server ended");
+			}
+		}
+	}
+
+	/**
 	 * Verifies that a launch that resumes a harness session that another session of the project interrupted is refused
 	 * with status 2 and a reason that names the session that can resume it.
 	 *
@@ -481,7 +520,7 @@ public final class RequestServerTest
 				int status = SessionRequestForwarder.forward("claude", new String[]{RunnerArguments.RESUME_OPTION,
 						harnessSession, "--model", "haiku", "--effort", "low"},
 					new StringReader("{\"type\":\"turn\",\"prompt\":\"again\"}\n{\"type\":\"complete\"}\n"),
-					server.requests(), Thread::yield, OutputStream.nullOutputStream(), new PrintWriter(errors, true));
+					server.requests(), server.pause(), OutputStream.nullOutputStream(), new PrintWriter(errors, true));
 				requireThat(status, "status").withContext(errors, "errors").
 					isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
 				requireThat(errors.toString(), "errors").contains(other);
@@ -658,14 +697,12 @@ public final class RequestServerTest
 			try (Fixture.Running server = fixture.start())
 			{
 				StringWriter errors = new StringWriter();
-				long deadline = System.nanoTime() + WAIT.toNanos();
+				Pause bounded = server.pause();
 				int status = SessionRequestForwarder.forward(SessionRequestForwarder.Route.SERVER, "claude",
 					new String[]{"--project", fixture.project.toString(), "--model", "haiku", "--effort", "low",
 						"--conversation", folder.toString()}, new StringReader(""), server.requests(),
 					fixture.root.resolve("results"), () ->
 					{
-						if (System.nanoTime() > deadline)
-							throw new IOException("The conversation did not end");
 						// The asking session sends its turn at once, and ends the conversation once the turn has ended
 						if (sent.get() == 0)
 						{
@@ -678,7 +715,7 @@ public final class RequestServerTest
 							Files.writeString(toChild, "{\"end\": true}\n", StandardOpenOption.APPEND);
 							sent.incrementAndGet();
 						}
-						Thread.yield();
+						bounded.pause();
 					}, OutputStream.nullOutputStream(), new PrintWriter(errors, true));
 
 				requireThat(status, "status").withContext(errors, "errors").isEqualTo(0);
@@ -738,14 +775,12 @@ public final class RequestServerTest
 				try
 				{
 					StringWriter errors = new StringWriter();
-					long deadline = System.nanoTime() + WAIT.toNanos();
+					Pause bounded = server.pause();
 					int status = SessionRequestForwarder.forward(SessionRequestForwarder.Route.SERVER, "claude",
 						new String[]{"--project", fixture.project.toString(), "--results", results.toString(),
 							"--model", "haiku", "--effort", "low", "--conversation", folder.toString()},
 						new StringReader(""), server.requests(), results, () ->
 						{
-							if (System.nanoTime() > deadline)
-								throw new IOException("The conversation did not end");
 							// Once the session runs, its nested session holds many files, so that copying it takes a while
 							if (!served.isEmpty() && !endSent.get())
 							{
@@ -757,7 +792,7 @@ public final class RequestServerTest
 									StandardOpenOption.APPEND);
 								endSent.set(true);
 							}
-							Thread.yield();
+							bounded.pause();
 						}, OutputStream.nullOutputStream(), new PrintWriter(errors, true));
 
 					requireThat(status, "status").withContext(errors, "errors").isEqualTo(0);
@@ -945,7 +980,7 @@ public final class RequestServerTest
 				String turn = fixture.json.createObjectNode().put("type", "turn").put("prompt", prompt).toString();
 				SessionRequestForwarder.serve(SessionRequestForwarder.Route.SERVER, id, "The prompt optimizer", "claude",
 					ownArtifact, arguments, new StringReader(turn + "\n{\"type\":\"complete\"}\n"), new StringWriter(),
-					server.requests(), Thread::yield);
+					server.requests(), server.pause());
 			}
 		}
 	}
@@ -1107,19 +1142,13 @@ public final class RequestServerTest
 	{
 		Path ownArtifact = Files.createDirectories(fixture.root.resolve("artifact"));
 		StringWriter output = new StringWriter();
-		long deadline = System.nanoTime() + WAIT.toNanos();
 		List<String> arguments = new ArrayList<>(List.of("--project", fixture.project.toString(), "--results",
 			resultsFolder.toString(), "--model", "haiku", "--effort", "low"));
 		arguments.addAll(List.of(extra));
 		SessionRequestForwarder.serve(SessionRequestForwarder.Route.SERVER, "The prompt optimizer", "claude",
 			ownArtifact, arguments,
 			new StringReader("{\"type\":\"turn\",\"prompt\":\"hello\"}\n{\"type\":\"complete\"}\n"), output,
-			server.requests(), () ->
-			{
-				if (System.nanoTime() > deadline)
-					throw new IOException("The served session did not end");
-				Thread.yield();
-			});
+			server.requests(), server.pause());
 		return output.toString().lines().map(fixture.json::readTree).
 			filter(record -> record.path("type").asString().equals("session_id")).findFirst().orElseThrow().
 			path("session_id").asString();
@@ -2133,6 +2162,26 @@ public final class RequestServerTest
 					Thread.yield();
 				}
 				return json.readTree(Files.readString(response));
+			}
+
+			/**
+			 * Returns a pause for a command that waits for this server's answer. It fails the wait once the server has
+			 * ended, which no answer follows, or once the answer has not arrived in time, so that a command whose server
+			 * stopped fails its test instead of waiting for ever.
+			 *
+			 * @return the pause, whose time starts now
+			 */
+			private Pause pause()
+			{
+				long deadline = System.nanoTime() + WAIT.toNanos();
+				return () ->
+				{
+					if (exit.isDone())
+						throw new IOException("The server ended before answering: " + result(exit) + ". " + errors);
+					if (System.nanoTime() > deadline)
+						throw new IOException("The server did not answer within " + WAIT + ". " + errors);
+					Thread.yield();
+				};
 			}
 
 			/**
