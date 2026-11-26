@@ -9,7 +9,10 @@ import static java.nio.file.FileVisitResult.SKIP_SUBTREE;
 import com.holdmyspot.cat.codex.CodexSessionHarness;
 import com.holdmyspot.cat.codex.CommandShell;
 import com.holdmyspot.cat.codex.optimizer.CodexSessions;
+import com.holdmyspot.cat.codex.runner.CodexAuthentication;
 import com.holdmyspot.cat.codex.runner.CodexRunnerCli;
+import com.holdmyspot.cat.codex.runner.CodexSessionLogin;
+import com.holdmyspot.cat.codex.runner.test.CodexLoginServices;
 import com.holdmyspot.cat.codex.runner.test.CodexSourceHomes;
 import com.holdmyspot.cat.codex.secrets.CodexSessionsSecrets;
 import com.holdmyspot.cat.common.JvmScope;
@@ -80,6 +83,7 @@ import com.holdmyspot.cat.common.runner.fakes.test.RequestingNestedSession;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.login.CodexLoginService;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -1170,6 +1174,49 @@ public final class CodexSessionsTest
 				Map<String, String> nested = Map.of(HarnessEnvironment.NESTED_SESSION_VARIABLE,
 					HarnessEnvironment.NESTED_SESSION_VALUE);
 				requireThat(loginPort(jvm, root, nested).authentication().isPresent(), "nestedEvidence").isFalse();
+			}
+		}
+	}
+
+	/**
+	 * Verifies that the port records a login that the keyring may hold, under the {@code keyring} or {@code auto}
+	 * store, as unknown, because only the request server's login service reads the keyring and it has not read it
+	 * yet, and that once the service has read an API key from the keyring, the runner records an API-key login.
+	 *
+	 * @throws IOException if a credential fixture cannot be created
+	 */
+	@Test(timeOut = 120_000)
+	public void recordsKeyringLoginAsItsServiceReadsIt() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			// Requirement: R-E7, R-I15
+			String keyringKey = "{\"auth_mode\": \"apikey\", \"OPENAI_API_KEY\": \"" + CodexSourceHomes.SECRET + "\"}";
+			try (TemporaryDirectories cleanup = new TemporaryDirectories();
+				CodexLoginService service = CodexLoginServices.start(cleanup, new CodexLoginServices.Keyring(keyringKey)))
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-")).
+					toRealPath();
+				Map<String, String> runner = Map.of(Platform.current().homeVariable(), root.resolve("runner").toString());
+				for (String store : List.of("keyring", "auto"))
+				{
+					Path home = CodexSourceHomes.create(root, store);
+					CodexSourceHomes.configuration(home.resolve(".codex"), "cli_auth_credentials_store = \"" + store +
+						"\"\n");
+					AuthenticationOptions options = new AuthenticationOptions(Optional.of(home), Optional.empty(), false);
+					CodexSessions port = loginPort(jvm, root, runner, options);
+
+					requireThat(port.authentication().orElseThrow().loginClass(), store + "Recorded").
+						isEqualTo(HostLogin.UNKNOWN);
+					requireThat(port.hostLogin(), store + "HostLogin").isEqualTo(HostLogin.UNKNOWN);
+
+					Map<String, String> environment = CodexLoginServices.runnerEnvironment(service, runner);
+					try (CodexSessionLogin login = CodexAuthentication.read(options, environment, Platform.current()).
+						open(environment))
+					{
+						requireThat(login.evidence().loginClass(), store + "Opened").isEqualTo(HostLogin.API_KEY);
+					}
+				}
 			}
 		}
 	}

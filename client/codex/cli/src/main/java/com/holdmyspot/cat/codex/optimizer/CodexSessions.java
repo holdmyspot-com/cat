@@ -163,8 +163,10 @@ public final class CodexSessions extends RunnerSessions
 	 * {@inheritDoc}
 	 * <p>
 	 * Outside a nested session, the authentication is the one that the runner takes from the command's source home, as
-	 * {@link CodexAuthentication} reads it. Inside a nested session, the nested session's runner passes on its own
-	 * launch's source home, which the nested session's commands may not read, so the port reports none.
+	 * {@link CodexAuthentication} reads it before the login opens. Its class is unknown for a login that the keyring may
+	 * hold, which only the request server's login service reads, while each session's runner records the class that the
+	 * service read. Inside a nested session, the nested session's runner passes on its own launch's source home, which
+	 * the nested session's commands may not read, so the port reports none.
 	 */
 	@Override
 	public Optional<AuthenticationEvidence> authentication() throws IOException
@@ -179,8 +181,9 @@ public final class CodexSessions extends RunnerSessions
 	/**
 	 * {@inheritDoc}
 	 * <p>
-	 * Outside a nested session, the class is that of the credential that the command's source home selects. Inside a
-	 * nested session, it is the class that the nested session's runner states in {@code CAT_HOST_LOGIN}.
+	 * Outside a nested session, the class is that of the credential that the command's source home selects, or unknown
+	 * for a login that the keyring may hold. Inside a nested session, it is the class that the nested session's runner
+	 * states in {@code CAT_HOST_LOGIN}.
 	 */
 	@Override
 	public HostLogin hostLogin() throws IOException

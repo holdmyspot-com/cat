@@ -921,9 +921,10 @@ public final class CodexAuthentication
 
 	/**
 	 * Returns the record of the session's authentication before its login opens: the source home, the names of the
-	 * source settings that chose the login and of the logins that CAT reads, and the class of the login. The class of
-	 * a login that the keyring holds is known only once the login service reads it; until then it is a subscription,
-	 * which is what Codex keeps there for a ChatGPT sign-in, or the declared class for a base URL that the source set.
+	 * source settings that chose the login and of the logins that CAT reads, and the class of the login. A login that
+	 * the keyring may hold, under the {@code keyring} or {@code auto} store, is a ChatGPT sign-in or an API key, which
+	 * only the login service tells apart when it reads the login, so its class is unknown until the login opens, unless
+	 * a provider's base URL that the source set takes the declared class.
 	 *
 	 * @return the evidence
 	 */
@@ -934,6 +935,8 @@ public final class CodexAuthentication
 			loginClass = keyClass();
 		else if (provider != null && provider.path("base_url").isString())
 			loginClass = declared.orElseThrow();
+		else if (route instanceof Served(CodexLoginPlan.Stored stored) && stored.store() != CodexLoginPlan.Store.FILE)
+			loginClass = HostLogin.UNKNOWN;
 		else if (openaiLogin)
 			loginClass = HostLogin.SUBSCRIPTION;
 		else
