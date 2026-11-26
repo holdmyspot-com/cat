@@ -4,7 +4,10 @@ import static com.holdmyspot.cat.codex.policy.test.CodexParentSession.toml;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.codex.policy.CodexPolicyReader;
+import com.holdmyspot.cat.codex.policy.CodexSandbox;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.runner.login.KeyringReach;
 import com.holdmyspot.cat.common.runner.policy.HostAccess;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
@@ -13,6 +16,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -90,6 +94,85 @@ public final class CodexPolicyReaderTest
 			requireThat(policy.writeDenials(), "writeDenials").contains(secret);
 			requireThat(policy.readDenials(), "readDenials").contains(secret);
 			requireThat(policy.hosts(), "hosts").isEqualTo(HostAccess.ALL);
+		}
+	}
+
+	/**
+	 * Verifies that a Codex sandbox whose network access is off keeps its commands from the operating system's local
+	 * services, and that one with full network access lets them reach them.
+	 *
+	 * @throws IOException if a path cannot be resolved
+	 */
+	@Test
+	public void noNetworkNoLocalServices() throws IOException
+	{
+		// Requirement: R-I19
+		requireThat(new CodexSandbox(true, List.of(), HostAccess.NONE, false).toParentPolicy().allowLocalServices(),
+			"off").isFalse();
+		requireThat(new CodexSandbox(true, List.of(), HostAccess.ALL, false).toParentPolicy().allowLocalServices(),
+			"full").isTrue();
+		requireThat(CodexSandbox.UNSANDBOXED.toParentPolicy().allowLocalServices(), "unsandboxed").isTrue();
+	}
+
+	/**
+	 * Returns Codex configurations and whether each lets the session's commands reach the operating system's local
+	 * services: full network access does, and network access that Codex's managed proxy limits to listed hosts does
+	 * not. The reader refuses a session whose network access is off, which {@link #noNetworkNoLocalServices()} covers.
+	 *
+	 * @return the configuration and the expected access
+	 */
+	@DataProvider
+	public Object[][] localServices()
+	{
+		return new Object[][]
+			{
+				{LEGACY_WITH_NETWORK, true},
+				{"""
+					default_permissions = "p"
+					[permissions.p]
+					extends = ":workspace"
+					[permissions.p.network]
+					enabled = true
+					""", true},
+				{"""
+					default_permissions = "p"
+					[features]
+					network_proxy = true
+					[permissions.p]
+					extends = ":workspace"
+					[permissions.p.network]
+					enabled = true
+					allow_local_binding = true
+					domains = { "api.example.com" = "allow" }
+					""", false}
+			};
+	}
+
+	/**
+	 * Verifies that a Codex session's commands may reach the operating system's local services, such as the session
+	 * bus, exactly when its network access is full, since Codex's sandbox denies the socket connection under a
+	 * restricted network.
+	 *
+	 * @param configuration the session's Codex configuration
+	 * @param reaches       {@code true} if the commands reach the local services
+	 */
+	@Test(dataProvider = "localServices")
+	public void localServicesNeedFullNetwork(String configuration, boolean reaches) throws IOException, PolicyRefusal
+	{
+		// Requirement: R-I19
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
+			session.write("home/.codex/config.toml", configuration);
+
+			ParentPolicy policy = session.read("exec", "summarize");
+
+			requireThat(policy.sandboxed(), "sandboxed").isTrue();
+			requireThat(policy.allowLocalServices(), "allowLocalServices").isEqualTo(reaches);
+			Path bus = session.folder("run/user").resolve("bus");
+			Optional<String> unreachable = KeyringReach.unreachable(policy, Platform.detect("Linux", "amd64"),
+				Map.of(KeyringReach.BUS_ADDRESS_VARIABLE, "unix:path=" + bus));
+			requireThat(unreachable.isEmpty(), "reachesKeyring").isEqualTo(reaches);
 		}
 	}
 

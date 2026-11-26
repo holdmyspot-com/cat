@@ -28,6 +28,28 @@ public final class ParentPolicyTest
 	}
 
 	/**
+	 * Verifies that an unsandboxed parent may reach the operating system's local services, and that combining two
+	 * policies keeps that access only where both give it, as for listening on local addresses.
+	 *
+	 * @throws IOException if a path cannot be resolved
+	 */
+	@Test
+	public void keepsLocalServicesOnlyWhereBothAllow() throws IOException
+	{
+		// Requirement: R-I19
+		ParentPolicy reaching = new ParentPolicy(true, List.of(), List.of(), List.of(), List.of(), HostAccess.ALL,
+			false, true, List.of());
+		ParentPolicy closed = new ParentPolicy(true, List.of(), List.of(), List.of(), List.of(), HostAccess.ALL,
+			false, false, List.of());
+		requireThat(ParentPolicy.UNSANDBOXED.allowLocalServices(), "unsandboxed").isTrue();
+		requireThat(reaching.intersect(reaching).allowLocalServices(), "both").isTrue();
+		requireThat(reaching.intersect(closed).allowLocalServices(), "first").isFalse();
+		requireThat(closed.intersect(reaching).allowLocalServices(), "second").isFalse();
+		requireThat(ParentPolicy.UNSANDBOXED.intersect(reaching).allowLocalServices(), "unsandboxedFirst").isTrue();
+		requireThat(ParentPolicy.UNSANDBOXED.intersect(closed).allowLocalServices(), "unsandboxedClosed").isFalse();
+	}
+
+	/**
 	 * Verifies that a file that the parent's commands may write is refused as a source of the parent's policy.
 	 *
 	 * @throws IOException   if the fixture cannot be created

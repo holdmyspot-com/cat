@@ -42,6 +42,8 @@ module com.holdmyspot.cat.common.cli
 	exports com.holdmyspot.cat.common.runner;
 	exports com.holdmyspot.cat.common.runner.launcher to com.holdmyspot.cat.claude.cli, com.holdmyspot.cat.codex.cli,
 		com.holdmyspot.cat.common.cli.test, com.holdmyspot.cat.claude.cli.test, com.holdmyspot.cat.codex.cli.test;
+	exports com.holdmyspot.cat.common.runner.login to com.holdmyspot.cat.claude.cli, com.holdmyspot.cat.codex.cli,
+		com.holdmyspot.cat.common.cli.test, com.holdmyspot.cat.claude.cli.test, com.holdmyspot.cat.codex.cli.test;
 	exports com.holdmyspot.cat.common.runner.policy to com.holdmyspot.cat.claude.cli, com.holdmyspot.cat.codex.cli,
 		com.holdmyspot.cat.common.cli.test, com.holdmyspot.cat.claude.cli.test, com.holdmyspot.cat.codex.cli.test;
 	exports com.holdmyspot.cat.common.secrets to com.holdmyspot.cat.common.cli.test, com.holdmyspot.cat.claude.cli.test,

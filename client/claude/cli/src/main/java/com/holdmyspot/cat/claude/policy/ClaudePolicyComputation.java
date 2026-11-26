@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.claude.policy;
 
 import com.holdmyspot.cat.claude.policy.ClaudePaths.Syntax;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.runner.policy.HostAccess;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
@@ -158,7 +159,7 @@ final class ClaudePolicyComputation
 			writeRoots.addAll(everyFile());
 			return new ParentPolicy(true, writeRoots, writeDenials, readDenials, readReallowances,
 				hosts(projectRestricted, managedDomainsOnly, managedRulesOnly), allowLocalBinding(projectRestricted),
-				protectedSources);
+				allowLocalServices(projectRestricted), protectedSources);
 		}
 		addWrites(writeRoots, writeDenials, projectRestricted, managedRulesOnly || managedDomainsOnly);
 		addReads(readDenials, readReallowances);
@@ -173,7 +174,7 @@ final class ClaudePolicyComputation
 		}
 		return new ParentPolicy(true, distinct(writeRoots), distinct(writeDenials), distinct(readDenials),
 			distinct(readReallowances), hosts(projectRestricted, managedDomainsOnly, managedRulesOnly),
-			allowLocalBinding(projectRestricted), distinct(protectedSources));
+			allowLocalBinding(projectRestricted), allowLocalServices(projectRestricted), distinct(protectedSources));
 	}
 
 	/**
@@ -481,6 +482,32 @@ final class ClaudePolicyComputation
 		for (SettingsLayer layer : layers)
 		{
 			Optional<Boolean> allow = bool(layer, "sandbox", "network", "allowLocalBinding");
+			if (allow.isEmpty())
+				continue;
+			if (layer.scope() == PROJECT && allow.get() && projectRestricted)
+				continue;
+			return allow.get();
+		}
+		return false;
+	}
+
+	/**
+	 * Indicates whether commands may reach the operating system's local services, such as the session bus. On Linux
+	 * they may when {@code sandbox.network.allowAllUnixSockets} is true, which project settings may set only where they
+	 * may set {@code allowLocalBinding}. On macOS no setting is known to let the sandbox reach the Keychain's service,
+	 * so they never may.
+	 *
+	 * @param projectRestricted {@code true} if the release ignores some project settings
+	 * @return {@code true} if they may
+	 * @throws PolicyRefusal if a setting has the wrong type
+	 */
+	private boolean allowLocalServices(boolean projectRestricted) throws PolicyRefusal
+	{
+		if (!Platform.current().isLinux())
+			return false;
+		for (SettingsLayer layer : layers)
+		{
+			Optional<Boolean> allow = bool(layer, "sandbox", "network", "allowAllUnixSockets");
 			if (allow.isEmpty())
 				continue;
 			if (layer.scope() == PROJECT && allow.get() && projectRestricted)

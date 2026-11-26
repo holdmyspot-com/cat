@@ -25,21 +25,51 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * @param readDenials       the absolute paths that the commands may not read
  * @param readReallowances  the absolute paths inside read denials that the commands may read nonetheless
  * @param hosts             the network hosts that the commands may reach
- * @param allowLocalBinding {@code true} if the commands may listen on local network addresses
- * @param protectedSources  the absolute files or folders, possibly inside the write roots, that the harness keeps the
- *                          commands from changing, such as its own settings files
+ * @param allowLocalBinding  {@code true} if the commands may listen on local network addresses
+ * @param allowLocalServices {@code true} if the commands may reach the operating system's local services, such as the
+ *                           session bus on Linux and the Keychain's service on macOS
+ * @param protectedSources   the absolute files or folders, possibly inside the write roots, that the harness keeps
+ *                           the commands from changing, such as its own settings files
  */
 public record ParentPolicy(boolean sandboxed, List<Path> writeRoots, List<Path> writeDenials, List<Path> readDenials,
-	List<Path> readReallowances, HostAccess hosts, boolean allowLocalBinding, List<Path> protectedSources)
+	List<Path> readReallowances, HostAccess hosts, boolean allowLocalBinding, boolean allowLocalServices,
+	List<Path> protectedSources)
 {
 	/**
 	 * The policy of a parent whose commands are unrestricted.
 	 */
 	public static final ParentPolicy UNSANDBOXED = new ParentPolicy(false, List.of(), List.of(), List.of(), List.of(),
-		HostAccess.ALL, true, List.of());
+		HostAccess.ALL, true, true, List.of());
 
 	/**
 	 * Creates a policy.
+	 *
+	 * @param sandboxed         {@code true} if the harness limits the commands; {@code false} if the commands are
+	 *                          unrestricted, in which case every other component is ignored
+	 * @param writeRoots        the absolute folders that the commands may write
+	 * @param writeDenials      the absolute paths inside the write roots that the commands may not write
+	 * @param readDenials       the absolute paths that the commands may not read
+	 * @param readReallowances  the absolute paths inside read denials that the commands may read nonetheless
+	 * @param hosts             the network hosts that the commands may reach
+	 * @param allowLocalBinding  {@code true} if the commands may listen on local network addresses
+	 * @param allowLocalServices {@code true} if the commands may reach the operating system's local services
+	 * @param protectedSources   the absolute files or folders, possibly inside the write roots, that the harness keeps
+	 *                           the commands from changing, such as its own settings files
+	 * @throws NullPointerException     if any of the arguments are null, or a list contains null
+	 * @throws IllegalArgumentException if a path is not absolute
+	 */
+	public ParentPolicy
+	{
+		writeRoots = absolutePaths(writeRoots, "writeRoots");
+		writeDenials = absolutePaths(writeDenials, "writeDenials");
+		readDenials = absolutePaths(readDenials, "readDenials");
+		readReallowances = absolutePaths(readReallowances, "readReallowances");
+		requireThat(hosts, "hosts").isNotNull();
+		protectedSources = absolutePaths(protectedSources, "protectedSources");
+	}
+
+	/**
+	 * Creates a policy whose commands may not reach the operating system's local services.
 	 *
 	 * @param sandboxed         {@code true} if the harness limits the commands; {@code false} if the commands are
 	 *                          unrestricted, in which case every other component is ignored
@@ -54,14 +84,11 @@ public record ParentPolicy(boolean sandboxed, List<Path> writeRoots, List<Path> 
 	 * @throws NullPointerException     if any of the arguments are null, or a list contains null
 	 * @throws IllegalArgumentException if a path is not absolute
 	 */
-	public ParentPolicy
+	public ParentPolicy(boolean sandboxed, List<Path> writeRoots, List<Path> writeDenials, List<Path> readDenials,
+		List<Path> readReallowances, HostAccess hosts, boolean allowLocalBinding, List<Path> protectedSources)
 	{
-		writeRoots = absolutePaths(writeRoots, "writeRoots");
-		writeDenials = absolutePaths(writeDenials, "writeDenials");
-		readDenials = absolutePaths(readDenials, "readDenials");
-		readReallowances = absolutePaths(readReallowances, "readReallowances");
-		requireThat(hosts, "hosts").isNotNull();
-		protectedSources = absolutePaths(protectedSources, "protectedSources");
+		this(sandboxed, writeRoots, writeDenials, readDenials, readReallowances, hosts, allowLocalBinding, false,
+			protectedSources);
 	}
 
 	/**
@@ -134,7 +161,7 @@ public record ParentPolicy(boolean sandboxed, List<Path> writeRoots, List<Path> 
 		return new ParentPolicy(true, List.copyOf(commonWriteRoots), union(first.writeDenials, second.writeDenials),
 			union(first.readDenials, second.readDenials), List.copyOf(commonReallowances),
 			commonHosts(first.hosts, second.hosts), first.allowLocalBinding && second.allowLocalBinding,
-			union(first.protectedSources, second.protectedSources));
+			first.allowLocalServices && second.allowLocalServices, union(first.protectedSources, second.protectedSources));
 	}
 
 	/**
@@ -147,7 +174,7 @@ public record ParentPolicy(boolean sandboxed, List<Path> writeRoots, List<Path> 
 	{
 		return new ParentPolicy(sandboxed, RealPaths.resolveAll(writeRoots), RealPaths.resolveAll(writeDenials),
 			RealPaths.resolveAll(readDenials), RealPaths.resolveAll(readReallowances), hosts, allowLocalBinding,
-			RealPaths.resolveAll(protectedSources));
+			allowLocalServices, RealPaths.resolveAll(protectedSources));
 	}
 
 	/**

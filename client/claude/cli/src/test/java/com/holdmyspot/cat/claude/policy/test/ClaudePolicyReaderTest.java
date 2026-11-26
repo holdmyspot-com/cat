@@ -4,7 +4,9 @@ import com.holdmyspot.cat.claude.policy.ClaudePolicyReader;
 import com.holdmyspot.cat.claude.policy.ClaudePolicyReading;
 import com.holdmyspot.cat.claude.policy.ClaudeSession;
 import com.holdmyspot.cat.claude.runner.ClaudeRequestServerCli;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.runner.launcher.ChildBound;
+import com.holdmyspot.cat.common.runner.login.KeyringReach;
 import com.holdmyspot.cat.common.runner.policy.HostAccess;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
@@ -112,6 +114,46 @@ public final class ClaudePolicyReaderTest
 			write(fixture.managed.resolve("managed-settings.d/20-late.json"), noBind);
 			write(fixture.managed.resolve("managed-settings.d/10-early.json"), bind);
 			requireThat(fixture.policy().allowLocalBinding(), "dropIn").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that a sandboxed Claude Code session's commands may reach the operating system's local services, such as
+	 * the session bus, only on Linux and only when {@code sandbox.network.allowAllUnixSockets} is true, and that project
+	 * settings cannot turn it on where they cannot turn on {@code allowLocalBinding}.
+	 *
+	 * @throws IOException   if the fixture cannot be created
+	 * @throws PolicyRefusal if the policy is refused
+	 */
+	@Test
+	public void localServicesNeedAllUnixSockets() throws IOException, PolicyRefusal
+	{
+		// Requirement: R-I19
+		boolean linux = Platform.current().isLinux();
+		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
+		{
+			fixture.userSettings("""
+				{"sandbox": {"enabled": true}}""");
+			requireThat(fixture.policy().allowLocalServices(), "unset").isFalse();
+			fixture.userSettings("""
+				{"sandbox": {"enabled": true, "network": {"allowAllUnixSockets": false}}}""");
+			requireThat(fixture.policy().allowLocalServices(), "false").isFalse();
+			fixture.userSettings("""
+				{"sandbox": {"enabled": true, "network": {"allowAllUnixSockets": true}}}""");
+			ParentPolicy reaching = fixture.policy();
+			requireThat(reaching.allowLocalServices(), "true").isEqualTo(linux);
+			Path bus = fixture.root.resolve("run/user/bus");
+			requireThat(KeyringReach.unreachable(reaching, Platform.detect("Linux", "amd64"),
+				Map.of(KeyringReach.BUS_ADDRESS_VARIABLE, "unix:path=" + bus)).isEmpty(), "reachesKeyring").
+				isEqualTo(linux);
+			fixture.userSettings("""
+				{"sandbox": {"enabled": true}}""");
+			fixture.projectSettings("""
+				{"sandbox": {"network": {"allowAllUnixSockets": true}}}""");
+			requireThat(fixture.policy().allowLocalServices(), "project").isEqualTo(linux);
+			write(fixture.managed.resolve("managed-settings.json"), """
+				{"sandbox": {"allowUnsandboxedCommands": false}}""");
+			requireThat(fixture.policy().allowLocalServices(), "restrictedProject").isFalse();
 		}
 	}
 

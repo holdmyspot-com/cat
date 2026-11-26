@@ -57,6 +57,10 @@ public record CodexSandbox(boolean sandboxed, List<PermissionEntry> entries, Hos
 	/**
 	 * Returns the policy in CAT's terms. Where Codex's rules cannot be expressed exactly, the policy is narrower.
 	 * <p>
+	 * The commands may reach the operating system's local services, such as the session bus, only when their network
+	 * access is full: Codex's Linux sandbox denies the socket connection under a restricted network, and its macOS
+	 * profile denies the Keychain's service without network access.
+	 * <p>
 	 * The most specific entry decides a path, and of two entries for the same path {@code deny} wins over
 	 * {@code write}, and {@code write} over {@code read}. A path that no entry covers can be neither read nor written.
 	 *
@@ -120,7 +124,7 @@ public record CodexSandbox(boolean sandboxed, List<PermissionEntry> entries, Hos
 			}
 		}
 		return new ParentPolicy(true, writeRoots, List.copyOf(writeDenials), List.copyOf(readDenials),
-			readReallowances, hosts, allowLocalBinding, List.of());
+			readReallowances, hosts, allowLocalBinding, hosts instanceof HostAccess.AllHosts, List.of());
 	}
 
 	/**
