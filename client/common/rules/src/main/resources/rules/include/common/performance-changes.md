@@ -26,6 +26,16 @@ When the change is meant to speed up a slow build or workflow, locate where its 
 	ready and how much is running, and which steps or targets take the most time.
 - Elapsed time far above the critical path, with much work ready and little running, means the job is short of CPU. More
 	parallel machines help; tuning one machine does not.
+- When a CI build or test step is long on one machine and its work divides, such as independent tests, targets or
+	packages, prefer splitting it into shard jobs that run on separate machines in parallel. Use the test tool's own
+	partitioning where it has one, such as `--partition hash:N/M` or `--shard-count` with `--shard-index`. Build what
+	every shard needs once, in a producer job whose outputs the shards download (see `build-caching.md`). A final job
+	merges the shards' reports and runs any gate or comparison once, so that it checks what it checked before. Pick
+	the shard count from the step's measured duration and a target duration per shard, counting each shard's repeated
+	setup, which raises total machine minutes while it lowers elapsed time. Cap the count at the platform's concurrent
+	runner limit, because shards beyond it only wait in the queue, as scarce runners such as hosted macOS often do.
+	Separate machines also remove failures caused by tests competing for one machine; a baseline recorded from
+	unsharded runs may differ in the first sharded run.
 - Count how many times each expensive dependency is built across the whole workflow: every shard, platform and build
 	configuration, such as a build tool's separate configurations for host tools and for target code.
 - Find which target pulls the expensive dependency in. Do not assume the obvious consumer: a default, such as a switch

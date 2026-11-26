@@ -618,7 +618,8 @@ public final class BundledRuleAudienceTest
 				replaceAll("\\s+", " ");
 			requireThat(rule, "performanceChanges").startsWith("# Performance Changes ").
 				contains("same machine, the same input").contains("Ask the user whether to proceed").
-				contains("Do not make the change.");
+				contains("Do not make the change.").contains("shard jobs that run on separate machines").
+				contains("concurrent runner limit");
 			ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml());
 			for (String harness : List.of("claude", "codex"))
 			{
