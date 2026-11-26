@@ -851,7 +851,7 @@ public final class InstallerActivationTest
 			return ProcessHarnessCliSecrets.getProcessHarnessCliAccess().create(command, directory, builder ->
 			{
 				List<String> line = builder.command();
-				return new ExitedProgram(answers.answer(line.subList(prefix, line.size())));
+				return answers.process(List.copyOf(line.subList(prefix, line.size())));
 			});
 		}
 	}

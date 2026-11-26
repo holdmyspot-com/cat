@@ -397,6 +397,24 @@ public interface HarnessIntegration
 	List<String> describeAdded(Path home, Map<String, List<String>> added) throws IOException;
 
 	/**
+	 * Records the harness's own approval of CAT's hooks in the installed version folder, for a harness that asks the
+	 * user to review a plugin's hooks before it runs them, so that it runs them without that review. Install, update
+	 * and repair call it after the permission and sandbox entries. A harness that is not reachable leaves the install
+	 * successful: the sentences then tell the user that the harness may ask for the review.
+	 *
+	 * @param home      the absolute, normalized harness home from the trust policy
+	 * @param installer the installer launcher in the version folder
+	 * @param cli       runs the harness program
+	 * @param replacer  replaces each configuration file that this call writes, retrying while Windows refuses the
+	 *                  replacement
+	 * @return the sentences that tell the user what this call recorded, or that the harness may ask for a review;
+	 * 	empty for a harness that runs plugin hooks without a review
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code home} or {@code installer} are relative
+	 */
+	List<String> refreshHookTrust(Path home, Path installer, HarnessCli cli, FileReplacer replacer);
+
+	/**
 	 * Groups the entries that install recorded by what they let the harness do, for the installer's report to a
 	 * person. The items of a group of operations name the operations of {@code installer}, such as
 	 * {@code installer install}, and the request server beside it, by its file name; an entry that names another

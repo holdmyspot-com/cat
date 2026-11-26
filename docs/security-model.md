@@ -193,9 +193,18 @@ records of other plugins' hooks and of your own hooks as they are, and so leaves
 one of CAT's hooks, which keeps that hook off. An install refuses, changing nothing, a `config.toml` that holds the
 state of one of CAT's hooks in a form that it cannot edit, such as an inline table, and names the table to write.
 
-Uninstalling CAT removes the hashes that the installs recorded, and the tables that held nothing else. It keeps a hash
-that you recorded yourself, because the install did not write it, and a hash that you changed after the install, which
-the uninstall result lists.
+When you review a hook, Codex also records `trusted_content_hash`, a hash of the plugin's content that an update
+changes even when the hooks stay the same; Codex then asks you to review CAT's hooks again. So after install, update
+and repair, the installer starts `codex app-server` with the environment that setup recorded, asks it with
+`hooks/list` for the hashes of the hooks it finds, and closes it. For each hook that Codex lists from CAT's plugin in
+the installed version folder, under the key and with the hash that the install recorded, it records the content hash
+that Codex lists. It changes no other hook's state and no other part of `config.toml`, and replaces the file
+atomically. When Codex cannot be started, does not answer within a minute or refuses, the install still succeeds and
+its result says that Codex may ask you to review CAT's hooks.
+
+Uninstalling CAT removes the hashes that the installs recorded, each with the content hash in its table, and the tables
+that held nothing else. It keeps a hash that you recorded yourself, because the install did not write it, and a hash
+that you changed after the install, which the uninstall result lists.
 
 ### The limits of the boundary
 

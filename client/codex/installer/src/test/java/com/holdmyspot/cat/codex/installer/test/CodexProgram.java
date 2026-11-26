@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -17,7 +18,8 @@ import tools.jackson.databind.json.JsonMapper;
  * Stands in for Codex's {@code codex} program in one Codex home, answering the commands that the installer runs as
  * Codex 0.130 does: {@code plugin add} replaces the plugin's cache with a copy of the marketplace source, in the folder
  * of the version that the source's plugin manifest names, and {@code plugin remove} leaves the cache and the plugin's
- * data in place.
+ * data in place. Its {@code app-server} is the process that a test supplies, by default one that exits before it
+ * answers, as when Codex cannot start it.
  */
 final class CodexProgram implements HarnessProgram.Answers
 {
@@ -30,15 +32,21 @@ final class CodexProgram implements HarnessProgram.Answers
 	 * The Codex home.
 	 */
 	private final Path home;
+	/**
+	 * Starts the process of each {@code app-server} command.
+	 */
+	private final Supplier<Process> appServer;
 
 	/**
 	 * Creates the program.
 	 *
-	 * @param home the Codex home
+	 * @param home      the Codex home
+	 * @param appServer starts the process of each {@code app-server} command
 	 */
-	private CodexProgram(Path home)
+	private CodexProgram(Path home, Supplier<Process> appServer)
 	{
 		this.home = home;
+		this.appServer = appServer;
 	}
 
 	/**
@@ -49,7 +57,20 @@ final class CodexProgram implements HarnessProgram.Answers
 	 */
 	static HarnessCli cli(Path home)
 	{
-		return HarnessProgram.cli(answers(home));
+		return cli(home, AppServerProgram::exited);
+	}
+
+	/**
+	 * Returns a runner of the program in one Codex home, whose {@code app-server} is the process that a test supplies.
+	 *
+	 * @param home      the Codex home
+	 * @param appServer starts the process of each {@code app-server} command, such as one that
+	 *                  {@link AppServerProgram} returns
+	 * @return the runner
+	 */
+	static HarnessCli cli(Path home, Supplier<Process> appServer)
+	{
+		return HarnessProgram.cli(new CodexProgram(home, appServer));
 	}
 
 	/**
@@ -60,7 +81,7 @@ final class CodexProgram implements HarnessProgram.Answers
 	 */
 	static HarnessProgram.Answers answers(Path home)
 	{
-		return new CodexProgram(home);
+		return new CodexProgram(home, AppServerProgram::exited);
 	}
 
 	/**
@@ -71,6 +92,14 @@ final class CodexProgram implements HarnessProgram.Answers
 	static CommandResult versionAnswer()
 	{
 		return new CommandResult(0, "codex-cli 0.130.0\n");
+	}
+
+	@Override
+	public Process process(List<String> arguments) throws IOException
+	{
+		if (arguments.equals(List.of("app-server")))
+			return appServer.get();
+		return HarnessProgram.Answers.super.process(arguments);
 	}
 
 	@Override

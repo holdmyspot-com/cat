@@ -161,7 +161,8 @@ public final class PluginInstall
 	 * Makes the change that the user allowed, when {@code consented}, removes the former session-launcher state
 	 * folder, installs and records permission, sandbox and startup-file protections, then verifies final permissions.
 	 * Only after verification does it retire obsolete recorded entries, including prepared rules, and remove the
-	 * pending-permission record. A failure retains ownership and pending state for recovery.
+	 * pending-permission record. A failure retains ownership and pending state for recovery. Last, it records the
+	 * harness's approval of CAT's hooks in the version folder, which never fails the install.
 	 *
 	 * @param environment         the harness environment recorded in the trust policy
 	 * @param home                the harness home
@@ -224,7 +225,9 @@ public final class PluginInstall
 		}
 		Map<String, List<String>> recorded = PermissionRecord.read(record);
 		Files.deleteIfExists(InstallerState.of(installation.dataDirectory(), integration.harness()).pendingPermissions());
-		return new InstalledEntries(recorded, integration.describeAdded(home, added));
+		List<String> notices = new ArrayList<>(integration.describeAdded(home, added));
+		notices.addAll(integration.refreshHookTrust(home, installer, cli, replacer));
+		return new InstalledEntries(recorded, notices);
 	}
 
 	/**
@@ -251,7 +254,8 @@ public final class PluginInstall
 	 * The permission and sandbox entries after an install.
 	 *
 	 * @param recorded every entry that the installer has recorded, by entry key
-	 * @param notices  the sentences that tell the user what the entries that this install added change beyond CAT
+	 * @param notices  the sentences that tell the user what the entries that this install added change beyond CAT,
+	 *                 and what it recorded about CAT's hooks
 	 */
 	public record InstalledEntries(Map<String, List<String>> recorded, List<String> notices)
 	{

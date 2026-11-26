@@ -19,6 +19,7 @@ import com.holdmyspot.cat.common.installer.activation.PermissionRecorder;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -33,6 +34,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
@@ -60,7 +62,10 @@ import tools.jackson.databind.node.ObjectNode;
  * <p>
  * Codex runs a plugin's hook only after {@code config.toml} records the hash that Codex computes for the hook, which a
  * user records by reviewing the hook. Install records the hash of each of CAT's hooks, replaces a hash that an update
- * made stale, and uninstall removes the hashes that install recorded.
+ * made stale, and uninstall removes the hashes that install recorded. A review also records the hash of the plugin's
+ * content, which an update makes stale even when the hooks' declarations stay the same, so install, update and
+ * repair then ask Codex's app-server for the content hash of CAT's hooks in the installed version folder and record
+ * it; uninstall removes it with the hook's hash that install recorded.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -1157,6 +1162,152 @@ public final class CodexIntegration implements HarnessIntegration
 				"review them; uninstalling CAT removes the hashes that CAT recorded.");
 		}
 		return List.copyOf(sentences);
+	}
+
+	/**
+	 * Records in {@code config.toml} the content hash that Codex lists for each of CAT's hooks in the installed version
+	 * folder. A listed hook is CAT's only when Codex lists it from CAT's plugin, in a file inside the version folder,
+	 * under the key of a hook that install trusted, and with the declaration hash that CAT computes for the hook and
+	 * that {@code config.toml} trusts. Codex's other hooks, and the hooks of projects, of the user and of other
+	 * plugins, keep their state. The file is replaced atomically, with no other part of it changed.
+	 *
+	 * @return a sentence naming the file and the number of hooks whose content hash this call recorded, if any, and a
+	 * 	sentence that Codex may ask the user to review CAT's hooks if Codex did not list one of them as CAT's or could
+	 * 	not be asked
+	 * @throws IllegalArgumentException if {@code home} or {@code installer} are relative
+	 */
+	@Override
+	public List<String> refreshHookTrust(Path home, Path installer, HarnessCli cli, FileReplacer replacer)
+	{
+		requireThat(home, "home").isAbsolute();
+		requireThat(installer, "installer").isAbsolute();
+		requireThat(cli, "cli").isNotNull();
+		requireThat(replacer, "replacer").isNotNull();
+		Path file = new CodexInstallation(home).configuration();
+		try
+		{
+			Map<String, String> hashes = hookHashes(installer);
+			if (hashes.isEmpty())
+				return List.of();
+			Path versionFolder = installer.getParent().getParent().toRealPath();
+			List<AppServerHooks.Hook> listed = AppServerHooks.list(cli, versionFolder);
+			String content = "";
+			if (Files.exists(file, LinkOption.NOFOLLOW_LINKS))
+				content = read(file);
+			ObjectNode document = TomlText.parse(content, file);
+			String edited = content;
+			int recorded = 0;
+			int unconfirmed = 0;
+			for (Map.Entry<String, String> hook : hashes.entrySet())
+			{
+				Optional<String> contentHash = Optional.empty();
+				if (HookTrust.trusted(document, hook.getKey()).equals(Optional.of(hook.getValue())))
+					contentHash = listedContentHash(listed, hook.getKey(), hook.getValue(), versionFolder);
+				if (contentHash.isEmpty())
+				{
+					++unconfirmed;
+					continue;
+				}
+				String trusted = HookTrust.trustContent(edited, hook.getKey(), contentHash.get(), file);
+				if (!trusted.equals(edited))
+					++recorded;
+				edited = trusted;
+			}
+			if (!edited.equals(content))
+				write(file, edited, replacer);
+			List<String> sentences = new ArrayList<>(2);
+			if (recorded > 0)
+			{
+				sentences.add("CAT recorded in " + file + " the hash that Codex lists for the content of " +
+					hooks(recorded) + ", so Codex runs them without asking you to review them again; uninstalling CAT " +
+					"removes these hashes with the hook hashes that CAT recorded.");
+			}
+			if (unconfirmed > 0)
+			{
+				sentences.add("Codex did not list " + hooks(unconfirmed) + " with the hash that CAT trusted, so Codex " +
+					"may ask you to review them before it runs them.");
+			}
+			return List.copyOf(sentences);
+		}
+		catch (InterruptedIOException e)
+		{
+			Thread.currentThread().interrupt();
+			return List.of(couldNotAsk(e));
+		}
+		catch (IOException e)
+		{
+			return List.of(couldNotAsk(e));
+		}
+	}
+
+	/**
+	 * Returns the sentence that tells the user that CAT could not ask Codex for the hashes of its hooks.
+	 *
+	 * @param failure the reason
+	 * @return the sentence
+	 */
+	private static String couldNotAsk(IOException failure)
+	{
+		String reason = Objects.requireNonNullElse(failure.getMessage(), failure.getClass().getSimpleName()).
+			replaceAll("\\.+$", "");
+		return "CAT could not ask Codex for the hashes of its hooks: " + reason + ". Codex may ask you to review " +
+			"CAT's hooks before it runs them.";
+	}
+
+	/**
+	 * Names a number of CAT's hooks.
+	 *
+	 * @param count the number
+	 * @return {@code <count> of CAT's hooks}
+	 */
+	private static String hooks(int count)
+	{
+		return count + " of CAT's hooks";
+	}
+
+	/**
+	 * Returns the content hash that Codex lists for one of CAT's hooks in a version folder.
+	 *
+	 * @param listed          the hooks that Codex lists
+	 * @param key             the hook's key in {@code config.toml}
+	 * @param declarationHash the hash that CAT computes for the hook's declaration
+	 * @param versionFolder   the real path of the version folder
+	 * @return the content hash, or empty if Codex does not list the hook from CAT's plugin in the version folder with
+	 * 	that declaration hash
+	 */
+	private static Optional<String> listedContentHash(List<AppServerHooks.Hook> listed, String key,
+		String declarationHash, Path versionFolder)
+	{
+		for (AppServerHooks.Hook hook : listed)
+		{
+			if (hook.key().equals(key) && hook.source().equals("plugin") &&
+				hook.pluginId().equals(CodexPluginCommand.PLUGIN_ID) && hook.declarationHash().equals(declarationHash) &&
+				isInside(hook.sourcePath(), versionFolder))
+			{
+				return Optional.of(hook.contentHash());
+			}
+		}
+		return Optional.empty();
+	}
+
+	/**
+	 * Returns whether a file that Codex names lies inside a folder.
+	 *
+	 * @param path   the file, as Codex names it
+	 * @param folder the real path of the folder
+	 * @return true if the file is an absolute path whose real path lies inside the folder
+	 */
+	private static boolean isInside(String path, Path folder)
+	{
+		try
+		{
+			Path file = Path.of(path);
+			return file.isAbsolute() && file.toRealPath().startsWith(folder);
+		}
+		catch (InvalidPathException | IOException _)
+		{
+			return false;
+		}
 	}
 
 	/**

@@ -31,8 +31,9 @@ import java.util.stream.Stream;
  * {@code client/claude/cli/src/test/resources/optimizer/claude-single-turn.jsonl}, Claude Code 2.1.287 recordings
  * described in {@code client/claude/cli/src/test/resources/optimizer/tool-calls.md}, codex-cli 0.159.1's
  * {@code client/codex/cli/src/test/resources/optimizer/codex-children.jsonl}, and codex-cli 0.147.0/0.159.1+23
- * recordings described in {@code client/codex/cli/src/test/resources/optimizer/codex-tool-calls.md}.
- * This class invents no protocol events
+ * recordings described in {@code client/codex/cli/src/test/resources/optimizer/codex-tool-calls.md}, and the
+ * codex-cli 0.172.0 {@code initialize} and {@code hooks/list} exchange that the Codex installer's
+ * {@code AppServerProgram} describes. This class invents no protocol events
  * or interrupt responses; its handler records requests or supplies the documented responses named by its caller.
  * <p>
  * Closing input models codex-cli 0.147.0's stdio EOF shutdown: OpenAI's

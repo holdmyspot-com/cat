@@ -820,6 +820,15 @@ public final class RecordingIntegration implements HarnessIntegration
 	}
 
 	/**
+	 * Records nothing and returns no sentences, standing for a harness that runs plugin hooks without a review.
+	 */
+	@Override
+	public List<String> refreshHookTrust(Path home, Path installer, HarnessCli cli, FileReplacer replacer)
+	{
+		return List.of();
+	}
+
+	/**
 	 * Returns a group of the values that each key records, as values that its setting is set to.
 	 */
 	@Override

@@ -32,12 +32,15 @@ import tools.jackson.databind.node.ObjectNode;
  * <p>
  * Codex runs a plugin's hook only while
  * {@code [hooks.state."<plugin>:<hooks file>:<event>:<group>:<handler>"]} holds {@code trusted_hash} equal to the hash
- * that Codex computes for the hook. Codex hashes the hook's normalized identity: a JSON object with sorted keys that
- * holds the event's name in snake case, the matcher group's matcher and the handler as Codex normalizes it, written
- * without whitespace. The normalized command handler states the command that
- * the platform runs, its timeout in seconds (600 when unset), whether it is asynchronous, its status message and its
- * {@code additionalContextLimit} unless that is unset or Codex's default of 2500. The hash is {@code sha256:} and the
- * SHA-256 of that JSON in hexadecimal.
+ * that Codex computes for the hook, and either no {@code trusted_content_hash} or one equal to the hash that Codex
+ * computes for the plugin's content. Codex writes the content hash when the user reviews the hook; it lists both
+ * hashes in {@code hooks/list}, and this class records a content hash only as Codex listed it.
+ * <p>
+ * Codex hashes the hook's normalized identity: a JSON object with sorted keys that holds the event's name in snake
+ * case, the matcher group's matcher and the handler as Codex normalizes it, written without whitespace. The normalized
+ * command handler states the command that the platform runs, its timeout in seconds (600 when unset), whether it is
+ * asynchronous, its status message and its {@code additionalContextLimit} unless that is unset or Codex's default of
+ * 2500. The hash is {@code sha256:} and the SHA-256 of that JSON in hexadecimal.
  * <p>
  * The hash covers command handlers of the events {@code PreToolUse}, {@code PostToolUse}, {@code SessionStart} and
  * {@code SubagentStart}. Codex normalizes the other events and handlers differently, so this class gives them no trust
@@ -47,7 +50,7 @@ import tools.jackson.databind.node.ObjectNode;
  * <ul>
  *   <li>a hook without a {@code [hooks.state."<key>"]} table, to which it appends the table; and</li>
  *   <li>a {@code [hooks.state."<key>"]} table header, below which it inserts or replaces the {@code trusted_hash}
- *   line.</li>
+ *   or {@code trusted_content_hash} line.</li>
  * </ul>
  * It refuses every other form, such as an inline table or dotted keys, with a message that names the form it edits.
  * Jackson's TOML parser decides whether the file and each line are valid TOML, and the editor accepts its edit only
@@ -92,9 +95,14 @@ final class HookTrust
 	 */
 	static final String STATE_TABLE = HOOKS + ".state";
 	/**
-	 * The setting that records the hash that the user trusted.
+	 * The setting that records the hash of the hook's declaration that the user trusted.
 	 */
 	private static final String TRUSTED_HASH = "trusted_hash";
+	/**
+	 * The setting that records the hash of the plugin's content that the user trusted with the declaration. Codex
+	 * computes it, and lists it after the declaration hash in {@code hooks/list}'s {@code currentHash}.
+	 */
+	private static final String TRUSTED_CONTENT_HASH = "trusted_content_hash";
 	/**
 	 * Reads hooks files and writes the JSON that Codex hashes.
 	 */
@@ -264,9 +272,22 @@ final class HookTrust
 	 */
 	static Optional<String> trusted(ObjectNode document, String key)
 	{
-		JsonNode hash = document.path(HOOKS).path("state").path(key).path(TRUSTED_HASH);
-		if (hash.isString())
-			return Optional.of(hash.stringValue());
+		return setting(document, key, TRUSTED_HASH);
+	}
+
+	/**
+	 * Returns a setting of a hook's table.
+	 *
+	 * @param document the parsed {@code config.toml}
+	 * @param key      the hook's key
+	 * @param setting  the setting's name
+	 * @return the setting's value, or empty if the table holds no such text setting
+	 */
+	private static Optional<String> setting(ObjectNode document, String key, String setting)
+	{
+		JsonNode value = document.path(HOOKS).path("state").path(key).path(setting);
+		if (value.isString())
+			return Optional.of(value.stringValue());
 		return Optional.empty();
 	}
 
@@ -284,16 +305,51 @@ final class HookTrust
 	 */
 	static String add(String text, String key, String hash, Path file) throws IOException
 	{
+		return put(text, key, TRUSTED_HASH, hash, file);
+	}
+
+	/**
+	 * Makes the file trust the content hash that Codex lists for a hook whose declaration hash the file trusts,
+	 * inserting the content hash below the declaration hash, or replacing a content hash that differs.
+	 *
+	 * @param text the file's content, whose table for the hook holds {@code trusted_hash}
+	 * @param key  the hook's key
+	 * @param hash the content hash that Codex lists for the hook
+	 * @param file the file, named in the refusal
+	 * @return the edited content, or {@code text} when the file already trusts the content hash
+	 * @throws IOException if the content is not valid TOML or holds the hook's state in a form that the editor does
+	 *                     not change
+	 */
+	static String trustContent(String text, String key, String hash, Path file) throws IOException
+	{
+		return put(text, key, TRUSTED_CONTENT_HASH, hash, file);
+	}
+
+	/**
+	 * Sets a setting of a hook's table, appending the table, or inserting the setting into it, or replacing a value
+	 * that differs. A content hash that the table does not hold yet goes below its declaration hash.
+	 *
+	 * @param text    the file's content
+	 * @param key     the hook's key
+	 * @param setting the setting's name
+	 * @param value   the setting's value
+	 * @param file    the file, named in the refusal
+	 * @return the edited content, or {@code text} when the setting already has the value
+	 * @throws IOException if the content is not valid TOML or holds the hook's state in a form that the editor does
+	 *                     not change
+	 */
+	private static String put(String text, String key, String setting, String value, Path file) throws IOException
+	{
 		ObjectNode document = parse(text, file);
 		requireTables(document, key, file);
-		Optional<String> current = trusted(document, key);
-		if (current.isPresent() && current.get().equals(hash))
+		Optional<String> current = setting(document, key, setting);
+		if (current.isPresent() && current.get().equals(value))
 			return text;
 
 		ObjectNode expected = document.deepCopy();
-		stateOf(expected, key).put(TRUSTED_HASH, hash);
+		stateOf(expected, key).put(setting, value);
 		String newline = TomlText.newline(text);
-		String entry = TRUSTED_HASH + " = " + quote(hash);
+		String entry = setting + " = " + quote(value);
 		List<String> lines = lines(text);
 		int header = TomlText.findHeader(lines, headerOf(key));
 		String edited;
@@ -301,11 +357,18 @@ final class HookTrust
 			edited = TomlText.appendTable(text, headerLine(key), entry, newline);
 		else
 		{
-			int existing = trustedLine(lines, header, current);
+			int existing = settingLine(lines, header, setting, current.isPresent());
 			if (existing == -1)
 			{
-				TomlText.terminate(lines, header, newline);
-				lines.add(header + 1, entry + newline);
+				int above = header;
+				if (setting.equals(TRUSTED_CONTENT_HASH))
+				{
+					int declaration = settingLine(lines, header, TRUSTED_HASH, trusted(document, key).isPresent());
+					if (declaration != -1)
+						above = declaration;
+				}
+				TomlText.terminate(lines, above, newline);
+				lines.add(above + 1, entry + newline);
 			}
 			else
 				lines.set(existing, entry + lineEnd(lines.get(existing)));
@@ -317,8 +380,8 @@ final class HookTrust
 	}
 
 	/**
-	 * Removes the trust of a hook's hash, and the hook's table when the trust was all that it held. Leaves the file
-	 * unchanged when it trusts another hash for the hook.
+	 * Removes the trust of a hook's hash, with the content hash that the table records beside it, and the hook's table
+	 * when the trust was all that it held. Leaves the file unchanged when it trusts another hash for the hook.
 	 *
 	 * @param text the file's content
 	 * @param key  the hook's key
@@ -340,15 +403,26 @@ final class HookTrust
 		int header = TomlText.findHeader(lines, headerOf(key));
 		int existing = -1;
 		if (header != -1)
-			existing = trustedLine(lines, header, current);
+			existing = settingLine(lines, header, TRUSTED_HASH, true);
 		if (existing == -1)
 			throw uneditable(key, file);
+		int content = -1;
+		boolean hasContent = setting(document, key, TRUSTED_CONTENT_HASH).isPresent();
+		if (hasContent)
+		{
+			content = settingLine(lines, header, TRUSTED_CONTENT_HASH, true);
+			if (content == -1)
+				throw uneditable(key, file);
+		}
 
 		ObjectNode withoutHash = document.deepCopy();
 		ObjectNode state = (ObjectNode) withoutHash.get(HOOKS).get("state").get(key);
 		state.remove(TRUSTED_HASH);
+		state.remove(TRUSTED_CONTENT_HASH);
 		List<String> edited = new ArrayList<>(lines);
-		edited.remove(existing);
+		edited.remove(Math.max(existing, content));
+		if (content != -1)
+			edited.remove(Math.min(existing, content));
 		String hashRemoved = String.join("", edited);
 		if (!state.isEmpty())
 		{
@@ -444,21 +518,22 @@ final class HookTrust
 	}
 
 	/**
-	 * Finds the line of a hook's table that sets {@code trusted_hash}.
+	 * Finds the line of a hook's table that sets a setting.
 	 *
 	 * @param lines   the file's lines
 	 * @param header  the index of the table's header line
-	 * @param current the hash that the file trusts for the hook
+	 * @param setting the setting's name
+	 * @param present true if the parsed file holds the setting in the hook's table
 	 * @return the line's index, or -1 when the table has no line of its own for the setting, such as when it is empty
 	 */
-	private static int trustedLine(List<String> lines, int header, Optional<String> current)
+	private static int settingLine(List<String> lines, int header, String setting, boolean present)
 	{
-		if (current.isEmpty())
+		if (!present)
 			return -1;
 		for (int index = header + 1; index < lines.size() && !lines.get(index).strip().startsWith("["); ++index)
 		{
 			JsonNode line = tryParse(lines.get(index));
-			if (line != null && line.size() == 1 && line.has(TRUSTED_HASH))
+			if (line != null && line.size() == 1 && line.has(setting))
 				return index;
 		}
 		return -1;

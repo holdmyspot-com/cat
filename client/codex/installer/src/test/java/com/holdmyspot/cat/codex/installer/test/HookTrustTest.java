@@ -19,6 +19,7 @@ import java.time.Clock;
 import java.util.List;
 import java.util.Map;
 import java.util.ServiceLoader;
+import java.util.function.Supplier;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
@@ -56,6 +57,17 @@ public final class HookTrustTest
 	 */
 	private static final String SUBAGENT_START_HASH =
 		"sha256:45fb66653002cb5756d10364ee9af68a6baaa74c1b8394bee029b1c1340cc0ba";
+	/**
+	 * The hash of the installed files of a build of CAT that Codex listed for each of its hooks, the part of the hook's
+	 * {@code currentHash} that Codex records as {@code trusted_content_hash}.
+	 */
+	private static final String CONTENT_HASH =
+		"sha256:14078236a49ad16a69be2d3e4fe17f0039b96ba483b22ab56d011fe2e3a110eb";
+	/**
+	 * The {@code trusted_content_hash} that the user's review of the hooks of an earlier build recorded.
+	 */
+	private static final String EARLIER_CONTENT_HASH =
+		"sha256:bba906b15dd71a347e8603e5f96a6649affb73545a73454bdf0d6b30851b7453";
 	/**
 	 * The key of the SessionStart hook in Codex's configuration.
 	 */
@@ -642,6 +654,196 @@ public final class HookTrustTest
 
 			requireThat(Files.exists(home.resolve("config.toml")), "configurationExists").isFalse();
 		}
+	}
+
+	/**
+	 * After an update whose hook declarations did not change, the tables of CAT's hooks still hold the content hash of
+	 * the earlier build, so Codex lists them as modified. Install records the content hash that Codex lists for each
+	 * of CAT's hooks of the installed version, changes no other byte of the file, and says so.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void recordsCodexsContentHashOfCatsHooks() throws IOException
+	{
+		// Requirement: R-I21
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			Path installer = plugin(home, VERSION, CAT_HOOKS);
+			Path hooksFile = installer.getParent().getParent().resolve("hooks/hooks.json");
+			Path configuration = home.resolve("config.toml");
+			String original = "# The user's settings\nmodel = \"gpt\"\n\n" +
+				"[hooks.state.\"" + SESSION_START + "\"]\ntrusted_hash = \"" + SESSION_START_HASH + "\"\nenabled = true\n" +
+				"trusted_content_hash = \"" + EARLIER_CONTENT_HASH + "\"\n\n" +
+				"[hooks.state.\"other@market:hooks/hooks.json:session_start:0:0\"]\n" +
+				"trusted_hash = \"sha256:" + "b".repeat(64) + "\"\ntrusted_content_hash = \"sha256:" + "c".repeat(64) +
+				"\"\n\n" +
+				"[hooks.state.\"" + SUBAGENT_START + "\"]\ntrusted_hash = \"" + SUBAGENT_START_HASH + "\"\n" +
+				"trusted_content_hash = \"" + EARLIER_CONTENT_HASH + "\"\n\n" +
+				"[hooks.state.\"" + POST_TOOL_USE + "\"]\ntrusted_hash = \"" + POST_TOOL_USE_HASH + "\"\n" +
+				"trusted_content_hash = \"" + EARLIER_CONTENT_HASH + "\"\n";
+			Files.writeString(configuration, original);
+			List<ObjectNode> listed = List.of(
+				AppServerProgram.hook(POST_TOOL_USE, "plugin", "cat@cat", hooksFile,
+					POST_TOOL_USE_HASH + "/" + CONTENT_HASH, "modified"),
+				AppServerProgram.hook(SESSION_START, "plugin", "cat@cat", hooksFile,
+					SESSION_START_HASH + "/" + CONTENT_HASH, "modified"),
+				AppServerProgram.hook(SUBAGENT_START, "plugin", "cat@cat", hooksFile,
+					SUBAGENT_START_HASH + "/" + CONTENT_HASH, "modified"));
+
+			PluginInstall.InstalledEntries entries = installEntries(home, installer,
+				() -> AppServerProgram.listing(listed));
+
+			requireThat(Files.readString(configuration), "configuration").
+				isEqualTo(original.replace(EARLIER_CONTENT_HASH, CONTENT_HASH));
+			requireThat(entries.notices().stream().anyMatch(notice -> notice.contains(configuration.toString()) &&
+				notice.contains("the hash that Codex lists") && notice.contains(" 3 ")), "reported").isTrue();
+		}
+	}
+
+	/**
+	 * Install records Codex's content hash only for a hook of CAT's plugin, in the version folder being installed,
+	 * whose declaration hash is the one that CAT trusted. It leaves another plugin's hook, a project hook, a hook of
+	 * another version folder and a hook whose declaration changed as they are, and says that Codex may ask the user
+	 * to review CAT's hooks.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void recordsOnlyCatsInstalledHooks() throws IOException
+	{
+		// Requirement: R-I21
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			Path installer = plugin(home, VERSION, CAT_HOOKS);
+			Path hooksFile = installer.getParent().getParent().resolve("hooks/hooks.json");
+			Path otherVersion = plugin(home, LATER_VERSION, CAT_HOOKS).getParent().getParent().
+				resolve("hooks/hooks.json");
+			Path configuration = home.resolve("config.toml");
+			String other = "other@market:hooks/hooks.json:session_start:0:0";
+			String otherHash = "sha256:" + "b".repeat(64);
+			String original = "model = \"gpt\"\n\n" + trusted(other, otherHash) + "\n" +
+				trusted(SESSION_START, SESSION_START_HASH) + "\n" + trusted(POST_TOOL_USE, POST_TOOL_USE_HASH) + "\n" +
+				trusted(SUBAGENT_START, SUBAGENT_START_HASH);
+			Files.writeString(configuration, original);
+			List<ObjectNode> listed = List.of(
+				AppServerProgram.hook(other, "plugin", "other@market",
+					home.resolve("plugins/cache/market/other/1.0/hooks/hooks.json"), otherHash + "/" + CONTENT_HASH,
+					"modified"),
+				AppServerProgram.hook(SESSION_START, "project", null, home.resolveSibling("project/.codex/hooks.json"),
+					SESSION_START_HASH + "/" + CONTENT_HASH, "untrusted"),
+				AppServerProgram.hook(SUBAGENT_START, "plugin", "cat@cat", otherVersion,
+					SUBAGENT_START_HASH + "/" + CONTENT_HASH, "modified"),
+				AppServerProgram.hook(POST_TOOL_USE, "plugin", "cat@cat", hooksFile,
+					"sha256:" + "e".repeat(64) + "/" + CONTENT_HASH, "modified"));
+
+			PluginInstall.InstalledEntries entries = installEntries(home, installer,
+				() -> AppServerProgram.listing(listed));
+
+			requireThat(Files.readString(configuration), "configuration").isEqualTo(original);
+			requireThat(entries.notices().toString(), "notices").contains("Codex may ask you to review");
+		}
+	}
+
+	/**
+	 * An install succeeds when Codex cannot list its hooks, and says that Codex may ask the user to review CAT's hooks.
+	 *
+	 * @param name      the case's name
+	 * @param appServer starts the process of Codex's app-server
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test(dataProvider = "unanswered")
+	public void installSucceedsWhenCodexDoesNotList(String name, Supplier<Process> appServer) throws IOException
+	{
+		// Requirement: R-I21
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			Path installer = plugin(home, VERSION, CAT_HOOKS);
+			Path configuration = home.resolve("config.toml");
+			Files.writeString(configuration, "model = \"gpt\"\n");
+
+			PluginInstall.InstalledEntries entries = installEntries(home, installer, appServer);
+
+			requireThat(Files.readString(configuration), name).contains(SESSION_START_HASH).
+				doesNotContain("trusted_content_hash");
+			requireThat(entries.notices().toString(), "notices").contains("Codex may ask you to review");
+		}
+	}
+
+	/**
+	 * Supplies app-servers that do not list the hooks.
+	 *
+	 * @return each case's name and its app-server
+	 */
+	@DataProvider
+	public Object[][] unanswered()
+	{
+		Supplier<Process> exited = AppServerProgram::exited;
+		Supplier<Process> refusing = () -> AppServerProgram.refusing("hooks/list is unavailable");
+		return new Object[][]
+			{
+				{"exited", exited},
+				{"refusing", refusing}
+			};
+	}
+
+	/**
+	 * Uninstalling removes the content hash that install recorded together with the declaration hash that it
+	 * recorded in the same table, and leaves the file as it was.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void uninstallRemovesContentHashWithTrust() throws IOException
+	{
+		// Requirement: R-I21
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			Path installer = plugin(home, VERSION, CAT_HOOKS);
+			Path hooksFile = installer.getParent().getParent().resolve("hooks/hooks.json");
+			Path configuration = home.resolve("config.toml");
+			String original = "model = \"gpt\"\n";
+			Files.writeString(configuration, original);
+			List<ObjectNode> listed = List.of(
+				AppServerProgram.hook(SESSION_START, "plugin", "cat@cat", hooksFile,
+					SESSION_START_HASH + "/" + CONTENT_HASH, "trusted"),
+				AppServerProgram.hook(POST_TOOL_USE, "plugin", "cat@cat", hooksFile,
+					POST_TOOL_USE_HASH + "/" + CONTENT_HASH, "trusted"),
+				AppServerProgram.hook(SUBAGENT_START, "plugin", "cat@cat", hooksFile,
+					SUBAGENT_START_HASH + "/" + CONTENT_HASH, "trusted"));
+			PluginInstall.InstalledEntries entries = installEntries(home, installer,
+				() -> AppServerProgram.listing(listed));
+			String installed = Files.readString(configuration);
+			requireThat(installed.split("trusted_content_hash = \"" + CONTENT_HASH, -1).length - 1, "contentHashes").
+				isEqualTo(3);
+
+			provider().removePermissions(home, entries.recorded(), replacer());
+
+			requireThat(Files.readString(configuration), "removed").isEqualTo(original);
+		}
+	}
+
+	/**
+	 * Installs the entries of a plugin version as install, update and repair do after registration.
+	 *
+	 * @param home      the Codex home
+	 * @param installer the plugin version's installer launcher
+	 * @param appServer starts the process of Codex's app-server
+	 * @return the installed entries
+	 * @throws IOException if an entry cannot be installed
+	 */
+	private static PluginInstall.InstalledEntries installEntries(Path home, Path installer,
+		Supplier<Process> appServer) throws IOException
+	{
+		HarnessIntegration provider = provider();
+		Path locks = home.resolveSibling("user/.cat/locks");
+		return new PluginInstall(provider, CodexProgram.cli(home, appServer), replacer(), NO_WAIT).
+			installEntries(permissionEnvironment(home), home, installer, provider.installation(home), List.of(),
+				locks, locks.resolveSibling("sessions"), List.of(), false);
 	}
 
 	/**

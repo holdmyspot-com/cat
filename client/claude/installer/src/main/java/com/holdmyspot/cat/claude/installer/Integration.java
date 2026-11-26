@@ -1093,6 +1093,22 @@ public final class Integration implements HarnessIntegration
 	}
 
 	/**
+	 * Records nothing: Claude Code runs every hook of an installed plugin without asking the user to review it.
+	 *
+	 * @return an empty list
+	 * @throws IllegalArgumentException if {@code home} or {@code installer} are relative
+	 */
+	@Override
+	public List<String> refreshHookTrust(Path home, Path installer, HarnessCli cli, FileReplacer replacer)
+	{
+		requireThat(home, "home").isAbsolute();
+		requireThat(installer, "installer").isAbsolute();
+		requireThat(cli, "cli").isNotNull();
+		requireThat(replacer, "replacer").isNotNull();
+		return List.of();
+	}
+
+	/**
 	 * Groups the recorded entries of {@code settings.json} by setting: {@code permissions.allow} names the installer
 	 * operations and the request server that Claude Code runs without asking, {@code sandbox.excludedCommands} the ones
 	 * that it runs outside its sandbox, {@code sandbox.filesystem.allowWrite} the paths that sandboxed commands may
