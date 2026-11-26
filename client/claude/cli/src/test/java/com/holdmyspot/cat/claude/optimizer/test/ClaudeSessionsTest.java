@@ -43,10 +43,12 @@ import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
 import com.holdmyspot.cat.common.optimizer.port.UnreachableReference;
+import com.holdmyspot.cat.common.runner.AuthenticationOptions;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
+import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import com.holdmyspot.cat.common.runner.fakes.test.RequestingNestedSession;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
@@ -802,8 +804,25 @@ public final class ClaudeSessionsTest
 	 */
 	private static ClaudeSessions loginPort(JvmScope jvm, Path root, Map<String, String> environment)
 	{
+		return loginPort(jvm, root, environment, AuthenticationOptions.DEFAULT);
+	}
+
+	/**
+	 * Creates a port whose runner must never be started, for a command that chose its source home and gateway login
+	 * class.
+	 *
+	 * @param jvm the borrowed process scope
+	 * @param root the directory for session folders and the host configuration
+	 * @param environment the host environment
+	 * @param authentication the command's choice of the source home and gateway login class
+	 * @return the port
+	 */
+	private static ClaudeSessions loginPort(JvmScope jvm, Path root, Map<String, String> environment,
+		AuthenticationOptions authentication)
+	{
 		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("results"), List::of, false,
-			environment, root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+			environment, root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer(), Optional.empty(),
+			null, authentication);
 		return ClaudeSessionsSecrets.getClaudeSessionsAccess().newClaudeSessions(settings, (options, input, output) ->
 		{
 			throw new AssertionError("A login classification must not start a session");
@@ -857,6 +876,83 @@ public final class ClaudeSessionsTest
 				HostLogin login = loginPort(jvm, root, Map.of(Platform.current().homeVariable(), home.toString())).
 					hostLogin();
 				requireThat(login, "login").isEqualTo(HostLogin.API_KEY);
+			}
+		}
+	}
+
+	/**
+	 * Verifies that the port reports the class that the command declares for a source home whose settings send requests
+	 * to a gateway, since no file records which kind of login the gateway bills.
+	 *
+	 * @param declared the class that the command declares
+	 * @throws IOException if a credential fixture cannot be created or the port refuses the source home
+	 */
+	@Test(dataProvider = "gatewayLoginClasses", timeOut = 120_000)
+	public void classifiesAGatewayAsDeclared(HostLogin declared) throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			// Requirement: R-E7, R-I14
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path home = SourceHomes.create(root, "home");
+				SourceHomes.settings(home, """
+					{"env": {"ANTHROPIC_BASE_URL": "https://gateway.example", "ANTHROPIC_AUTH_TOKEN": "%s"}}
+					""".formatted(SourceHomes.SECRET));
+				HostLogin login = loginPort(jvm, root, Map.of(), new AuthenticationOptions(Optional.of(home),
+					Optional.of(declared), false)).hostLogin();
+				requireThat(login, "login").isEqualTo(declared);
+			}
+		}
+	}
+
+	/**
+	 * Returns the classes that a command may declare for a gateway.
+	 *
+	 * @return the classes
+	 */
+	@DataProvider(name = "gatewayLoginClasses")
+	public Object[][] gatewayLoginClasses()
+	{
+		return new Object[][]
+			{
+				{HostLogin.SUBSCRIPTION},
+				{HostLogin.API_KEY}
+			};
+	}
+
+	/**
+	 * Verifies that the port refuses a source home whose settings send requests to a gateway when the command
+	 * declares no login class, naming the option that declares it and never the credential.
+	 *
+	 * @throws IOException if a credential fixture cannot be created
+	 */
+	@Test(timeOut = 120_000)
+	public void refusesAnUndeclaredGatewayClass() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			// Requirement: R-E7, R-I14
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path home = SourceHomes.create(root, "home");
+				SourceHomes.settings(home, """
+					{"env": {"ANTHROPIC_BASE_URL": "https://gateway.example", "ANTHROPIC_AUTH_TOKEN": "%s"}}
+					""".formatted(SourceHomes.SECRET));
+				ClaudeSessions port = loginPort(jvm, root, Map.of(), new AuthenticationOptions(Optional.of(home),
+					Optional.empty(), false));
+				try
+				{
+					port.hostLogin();
+					throw new AssertionError("A gateway login without a declared class must be refused");
+				}
+				catch (SessionRefusedException e)
+				{
+					requireThat(e.getMessage(), "message").contains(AuthenticationOptions.LOGIN_CLASS_OPTION).
+						doesNotContain(SourceHomes.SECRET);
+				}
 			}
 		}
 	}
