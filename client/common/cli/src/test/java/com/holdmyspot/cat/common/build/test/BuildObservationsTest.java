@@ -411,6 +411,37 @@ public final class BuildObservationsTest
 	}
 
 	/**
+	 * Verifies a process that has released its address space but is not yet reported as exited is omitted. Linux
+	 * drops the {@code Vm*} members from {@code /proc/<pid>/status} while a process exits, before the process
+	 * becomes a zombie, so the process-table record can still say that it is live.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void exitingProcessIsOmitted() throws IOException
+	{
+		ProcessIdentity identity = new ProcessIdentity(213, "boot213");
+		String exitingStatus = "Name:\tsleep\nState:\tS (sleeping)\nPid:\t213\nThreads:\t1\n";
+		Optional<BuildObservations.ProcessSample> sample = sample(213,
+			List.of(raw(213, ProcessState.LIVE), raw(213, ProcessState.LIVE)), List.of(Optional.of(identity)),
+			exitingStatus);
+		requireThat(sample.isEmpty(), "processSample").isTrue();
+	}
+
+	/**
+	 * Verifies a malformed RSS member still fails when the rest of the status record is present.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test(expectedExceptions = IOException.class)
+	public void malformedRssWithStateRecordStillFails() throws IOException
+	{
+		ProcessIdentity identity = new ProcessIdentity(214, "boot214");
+		sample(214, List.of(raw(214, ProcessState.LIVE), raw(214, ProcessState.LIVE)),
+			List.of(Optional.of(identity)), "Name:\tsleep\nState:\tS (sleeping)\nVmRSS:\tbroken kB\n");
+	}
+
+	/**
 	 * Verifies strict RSS parsing remains mandatory for live processes after a failed observation.
 	 *
 	 * @param rss malformed or absent RSS record

@@ -187,7 +187,11 @@ public final class BuildObservations
 				throw new IOException("OSHI process state is unknown for PID " + pid);
 			if (initialIdentity.isEmpty())
 				throw new IOException("A live process has no stable identity: " + pid);
-			long rssBytes = requiredKilobytes(procRoot.resolve(Long.toString(pid)).resolve("status"), "VmRSS");
+			Path statusPath = procRoot.resolve(Long.toString(pid)).resolve("status");
+			Map<String, String> status = FileUtil.getKeyValueMapFromFile(statusPath.toString(), ":");
+			if (hasReleasedAddressSpace(status))
+				return Optional.empty();
+			long rssBytes = requiredKilobytes(statusPath, status, "VmRSS");
 			Optional<ProcessIdentity> finalIdentity = identities.find(pid);
 			if (!initialIdentity.equals(finalIdentity))
 				return Optional.empty();
@@ -227,6 +231,21 @@ public final class BuildObservations
 				return Optional.empty();
 			throw observationFailure;
 		}
+	}
+
+	/**
+	 * Checks whether a process status record shows a process that no longer has an address space. Linux releases the
+	 * address space, and with it the {@code Vm*} members, while a process exits, before the process becomes a
+	 * zombie. A process in that window is already gone for resource purposes even though the process table still
+	 * reports it as live. A record that has a {@code State} member but no {@code VmRSS} member is such a process; a
+	 * record that has a {@code VmRSS} member, whatever its value, is not.
+	 *
+	 * @param status members of the process status record
+	 * @return whether the process has released its address space
+	 */
+	private static boolean hasReleasedAddressSpace(Map<String, String> status)
+	{
+		return status.containsKey("State") && !status.containsKey("VmRSS");
 	}
 
 	/**
@@ -431,7 +450,21 @@ public final class BuildObservations
 	 */
 	private static long requiredKilobytes(Path source, String memberName) throws IOException
 	{
-		Map<String, String> members = FileUtil.getKeyValueMapFromFile(source.toString(), ":");
+		return requiredKilobytes(source, FileUtil.getKeyValueMapFromFile(source.toString(), ":"), memberName);
+	}
+
+	/**
+	 * Reads one required member from an already parsed proc file as unsigned kilobytes and returns its byte value.
+	 *
+	 * @param source proc file containing the member, for error messages
+	 * @param members parsed members of {@code source}
+	 * @param memberName exact proc member name
+	 * @return the member value in bytes
+	 * @throws IOException if the member is absent, malformed, or overflows
+	 */
+	private static long requiredKilobytes(Path source, Map<String, String> members, String memberName)
+		throws IOException
+	{
 		String rawMember = members.get(memberName);
 		if (!members.containsKey(memberName) || rawMember == null || rawMember.isBlank())
 			throw new IOException("No usable " + memberName + " observation in " + source);
