@@ -142,6 +142,7 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	 *
 	 * @return the choice
 	 */
+	@Override
 	protected final AuthenticationOptions authentication()
 	{
 		return authentication;

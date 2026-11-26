@@ -4137,7 +4137,10 @@ naming the option (user ruling, 2026-11-23, on Q24: "Q22-Q24: a"). A source home
 subscription while its Codex gateway bills an API key therefore cannot be described.
 
 The prompt optimizer takes `--home` and `--gateway-login-class` on every `prompt-optimizer` command that starts
-sessions, passes them to every session that it starts, and records them with each trial's launch. They are not part of
+sessions, passes them to every session that it starts, and records them with each trial's launch. The same two
+options go to the metadata command that the optimizer runs in another harness's installed artifact, because that
+report states the login class of the source home that the harness's trials will use; without them, a source home
+whose credential uses a base URL would refuse every two-harness `start`. They are not part of
 the campaign's measurement identity: a resumed campaign may name others, and its earlier results stay valid (user
 ruling, 2026-11-23: "Changing the auth should be allowed when resuming a campaign and should not invalidate old
 results.").

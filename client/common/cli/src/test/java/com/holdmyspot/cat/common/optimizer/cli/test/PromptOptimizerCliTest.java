@@ -51,6 +51,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -253,6 +254,104 @@ public final class PromptOptimizerCliTest
 				requireThat(report.refusal().isEmpty(), "targetLoads").isTrue();
 				requireThat(report.loadedSources().getFirst().rule(), "rule").contains("Codex fixture plugin");
 				requireThat(report.observations(), "observations").isEqualTo(Optional.of(expected));
+			}
+		}
+	}
+
+	/**
+	 * Verifies that the metadata command takes the source home and gateway login class of the command that runs it,
+	 * so that it classifies the login of the same source home as the sessions that the command starts.
+	 *
+	 * @throws IOException if the fixture or report cannot be read
+	 */
+	@Test
+	public void metadataCommandTakesSourceHomeOptions() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("prompt-optimizer-evaluator-"));
+			Path sourceHome = Files.createDirectory(project.resolve("source-home"));
+			String target = "rules.md";
+			Files.writeString(project.resolve(target), "Fixture instructions");
+			AtomicReference<AuthenticationOptions> received = new AtomicReference<>();
+			ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+			try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
+			{
+				int exit = PromptOptimizerCli.run(new String[]{"evaluator-info", project.toString(), project.toString(),
+					target, AuthenticationOptions.HOME_OPTION, sourceHome.toString(),
+					AuthenticationOptions.LOGIN_CLASS_OPTION, "api_key"}, authentication ->
+				{
+					received.set(authentication);
+					return TestOptimizerCommandScope.of(Harness.CODEX, project);
+				}, ZoneOffset.UTC, out);
+
+				requireThat(exit, "exit").isEqualTo(0);
+			}
+			requireThat(received.get(), "authentication").isEqualTo(new AuthenticationOptions(Optional.of(sourceHome),
+				Optional.of(HostLogin.API_KEY), false));
+			EvaluatorMetadata report = EvaluatorMetadata.read(JsonMapper.builder().build(),
+				new ByteArrayInputStream(bytes.toByteArray()));
+			requireThat(report.harness(), "harness").isEqualTo(Harness.CODEX);
+		}
+	}
+
+	/**
+	 * Verifies that a peer evaluator whose source home sends requests to a gateway reports its login when the owner
+	 * states the gateway's login class, and that the peer receives the owner's source home and class.
+	 *
+	 * @throws IOException if the fixture or report cannot be read
+	 * @throws InterruptedException if waiting for the peer is interrupted
+	 */
+	@Test
+	public void peerMetadataGetsSourceHomeChoice() throws IOException, InterruptedException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("prompt-optimizer-peer-gateway-")).toRealPath();
+			Path sourceHome = Files.createDirectory(project.resolve("source-home"));
+			Path target = Path.of("rules.md");
+			Files.writeString(project.resolve(target), "Fixture instructions");
+			AuthenticationOptions choice = new AuthenticationOptions(Optional.of(sourceHome),
+				Optional.of(HostLogin.API_KEY), false);
+			AtomicReference<AuthenticationOptions> received = new AtomicReference<>();
+			try (TestOptimizerCommandScope<?> owner = TestOptimizerCommandScope.of(Harness.CLAUDE, project))
+			{
+				owner.authentication(choice);
+				owner.usePeerArtifact(project.resolve("codex-artifact"));
+				owner.launchProcesses(builder ->
+				{
+					List<String> command = builder.command();
+					ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+					try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
+					{
+						String[] args = command.subList(1, command.size()).toArray(String[]::new);
+						int exit = PromptOptimizerCli.run(args, authentication ->
+						{
+							received.set(authentication);
+							// A gateway source home whose login class the command line does not name is refused
+							FakeSessionPort gateway = new FakeSessionPort()
+							{
+								@Override
+								public HostLogin hostLogin()
+								{
+									if (authentication.gatewayLoginClass().isEmpty())
+									{
+										throw new UncheckedIOException(new IOException("The source home sends requests to " +
+											"a gateway. Name its login class with " + AuthenticationOptions.LOGIN_CLASS_OPTION));
+									}
+									return authentication.gatewayLoginClass().orElseThrow();
+								}
+							};
+							return new TestOptimizerCommandScope<>(Harness.CODEX, project, Set.of(), _ -> gateway);
+						}, ZoneOffset.UTC, out);
+						return new ExitedProcess(builder, exit, bytes.toString(StandardCharsets.UTF_8), "");
+					}
+				});
+
+				EvaluatorMetadata report = owner.peerEvaluatorMetadata(Harness.CODEX, project, project, target);
+
+				requireThat(report.runtime().login(), "peerLogin").isEqualTo(HostLogin.API_KEY);
+				requireThat(received.get(), "peerAuthentication").isEqualTo(choice);
 			}
 		}
 	}

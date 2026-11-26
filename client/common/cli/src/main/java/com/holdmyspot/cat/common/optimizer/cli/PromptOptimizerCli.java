@@ -74,7 +74,8 @@ public final class PromptOptimizerCli
 	 * A command that starts sessions may name {@value AuthenticationOptions#HOME_OPTION} and
 	 * {@value AuthenticationOptions#LOGIN_CLASS_OPTION} anywhere after its name; the scope passes them to every session
 	 * that the command starts, so that each takes its credential from that source home. A command that starts no
-	 * session and names one of them is refused as invalid input before a scope opens.
+	 * session and names one of them is refused as invalid input before a scope opens, except for
+	 * {@code evaluator-info}, whose report states the login class of the source home that the evaluator's trials use.
 	 *
 	 * @param args the command and its arguments
 	 * @param factory opens the selected harness's command scope
@@ -121,7 +122,7 @@ public final class PromptOptimizerCli
 		boolean evaluatorInfo = !arguments.isEmpty() && arguments.getFirst().equals(EvaluatorInfo.COMMAND);
 		boolean evaluatorTrial = arguments.size() == 1 && arguments.getFirst().equals(EvaluatorTrial.COMMAND);
 		AuthenticationOptions authentication = AuthenticationOptions.DEFAULT;
-		if (!evaluatorInfo && !evaluatorTrial)
+		if (!evaluatorTrial)
 		{
 			try
 			{
@@ -133,7 +134,8 @@ public final class PromptOptimizerCli
 				return 2;
 			}
 			arguments = withoutAuthenticationOptions(arguments);
-			if (!authentication.equals(AuthenticationOptions.DEFAULT) && !Commands.mayStartSessions(arguments))
+			if (!evaluatorInfo && !authentication.equals(AuthenticationOptions.DEFAULT) &&
+				!Commands.mayStartSessions(arguments))
 			{
 				out.println(Commands.statusMessage(JsonMapper.builder().build(), "refused",
 					AuthenticationOptions.HOME_OPTION + " and " + AuthenticationOptions.LOGIN_CLASS_OPTION + " choose the " +

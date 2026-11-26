@@ -24,6 +24,7 @@ import com.holdmyspot.cat.common.optimizer.port.test.FakeHostInterruptSignal;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeProfileInventory;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort;
 import com.holdmyspot.cat.common.optimizer.proposal.SymbolicLinkProbe;
+import com.holdmyspot.cat.common.runner.AuthenticationOptions;
 import com.holdmyspot.cat.common.runner.HarnessSandbox;
 import com.holdmyspot.cat.common.runner.RetainedTrialResponse;
 import com.holdmyspot.cat.common.secrets.ExecutableFilesSecrets;
@@ -135,6 +136,7 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	private volatile GitProjects git = GitProjects.IGNORING;
 	private Path home;
 	private Path peerArtifact;
+	private AuthenticationOptions authentication = AuthenticationOptions.DEFAULT;
 	private SessionPort peerTrials;
 	private final ExecutableFiles executableFiles = ExecutableFilesSecrets.getExecutableFilesAccess().create(
 		Thread::yield, Clock.systemUTC(), this::startProcess);
@@ -277,6 +279,24 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	void usePeerArtifact(Path artifact)
 	{
 		peerArtifact = artifact;
+	}
+
+	/**
+	 * Gives the command the source home and gateway login class that its command line named.
+	 *
+	 * @param authentication the command's choice
+	 * @throws NullPointerException if {@code authentication} is null
+	 */
+	void authentication(AuthenticationOptions authentication)
+	{
+		requireThat(authentication, "authentication").isNotNull();
+		this.authentication = authentication;
+	}
+
+	@Override
+	protected AuthenticationOptions authentication()
+	{
+		return authentication;
 	}
 
 	/**

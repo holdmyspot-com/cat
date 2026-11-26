@@ -28,6 +28,7 @@ import com.holdmyspot.cat.common.optimizer.store.FileCampaignStore;
 import com.holdmyspot.cat.common.optimizer.store.JudgeRecordingStore;
 import com.holdmyspot.cat.common.optimizer.store.TrialRecovery;
 import com.holdmyspot.cat.common.optimizer.workspace.Forks;
+import com.holdmyspot.cat.common.runner.AuthenticationOptions;
 import com.holdmyspot.cat.common.runner.HarnessSandbox;
 import com.holdmyspot.cat.common.runner.RetainedTrialResponse;
 import com.holdmyspot.cat.common.runner.TrialPluginInput;
@@ -117,6 +118,18 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 	public abstract SessionPort sessions() throws IOException;
 
 	/**
+	 * Returns the command's choice of the source home and gateway login class, which every session that the scope's
+	 * ports start receives, and which the metadata command of a peer evaluator receives, so that its report classifies
+	 * the login of the same source home.
+	 *
+	 * @return the choice, which is {@link AuthenticationOptions#DEFAULT} unless the scope was opened with another
+	 */
+	protected AuthenticationOptions authentication()
+	{
+		return AuthenticationOptions.DEFAULT;
+	}
+
+	/**
 	 * Reads metadata from the installed peer evaluator within this command's sandbox.
 	 *
 	 * @param evaluator the requested peer harness
@@ -132,7 +145,7 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 	{
 		ensureOpen();
 		return PeerEvaluator.read(json(), executableFiles(), peerEvaluatorArtifact(evaluator), evaluator,
-			project, staged, target);
+			project, staged, target, authentication());
 	}
 
 	/**
@@ -154,7 +167,7 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 			return peerEvaluatorMetadata(evaluator, project, staged, target);
 		ensureOpen();
 		return PeerEvaluator.read(json(), executableFiles(), peerEvaluatorArtifact(evaluator), evaluator,
-			project, staged, target, plugins, temporaryDirectory());
+			project, staged, target, plugins, temporaryDirectory(), authentication());
 	}
 
 	/**

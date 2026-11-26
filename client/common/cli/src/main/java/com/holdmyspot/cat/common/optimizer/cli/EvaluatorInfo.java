@@ -33,6 +33,11 @@ import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Observes one installed evaluator's metadata against an existing staged source.
+ * <p>
+ * The report classifies the login of the evaluator's source home, which the scope takes from the command's
+ * {@value com.holdmyspot.cat.common.runner.AuthenticationOptions#HOME_OPTION} and
+ * {@value com.holdmyspot.cat.common.runner.AuthenticationOptions#LOGIN_CLASS_OPTION}, which the owner that runs the
+ * command passes on from its own command line.
  */
 final class EvaluatorInfo
 {

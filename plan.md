@@ -9991,6 +9991,11 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
   single prompt-source value for the two evaluators.
   Public start now checks the peer's target and configuration before creating campaign state. The focused
   verification passed 205 tests, including that check and per-evaluator proposal profile binding.
+  The installed check found that the peer's metadata command read the source home's login without the start's
+  `--home` and `--gateway-login-class`, so a gateway source home refused every two-harness `start`. The owner now
+  forwards both options to that command. Tests cover that forwarding and a peer report under a gateway source home
+  through the test port, not a real Claude Code or Codex read of a gateway source home. The installed two-harness
+  `start` with a gateway source home remains to check.
 - **Resume and revise a shared campaign.** Use the recorded scope on resume and refuse an explicit change before
   mutation or dispatch. Keep each assignment's snapshot and evaluator through retries and adoption. Verify that
   reopening the owner retains both decided outcomes, an old-snapshot result cannot satisfy the new candidate's

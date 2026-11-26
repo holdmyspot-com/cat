@@ -7,6 +7,7 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.port.HookInvocation;
 import com.holdmyspot.cat.common.optimizer.port.PluginBase;
+import com.holdmyspot.cat.common.runner.AuthenticationOptions;
 import com.holdmyspot.cat.common.runner.HarnessProcessTermination;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
@@ -43,15 +44,20 @@ final class PeerEvaluator
 	 * @param project    the absolute project directory, which becomes the child's working directory
 	 * @param staged     the absolute existing staged source
 	 * @param target     the target path relative to the project and staged source
+	 * @param authentication the caller's source home and gateway login class, which the peer takes to classify the
+	 *                       login of the trials that it will run
 	 * @return the peer's report
 	 * @throws IOException          if the process cannot start, does not report by its timeout, or fails
 	 * @throws InterruptedException if the caller is interrupted while waiting
 	 */
 	static EvaluatorMetadata read(JsonMapper json, ExecutableFiles executable, Path artifact, Harness evaluator,
-		Path project, Path staged, Path target) throws IOException, InterruptedException
+		Path project, Path staged, Path target, AuthenticationOptions authentication)
+		throws IOException, InterruptedException
 	{
-		return inspect(json, executable, artifact, evaluator, project,
-			List.of(EvaluatorInfo.COMMAND, project.toString(), staged.toString(), target.toString()));
+		List<String> arguments = new ArrayList<>(List.of(EvaluatorInfo.COMMAND, project.toString(), staged.toString(),
+			target.toString()));
+		arguments.addAll(authentication.arguments());
+		return inspect(json, executable, artifact, evaluator, project, arguments);
 	}
 
 	/**
@@ -66,21 +72,25 @@ final class PeerEvaluator
 	 * @param target the relative target
 	 * @param plugins the selected plugin bases in trial order
 	 * @param temporary the caller's temporary directory
+	 * @param authentication the caller's source home and gateway login class, which the peer takes to classify the
+	 *                       login of the trials that it will run
 	 * @return the peer's metadata report
 	 * @throws IOException if the input cannot be written or the peer does not produce a report
 	 * @throws InterruptedException if the caller is interrupted
 	 */
 	static EvaluatorMetadata read(JsonMapper json, ExecutableFiles executable, Path artifact, Harness evaluator,
-		Path project, Path staged, Path target, List<PluginBase> plugins, Path temporary)
-		throws IOException, InterruptedException
+		Path project, Path staged, Path target, List<PluginBase> plugins, Path temporary,
+		AuthenticationOptions authentication) throws IOException, InterruptedException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path exchange = cleanup.add(Files.createTempDirectory(temporary, "evaluator-input-"));
 			Path input = exchange.resolve("plugins.json");
 			EvaluatorPluginBases.write(json, input, plugins);
-			return inspect(json, executable, artifact, evaluator, project,
-				List.of(EvaluatorInfo.COMMAND, project.toString(), staged.toString(), target.toString(), input.toString()));
+			List<String> arguments = new ArrayList<>(List.of(EvaluatorInfo.COMMAND, project.toString(),
+				staged.toString(), target.toString(), input.toString()));
+			arguments.addAll(authentication.arguments());
+			return inspect(json, executable, artifact, evaluator, project, arguments);
 		}
 	}
 
