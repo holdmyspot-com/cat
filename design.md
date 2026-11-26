@@ -3306,15 +3306,14 @@ brief was sufficient or an explanation is correct needs meaning and stays with a
 	processor time, the stage or the processor time is *not observed*, and CAT says so. The reports are:
 	- **The sandbox cannot start.** The sandbox program exits before the launcher is ready and its output opens with
 		the program's own name, `bwrap:` or `sandbox-exec:` (user namespaces that the kernel refuses, a mount that
-		fails), and is not a failure to execute the Java runtime. The report gives the exit status and the sandbox
-		program's message as the cause. The same report covers a run that ends in *sandbox setup* with a stall (below):
+		fails). The report gives the exit status and the sandbox program's message as the cause. The same report covers a run that ends in *sandbox setup* with a stall (below):
 		a sandbox program that is blocked, not slow, is a sandbox that cannot start.
 	- **The launcher is missing, damaged or exited.** Before it starts a run, CAT checks that the sandbox program, `env`
-		and the Java executable exist and are executable regular files and that the Java runtime holds its module
+		and the Java executable exist and are executable and that the Java runtime holds its module
 		image, `lib/modules`, and reports the first path that fails, naming it. CAT checks nothing more of the runtime
 		than that, because the installation records no digest of it to compare with. A launcher that exits before it is
-		ready, with `env`'s status 126 or 127 for a Java executable that cannot run, the sandbox program's failure to
-		execute the runtime, or a runtime that crashes, is reported with its exit status and output.
+		ready, for example with `env`'s status 126 or 127 for a Java executable that cannot run, or a runtime that crashes,
+		is reported with its exit status and output.
 	- **The launcher hangs.** The limit ends in a stage before *ready* and the tree has **stalled**: over the last sixth
 		of the time limit (ten seconds of the standard sixty) the tree held the same processes in the same stage and used
 		less than 1% of one processor's time. A stall in
