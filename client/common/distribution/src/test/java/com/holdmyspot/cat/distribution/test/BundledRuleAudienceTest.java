@@ -620,6 +620,12 @@ public final class BundledRuleAudienceTest
 				contains("same machine, the same input").contains("Ask the user whether to proceed").
 				contains("Do not make the change.").contains("shard jobs that run on separate machines").
 				contains("concurrent runner limit");
+			String caching = Files.readString(plugin.resolve("rules/include/common/build-caching.md")).
+				replaceAll("\\s+", " ");
+			requireThat(caching, "buildCaching").contains("enable the build tool's own build cache").
+				contains("shared or remote cache").contains("incremental compilation").
+				contains("rules/include/common/build-verification.md` and").
+				contains("rules/include/common/build-workflow.md` require");
 			ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml());
 			for (String harness : List.of("claude", "codex"))
 			{

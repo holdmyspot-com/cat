@@ -12,6 +12,8 @@
 	caching.
 - Rely on a cache whose key the agent defines only after a run from the cache and a run without it gave the same
 	results.
+- Speed up a slow build with the build tool's build cache and incremental compilation, which leave the clean acceptance
+	run unchanged.
 
 ## Guidance
 
@@ -19,6 +21,14 @@ When running a build or selecting, configuring, or reusing a build or workflow c
 cache facilities so identical work can reuse valid outputs across attempts and scopes. Prefer existing facilities and
 keep them enabled during routine work instead of clearing them on every attempt. If safe reuse cannot be established,
 recompute the affected work.
+
+When a build or its compilation steps are slow, enable the build tool's own build cache, such as Gradle's build cache,
+Bazel's disk and remote caches or the Maven build cache extension. Use its local cache for repeated runs on one machine
+and, where the tool supports it, a shared or remote cache so that unchanged inputs reuse outputs across branches and CI
+jobs. Also enable the tool's incremental compilation for repeated development and CI iteration builds, such as Cargo's
+`incremental` profile setting or Gradle's incremental Java compilation, so that only changed sources and their
+dependents are recompiled. Neither replaces the clean acceptance run that `build-verification.md` and
+`build-workflow.md` require.
 
 Reuse only completed outputs whose determining inputs, dependencies, toolchain, and effective configuration still
 match; this includes features, target, and profile when relevant. Invalidate only affected outputs and their dependents.
