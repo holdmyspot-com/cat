@@ -937,9 +937,10 @@ public final class CodexRunnerTest
 			requireThat(deniedReads, "deniedReads").contains(key).contains(codexFolder.resolve("auth.json")).
 				contains(socketFolder).doesNotContain(configuration);
 			String profile = Files.readString(configuration);
+			// The profile names each denied path by its real path, which on macOS differs from the temporary folder's
 			for (Path denied : List.of(key, codexFolder.resolve("auth.json"), socketFolder))
 				requireThat(profile, "profile").
-					contains("\"" + TomlStrings.escape(denied.toString()) + "\" = \"deny\"");
+					contains("\"" + TomlStrings.escape(denied.toRealPath().toString()) + "\" = \"deny\"");
 		}
 	}
 
