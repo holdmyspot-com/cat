@@ -436,18 +436,22 @@ public final class RequestServerTest
 				requireThat(Files.exists(service.socket()), "socketExists").isTrue();
 				requireThat(fixture.topLevels.getFirst().read().writeRoots(), "topLevelWriteRoots").
 					isEqualTo(List.of(fixture.project));
-				List<String> secrets = List.copyOf(service.runnerVariables().values());
-				try (Stream<Path> paths = Files.walk(fixture.sessionDirectory()))
-				{
-					for (Path file : paths.filter(Files::isRegularFile).toList())
-					{
-						String content = new String(Files.readAllBytes(file), StandardCharsets.ISO_8859_1);
-						for (String secret : secrets)
-							requireThat(content.contains(secret), "holdsServiceVariable").withContext(file, "file").isFalse();
-					}
-				}
 				fixture.processes.end(fixture.harness);
 				requireThat(server.end(), "exit").isEqualTo(0);
+			}
+			// The server's files are read once it has ended: while it runs, it replaces some through temporary files
+			// and locks others, which Windows then refuses to let another handle read
+			List<String> secrets = List.copyOf(service.runnerVariables().values());
+			List<Path> files;
+			try (Stream<Path> paths = Files.walk(fixture.sessionDirectory()))
+			{
+				files = paths.filter(Files::isRegularFile).toList();
+			}
+			for (Path file : files)
+			{
+				String content = new String(Files.readAllBytes(file), StandardCharsets.ISO_8859_1);
+				for (String secret : secrets)
+					requireThat(content.contains(secret), "holdsServiceVariable").withContext(file, "file").isFalse();
 			}
 			requireThat(Files.exists(service.socket()), "socketRemains").isFalse();
 		}
