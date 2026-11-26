@@ -756,8 +756,9 @@ public final class NestedSessionManagerTest
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("harness");
 
+			String credential = "credential-sentinel-7c41e9d2";
 			manager.initialize(nestedSession, artifact, project, "structured_protocol",
-				List.of("harness", "--label", "line\r\nbreak", "--api-key", "secret"));
+				List.of("harness", "--label", "line\r\nbreak", "--api-key", credential));
 			manager.markCompleted(nestedSession);
 
 			String manifest = Files.readString(nestedSession.directory().resolve("session.json"));
@@ -767,7 +768,7 @@ public final class NestedSessionManagerTest
 			requireThat(fields.get("transport").asString(), "transport").isEqualTo("structured_protocol");
 			requireThat(fields.get("harness_command").asString(), "harnessCommand").
 				isEqualTo("harness --label line\r\nbreak --api-key <redacted>");
-			requireThat(manifest, "manifest").doesNotContain("secret");
+			requireThat(manifest, "manifest").doesNotContain(credential);
 		}
 	}
 
