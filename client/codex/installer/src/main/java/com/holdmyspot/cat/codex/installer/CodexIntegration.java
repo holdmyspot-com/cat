@@ -1057,6 +1057,28 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
+	 * Reports no missing entry: the entries depend on the permission profile that {@code config.toml} selects, and the
+	 * user may change the selection.
+	 *
+	 * @param home         the absolute Codex home
+	 * @param others       the other harnesses' CAT installations
+	 * @param catLocks     the capacity lock directory
+	 * @param startupFiles the shell startup files
+	 * @return an empty map
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	@Override
+	public Map<String, List<String>> missingEntries(Path home, List<HarnessInstallation> others, Path catLocks,
+		List<Path> startupFiles)
+	{
+		requireThat(home, "home").isNotNull();
+		requireThat(others, "others").isNotNull();
+		requireThat(catLocks, "catLocks").isNotNull();
+		requireThat(startupFiles, "startupFiles").isNotNull();
+		return Map.of();
+	}
+
+	/**
 	 * Returns the entries that {@link #installReadOnlyEntries} adds to the current {@code config.toml}.
 	 *
 	 * @param home  the absolute Codex home

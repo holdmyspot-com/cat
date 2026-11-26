@@ -67,6 +67,22 @@ public final class SandboxEntriesTest
 	}
 
 	/**
+	 * Codex reports no missing entry, even when its configuration lacks the entries that install would add, because
+	 * those entries depend on the permission profile that the user selects.
+	 *
+	 * @throws IOException if the test directory cannot be created
+	 */
+	@Test
+	public void reportsNoMissingEntry() throws IOException
+	{
+		Path home = testRoot().resolve("custom codex home");
+		Path locks = testRoot().resolve("user/.cat/locks");
+
+		requireThat(provider().missingEntries(home, List.of(other()), locks, List.of(home.resolve(".bashrc"))),
+			"missing").isEmpty();
+	}
+
+	/**
 	 * Install adds the lock folder in each form it can edit, changing nothing else, and reports the root as added only
 	 * when it wrote it. Uninstall then removes only that value.
 	 *

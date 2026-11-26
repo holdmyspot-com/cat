@@ -53,6 +53,8 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Runs the installer that each assembled plugin carries through a whole installation's life, with the packaged
@@ -292,6 +294,89 @@ public final class InstallerActivationTest
 			fake.requireExitDeletion(versionFolder);
 			requireThat(Files.exists(data), "dataDeleted").isFalse();
 		}
+	}
+
+	/**
+	 * Claude Code's install keeps sandboxed commands from writing Codex's CAT folders although Codex has not installed
+	 * CAT, and its status reports the installation as inconsistent once those entries are gone from the settings, for
+	 * example because a running Claude Code session wrote its own copy of them, until install adds them again.
+	 * <p>
+	 * This test can take over one second: it assembles a plugin and runs the installer's install and status
+	 * operations through the packaged providers.
+	 *
+	 * @throws IOException if a fixture file cannot be written or read
+	 */
+	@Test
+	public void statusReportsMissingSandboxEntries() throws IOException
+	{
+		// Requirement: R-I22
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			TestJvmScope scope = new TestJvmScope())
+		{
+			// Install looks for the harness program outside the temporary directory, so the fixture lies beside the
+			// test classes in the build directory
+			Path build = Path.of(URI.create(InstallerActivationTest.class.getProtectionDomain().getCodeSource().
+				getLocation().toString())).getParent();
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(build.resolve("test-files")),
+				"installer-sandbox-").toRealPath());
+			Platform platform = Platform.current();
+			HarnessIntegration claude = provider(HarnessIntegration.class, "claude");
+			FakeHarness fake = new FakeHarness("claude", platform, root);
+			HarnessInstallation codex = provider(HarnessIntegration.class, "codex").
+				installation(fake.environment, fake.user);
+			Path first = assemble(scope, "claude", platform, FIRST, root.resolve("first"));
+			Path home = fake.home;
+			Path settings = home.resolve("settings.json");
+			List<String> codexFolders = List.of(codex.marketplaceRoot().toString(), codex.versionFolders().toString(),
+				codex.dataDirectory().toString());
+
+			JsonNode installed = fake.run(first, "--home", home.toString(), "install", "--harness", "claude");
+			requireThat(installed.path("result").asString(), "installed").withContext(installed, "output").
+				isEqualTo("installed");
+			Path versionFolder = claude.installation(home).versionFolder(FIRST);
+			JsonNode status = fake.run(versionFolder, "status");
+			requireThat(deniedWrites(settings), "deniedAfterInstall").containsAll(codexFolders);
+			requireThat(status.path("consistent").asBoolean(), "consistentAfterInstall").withContext(status, "output").
+				isTrue();
+
+			ObjectNode document = (ObjectNode) MAPPER.readTree(Files.readString(settings));
+			ArrayNode denied = (ArrayNode) document.at("/sandbox/filesystem/denyWrite");
+			for (int i = denied.size() - 1; i >= 0; --i)
+			{
+				if (codexFolders.contains(denied.get(i).asString()))
+					denied.remove(i);
+			}
+			Files.writeString(settings, MAPPER.writeValueAsString(document));
+			JsonNode lost = fake.run(versionFolder, "status");
+			requireThat(deniedWrites(settings), "deniedAfterLoss").doesNotContainAny(codexFolders);
+			requireThat(lost.path("consistent").asBoolean(), "consistentWithoutEntries").withContext(lost, "output").
+				isFalse();
+
+			JsonNode repaired = fake.run(first, "--home", home.toString(), "install", "--harness", "claude");
+			requireThat(repaired.path("result").asString(), "repaired").withContext(repaired, "output").
+				isEqualTo("updated");
+			requireThat(repaired.path("consistent").asBoolean(), "repairedConsistent").withContext(repaired, "output").
+				isTrue();
+			requireThat(deniedWrites(settings), "deniedAfterRepair").containsAll(codexFolders);
+			JsonNode restored = fake.run(versionFolder, "status");
+			requireThat(restored.path("consistent").asBoolean(), "consistentAfterRepair").
+				withContext(restored, "output").isTrue();
+		}
+	}
+
+	/**
+	 * Returns the folders that a Claude Code settings file denies sandboxed commands writing.
+	 *
+	 * @param settings the {@code settings.json} file
+	 * @return the folders
+	 * @throws IOException if the file cannot be read
+	 */
+	private static List<String> deniedWrites(Path settings) throws IOException
+	{
+		List<String> denied = new ArrayList<>();
+		for (JsonNode entry : MAPPER.readTree(Files.readString(settings)).at("/sandbox/filesystem/denyWrite"))
+			denied.add(entry.asString());
+		return denied;
 	}
 
 	/**

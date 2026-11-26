@@ -4,6 +4,7 @@ import static com.holdmyspot.cat.common.installer.trust.test.ReleaseFixtures.tes
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.InstalledState;
 import com.holdmyspot.cat.common.installer.engine.UpdateResult;
@@ -236,6 +237,52 @@ public final class UpdateTest
 	}
 
 	/**
+	 * Status reports an installation as inconsistent when the configuration lacks an entry that keeps sessions from
+	 * writing another harness's CAT folders or the shell startup files, without changing anything, and install
+	 * restores the entry.
+	 *
+	 * @throws IOException    if the fixture cannot be inspected
+	 * @throws TrustException if the policy is invalid
+	 */
+	@Test
+	public void statusDetectsMissingSandboxEntries() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("status-sandbox-")), catalog());
+			String denied = fixture.root.resolve("other/plugins/cat").toString();
+			fixture.integration.sandboxing(Map.of("sandbox.json#denied", List.of(denied))).denyingWrites();
+			HarnessInstallation other = fixture.integration.installation(fixture.root.resolve("other"));
+			List<Path> startupFiles = List.of(fixture.root.resolve("user/.bashrc"));
+			Path image = fixture.root.resolve("download/plugin");
+			UpdateResult installed = fixture.engine().install("v1.0", fixture.request(image, List.of(other),
+				startupFiles));
+			requireThat(installed.result(), "installed").withContext(installed.message(), "message").
+				isEqualTo(Result.INSTALLED);
+			requireThat(fixture.status(List.of(other), startupFiles).consistent(), "consistentAfterInstall").isTrue();
+
+			Map<String, List<String>> lost = Map.of("sandbox.json#denied", List.of(denied));
+			fixture.integration.loseEntries(fixture.home, lost);
+			Map<String, List<String>> before = fixture.integration.installedEntries(fixture.home);
+
+			requireThat(fixture.status(List.of(other), startupFiles).consistent(), "consistentWithoutSandbox").
+				isFalse();
+			requireThat(fixture.integration.installedEntries(fixture.home), "writtenByStatus").isEqualTo(before);
+			UpdateResult repaired = fixture.engine().install("v1.0", fixture.request(image, List.of(other),
+				startupFiles));
+			requireThat(repaired.result(), "repaired").withContext(repaired.message(), "message").
+				isEqualTo(Result.UP_TO_DATE);
+			requireThat(fixture.status(List.of(other), startupFiles).consistent(), "consistentAfterRepair").isTrue();
+
+			fixture.integration.loseEntries(fixture.home, Map.of("read-only.json#denied",
+				List.of(startupFiles.getFirst().toString())));
+
+			requireThat(fixture.status(List.of(other), startupFiles).consistent(), "consistentWithoutStartupFile").
+				isFalse();
+		}
+	}
+
+	/**
 	 * Status detects missing maintained permissions even when the selected plugin copies agree.
 	 *
 	 * @throws IOException    if the fixture cannot be inspected
@@ -250,13 +297,13 @@ public final class UpdateTest
 			fixture.installActive("1.0");
 			fixture.integration.maintain(Map.of("settings.json", List.of("missing-entry")));
 
-			UpdateResult result = fixture.engine().status(fixture.integration);
+			UpdateResult result = fixture.status();
 
 			requireThat(result.consistent(), "consistent").isFalse();
 			UpdateResult repaired = fixture.install("v1.0", fixture.versionFolder("1.0"));
 			requireThat(repaired.result(), "repaired").withContext(repaired.message(), "message").
 				isEqualTo(Result.UP_TO_DATE);
-			requireThat(fixture.engine().status(fixture.integration).consistent(), "repairedConsistent").isTrue();
+			requireThat(fixture.status().consistent(), "repairedConsistent").isTrue();
 		}
 	}
 

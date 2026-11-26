@@ -382,6 +382,24 @@ public interface HarnessIntegration
 	Map<String, List<String>> readOnlyEntries(Path home, List<Path> files);
 
 	/**
+	 * Returns the entries that {@link #installSandboxEntries} and {@link #installReadOnlyEntries} maintain and that the
+	 * configuration does not hold, without changing anything. A harness whose entries depend on a choice that the user
+	 * makes in the configuration, such as a permission profile, reports none of them.
+	 *
+	 * @param home         the absolute, normalized harness home from the trust policy
+	 * @param others       where each other harness keeps CAT's installation
+	 * @param catLocks     the absolute directory of CAT's capacity locks
+	 * @param startupFiles the absolute shell startup files that the harness's sessions may not change
+	 * @return the missing entries keyed as {@link #installPermissions} keys them; empty when the configuration holds
+	 * 	them all
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code home}, {@code catLocks} or a file are relative
+	 * @throws IOException              if the configuration cannot be read
+	 */
+	Map<String, List<String>> missingEntries(Path home, List<HarnessInstallation> others, Path catLocks,
+		List<Path> startupFiles) throws IOException;
+
+	/**
 	 * Returns the sentences that tell the user what entries that install added change beyond CAT, such as a setting
 	 * that other projects share.
 	 *

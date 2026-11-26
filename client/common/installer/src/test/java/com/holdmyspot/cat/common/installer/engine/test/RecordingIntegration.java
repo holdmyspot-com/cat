@@ -788,6 +788,29 @@ public final class RecordingIntegration implements HarnessIntegration
 	}
 
 	/**
+	 * Returns the entries that {@code sandboxEntries} and {@code readOnlyEntries} report and that the home's
+	 * configuration lacks.
+	 */
+	@Override
+	public Map<String, List<String>> missingEntries(Path home, List<HarnessInstallation> others, Path catLocks,
+		List<Path> startupFiles)
+	{
+		Map<String, List<String>> expected = new LinkedHashMap<>();
+		for (HarnessInstallation other : others)
+			expected.putAll(sandboxEntries(home, other, catLocks));
+		expected.putAll(readOnlyEntries(home, startupFiles));
+		Map<String, List<String>> missing = new LinkedHashMap<>();
+		for (Map.Entry<String, List<String>> entry : expected.entrySet())
+		{
+			List<String> present = configuration(home).getOrDefault(entry.getKey(), List.of());
+			List<String> absent = entry.getValue().stream().filter(value -> !present.contains(value)).toList();
+			if (!absent.isEmpty())
+				missing.put(entry.getKey(), absent);
+		}
+		return Map.copyOf(missing);
+	}
+
+	/**
 	 * Returns the question that the test set, until the user's change was made.
 	 */
 	@Override
@@ -893,6 +916,27 @@ public final class RecordingIntegration implements HarnessIntegration
 	public Map<String, List<String>> installedEntries(Path home)
 	{
 		return Map.copyOf(configuration(home));
+	}
+
+	/**
+	 * Removes entries from a home's configuration, as a program that rewrites the configuration from an older copy
+	 * would, without recording anything.
+	 *
+	 * @param home    the harness home
+	 * @param entries the entries to remove
+	 */
+	public void loseEntries(Path home, Map<String, List<String>> entries)
+	{
+		Map<String, List<String>> configuration = configuration(home);
+		for (Map.Entry<String, List<String>> entry : entries.entrySet())
+		{
+			List<String> values = new ArrayList<>(configuration.getOrDefault(entry.getKey(), List.of()));
+			values.removeAll(entry.getValue());
+			if (values.isEmpty())
+				configuration.remove(entry.getKey());
+			else
+				configuration.put(entry.getKey(), List.copyOf(values));
+		}
 	}
 
 	/**

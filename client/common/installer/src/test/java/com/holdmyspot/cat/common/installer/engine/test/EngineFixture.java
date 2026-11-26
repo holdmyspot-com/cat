@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.installer.engine.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.Waiting;
+import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.engine.InstallRequest;
 import com.holdmyspot.cat.common.installer.engine.ReleaseSource;
@@ -125,8 +126,47 @@ final class EngineFixture
 	 */
 	InstallRequest request(Path image)
 	{
-		return new InstallRequest(integration.session(), image, List.of(), root.resolve("user/.cat/locks"),
-			root.resolve("user/.cat/sessions"), List.of(), _ -> false);
+		return request(image, List.of(), List.of());
+	}
+
+	/**
+	 * Returns the request of an installer that runs from a plugin folder, for a harness beside other harnesses.
+	 *
+	 * @param image        the plugin folder
+	 * @param others       the CAT installations of the other harnesses
+	 * @param startupFiles the shell startup files that the harness's sessions may not change
+	 * @return the request
+	 */
+	InstallRequest request(Path image, List<HarnessInstallation> others, List<Path> startupFiles)
+	{
+		return new InstallRequest(integration.session(), image, others, root.resolve("user/.cat/locks"),
+			root.resolve("user/.cat/sessions"), startupFiles, _ -> false);
+	}
+
+	/**
+	 * Reports the harness's status for a harness that has no other harness and no startup files to protect.
+	 *
+	 * @return the status
+	 * @throws IOException    if provider state is unreadable
+	 * @throws TrustException if the test policy is invalid
+	 */
+	UpdateResult status() throws IOException, TrustException
+	{
+		return status(List.of(), List.of());
+	}
+
+	/**
+	 * Reports the harness's status.
+	 *
+	 * @param others       the CAT installations of the other harnesses
+	 * @param startupFiles the shell startup files that the harness's sessions may not change
+	 * @return the status
+	 * @throws IOException    if provider state is unreadable
+	 * @throws TrustException if the test policy is invalid
+	 */
+	UpdateResult status(List<HarnessInstallation> others, List<Path> startupFiles) throws IOException, TrustException
+	{
+		return engine().status(integration, others, root.resolve("user/.cat/locks"), startupFiles);
 	}
 
 	/**

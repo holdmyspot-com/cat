@@ -30,6 +30,7 @@ import java.nio.file.attribute.FileTime;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.ServiceLoader;
@@ -1034,6 +1035,80 @@ public final class IntegrationTest
 				"  }\n" +
 				"}\n");
 		}
+	}
+
+	/**
+	 * A settings file that lacks an entry for the other harness's CAT folders, the capacity locks or the startup files
+	 * has them reported as missing, whatever the order in which the other harness installed CAT, nothing is written
+	 * to find out, and an install adds exactly what was reported.
+	 *
+	 * @throws IOException if the fixture cannot be created or the settings cannot be written
+	 */
+	@Test
+	public void missingEntriesReportWhatSettingsLack() throws IOException
+	{
+		// Requirement: R-I22
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path userHome = cleanup.add(testDirectory());
+			Path home = Files.createDirectories(userHome.resolve(".claude"));
+			Path codexHome = userHome.resolve(".codex");
+			HarnessInstallation codex = CodexInstallation.fromEnvironment(Map.of(), userHome);
+			Path catLocks = userHome.resolve(".cat/locks");
+			List<Path> startupFiles = List.of(userHome.resolve(".bashrc"));
+			Integration integration = integration();
+			Map<String, List<String>> expected = merged(integration.sandboxEntries(home, codex, catLocks),
+				integration.readOnlyEntries(home, startupFiles));
+
+			Map<String, List<String>> missingBefore = integration.missingEntries(home, List.of(codex), catLocks,
+				startupFiles);
+
+			requireThat(missingBefore, "missingBefore").isEqualTo(expected);
+			requireThat(missingBefore.get(SETTINGS_KEY_DENY_WRITE), "deniedBefore").
+				contains(codexHome.resolve("plugins/cache/cat/cat").toString());
+			requireThat(Files.exists(home.resolve("settings.json")), "settingsCreated").isFalse();
+			Map<String, List<String>> added = merged(integration.installSandboxEntries(home, codex, catLocks,
+				replacer()), integration.installReadOnlyEntries(home, startupFiles, replacer()));
+			requireThat(added, "added").isEqualTo(missingBefore);
+			requireThat(integration.missingEntries(home, List.of(codex), catLocks, startupFiles), "missingAfter").
+				isEmpty();
+
+			Map<String, List<String>> lost = Map.of(SETTINGS_KEY_DENY_WRITE,
+				List.of(codexHome.resolve("plugins/data/cat-cat").toString()));
+			integration.removePermissions(home, lost, replacer());
+			String settings = Files.readString(home.resolve("settings.json"));
+
+			requireThat(integration.missingEntries(home, List.of(codex), catLocks, startupFiles), "missingLost").
+				isEqualTo(lost);
+			requireThat(Files.readString(home.resolve("settings.json")), "settingsAfterCheck").isEqualTo(settings);
+			requireThat(integration.missingEntries(home, List.of(), catLocks, List.of()), "noOthers").isEmpty();
+		}
+	}
+
+	/**
+	 * Merges two sets of entries, listing the entries that both hold for one key once.
+	 *
+	 * @param first  the first entries
+	 * @param second the second entries
+	 * @return the merged entries
+	 */
+	private static Map<String, List<String>> merged(Map<String, List<String>> first,
+		Map<String, List<String>> second)
+	{
+		Map<String, List<String>> merged = new LinkedHashMap<>();
+		for (Map<String, List<String>> entries : List.of(first, second))
+		{
+			for (Map.Entry<String, List<String>> entry : entries.entrySet())
+			{
+				List<String> values = merged.computeIfAbsent(entry.getKey(), _ -> new ArrayList<>());
+				for (String value : entry.getValue())
+				{
+					if (!values.contains(value))
+						values.add(value);
+				}
+			}
+		}
+		return merged;
 	}
 
 	/**

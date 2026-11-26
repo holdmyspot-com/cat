@@ -273,7 +273,7 @@ public final class EngineTest
 				new ReleaseCatalog("1.1", NO_MIGRATION));
 			Files.writeString(RecordingIntegration.registeredVersion(fixture.home), Releases.pluginVersion("1.1"));
 
-			UpdateResult status = fixture.engine().status(fixture.integration);
+			UpdateResult status = fixture.status();
 
 			requireThat(status.result(), "result").isEqualTo(Result.STATUS);
 			requireThat(status.version(), "version").isEqualTo(Optional.of(Releases.pluginVersion("1.1")));

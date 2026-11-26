@@ -333,13 +333,22 @@ public final class Invocation
 			return print(managed.refusal(), arguments, locations);
 		if (arguments.operation() == Operation.STATUS)
 		{
+			// Status checks the entries that name the user's home folder only when the environment gives it
+			Optional<UpdateResult> homeRefusal = readUserHome(own);
 			try (ReleaseConnection source = sources.open(managed.policy().releaseBaseUrl()))
 			{
 				UpdateEngine engine = new UpdateEngine(locations.data(), managed.policy(), source, managed.activation(),
 					platform.id(), clock, waiting);
 				HarnessIntegration integration = integrations.stream().
 					filter(candidate -> candidate.harness().equals(own)).findFirst().orElseThrow();
-				UpdateResult status = engine.status(integration);
+				UpdateResult status;
+				if (homeRefusal.isPresent())
+					status = engine.status(integration);
+				else
+				{
+					status = engine.status(integration, otherInstallations(own), CapacityLocks.root(userHome),
+						ShellStartupFiles.in(userHome));
+				}
 				ObjectNode object = encode(status);
 				if (status.result() == Result.STATUS && status.version().isPresent())
 				{
@@ -356,7 +365,6 @@ public final class Invocation
 				if (arguments.verbose() && status.version().isPresent())
 				{
 					// The report abbreviates the user's home folder in the entries' paths
-					Optional<UpdateResult> homeRefusal = readUserHome(own);
 					if (homeRefusal.isPresent())
 						return print(homeRefusal.get(), arguments, locations);
 					addRecordedEntries(object, locations, managed.home());
@@ -1087,6 +1095,19 @@ public final class Invocation
 	}
 
 	/**
+	 * Returns where each harness other than the given one keeps CAT's installation, at the harness homes that the
+	 * environment selects, whether or not CAT is installed there. Needs {@link #userHome}.
+	 *
+	 * @param harness the harness that the operation names
+	 * @return the installations, one for each other harness
+	 */
+	private List<HarnessInstallation> otherInstallations(String harness)
+	{
+		return integrations.stream().filter(provider -> !provider.harness().equals(harness)).
+			map(provider -> provider.installation(environment, userHome)).toList();
+	}
+
+	/**
 	 * Returns the request of an install that the running installer performs.
 	 *
 	 * @param managed the checked installation
@@ -1096,10 +1117,7 @@ public final class Invocation
 	 */
 	private InstallRequest request(Managed managed, Path plugin, Consent consent)
 	{
-		String harness = managed.activation().harness();
-		List<HarnessInstallation> others = integrations.stream().
-			filter(provider -> !provider.harness().equals(harness)).
-			map(provider -> provider.installation(environment, userHome)).toList();
+		List<HarnessInstallation> others = otherInstallations(managed.activation().harness());
 		return new InstallRequest(managed.session(), plugin, others, CapacityLocks.root(userHome),
 			PluginInstall.formerLauncherState(userHome), ShellStartupFiles.in(userHome), consent);
 	}

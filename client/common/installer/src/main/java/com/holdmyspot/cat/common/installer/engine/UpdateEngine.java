@@ -220,13 +220,52 @@ public final class UpdateEngine
 	}
 
 	/**
-	 * Reports the active version without writes.
+	 * Reports the active version without writes. The installation is consistent only if the harness's configuration
+	 * holds the entries that install maintains for the installer, the other harnesses' CAT folders, the capacity locks
+	 * and the shell startup files.
+	 *
+	 * @param integration  inspects actual permission configuration for this harness
+	 * @param others       the CAT installations of the other harnesses
+	 * @param catLocks     the directory of the capacity locks
+	 * @param startupFiles the shell startup files that the harness's sessions may not change
+	 * @return the status outcome; its version is empty when the harness has no plugin
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if provider state is unreadable
+	 */
+	public UpdateResult status(HarnessIntegration integration, List<HarnessInstallation> others, Path catLocks,
+		List<Path> startupFiles) throws IOException
+	{
+		requireThat(others, "others").isNotNull();
+		requireThat(catLocks, "catLocks").isNotNull();
+		requireThat(startupFiles, "startupFiles").isNotNull();
+		return status(integration, Optional.of(new HeldEntries(others, catLocks, startupFiles)));
+	}
+
+	/**
+	 * Reports the active version without writes, for a caller that does not know the user's home folder, which names
+	 * the capacity locks, the shell startup files and the other harnesses' CAT folders. The installation is consistent
+	 * only if the harness's configuration holds the entries that install maintains for the installer; the entries that
+	 * name those folders are not checked.
 	 *
 	 * @param integration inspects actual permission configuration for this harness
 	 * @return the status outcome; its version is empty when the harness has no plugin
-	 * @throws IOException if provider state is unreadable
+	 * @throws NullPointerException if {@code integration} is null
+	 * @throws IOException          if provider state is unreadable
 	 */
 	public UpdateResult status(HarnessIntegration integration) throws IOException
+	{
+		return status(integration, Optional.empty());
+	}
+
+	/**
+	 * Reports the active version without writes.
+	 *
+	 * @param integration inspects actual permission configuration for this harness
+	 * @param held        the entries that the configuration must hold besides the installer's; empty to check none
+	 * @return the status outcome; its version is empty when the harness has no plugin
+	 * @throws IOException if provider state is unreadable
+	 */
+	private UpdateResult status(HarnessIntegration integration, Optional<HeldEntries> held) throws IOException
 	{
 		requireThat(integration, "integration").isNotNull();
 		Path home = policy.harnesses().get(activation.harness());
@@ -248,7 +287,9 @@ public final class UpdateEngine
 					allMatch(entry -> recorded.getOrDefault(entry.getKey(), List.of()).containsAll(entry.getValue()));
 				consistent = integration.permissionsInstalled(environment, home, installer) && ownedFilesRecorded &&
 					PermissionRecord.obsolete(state.permissions(), expected).entrySet().stream().
-						filter(entry -> entry.getKey().endsWith("#")).findAny().isEmpty();
+						filter(entry -> entry.getKey().endsWith("#")).findAny().isEmpty() &&
+					(held.isEmpty() || integration.missingEntries(home, held.get().others(), held.get().catLocks(),
+						held.get().startupFiles()).isEmpty());
 			}
 			catch (IllegalArgumentException _)
 			{
@@ -261,6 +302,18 @@ public final class UpdateEngine
 				"run install to repair it, then restart the harness to load changed permissions.";
 		return new UpdateResult(Result.STATUS, activation.harness(), installed.version(), Optional.empty(),
 			message, List.of(), consistent, keyIds());
+	}
+
+	/**
+	 * The entries that a harness's configuration must hold besides the installer's, which name the user's home folder
+	 * or the other harnesses' installations.
+	 *
+	 * @param others       the CAT installations of the other harnesses
+	 * @param catLocks     the directory of the capacity locks
+	 * @param startupFiles the shell startup files that the harness's sessions may not change
+	 */
+	private record HeldEntries(List<HarnessInstallation> others, Path catLocks, List<Path> startupFiles)
+	{
 	}
 
 	/**

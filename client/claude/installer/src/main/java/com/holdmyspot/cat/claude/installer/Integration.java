@@ -595,6 +595,51 @@ public final class Integration implements HarnessIntegration
 		return containsPermissions(home, entries(installer));
 	}
 
+	/**
+	 * Returns the entries of {@link #sandboxEntries} for each other harness and of {@link #readOnlyEntries} that
+	 * {@code settings.json} lacks, reading the file only.
+	 *
+	 * @param home         the absolute Claude Code configuration directory
+	 * @param others       where each other harness keeps CAT's installation
+	 * @param catLocks     the absolute capacity lock directory
+	 * @param startupFiles the absolute shell startup files
+	 * @return the missing entries, keyed {@code settings.json#<setting>}; empty when the file holds them all
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code home}, {@code catLocks} or a file are relative
+	 * @throws IOException              if the settings cannot be read
+	 */
+	@Override
+	public Map<String, List<String>> missingEntries(Path home, List<HarnessInstallation> others, Path catLocks,
+		List<Path> startupFiles) throws IOException
+	{
+		requireThat(others, "others").isNotNull();
+		Map<String, List<String>> expected = new LinkedHashMap<>();
+		for (HarnessInstallation other : others)
+			merge(expected, filesystemEntries(home, other, catLocks));
+		merge(expected, readOnly(home, startupFiles));
+		return keyed(missing(home, expected));
+	}
+
+	/**
+	 * Adds entries to a map of entries, keeping each setting's entries in order and each entry once.
+	 *
+	 * @param target  the entries that receive the others
+	 * @param entries the added entries, by dotted setting name
+	 */
+	private static void merge(Map<String, List<String>> target, Map<String, List<String>> entries)
+	{
+		for (Map.Entry<String, List<String>> setting : entries.entrySet())
+		{
+			List<String> values = new ArrayList<>(target.getOrDefault(setting.getKey(), List.of()));
+			for (String value : setting.getValue())
+			{
+				if (!values.contains(value))
+					values.add(value);
+			}
+			target.put(setting.getKey(), List.copyOf(values));
+		}
+	}
+
 	@Override
 	public boolean updatePermitted(Map<String, String> environment, Path home, Path installer) throws IOException
 	{
@@ -607,26 +652,42 @@ public final class Integration implements HarnessIntegration
 	/**
 	 * Checks that settings contain each requested permission without changing the file.
 	 *
-	 * @param home the Claude configuration directory
+	 * @param home     the Claude configuration directory
 	 * @param expected required entries by setting name
 	 * @return true when every entry is present
 	 * @throws IOException if settings cannot be read
 	 */
 	private static boolean containsPermissions(Path home, Map<String, List<String>> expected) throws IOException
 	{
+		return missing(home, expected).isEmpty();
+	}
+
+	/**
+	 * Returns the requested entries that settings lack, without changing the file.
+	 *
+	 * @param home     the Claude configuration directory
+	 * @param expected required entries by setting name
+	 * @return the missing entries by setting name, in the order of {@code expected}; a setting is absent when its
+	 * 	entries are all present
+	 * @throws IOException if settings cannot be read
+	 */
+	private static Map<String, List<String>> missing(Path home, Map<String, List<String>> expected) throws IOException
+	{
 		ObjectNode root = readSettings(home);
+		Map<String, List<String>> missing = new LinkedHashMap<>();
 		for (Map.Entry<String, List<String>> entry : expected.entrySet())
 		{
-			List<String> present = new ArrayList<>();
+			Set<String> present = new LinkedHashSet<>();
 			for (JsonNode value : settingArray(root, entry.getKey()))
 			{
 				if (value.isString())
 					present.add(value.stringValue());
 			}
-			if (!present.containsAll(entry.getValue()))
-				return false;
+			List<String> absent = entry.getValue().stream().filter(value -> !present.contains(value)).toList();
+			if (!absent.isEmpty())
+				missing.put(entry.getKey(), absent);
 		}
-		return true;
+		return missing;
 	}
 
 	/**
