@@ -1243,12 +1243,8 @@ public final class ClaudeRunnerCliTest
 			StringWriter errors = new StringWriter();
 
 			String path = SandboxPrograms.path(root);
-			IOException failure = expectThrows(IOException.class, () -> launchWithAuthentication(root, List.of(),
-				Map.of("PATH", path, Platform.current().homeVariable(), home.toString()), errors));
-
-			// The session starts and fails only because the test runs no CAT artifact
-			requireThat(failure, "failure").isNotInstanceOf(SessionRefusedException.class);
-			requireThat(errors.toString(), "errors").isEmpty();
+			requireLaunchStarts(() -> launchWithAuthentication(root, List.of(),
+				Map.of("PATH", path, Platform.current().homeVariable(), home.toString()), errors), errors);
 		}
 	}
 
@@ -1563,12 +1559,8 @@ public final class ClaudeRunnerCliTest
 			StringWriter errors = new StringWriter();
 
 			String path = SandboxPrograms.path(root);
-			IOException failure = expectThrows(IOException.class, () -> launchWithAuthentication(root, List.of(),
-				Map.of("PATH", path, Platform.current().homeVariable(), home.toString()), errors));
-
-			// The session starts and fails only because the test runs no CAT artifact
-			requireThat(failure, "failure").isNotInstanceOf(SessionRefusedException.class);
-			requireThat(errors.toString(), "errors").isEmpty();
+			requireLaunchStarts(() -> launchWithAuthentication(root, List.of(),
+				Map.of("PATH", path, Platform.current().homeVariable(), home.toString()), errors), errors);
 		}
 	}
 
@@ -1605,11 +1597,64 @@ public final class ClaudeRunnerCliTest
 			requireThat(Files.exists(root.resolve("results")), "resultsFolderExists").isFalse();
 
 			StringWriter inheritedErrors = new StringWriter();
-			IOException failure = expectThrows(IOException.class, () -> launchWithAuthentication(root, List.of(
-				"--home", source.toString(), "--inherited-source-home"), environment, inheritedErrors, List.of(denied)));
-			// The session starts and fails only because the test runs no CAT artifact
-			requireThat(failure, "failure").isNotInstanceOf(SessionRefusedException.class);
-			requireThat(inheritedErrors.toString(), "inheritedErrors").isEmpty();
+			requireLaunchStarts(() -> launchWithAuthentication(root, List.of("--home", source.toString(),
+				"--inherited-source-home"), environment, inheritedErrors, List.of(denied)), inheritedErrors);
+		}
+	}
+
+	/**
+	 * A launch that a test runs in this process.
+	 */
+	@FunctionalInterface
+	private interface Launch
+	{
+		/**
+		 * Runs the launch.
+		 *
+		 * @return the launch's exit status
+		 * @throws IOException if the launch fails without being refused
+		 */
+		int run() throws IOException;
+	}
+
+	/**
+	 * Requires that a launch passes the checks of its source home and goes on to start its session. On Linux and
+	 * macOS it fails only because the test runs no CAT artifact. On native Windows, where Claude Code has no sandbox,
+	 * the runner refuses the session for that alone, after the checks of the source home.
+	 *
+	 * @param launch the launch
+	 * @param errors what the launch printed
+	 */
+	private static void requireLaunchStarts(Launch launch, StringWriter errors)
+	{
+		if (Platform.current().isWindows())
+		{
+			int status = assertDoesNotThrow(launch);
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").contains("Claude Code has no sandbox on native Windows");
+			return;
+		}
+		IOException failure = expectThrows(IOException.class, launch::run);
+		// The session starts and fails only because the test runs no CAT artifact
+		requireThat(failure, "failure").isNotInstanceOf(SessionRefusedException.class);
+		requireThat(errors.toString(), "errors").isEmpty();
+	}
+
+	/**
+	 * Runs a launch that must not throw.
+	 *
+	 * @param launch the launch
+	 * @return the launch's exit status
+	 */
+	private static int assertDoesNotThrow(Launch launch)
+	{
+		try
+		{
+			return launch.run();
+		}
+		catch (IOException e)
+		{
+			throw new AssertionError("The launch failed instead of being refused", e);
 		}
 	}
 

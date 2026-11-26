@@ -41,6 +41,44 @@ public final class CommandLineArguments
 	}
 
 	/**
+	 * Quotes an argument the way that Windows programs split their command line, so that the program receives it
+	 * unchanged: inside double quotes, a double quote is escaped with a backslash, and the backslashes before a
+	 * double quote, or before the closing quote, are doubled.
+	 * <p>
+	 * Java adds no quotes to an argument that starts and ends with a double quote, and passes it unchanged unless the
+	 * system property {@code jdk.lang.Process.allowAmbiguousCommands} is {@code false}. Java would otherwise quote an
+	 * argument that holds a space, a tab or a double quote without escaping the double quotes inside it, and would pass
+	 * an empty argument in a way that some programs drop. A caller that starts a Windows program with arguments that
+	 * hold such characters passes each argument through this method.
+	 *
+	 * @param argument the argument
+	 * @return the quoted argument
+	 * @throws NullPointerException if {@code argument} is null
+	 */
+	public static String quote(String argument)
+	{
+		requireThat(argument, "argument").isNotNull();
+		StringBuilder quoted = new StringBuilder("\"");
+		int backslashes = 0;
+		for (int i = 0; i < argument.length(); ++i)
+		{
+			char c = argument.charAt(i);
+			if (c == '\\')
+			{
+				++backslashes;
+				continue;
+			}
+			if (c == '"')
+				quoted.repeat('\\', backslashes * 2 + 1);
+			else
+				quoted.repeat('\\', backslashes);
+			quoted.append(c);
+			backslashes = 0;
+		}
+		return quoted.repeat('\\', backslashes * 2).append('"').toString();
+	}
+
+	/**
 	 * Returns the arguments that a command line passed to a program that the Java launcher started.
 	 *
 	 * @param launcherArguments the arguments that the launcher passed to {@code main}

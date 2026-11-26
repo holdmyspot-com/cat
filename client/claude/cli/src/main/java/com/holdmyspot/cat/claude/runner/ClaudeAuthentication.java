@@ -273,7 +273,7 @@ public final class ClaudeAuthentication
 				"gateway bills. Name it with " + AuthenticationOptions.LOGIN_CLASS_OPTION + " subscription or " +
 				AuthenticationOptions.LOGIN_CLASS_OPTION + " api_key.");
 		}
-		List<Path> secretFiles = secretFiles(source, settings, tokens, helper, credential);
+		List<Path> secretFiles = secretFiles(source, settings, tokens, helper, credential, platform);
 		for (Path file : secretFiles)
 		{
 			Optional<String> problem = SecretFile.problem(file, SecretFile.read(file));
@@ -431,10 +431,11 @@ public final class ClaudeAuthentication
 	 * @param tokens     the source's tokens
 	 * @param helper     the source's {@code apiKeyHelper}, or {@code null} if it sets none
 	 * @param credential CAT's credential file of the source home, or empty if it has none
+	 * @param platform   the platform of the source home, where a path with a drive letter is absolute if it is Windows
 	 * @return the files, each once
 	 */
 	private static List<Path> secretFiles(SourceHome source, Path settings, Map<String, String> tokens, String helper,
-		Optional<ClaudeCredentialFile> credential)
+		Optional<ClaudeCredentialFile> credential, Platform platform)
 	{
 		Set<Path> files = new LinkedHashSet<>();
 		if (!tokens.isEmpty())
@@ -448,7 +449,7 @@ public final class ClaudeAuthentication
 				Path file;
 				if (unquoted.startsWith("~/"))
 					file = source.directory().resolve(unquoted.substring(2));
-				else if (unquoted.startsWith("/"))
+				else if (unquoted.startsWith("/") || (platform.isWindows() && isDriveAbsolute(unquoted)))
 					file = Path.of(unquoted);
 				else
 					continue;
@@ -457,6 +458,19 @@ public final class ClaudeAuthentication
 			}
 		}
 		return List.copyOf(files);
+	}
+
+	/**
+	 * Indicates whether a word of a helper's command names an absolute path with a drive letter, such as
+	 * {@code C:\keys\key} or {@code C:/keys/key}, which the shell of Git for Windows accepts.
+	 *
+	 * @param word a word of the command, without quotes
+	 * @return {@code true} if the word begins with a drive letter, a colon and a separator
+	 */
+	private static boolean isDriveAbsolute(String word)
+	{
+		return word.length() > 2 && Character.isLetter(word.charAt(0)) && word.charAt(1) == ':' &&
+			(word.charAt(2) == '\\' || word.charAt(2) == '/');
 	}
 
 	/**

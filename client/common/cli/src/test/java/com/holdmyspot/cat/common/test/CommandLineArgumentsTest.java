@@ -87,4 +87,35 @@ public final class CommandLineArgumentsTest
 
 		requireThat(recovered, "recovered").isEqualTo(launcherArguments);
 	}
+
+	/**
+	 * Verifies that each argument that {@link CommandLineArguments#quote(String)} quotes is read back unchanged from
+	 * the command line, whatever it holds: spaces, quotes, backslashes before a quote or at its end, or nothing.
+	 */
+	@Test
+	public void quotedArgumentsComeBackUnchanged()
+	{
+		// Each holds a character outside the ANSI code page, so that the command line decides what the program reads
+		String[] arguments = {"a b\u2713", "\u2713", "c'd\u2713", "say \"hi\"\u2713", "dir\\\u2713\\",
+			"x\\\"\u2713", "\u2713 "};
+		String[] launcher = new String[arguments.length];
+		StringBuilder commandLine = new StringBuilder(LAUNCHER_COMMAND);
+		for (int i = 0; i < arguments.length; ++i)
+		{
+			launcher[i] = arguments[i].replace('\u2713', '?');
+			commandLine.append(CommandLineArguments.quote(arguments[i])).append(' ');
+		}
+
+		requireThat(CommandLineArguments.recover(launcher, commandLine.toString()), "recovered").
+			isEqualTo(arguments);
+	}
+
+	/**
+	 * Verifies that an empty argument is quoted as two quotes, which a program reads as an empty argument.
+	 */
+	@Test
+	public void quotesEmptyArgument()
+	{
+		requireThat(CommandLineArguments.quote(""), "quoted").isEqualTo("\"\"");
+	}
 }

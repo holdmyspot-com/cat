@@ -118,7 +118,16 @@ public final class CodexSourceHomeCommand
 			System.err.println("Usage: " + CodexSourceHomeCommand.class.getName() + " <home> <program> [<argument>...]");
 			System.exit(1);
 		}
-		ProcessBuilder builder = new ProcessBuilder(List.of(args).subList(1, args.length)).inheritIO();
+		List<String> command = new ArrayList<>(List.of(args).subList(1, args.length));
+		if (Platform.current().isWindows())
+		{
+			// Java would pass an argument that holds a space or a quote to the program without escaping its quotes, and
+			// pass an empty one as nothing, so the source command would see other arguments than the user wrote. The
+			// program is not quoted, because Java looks it up by the name that it is given.
+			for (int i = 1; i < command.size(); ++i)
+				command.set(i, CommandLineArguments.quote(command.get(i)));
+		}
+		ProcessBuilder builder = new ProcessBuilder(command).inheritIO();
 		builder.environment().putAll(homeVariables(Path.of(args[0]), Platform.current()));
 		Process process;
 		try

@@ -75,8 +75,8 @@ public final class ClaudeAuthenticationTest
 			Path absoluteKey = SourceHomes.secret(root.resolve("keys/absolute-key"));
 			SourceHomes.readableByOthers(absoluteKey);
 			SourceHomes.settings(absoluteSource, """
-				{"apiKeyHelper": "cat %s"}
-				""".formatted(absoluteKey));
+				{"apiKeyHelper": %s}
+				""".formatted(JSON.writeValueAsString("cat " + absoluteKey)));
 			requireRefusal(absoluteSource, absoluteKey);
 
 			Path tildeSource = SourceHomes.create(root, "tilde");

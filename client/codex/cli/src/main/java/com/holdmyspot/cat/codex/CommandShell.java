@@ -2,6 +2,7 @@ package com.holdmyspot.cat.codex;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.CommandLineArguments;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.ShellQuoting;
 
@@ -254,41 +255,8 @@ public enum CommandShell
 			requireThat(environment, "environment").isNotNull();
 			// -EncodedCommand would avoid quoting the command, but it makes PowerShell write every stream other than
 			// standard output as serialized objects (CLIXML) instead of text.
-			return List.of(executable(environment), "-NoProfile", "-Command", quoteArgument(UTF8_OUTPUT + command));
-		}
-
-		/**
-		 * Quotes an argument the way that Windows programs split their command line, so that the program receives it
-		 * unchanged: inside double quotes, a double quote is escaped with a backslash, and the backslashes before a
-		 * double quote, or before the closing quote, are doubled.
-		 * <p>
-		 * Java adds no quotes to an argument that starts and ends with a double quote, and passes it unchanged unless the
-		 * system property {@code jdk.lang.Process.allowAmbiguousCommands} is {@code false}. Java would otherwise quote
-		 * the argument without escaping the double quotes inside it.
-		 *
-		 * @param argument the argument
-		 * @return the quoted argument
-		 */
-		private static String quoteArgument(String argument)
-		{
-			StringBuilder quoted = new StringBuilder("\"");
-			int backslashes = 0;
-			for (int i = 0; i < argument.length(); ++i)
-			{
-				char c = argument.charAt(i);
-				if (c == '\\')
-				{
-					++backslashes;
-					continue;
-				}
-				if (c == '"')
-					quoted.repeat('\\', backslashes * 2 + 1);
-				else
-					quoted.repeat('\\', backslashes);
-				quoted.append(c);
-				backslashes = 0;
-			}
-			return quoted.repeat('\\', backslashes * 2).append('"').toString();
+			return List.of(executable(environment), "-NoProfile", "-Command",
+				CommandLineArguments.quote(UTF8_OUTPUT + command));
 		}
 
 		/**

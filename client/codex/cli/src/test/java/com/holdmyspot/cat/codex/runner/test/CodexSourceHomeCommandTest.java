@@ -5,6 +5,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.codex.runner.CodexKeyFileCommand;
 import com.holdmyspot.cat.codex.runner.CodexSourceHomeCommand;
+import com.holdmyspot.cat.common.CommandLineArguments;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import java.io.IOException;
@@ -161,7 +162,14 @@ public final class CodexSourceHomeCommandTest
 			List.of(argument));
 		List<String> command = new ArrayList<>();
 		command.add(invocation.program());
-		command.addAll(invocation.arguments());
+		for (String launcherArgument : invocation.arguments())
+		{
+			// Codex, which starts a token command, quotes its arguments as Windows programs read them, and Java does not
+			if (Platform.current().isWindows())
+				command.add(CommandLineArguments.quote(launcherArgument));
+			else
+				command.add(launcherArgument);
+		}
 		ProcessBuilder builder = new ProcessBuilder(command).directory(folder.toFile()).redirectErrorStream(true);
 		Map<String, String> environment = builder.environment();
 		environment.clear();
