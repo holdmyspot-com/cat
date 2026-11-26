@@ -199,13 +199,15 @@ refusal prints it, to run in their own terminal, and neither run it nor ask the 
 pass through your session.
 
 Every Codex session that the launch starts, and every one that its sessions request, likewise uses the authentication
-of a source home: the `auth.json` of the home folder's `.codex` folder when it holds an API key, and the settings of
-its `config.toml` that choose the model provider and its credential, such as a provider's token command; never a
-ChatGPT sign-in. Without `--home`, its Codex folder is the one that `CODEX_HOME` names when it is set. `--home` and
+of a source home: the Codex login of the home folder's `.codex` folder, in its `auth.json` or the operating system's
+keyring, or the credential of the model provider that its `config.toml` selects, such as a provider's token command.
+The request server serves every login that can change, a ChatGPT sign-in included, so the session never holds it.
+Without `--home`, its Codex folder is the one that `CODEX_HOME` names when it is set. `--home` and
 `--gateway-login-class` work as for Claude Code, and the launcher names `--gateway-login-class` when the selected
 provider or `openai_base_url` sends the session's requests to a gateway. Report any other refusal of the source home to
-the user, such as one whose `auth.json` holds a ChatGPT sign-in or whose provider takes its key from an environment
-variable, with the fix that the refusal names, and do not read, copy or change the source home's files yourself.
+the user, such as one that holds no Codex login, a keyring login that the top-level session cannot reach, or a provider
+whose `env_key` names a variable that is not set, with the fix that the refusal names, and do not read, copy or change
+the source home's files yourself.
 
 Pass `--session-transcripts` only when your task needs the session's own transcript. The runner then
 copies every transcript of the session, subagents' included, into `artifacts/session-transcripts` in its session
