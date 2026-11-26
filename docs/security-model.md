@@ -125,7 +125,8 @@ and the setting that hold it; with `--json`, the result's `permissions` field ho
 	A command on this list runs outside the sandbox.
 - `permissions.allow`: install and status commands run without a prompt. `uninstall` keeps Claude Code's prompt.
 - `sandbox.filesystem.denyWrite`: sandboxed commands may not write the other harness's marketplace folder, version
-	folders and data directory.
+	folders and data directory. `install` adds these whether or not the other harness has CAT installed yet, and `status`
+	reports the installation as inconsistent when `settings.json` lacks any of them.
 - `sandbox.filesystem.allowWrite`: sandboxed commands may write `~/.cat/locks`.
 - On Linux and macOS, the request server `request-server` beside the installer, as its absolute path with no
 	arguments: in `sandbox.excludedCommands`, and as `Bash(<path>)` in `permissions.allow`. Sessions run it outside
