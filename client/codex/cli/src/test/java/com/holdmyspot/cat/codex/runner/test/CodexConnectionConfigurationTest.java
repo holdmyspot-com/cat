@@ -1775,4 +1775,60 @@ public final class CodexConnectionConfigurationTest
 	{
 		return path.toString().replace("\\", "\\\\");
 	}
+
+	/**
+	 * Returns the source home's {@code web_search} settings and the value that a nested session's configuration
+	 * carries for each.
+	 *
+	 * @return the setting's line in the source's {@code config.toml}, empty for none, and the nested value
+	 */
+	@DataProvider
+	public static Object[][] webSearch()
+	{
+		return new Object[][]
+			{
+				{"web_search = \"disabled\"", "disabled"},
+				{"web_search = \"cached\"", "cached"},
+				{"web_search = \"indexed\"", "indexed"},
+				{"web_search = \"live\"", "live"},
+				{"", "cached"}
+			};
+	}
+
+	/**
+	 * Verifies that a nested session's configuration carries the source home's top-level {@code web_search} value, and
+	 * {@code cached} when the source sets none, so that the hosted web search tool, which Codex gives the session's
+	 * custom provider, searches as it does in the user's own Codex.
+	 *
+	 * @param line     the setting's line in the source's {@code config.toml}, empty for none
+	 * @param expected the value that the nested configuration carries
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test(dataProvider = "webSearch")
+	public void carriesSourceWebSearch(String line, String expected) throws IOException
+	{
+		// Requirement: R-I15
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-web-search-")).toRealPath();
+			Path source = CodexSourceHomes.create(root, "source");
+			CodexSourceHomes.apiKeyLogin(source.resolve(".codex"));
+			CodexSourceHomes.configuration(source.resolve(".codex"), line + "\n");
+			CodexAuthentication authentication = CodexAuthentication.read(new AuthenticationOptions(Optional.of(source),
+				Optional.empty(), false), Map.of(), Platform.current());
+			Path home = Files.createDirectories(root.resolve("session/home"));
+			Path destination = home.resolve(".codex/config.toml");
+			Files.createDirectories(destination.getParent());
+			ChildPolicy policy = ChildPolicy.intersect(ParentPolicy.UNSANDBOXED, new ChildNeeds(root.resolve("session"),
+				List.of(), List.of(), Set.of()));
+
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, home,
+				authentication.settings(home.resolve(".codex")), root.resolve("session/project"),
+				HarnessDependencyCaches.NONE, home.resolve("tmp"), 0, null, Platform.LINUX_X64,
+				CodexParentMultiAgentState.NONE, policy, ExtraPermissions.NONE, null);
+
+			JsonNode configuration = TomlMapper.builder().build().readTree(Files.readString(destination));
+			requireThat(configuration.path("web_search").asString(""), "webSearch").isEqualTo(expected);
+		}
+	}
 }

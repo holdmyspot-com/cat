@@ -102,6 +102,14 @@ public final class CodexAuthentication
 	 * The values of {@code cli_auth_credentials_store} that keep the login in the operating system's store.
 	 */
 	private static final Set<String> SYSTEM_STORES = Set.of("keyring", "auto");
+	/**
+	 * The top-level setting that gates the hosted web search tool.
+	 */
+	private static final String WEB_SEARCH = "web_search";
+	/**
+	 * The {@code web_search} value that Codex uses when a configuration sets none.
+	 */
+	private static final String DEFAULT_WEB_SEARCH = "cached";
 
 	private final SourceHome source;
 	private final Path folder;
@@ -115,6 +123,7 @@ public final class CodexAuthentication
 	private final List<Path> sourceFiles;
 	private final String providerId;
 	private final String keyFileToken;
+	private final String webSearch;
 
 	/**
 	 * Creates an authentication.
@@ -132,10 +141,11 @@ public final class CodexAuthentication
 	 * @param providerId    the identifier of the selected provider
 	 * @param keyFileToken  the token that the session's key file holds, or {@code null} if the selected provider does
 	 *                      not supply one through {@code env_key} or {@code experimental_bearer_token}
+	 * @param webSearch     the source's {@code web_search} value
 	 */
 	private CodexAuthentication(SourceHome source, Path folder, Path configuration, ObjectNode settings,
 		List<String> settingNames, Path login, HostLogin loginClass, String modelHost, List<Path> secretFiles,
-		List<Path> sourceFiles, String providerId, String keyFileToken)
+		List<Path> sourceFiles, String providerId, String keyFileToken, String webSearch)
 	{
 		this.source = source;
 		this.folder = folder;
@@ -149,6 +159,7 @@ public final class CodexAuthentication
 		this.sourceFiles = sourceFiles;
 		this.providerId = providerId;
 		this.keyFileToken = keyFileToken;
+		this.webSearch = webSearch;
 	}
 
 	/**
@@ -315,7 +326,8 @@ public final class CodexAuthentication
 		if (baseUrl != null)
 			loginClass = declared.orElseThrow();
 		return new CodexAuthentication(source, folder, configuration, settings, List.copyOf(settingNames),
-			apiKeyLogin, loginClass, modelHost, secretFiles, List.copyOf(sourceFiles), providerId, keyFileToken);
+			apiKeyLogin, loginClass, modelHost, secretFiles, List.copyOf(sourceFiles), providerId, keyFileToken,
+			values.path(WEB_SEARCH).asString(DEFAULT_WEB_SEARCH));
 	}
 
 	/**
@@ -562,18 +574,18 @@ public final class CodexAuthentication
 	 * Returns the settings that the session's {@code config.toml} takes from the source, as TOML dotted keys that belong
 	 * at the file's root, before any table header. A provider whose token the session's key file holds has an
 	 * {@code auth} token command that prints that file, in place of its {@code env_key} and
-	 * {@code experimental_bearer_token}.
+	 * {@code experimental_bearer_token}. The settings also carry the source's top-level {@code web_search} value, or
+	 * {@code cached} when the source sets none, which gates the hosted web search tool of the session's provider.
 	 *
 	 * @param codexFolder the session's Codex folder, which holds the key file
-	 * @return the TOML text, empty if the source sets none of them
+	 * @return the TOML text
 	 * @throws NullPointerException if {@code codexFolder} is null
 	 */
 	public String settings(Path codexFolder)
 	{
 		requireThat(codexFolder, "codexFolder").isNotNull();
-		if (settings.isEmpty())
-			return "";
 		ObjectNode session = settings.deepCopy();
+		session.put(WEB_SEARCH, webSearch);
 		if (keyFileToken != null)
 		{
 			ObjectNode tokenCommand = ((ObjectNode) session.path("model_providers").path(providerId)).putObject("auth");
