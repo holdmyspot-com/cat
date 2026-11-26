@@ -3281,11 +3281,63 @@ brief was sufficient or an explanation is correct needs meaning and stays with a
 	judge is told only that the program could not run, never its output or the cause; the trial's record, `status` and
 	the user's reports keep the whole output with the cause, including the compiler's full report of a program that does
 	not compile, so the user can fix the program or report a defect (user ruling, 2026-11-25). A host problem that keeps CAT from
-	running any program, such as a scratch directory that cannot be created or a sandbox that does not start, is an
-	infrastructure failure, as for a tool whose evidence the record lacks. A program error is not an infrastructure
+	running any program, such as a scratch directory that cannot be created, is an infrastructure failure, as for a
+	tool whose evidence the record lacks; a sandbox that does not start and a launcher that is missing, damaged or
+	hung have their own failures (start-up failures, below). A program error is not an infrastructure
 	failure because the same evidence gives the same error: rerunning the trial would replace each trial that the
 	program cannot handle with another and so drop the unusual trials from the counts, while a failure never removes a
 	trial and never passes one that the program did not pass.
+- **Start-up failures (user ruling, 2026-11-26).** A run whose launcher is not ready when the run ends is not
+	reported as a timeout. The user's ruling: "In the case of 'The sandbox can't start, for example because user
+	namespaces are blocked or a mount fails' and 'A missing or damaged launcher, or a launcher that hangs from a bug' we
+	want to be able to detect the root cause instead of flagging it as a timeout. For all the other cases, treat it as an
+	infrastructure problem." The launcher is what starts the program: the sandbox program (bubblewrap on Linux,
+	`sandbox-exec` on macOS), `env` and the Java runtime that runs the source launcher, which prints a ready line as
+	the first thing it does. A run passes three **start-up stages**, and CAT reports the last that it reached:
+	- *sandbox setup*: every program of the run's process tree is the sandbox program, which is setting up its
+		namespaces and mounts;
+	- *launcher starting*: the sandbox has handed over, so the tree runs a program that is not the sandbox program, `env`
+		and then the Java runtime, and the ready line has not been printed;
+	- *ready*: the source launcher printed its ready line, after which only the program's own limits apply.
+
+	While the launcher is not ready, CAT looks at the run's process tree every quarter second and keeps, for each look,
+	the time, the stage that the programs of the tree show and the processor time that the tree has used. The stage
+	comes from which programs the tree runs, never from a guess; when the host does not let CAT read a program's path or
+	processor time, the stage or the processor time is *not observed*, and CAT says so. The reports are:
+	- **The sandbox cannot start.** The sandbox program exits before the launcher is ready and its output opens with
+		the program's own name, `bwrap:` or `sandbox-exec:` (user namespaces that the kernel refuses, a mount that
+		fails), and is not a failure to execute the Java runtime. The report gives the exit status and the sandbox
+		program's message as the cause. The same report covers a run that ends in *sandbox setup* with a stall (below):
+		a sandbox program that is blocked, not slow, is a sandbox that cannot start.
+	- **The launcher is missing, damaged or exited.** Before it starts a run, CAT checks that the sandbox program, `env`
+		and the Java executable exist and are executable regular files and that the Java runtime holds its module
+		image, `lib/modules`, and reports the first path that fails, naming it. CAT checks nothing more of the runtime
+		than that, because the installation records no digest of it to compare with. A launcher that exits before it is
+		ready, with `env`'s status 126 or 127 for a Java executable that cannot run, the sandbox program's failure to
+		execute the runtime, or a runtime that crashes, is reported with its exit status and output.
+	- **The launcher hangs.** The limit ends in a stage before *ready* and the tree has **stalled**: over the last sixth
+		of the time limit (ten seconds of the standard sixty) the tree held the same processes in the same stage and used
+		less than 1% of one processor's time. A stall in
+		*launcher starting* is a hung launcher, and in *sandbox setup* a sandbox that cannot start. The rule asks for no
+		duration that startup normally takes. It rests on a measurement on Linux with Java 27: a starting runtime used
+		300 to 550 ms of processor time per second, a starved one still gets a share, and a runtime that had finished
+		starting and then waited forever used 10 ms in eleven seconds. What it cannot tell apart: a launcher that spins
+		and a launcher that is blocked for less than the window look like a slow one, and a first start that blocks on
+		the host for longer than the window (a security scan of a new executable, a cold disk) reports as a hang with the
+		window and the stage in the report so that the reader can judge; the sixth of the limit and the 1% are chosen,
+		not measured on every host. When the processor time is not observed, the report says that CAT cannot tell.
+	- **Every other case is an infrastructure failure**: a loaded or slow machine, a slow first start, a wait for a
+		capacity slot and a time limit shorter than a start. Its message gives the time limit, the time that the run
+		took before the limit ended, the last stage reached and when it was first seen, the processor time of the last
+		window, and how long this launcher normally takes to become ready: the median and the longest of the earlier
+		runs of this launcher in this process that reached *ready* (the last twenty, shared by every run that uses the
+		same sandbox program and Java executable), or that none is known. Where the limit is shorter than the longest
+		of them, the message says so, so that a reader can tell a limit shorter than a normal start from a machine
+		slower than usual.
+
+	Where CAT cannot tell more, it reports the last stage and that it could not. Whether a start-up failure with a
+	cause should end a guard pilot at once instead of counting toward the infrastructure failure limit is not decided
+	here: every start-up failure reaches the pilot as it did before, as an infrastructure attempt that names the cause.
 - **Sandbox.** The program has no network, writes only its scratch directory, and cannot read the held-out directory,
 	the held-out results folder ([§6.3](#63-prompt-tests-and-test-cases), held-out content on disk) or any path that the
 	driver's own session is denied, apart from its input directory, through which CAT presents the trial's directories.
@@ -5453,6 +5505,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D178 | Ship two lazily loaded agent rules in both harnesses, each reached by its own route in the rule routing that every agent receives (user ruling, 2026-11-25: "both"). The first applies before a command prints another process's command line, such as `ps -ef`, `ps -o args` or a read of `/proc/<pid>/cmdline`: the agent prefers `ps -o pid,comm` to identify a process, and passes any listing of arguments through a filter that replaces `user:password@` in URLs with `***@`. The second applies before a credential file, such as a token, a key, `auth.json` or `.credentials.json`, is copied, moved, linked or written to another location: the agent never places such a copy where a session, a results folder, a trial project or a commit can reach it, and prefers a helper that reads the credential at runtime and does not share it. | A harness's sandbox command line can hold a proxy URL with a password, so a plain process listing writes it into the transcript. A copied credential file does not print the key, but it can leak through a session, a results folder, a trial project or a commit. Adding the two rules to every session's instructions would load them where no such command or copy arises (D138). One rule for both would pair two decisions with different triggers. | Two more routes in the always-loaded rule routing. An agent that needs a process's arguments reads them filtered, so it cannot see the password of a proxy URL. An agent whose process needs a credential and has no helper reports that instead of copying the file. |
 | D179 | Let the release publish the packages that the release commit's Build run built (user ruling, 2026-11-26: "Apply all 7 recommendations", including "Let the release reuse the green Build's packages"), and fail when that commit has no passing Build run. The Build derives the release public key from the repository secret on a push and builds and uploads the release's archives with it and the commit stamp, keeps them 3 days, and Release verifies them ("Release packages" in §9). | Keep rebuilding all five platforms in Release: the recorded release repeated a build that the Build had just passed on that commit and waited about 2 hours more for a macOS x64 runner. Fall back to that rebuild when no Build is found: a second publish path that runs only when something is already wrong, so nobody would exercise it, and it would publish a release that no green Build gated, which the project's release rule forbids. Build archives without a key and have Release insert the key: it rewrites archives, so their digests, fragments and the tested bytes no longer match. Hold the public key in a repository variable instead of the secret: a second setting to keep equal to the secret, for no gain, since any workflow that a writer pushes can already read the secret and the Build step that reads it holds the key only for its own step. Run Release when Build completes: moves the trigger that the user controls from the tag to a branch event. Keep the Maven release-tag check: it needs a JDK and a download in a job that otherwise needs neither; the archives' names and stamps already carry the project version, and Release checks them against the tag. | A Build on every branch push reads the signing secret and stores about 0.5 GB of archives for 3 days. A release needs a passing Build of its exact commit whose artifacts have not expired (3 days), otherwise the Build run is re-run first. Release no longer proves that the tag is `v` and the Maven project version in Maven; it proves it from the archives built at that commit. |
 | D180 | After registration and the settings entries, on install, update and repair, record Codex's content hash of each of CAT's own hooks of the installed version, from the app-server's `hooks/list`, as `trusted_content_hash` beside the declaration hash that `install` writes, changing only that line of `config.toml`; when Codex cannot answer, the install succeeds and its message says the hooks may need the user's review (user ruling, 2026-11-26: "Update the plugin to do this automatically next time", after an update left CAT's three hooks `modified` in Codex until both hashes were written by hand). | Removing a stale content hash relies on Codex 0.172.0 trusting a table without one, which a later Codex may stop doing, and CAT cannot tell a stale content hash from a current one without asking Codex. Computing the content hash in CAT needs an algorithm that Codex does not document and may change. The app-server's `config/batchWrite` writes any setting without CAT's format-preserving checks or its record of what it wrote. Writing Codex's declaration hash where it differs from CAT's would trust a declaration that CAT did not check. Failing the install when Codex cannot answer would leave a working plugin reported as failed for a review that the user can still do. | One app-server start per install, update or repair, which also writes Codex's own state files in the home, as any Codex start does. An install that cannot reach Codex reports that the hooks may need a review. A test double for the app-server that follows the 0.172.0 schema and is rechecked when Codex changes it. |
+| D181 | A check program's run that is not ready when it ends reports the last start-up stage that CAT observed, as a failure with its own cause where CAT can tell the cause: a sandbox program that exits with its own error or stalls in setup, a launcher that is missing, damaged or exits before it is ready, and a launcher that stalls; every other case stays an infrastructure failure whose message gives the time limit, the time taken, the last stage and the launcher's normal time to ready ([§6.4](#64-judge), check programs, start-up failures; user ruling, 2026-11-26: "we want to be able to detect the root cause instead of flagging it as a timeout. For all the other cases, treat it as an infrastructure problem."; and: "provide the information you mentioned with the failure message so we can differentiate between a too-short limit and a busy machine"). | Reporting every run that is not ready as a timeout hid a sandbox that the host refuses and a launcher that cannot run behind a limit that nothing could meet. Rejected: a duration after which a stage counts as hung, which has no measurement behind it and would call a slow first start a hang; markers that a wrapper writes between the stages, which would put a shell or a second launcher into the chain that the stages describe, while the process tree already shows them; deriving the cause from the output alone, which cannot see a sandbox that blocks without output. | The stages come from the process tree, which a host may hide: a setuid sandbox program's path is unreadable, and then the report says that the stage was not observed and is an infrastructure failure. The sandbox program's message is read for its own program name, `bwrap:` and `sandbox-exec:`, which is verified for bubblewrap and not on macOS. A spinning launcher and a first start that blocks for longer than a sixth of the limit are misreported as slow and as hung. The normal times are kept in the process, so the first runs of a process report none. |
 
 ## 14. Acceptance evidence
 
