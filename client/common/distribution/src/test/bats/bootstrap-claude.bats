@@ -54,7 +54,7 @@ platform=${expected_platform}" ]
 	[ "$(printf '%s\n' "${output}" | wc -l | tr -d ' ')" -eq 1 ]
 	[[ "${output}" == '{"result":"saved",'* ]]
 	[[ "${output}" != *"${token}"* ]]
-	[[ "$(ls -l "${home}/.cat/claude/.credentials.json")" == "-rw-------"* ]]
+	expect_owner_only "${home}/.cat/claude/.credentials.json"
 }
 
 @test "generated Claude SessionStart launcher injects the packaged routing and the project's rules" {

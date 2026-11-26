@@ -210,6 +210,42 @@ native_path()
 	esac
 }
 
+# Checks that a file's owner alone may read it, in the form the platform reports: mode 0600 where the file system has
+# POSIX modes, and, on Windows, where Git Bash's ls reports no real modes, an access list that grants no one but the
+# current user, SYSTEM and the Administrators group.
+#
+# Arguments:
+#   $1 - The file.
+#
+# Returns:
+#   0 if the file's owner alone may read it; otherwise 1, after writing the access that it grants to standard error.
+expect_owner_only()
+{
+	local file="$1" native listing grantee
+	case "$(current_platform)" in
+		windows-*)
+			native=$(cygpath -w "${file}")
+			listing=$(icacls "${native}") || return 1
+			# Each entry reads "<account>:(<rights>)"; the first also follows the file's path, and the listing ends with
+			# a status line that has no entry.
+			listing=${listing#"${native}"}
+			while IFS= read -r grantee; do
+				case "${grantee,,}" in
+					*'\system'|*'\administrators') ;;
+					*'\'"${USERNAME,,}") ;;
+					*)
+						printf 'Access list grants more than the owner: %s\n%s\n' "${grantee}" "${listing}" >&2
+						return 1
+						;;
+				esac
+			done < <(printf '%s\n' "${listing}" | grep -E ':\(' | sed -E 's/:\(.*$//; s/^[ ]+//')
+			;;
+		*)
+			[[ "$(ls -l "${file}")" == "-rw-------"* ]]
+			;;
+	esac
+}
+
 # Makes a test that installs Codex through cat.sh see Linux when the tests run under Git Bash, because cat.sh refuses
 # Codex on Windows, where PowerShell installs it. Elsewhere it changes nothing. The test must put FAKE_BIN first in
 # PATH before it creates the fake release, so that the release and cat.sh name the same platform.
