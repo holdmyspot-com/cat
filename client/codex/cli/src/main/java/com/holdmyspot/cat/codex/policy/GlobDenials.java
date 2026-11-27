@@ -6,6 +6,7 @@ import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
 
@@ -42,12 +43,14 @@ public final class GlobDenials
 	 * @param pattern  the pattern
 	 * @param maxDepth the number of folder levels below the pattern's fixed part that {@code **} reaches
 	 * @return the paths
-	 * @throws IOException if a folder cannot be listed
+	 * @throws IOException              if a folder cannot be listed
+	 * @throws IllegalArgumentException if the part of the pattern before its first wildcard is not a path that the file
+	 *                                  system can name, or the pattern is not one that it can match
 	 */
 	public static List<Path> expand(String pattern, int maxDepth) throws IOException
 	{
 		String[] segments = pattern.split("/", -1);
-		StringBuilder fixed = new StringBuilder();
+		List<String> fixed = new ArrayList<>();
 		int depth = 0;
 		boolean inGlob = false;
 		for (String segment : segments)
@@ -62,11 +65,10 @@ public final class GlobDenials
 					++depth;
 				continue;
 			}
-			if (!fixed.isEmpty())
-				fixed.append('/');
-			fixed.append(segment);
+			fixed.add(segment);
 		}
-		String prefix = fixed.toString();
+		// The empty first segment of a Linux or macOS path becomes its leading slash
+		String prefix = String.join("/", fixed);
 		if (prefix.isEmpty())
 			prefix = "/";
 		Path base = Path.of(prefix);

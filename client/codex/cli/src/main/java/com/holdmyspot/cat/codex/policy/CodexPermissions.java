@@ -337,7 +337,8 @@ public final class CodexPermissions
 	 * @param globDepth the number of folder levels that {@code **} reaches
 	 * @param entries   the entries to add to
 	 * @throws IOException   if a folder cannot be listed
-	 * @throws PolicyRefusal if the key is a relative path
+	 * @throws PolicyRefusal if the key is a relative path, or a path or pattern is not one that the file system can
+	 *                       name or match
 	 */
 	private void addEntries(String key, String subpath, Access access, int globDepth, List<PermissionEntry> entries)
 		throws IOException, PolicyRefusal
@@ -369,18 +370,27 @@ public final class CodexPermissions
 				target = base.toString().replaceAll("/+$", "") + "/" + subpath;
 			if (!GlobDenials.isGlob(target))
 			{
-				entries.add(new PermissionEntry(Path.of(target).normalize(), access));
+				entries.add(new PermissionEntry(path(target, "filesystem").normalize(), access));
 				continue;
 			}
 			if (access == Access.DENY)
 			{
-				for (Path match : GlobDenials.expand(target, globDepth))
-					entries.add(new PermissionEntry(match, Access.DENY));
+				try
+				{
+					for (Path match : GlobDenials.expand(target, globDepth))
+						entries.add(new PermissionEntry(match, Access.DENY));
+				}
+				catch (IllegalArgumentException e)
+				{
+					throw new PolicyRefusal("the Codex filesystem pattern \"" + target + "\" is one that CAT cannot " +
+						"match: " + e.getMessage(), "Write a pattern that the file system can match, then start a new " +
+						"Codex session");
+				}
 				continue;
 			}
 			String subtree = target.replaceAll("/\\*\\*$", "");
 			if (!GlobDenials.isGlob(subtree))
-				entries.add(new PermissionEntry(Path.of(subtree).normalize(), access));
+				entries.add(new PermissionEntry(path(subtree, "filesystem").normalize(), access));
 			// Codex does not fully enforce other read or write globs; leaving them out is narrower
 		}
 	}

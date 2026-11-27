@@ -392,6 +392,87 @@ public final class CodexPolicyReaderTest
 	}
 
 	/**
+	 * Verifies that a {@code none} entry whose path holds a pattern keeps the commands from reading or writing the
+	 * existing paths that the pattern matches, and no others.
+	 */
+	@Test
+	public void denyPatternDeniesMatchingPaths() throws IOException, PolicyRefusal
+	{
+		// Requirement: R-I11
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
+			Path secret = Files.createFile(session.project().resolve("secret-1"));
+			Path other = Files.createFile(session.project().resolve("public-1"));
+			session.write("home/.codex/config.toml", """
+				default_permissions = "p"
+				[permissions.p]
+				extends = ":workspace"
+				[permissions.p.filesystem]
+				%s = "none"
+				[permissions.p.network]
+				enabled = true
+				""".formatted(toml(session.project().resolve("secret-*"))));
+
+			ParentPolicy policy = session.read("exec", "summarize");
+
+			requireThat(policy.writeDenials(), "writeDenials").contains(secret).doesNotContain(other);
+			requireThat(policy.readDenials(), "readDenials").contains(secret).doesNotContain(other);
+		}
+	}
+
+	/**
+	 * Verifies that a deny pattern that the file system cannot match is refused with the pattern named, instead of
+	 * stopping the reading with an error that names no setting.
+	 */
+	@Test(expectedExceptions = PolicyRefusal.class, expectedExceptionsMessageRegExp = ".*name\\[.*cannot match.*")
+	public void unmatchableDenyPatternRefused() throws IOException, PolicyRefusal
+	{
+		// Requirement: R-I11
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
+			Path pattern = session.folder("project").resolve("name[");
+			session.write("home/.codex/config.toml", """
+				default_permissions = "p"
+				[permissions.p]
+				extends = ":workspace"
+				[permissions.p.filesystem]
+				%s = "none"
+				[permissions.p.network]
+				enabled = true
+				""".formatted(toml(pattern)));
+
+			session.read("exec", "summarize");
+		}
+	}
+
+	/**
+	 * Verifies that a path below a special path that the file system cannot name is refused with the path named, instead
+	 * of stopping the reading with an error that names no setting.
+	 */
+	@Test(expectedExceptions = PolicyRefusal.class, expectedExceptionsMessageRegExp = ".*is not a path.*")
+	public void subpathThatIsNotAPathRefused() throws IOException, PolicyRefusal
+	{
+		// Requirement: R-I11
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
+			session.write("home/.codex/config.toml", """
+				default_permissions = "p"
+				[permissions.p]
+				extends = ":workspace"
+				[permissions.p.filesystem.":workspace_roots"]
+				"broken\\u0000name" = "write"
+				[permissions.p.network]
+				enabled = true
+				""");
+
+			session.read("exec", "summarize");
+		}
+	}
+
+	/**
 	 * Returns the bare and absolute argv[0] forms of the Codex Linux sandbox helper.
 	 *
 	 * @return the helper's argv[0] values
