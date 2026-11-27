@@ -12,6 +12,7 @@ import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -264,6 +265,83 @@ public final class ClaudePolicyReaderTest
 			ParentPolicy policy = fixture.policy();
 			requireThat(policy.writeRoots(), "writeRoots").containsAll(List.of(first,
 				fixture.root.resolve("second")));
+		}
+	}
+
+	/**
+	 * Verifies that an entry that spells a path that the file system cannot name, such as a name with a character that
+	 * Windows does not allow in a path, neither grants nor denies a folder, and does not stop the reading of the
+	 * other entries. No file has such a name, so the entry names no file that a command could write.
+	 *
+	 * @throws IOException   if the fixture cannot be created
+	 * @throws PolicyRefusal if the policy is refused
+	 */
+	@Test
+	public void entryThatIsNotAPathNamesNothing() throws IOException, PolicyRefusal
+	{
+		// Requirement: R-I11
+		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
+		{
+			Path granted = fixture.root.resolve("granted");
+			Path denied = fixture.root.resolve("denied");
+			// The character that no file system accepts in a name, as a JSON string escapes it
+			String notAPath = json(fixture.root) + "/broken\\u0000name";
+			fixture.userSettings("""
+				{"sandbox": {"enabled": true, "filesystem": {"allowWrite": ["%s", "%s"],
+				  "denyWrite": ["%s", "%s"]}},
+				  "permissions": {"additionalDirectories": ["%s"], "allow": ["Edit(%s)"], "deny": ["Edit(%s)"]}}""".
+				formatted(notAPath, json(granted), notAPath, json(denied), notAPath, notAPath, notAPath));
+			fixture.arguments.addAll(List.of("--add-dir", "broken\0name"));
+
+			ParentPolicy policy = fixture.policy();
+
+			requireThat(policy.sandboxed(), "sandboxed").isTrue();
+			requireThat(policy.writeRoots(), "writeRoots").contains(granted);
+			requireThat(policy.writeDenials(), "writeDenials").contains(denied);
+		}
+	}
+
+	/**
+	 * Verifies that a denied pattern that the file system cannot match denies the folder that its literal part names,
+	 * because CAT cannot tell which files the release means by it.
+	 *
+	 * @throws IOException   if the fixture cannot be created
+	 * @throws PolicyRefusal if the policy is refused
+	 */
+	@Test
+	public void unmatchablePatternDeniesItsFolder() throws IOException, PolicyRefusal
+	{
+		// Requirement: R-I11
+		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
+		{
+			Path folder = fixture.root.resolve("folder");
+			String unterminated = json(folder) + "/name[";
+			fixture.userSettings("""
+				{"sandbox": {"enabled": true, "filesystem": {"denyWrite": ["%s"]}}}""".formatted(unterminated));
+			Files.createDirectories(folder);
+
+			ParentPolicy policy = fixture.policy();
+
+			requireThat(policy.writeDenials(), "writeDenials").contains(folder);
+		}
+	}
+
+	/**
+	 * Verifies that a settings file named by {@code --settings} whose name is not a path is refused as a file that does
+	 * not exist.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void settingsOptionThatIsNotAPathIsRefused() throws IOException
+	{
+		// Requirement: R-I11
+		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
+		{
+			fixture.userSettings(ENABLED);
+			fixture.arguments.addAll(List.of("--settings", "broken\0name"));
+
+			requireThat(fixture.refusal(), "refusal").contains("--settings").contains("does not exist");
 		}
 	}
 

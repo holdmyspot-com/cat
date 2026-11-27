@@ -6,6 +6,7 @@ import java.nio.file.FileSystems;
 import java.nio.file.FileVisitOption;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.nio.file.SimpleFileVisitor;
@@ -18,6 +19,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 
 /**
  * Resolves the paths of a Claude Code session's settings to the files that they name, as the release's sandbox does.
@@ -110,7 +112,7 @@ final class ClaudePaths
 	 * @param syntax       the syntax of the entry
 	 * @param settingsRoot the absolute root of the settings that hold the entry
 	 * @return the path, or empty if the entry may name more than one path, is a pattern other than a folder followed by
-	 *   {@code /**}, or cannot be resolved
+	 *   {@code /**}, cannot be resolved, or spells a path that the file system cannot name
 	 */
 	Optional<Path> granted(String entry, Syntax syntax, Path settingsRoot)
 	{
@@ -124,7 +126,15 @@ final class ClaudePaths
 			path = "/";
 		if (isPattern(path))
 			return Optional.empty();
-		return Optional.of(Path.of(path).normalize());
+		try
+		{
+			return Optional.of(Path.of(path).normalize());
+		}
+		catch (InvalidPathException _)
+		{
+			// No file has such a name, so the entry grants no folder
+			return Optional.empty();
+		}
 	}
 
 	/**
@@ -134,7 +144,7 @@ final class ClaudePaths
 	 * @param syntax       the syntax of the entry
 	 * @param settingsRoot the absolute root of the settings that hold the entry
 	 * @param source       the settings that hold the entry, as the user knows them
-	 * @return the paths
+	 * @return the paths, which leave out a path that the file system cannot name because no file has such a name
 	 * @throws IOException   if a folder cannot be listed while matching a pattern
 	 * @throws PolicyRefusal if the entry names another user's home folder, which CAT cannot resolve
 	 */
@@ -149,10 +159,17 @@ final class ClaudePaths
 		Set<Path> paths = new LinkedHashSet<>();
 		for (String candidate : candidates.paths())
 		{
-			if (isPattern(candidate))
-				paths.addAll(matches(candidate));
-			else
-				paths.add(Path.of(candidate).normalize());
+			try
+			{
+				if (isPattern(candidate))
+					paths.addAll(matches(candidate));
+				else
+					paths.add(Path.of(candidate).normalize());
+			}
+			catch (InvalidPathException _)
+			{
+				// No file has such a name, so the entry denies no file
+			}
 		}
 		return List.copyOf(paths);
 	}
@@ -299,8 +316,10 @@ final class ClaudePaths
 	 *
 	 * @param pattern an absolute pattern
 	 * @return the matching paths, or the folder that the pattern's literal part names if the folder holds too many
-	 *   files to match them all
-	 * @throws IOException if the folder cannot be listed
+	 *   files to match them all, or if the pattern is not one that the file system can match, because CAT cannot tell
+	 *   what the release makes of it
+	 * @throws IOException          if the folder cannot be listed
+	 * @throws InvalidPathException if the pattern's literal part is not a path that the file system can name
 	 */
 	private static List<Path> matches(String pattern) throws IOException
 	{
@@ -308,10 +327,17 @@ final class ClaudePaths
 		if (Files.notExists(base))
 			return List.of();
 		List<PathMatcher> matchers = new ArrayList<>();
-		matchers.add(FileSystems.getDefault().getPathMatcher("glob:" + pattern));
-		// "**/" also matches no folder at all
-		if (pattern.contains("/**/"))
-			matchers.add(FileSystems.getDefault().getPathMatcher("glob:" + pattern.replace("/**/", "/")));
+		try
+		{
+			matchers.add(FileSystems.getDefault().getPathMatcher("glob:" + pattern));
+			// "**/" also matches no folder at all
+			if (pattern.contains("/**/"))
+				matchers.add(FileSystems.getDefault().getPathMatcher("glob:" + pattern.replace("/**/", "/")));
+		}
+		catch (PatternSyntaxException _)
+		{
+			return List.of(base);
+		}
 		List<Path> matched = new ArrayList<>();
 		int[] visits = {0};
 		boolean[] tooMany = {false};

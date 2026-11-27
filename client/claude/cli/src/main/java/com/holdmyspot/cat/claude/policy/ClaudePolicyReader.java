@@ -9,6 +9,7 @@ import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -335,7 +336,16 @@ public final class ClaudePolicyReader
 			}
 			else
 			{
-				Path file = project.resolve(value).normalize();
+				Path file;
+				try
+				{
+					file = project.resolve(value).normalize();
+				}
+				catch (InvalidPathException _)
+				{
+					throw new PolicyRefusal("the settings file " + value + " of Claude Code's option --settings " +
+						"does not exist", "Start Claude Code with an existing settings file, then start a new session");
+				}
 				if (!Files.isRegularFile(file))
 				{
 					throw new PolicyRefusal("the settings file " + file + " of Claude Code's option --settings " +

@@ -8,6 +8,7 @@ import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import java.io.IOException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -267,7 +268,16 @@ final class ClaudePolicyComputation
 
 		writeRoots.add(session.projectDirectory());
 		for (String directory : commandLine.addDirectories())
-			writeRoots.add(session.projectDirectory().resolve(directory).normalize());
+		{
+			try
+			{
+				writeRoots.add(session.projectDirectory().resolve(directory).normalize());
+			}
+			catch (InvalidPathException _)
+			{
+				// No file has such a name, so the option grants no folder
+			}
+		}
 		for (SettingsLayer layer : layers)
 		{
 			boolean grants = !managedRulesOnly || layer.scope() == MANAGED;
