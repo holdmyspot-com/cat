@@ -1448,6 +1448,20 @@ public final class ClaudeSessionStartHookTest
 	}
 
 	/**
+	 * Returns a pattern in a folder as a JSON string. A pattern is not a valid path on every platform, so it is joined
+	 * to the folder as text.
+	 *
+	 * @param folder  the folder
+	 * @param pattern the pattern
+	 * @return the JSON string, including its quotes
+	 */
+	private static String jsonPattern(Path folder, String pattern)
+	{
+		String separator = folder.getFileSystem().getSeparator();
+		return "\"" + (folder + separator + pattern).replace("\\", "\\\\") + "\"";
+	}
+
+	/**
 	 * Returns the settings that grant a sandbox write, which the session-start check names.
 	 *
 	 * @return the setting that grants the write, and the settings file's content that holds it, for a folder
@@ -1590,7 +1604,7 @@ public final class ClaudeSessionStartHookTest
 			copyBundledRules(plugin);
 			Path settings = project.resolve(".claude/settings.json");
 			write(project, ".claude/settings.json", "{\"sandbox\":{\"enabled\":true,\"filesystem\":{\"allowWrite\":[" +
-				jsonString(tools.resolve("b*")) + "]}}}");
+				jsonPattern(tools, "b*") + "]}}}");
 
 			Map<String, String> environment = sandboxEnvironment(project, plugin, cleanup, bin);
 			HookResult result = invokeInSandbox(cwdInput(project), environment, project, runningClaude());
