@@ -5,6 +5,7 @@ import com.holdmyspot.cat.codex.policy.CodexPolicyReader;
 import com.holdmyspot.cat.codex.policy.CodexSystemFiles;
 import com.holdmyspot.cat.codex.runner.CodexServedSession;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.WindowsCommandLine;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.RequestServer;
@@ -81,6 +82,51 @@ public final class CodexServedSessionTest
 			requireThat(session.askingThread(), "askingThread").isEmpty();
 			requireThat(session.harness(), "harness").isEqualTo(new ProcessIdentity(4200, "1731067200"));
 		}
+	}
+
+	/**
+	 * Verifies that on Windows, where the system reports each process's command line as one string, the server
+	 * identifies the session and its harness process from the Codex process's executable and the arguments that the
+	 * command line splits into.
+	 *
+	 * @throws IOException   if the fixture cannot be written
+	 * @throws PolicyRefusal if the session cannot be identified
+	 */
+	@Test
+	public void identifiesSessionOnWindows() throws IOException, PolicyRefusal
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			fixture.rollout("", "");
+			List<ProcessDescription> ancestors = List.of(
+				windowsProcess(4300, "1731067201",
+					"C:\\Windows\\System32\\cmd.exe /d /c \"\"" + fixture.server + "\" --json\""),
+				windowsProcess(4200, "1731067200",
+					"\"C:\\Program Files\\Codex\\vendor\\bin\\codex.exe\" exec --skip-git-repo-check -C " +
+						fixture.project + " \"summarize the project\""));
+
+			RequestServer.Session session = CodexServedSession.sessions(fixture.environment(), fixture.home,
+				NO_PROCESSES, ancestors, fixture.reader()).find();
+
+			requireThat(session.transcript(), "transcript").isEqualTo(fixture.rolloutFile());
+			requireThat(session.project(), "project").isEqualTo(fixture.project);
+			requireThat(session.harness(), "harness").isEqualTo(new ProcessIdentity(4200, "1731067200"));
+		}
+	}
+
+	/**
+	 * Describes a Windows process by the command line that Windows reports for it.
+	 *
+	 * @param processId   the process's identifier
+	 * @param start       the process's start
+	 * @param commandLine the process's command line
+	 * @return the description, with the program and arguments that the command line splits into
+	 */
+	private static ProcessDescription windowsProcess(long processId, String start, String commandLine)
+	{
+		List<String> words = WindowsCommandLine.split(commandLine);
+		return new ProcessDescription(processId, Optional.of(start), Optional.of(words.get(0)),
+			Optional.of(words.get(0)), Optional.of(words.subList(1, words.size())));
 	}
 
 	/**

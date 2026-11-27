@@ -529,6 +529,32 @@ public final class CodexPolicyReaderTest
 	}
 
 	/**
+	 * Verifies that the policy of a Windows launch, whose command line the system reports as one string with the
+	 * executable quoted and an option's value quoted, is the policy of the same arguments given one by one.
+	 *
+	 * @throws IOException   if the fixture cannot be written
+	 * @throws PolicyRefusal if the command line is refused
+	 */
+	@Test
+	public void readsWindowsLaunchArguments() throws IOException, PolicyRefusal
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
+			session.write("home/.codex/config.toml", LEGACY_WITH_NETWORK);
+
+			ParentPolicy launched = session.readWindowsLaunch(
+				"\"C:\\Program Files\\Codex\\vendor\\bin\\codex.exe\" exec --sandbox=workspace-write " +
+					"-c \"sandbox_workspace_write.network_access=false\" \"summarize this\"");
+
+			ParentPolicy direct = session.read("exec", "--sandbox=workspace-write", "-c",
+				"sandbox_workspace_write.network_access=false", "summarize this");
+			requireThat(launched, "launched").isEqualTo(direct);
+			requireThat(launched.hosts(), "hosts").isNotEqualTo(HostAccess.ALL);
+		}
+	}
+
+	/**
 	 * Verifies that an unknown option on the outer Codex command line is still refused after the helper is skipped.
 	 *
 	 * @throws IOException   if the fixture cannot be written

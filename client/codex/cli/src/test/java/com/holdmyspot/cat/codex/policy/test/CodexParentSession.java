@@ -7,6 +7,7 @@ import com.holdmyspot.cat.codex.policy.CodexPolicyReader;
 import com.holdmyspot.cat.codex.policy.CodexSession;
 import com.holdmyspot.cat.codex.policy.CodexSystemFiles;
 import com.holdmyspot.cat.common.SandboxWrites;
+import com.holdmyspot.cat.common.WindowsCommandLine;
 import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
@@ -188,6 +189,28 @@ public final class CodexParentSession
 	public ParentPolicy read(String... arguments) throws IOException, PolicyRefusal
 	{
 		return readThread(Optional.empty(), arguments);
+	}
+
+	/**
+	 * Reads the policy of the session's main thread when Codex runs on Windows, whose system reports the whole command
+	 * line of the Codex process as one string.
+	 *
+	 * @param commandLine the Codex process's command line, which begins with its executable
+	 * @return the policy
+	 * @throws IOException   if a file cannot be read
+	 * @throws PolicyRefusal if the reader refuses
+	 */
+	public ParentPolicy readWindowsLaunch(String commandLine) throws IOException, PolicyRefusal
+	{
+		List<String> words = WindowsCommandLine.split(commandLine);
+		List<ProcessDescription> ancestors = List.of(
+			new ProcessDescription(101, Optional.empty(), Optional.of("C:\\Windows\\System32\\cmd.exe"),
+				Optional.empty(), Optional.of(List.of("/c", "hook"))),
+			new ProcessDescription(102, Optional.empty(), Optional.of(words.get(0)), Optional.of(words.get(0)),
+				Optional.of(words.subList(1, words.size()))));
+		Map<String, String> environment = Map.of("HOME", home.toString(), "TMPDIR", root.resolve("tmp").toString());
+		return reader().read(new CodexSession(ancestors, environment, home, project, transcript, SESSION_ID),
+			Optional.empty());
 	}
 
 	/**

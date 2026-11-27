@@ -447,9 +447,9 @@ public final class IntegrationTest
 
 	/**
 	 * The rules file permits installing into Codex and status without asking, asks before uninstall, lets the request
-	 * server beside the installer, and no runner launcher, run without asking and outside the sandbox, except on
-	 * Windows, reports the server among the operations it lets run that way, and is reported as added only by the call
-	 * that wrote it.
+	 * server beside the installer, and no runner launcher, run without asking and outside the sandbox, reports the
+	 * server among the operations it lets run that way, and is reported as added only by the call that wrote it. On
+	 * Windows the server is its {@code .cmd} launcher alone.
 	 *
 	 * @throws IOException if a fixture cannot be written or read
 	 */
@@ -470,11 +470,13 @@ public final class IntegrationTest
 			requireThat(added, "added").isEqualTo(Map.of("rules/cat-installer.rules#", List.of(expected)));
 			requireThat(Files.readString(home.resolve("rules/cat-installer.rules")), "content").isEqualTo(expected).
 				doesNotContain("-runner");
-			if (!Platform.current().isWindows())
+			for (EntryGroup group : provider().describeEntries(added, launcher))
 			{
-				for (EntryGroup group : provider().describeEntries(added, launcher))
+				if (group.effect() == EntryEffect.RUNS_WITHOUT_ASKING || group.effect() == EntryEffect.RUNS_OUTSIDE_SANDBOX)
 				{
-					if (group.effect() == EntryEffect.RUNS_WITHOUT_ASKING || group.effect() == EntryEffect.RUNS_OUTSIDE_SANDBOX)
+					if (Platform.current().isWindows())
+						requireThat(group.items(), "items").contains("request-server.cmd").doesNotContain("prompt-optimizer");
+					else
 						requireThat(group.items(), "items").contains("request-server").contains("prompt-optimizer");
 				}
 			}
@@ -712,6 +714,61 @@ public final class IntegrationTest
 			String[] lines = content.split("\n", -1);
 			lines[2] = "# Update bindings: {}";
 			requireThat(InstallerRules.isWrittenByCat(String.join("\n", lines), true), "ownership").isFalse();
+		}
+	}
+
+	/**
+	 * The Windows rules let the request server's command launcher beside the installer run without asking and outside
+	 * the sandbox, spelled exactly as Codex matches it, and let no other launcher beside the installer run that way.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void windowsRulesAllowRequestServerLauncher() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			Path launcher = installer(home, VERSION);
+			String content = InstallerRules.render(permissionEnvironment(home), launcher, true);
+
+			requireThat(decisions(content, List.of(launcher.resolveSibling("request-server.cmd").toString())),
+				"requestServer").isEqualTo(List.of("allow"));
+			requireThat(decisions(content, List.of(launcher.resolveSibling("request-server").toString())),
+				"posixName").isEmpty();
+			requireThat(decisions(content, List.of(launcher.resolveSibling("prompt-optimizer.cmd").toString())),
+				"promptOptimizer").isEmpty();
+			requireThat(decisions(content, List.of(launcher.resolveSibling("claude-runner.cmd").toString())),
+				"runner").isEmpty();
+			requireThat(InstallerRules.isWrittenByCat(content, true), "ownership").isTrue();
+		}
+	}
+
+	/**
+	 * The installer still recognizes as its own, and so replaces, the Windows rules that an earlier installer wrote
+	 * without the request server's rule, and refuses the same rules once anything else changed in them.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void windowsEarlierRulesStayOurs() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			Path launcher = installer(home, VERSION);
+			String content = InstallerRules.render(permissionEnvironment(home), launcher, true);
+			String rule = "prefix_rule(pattern=[" +
+				MAPPER.writeValueAsString(launcher.resolveSibling("request-server.cmd").toString()) +
+				"], decision=\"allow\")\n";
+			requireThat(content, "content").endsWith(rule);
+			String earlier = content.substring(0, content.length() - rule.length());
+
+			requireThat(InstallerRules.isWrittenByCat(earlier, true), "earlierOwnership").isTrue();
+			requireThat(InstallerRules.isWrittenByCat(earlier + "prefix_rule(pattern=[\"rm\"], decision=\"allow\")\n",
+				true), "modifiedOwnership").isFalse();
+			requireThat(InstallerRules.isForLauncher(earlier, launcher, true), "earlierIsCurrent").isFalse();
+			requireThat(InstallerRules.isForLauncher(content, launcher, true), "currentIsCurrent").isTrue();
 		}
 	}
 
@@ -1251,7 +1308,11 @@ public final class IntegrationTest
 		content.append("prefix_rule(pattern=[").append(quotedCommand(launcher)).
 			append(", \"uninstall\", \"--harness\", \"codex\"], decision=\"prompt\")\n");
 		if (windows)
-			return content.toString();
+		{
+			return content + """
+				prefix_rule(pattern=[%s], decision="allow")
+				""".formatted(MAPPER.writeValueAsString(launcher.resolveSibling("request-server.cmd").toString()));
+		}
 		return content + """
 			prefix_rule(pattern=[%s], decision="allow")
 			prefix_rule(pattern=[%s], decision="allow")

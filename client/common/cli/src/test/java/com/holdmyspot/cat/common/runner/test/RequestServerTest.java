@@ -119,6 +119,87 @@ public final class RequestServerTest
 	}
 
 	/**
+	 * Verifies that the launcher of the request server is {@code bin/request-server.cmd} on Windows, which runs
+	 * batch launchers only, and {@code bin/request-server} elsewhere.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void namesLauncherByPlatform() throws IOException
+	{
+		// Requirement: R-I36
+		try (Fixture fixture = new Fixture())
+		{
+			requireThat(RequestServer.program(fixture.plugin, Platform.WINDOWS_X64), "windows").
+				isEqualTo(fixture.plugin.resolve("bin").resolve("request-server.cmd"));
+			requireThat(RequestServer.program(fixture.plugin, Platform.WINDOWS_ARM64), "windowsArm").
+				isEqualTo(fixture.plugin.resolve("bin").resolve("request-server.cmd"));
+			requireThat(RequestServer.program(fixture.plugin, Platform.LINUX_X64), "linux").
+				isEqualTo(fixture.plugin.resolve("bin").resolve("request-server"));
+			requireThat(RequestServer.program(fixture.plugin, Platform.MACOS_ARM64), "macos").
+				isEqualTo(fixture.plugin.resolve("bin").resolve("request-server"));
+		}
+	}
+
+	/**
+	 * Verifies that the server's refusal of an argument names the launcher that its platform runs.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void argumentRefusalNamesLauncher() throws IOException
+	{
+		// Requirement: R-I36
+		try (Fixture fixture = new Fixture())
+		{
+			fixture.platform = Platform.WINDOWS_X64;
+			StringWriter errors = new StringWriter();
+
+			int status = RequestServer.serve(new String[]{"--project", "elsewhere"}, fixture.host(),
+				new PrintWriter(errors, true));
+
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").
+				contains(fixture.plugin.resolve("bin").resolve("request-server.cmd").toString());
+		}
+	}
+
+	/**
+	 * Verifies that the reason that a client gives when no request server serves its session, and the reason that a
+	 * command of the optimization worktrees gives, name the launcher that their platform runs, whether the client is
+	 * in the installed plugin or in another copy.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void missingServerReasonsNameLauncher() throws IOException
+	{
+		// Requirement: R-I36
+		try (Fixture fixture = new Fixture())
+		{
+			Path other = Files.createDirectories(fixture.root.resolve("other-plugin"));
+			String windows = fixture.plugin.resolve("bin").resolve("request-server.cmd").toString();
+			String posix = fixture.plugin.resolve("bin").resolve("request-server").toString();
+
+			for (Path client : List.of(fixture.plugin, other))
+			{
+				List<String> reasons = List.of(
+					RequestServer.missingServer(client, fixture.installed, Platform.WINDOWS_X64),
+					RequestServer.missingWorktreeServer(client, fixture.installed, Platform.WINDOWS_X64));
+				for (String reason : reasons)
+					requireThat(reason, "windowsReason").contains(windows);
+				reasons = List.of(
+					RequestServer.missingServer(client, fixture.installed, Platform.LINUX_X64),
+					RequestServer.missingWorktreeServer(client, fixture.installed, Platform.LINUX_X64));
+				for (String reason : reasons)
+				{
+					requireThat(reason, "posixReason").contains(posix + ". ").doesNotContain(".cmd");
+				}
+			}
+		}
+	}
+
+	/**
 	 * Verifies that the server refuses on a platform that runs no sandboxed session, such as native Windows.
 	 *
 	 * @throws IOException if the fixture cannot be created

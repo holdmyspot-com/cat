@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.runner.policy.test;
 
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.ProcessFolder;
 import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
@@ -10,7 +11,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
+import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
@@ -127,5 +130,77 @@ public final class HarnessProcessesTest
 
 			requireThat(start, "start").isEmpty();
 		}
+	}
+
+	/**
+	 * Verifies that on Windows a child that the test started reports its program as argument zero and the arguments
+	 * after it, quoted as Windows holds them, which {@link ProcessHandle} does not report there.
+	 *
+	 * @throws IOException   if the child cannot be started
+	 * @throws SkipException if the platform is not Windows
+	 */
+	@Test
+	// destroyForcibly ends the child, whose streams the test never opens
+	@SuppressWarnings("PMD.CloseResource")
+	public void reportsWindowsChildArguments() throws IOException
+	{
+		// Requirement: R-I35
+		requireWindows();
+		Process child = new ProcessBuilder("findstr.exe", "two words").start();
+		try
+		{
+			Optional<ProcessDescription> process = HarnessProcesses.system().find(child.pid());
+
+			Optional<String> program = process.flatMap(ProcessDescription::argumentZero).map(Path::of).
+				map(Path::getFileName).map(Path::toString).map(name -> name.toLowerCase(Locale.ROOT));
+			requireThat(program, "argumentZero").isEqualTo(Optional.of("findstr.exe"));
+			requireThat(process.flatMap(ProcessDescription::arguments), "arguments").
+				isEqualTo(Optional.of(List.of("two words")));
+		}
+		finally
+		{
+			child.destroyForcibly();
+		}
+	}
+
+	/**
+	 * Verifies that on Windows the ancestors of a child, the test's own JVM among them, report their arguments, so that
+	 * a reader of a harness's launch finds them.
+	 *
+	 * @throws IOException   if the child cannot be started
+	 * @throws SkipException if the platform is not Windows
+	 */
+	@Test
+	// destroyForcibly ends the child, whose streams the test never opens
+	@SuppressWarnings("PMD.CloseResource")
+	public void reportsWindowsAncestorArguments() throws IOException
+	{
+		// Requirement: R-I35
+		requireWindows();
+		Process child = new ProcessBuilder("findstr.exe", "two words").start();
+		try
+		{
+			List<ProcessDescription> ancestors = HarnessProcesses.ancestorsOf(child.toHandle());
+
+			ProcessDescription parent = ancestors.getFirst();
+			requireThat(parent.processId(), "parent.processId").isEqualTo(ProcessHandle.current().pid());
+			requireThat(parent.argumentZero(), "parent.argumentZero").isPresent();
+			requireThat(parent.arguments(), "parent.arguments").isPresent();
+		}
+		finally
+		{
+			child.destroyForcibly();
+		}
+	}
+
+	/**
+	 * Skips the test unless the platform is Windows.
+	 *
+	 * @throws SkipException if the platform is not Windows
+	 */
+	private static void requireWindows()
+	{
+		if (!Platform.current().isWindows())
+			throw new SkipException("Only Windows reports a process's command line through its own call");
 	}
 }
