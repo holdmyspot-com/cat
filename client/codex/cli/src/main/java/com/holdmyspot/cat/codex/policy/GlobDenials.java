@@ -38,6 +38,23 @@ public final class GlobDenials
 	}
 
 	/**
+	 * Returns a pattern in the form that a file system's glob matcher reads as the pattern's folders.
+	 * <p>
+	 * Where the separator is a backslash, the matcher reads a backslash as the escape of the character after it, so the
+	 * folders that a Windows path names would never match; the matcher takes a slash there instead.
+	 *
+	 * @param pattern   the pattern
+	 * @param separator the file system's name separator
+	 * @return the pattern that the matcher reads
+	 */
+	public static String matcherPattern(String pattern, String separator)
+	{
+		if (separator.equals("\\"))
+			return pattern.replace('\\', '/');
+		return pattern;
+	}
+
+	/**
 	 * Returns the existing paths that an absolute glob pattern matches.
 	 *
 	 * @param pattern  the pattern
@@ -74,7 +91,8 @@ public final class GlobDenials
 		Path base = Path.of(prefix);
 		if (!Files.isDirectory(base))
 			return List.of();
-		PathMatcher matcher = FileSystems.getDefault().getPathMatcher("glob:" + pattern);
+		PathMatcher matcher = FileSystems.getDefault().getPathMatcher("glob:" +
+			matcherPattern(pattern, FileSystems.getDefault().getSeparator()));
 		try (Stream<Path> paths = Files.walk(base, depth))
 		{
 			return paths.filter(matcher::matches).toList();
