@@ -8,7 +8,9 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.SandboxWrites;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.WriteGrant;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.HarnessCommand;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
@@ -26,6 +28,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -436,45 +439,28 @@ public final class InstallCommandTest
 	}
 
 	/**
-	 * Returns the ways in which the harness program that install recorded can no longer be used.
-	 *
-	 * @return each condition's name
-	 */
-	@DataProvider
-	public static Object[][] unusableRecordedPrograms()
-	{
-		return new Object[][]{{"missing"}, {"identity"}};
-	}
-
-	/**
 	 * A later install refuses, before anything changes and without taking another program from the search path, when
-	 * the harness program that install recorded no longer exists or no longer identifies itself as the harness's
-	 * program; the refusal tells the user how to start over: delete the policy and run the CAT entry command.
+	 * the harness program that install recorded exists but no longer identifies itself as the harness's program; the
+	 * refusal tells the user how to start over: delete the policy and run the CAT entry command.
 	 *
-	 * @param condition the way in which the recorded program can no longer be used
 	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if the fixture's policy is invalid
 	 */
-	@Test(dataProvider = "unusableRecordedPrograms")
-	public void laterInstallRefusesUnusableProgram(String condition) throws IOException, TrustException
+	@Test
+	public void laterInstallRefusesFailingProgram() throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Fixture fixture = new Fixture(cleanup.add(testDirectory("install-unusable-")));
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("install-identity-")));
 			fixture.recordProgram();
 			Path other = RecordingIntegration.program(fixture.root.resolve("other-tools")).getParent();
 			fixture.environment.put("PATH", other + File.pathSeparator + fixture.environment.get("PATH"));
-			switch (condition)
-			{
-				case "missing" -> Files.delete(Path.of(fixture.command.command().getFirst()));
-				case "identity" -> fixture.integration.fail("requireIdentity");
-				default -> throw new AssertionError(condition);
-			}
+			fixture.integration.fail("requireIdentity");
 			String before = Files.readString(fixture.policyFile());
 			try
 			{
 				fixture.install();
-				throw new AssertionError("Install accepted a recorded program that is " + condition);
+				throw new AssertionError("Install accepted a recorded program that fails its identity check");
 			}
 			catch (TrustException | IOException e)
 			{
@@ -486,6 +472,191 @@ public final class InstallCommandTest
 				"marketplace").isFalse();
 			requireThat(fixture.integration.calls(), "calls").doesNotContain("register");
 			requireThat(Files.readString(fixture.policyFile()), "policy").isEqualTo(before);
+		}
+	}
+
+	/**
+	 * Returns the ways in which the harness program that install recorded can be gone.
+	 *
+	 * @return each condition's name
+	 */
+	@DataProvider
+	public static Object[][] goneRecordedPrograms()
+	{
+		if (Platform.current().isWindows())
+			return new Object[][]{{"missing"}};
+		return new Object[][]{{"missing"}, {"not executable"}};
+	}
+
+	/**
+	 * A later install whose recorded harness program no longer exists, or is no longer executable, runs the first
+	 * program of the harness on the installer's search path instead, as a first install finds it, and records that
+	 * program in the policy; the install's message names the program that it replaced and the one that replaced it.
+	 *
+	 * @param condition the way in which the recorded program is gone
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if install refuses
+	 */
+	@Test(dataProvider = "goneRecordedPrograms")
+	public void laterInstallReplacesProgramThatIsGone(String condition) throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("install-replace-")));
+			fixture.recordProgram();
+			Path replacement = fixture.replacementProgram();
+			fixture.goneProgram(condition);
+
+			Install.Outcome outcome = fixture.install();
+
+			requireThat(TrustPolicy.read(fixture.policyFile()).command("harness-a").orElseThrow().command(), "recorded").
+				isEqualTo(List.of(replacement.toString()));
+			requireThat(outcome.policy().command("harness-a").orElseThrow().command(), "outcome").
+				isEqualTo(List.of(replacement.toString()));
+			requireThat(fixture.started.stream().map(HarnessCommand::command).distinct().toList(), "started").
+				isEqualTo(List.of(List.of(replacement.toString())));
+			requireThat(String.join(" ", outcome.entries().notices()), "notices").
+				contains(fixture.command.command().getFirst()).contains(replacement.toString());
+			requireThat(fixture.integration.calls(), "calls").contains("register");
+		}
+	}
+
+	/**
+	 * A replacement program that lies in a folder that a harness sandbox lets its commands write, directly or through
+	 * a folder above it, comes with a warning that names the folder and the setting that grants the write.
+	 *
+	 * @param grant whether the grant names the replacement's folder or a folder above it
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if install refuses
+	 */
+	@Test(dataProvider = "writableGrants")
+	public void replacementFromWritableFolderWarns(String grant) throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("install-replace-warns-")));
+			fixture.recordProgram();
+			Path replacement = fixture.replacementProgram();
+			fixture.goneProgram("missing");
+			Path granted = replacement.getParent();
+			if (grant.equals("above"))
+				granted = fixture.root;
+			String setting = "sandbox.filesystem.allowWrite in " + fixture.user.resolve("settings.json");
+			fixture.integration.allowingWrites(new SandboxWrites(List.of(new WriteGrant(granted, setting)),
+				List.of()));
+
+			Install.Outcome outcome = fixture.install();
+
+			requireThat(String.join(" ", outcome.entries().notices()), "notices").
+				contains(replacement.getParent().toString()).contains(setting);
+		}
+	}
+
+	/**
+	 * Returns how a grant can cover the folder of a replacement program.
+	 *
+	 * @return the grant's position relative to the folder
+	 */
+	@DataProvider
+	public static Object[][] writableGrants()
+	{
+		return new Object[][]{{"folder"}, {"above"}};
+	}
+
+	/**
+	 * A replacement program in a folder that no sandbox grant covers, or whose grant a denial covers, comes with no
+	 * warning.
+	 *
+	 * @param reason the reason that the folder is not writable
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if install refuses
+	 */
+	@Test(dataProvider = "unwritableFolders")
+	public void replacementFromOtherFolderDoesNotWarn(String reason) throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("install-replace-quiet-")));
+			fixture.recordProgram();
+			Path replacement = fixture.replacementProgram();
+			fixture.goneProgram("missing");
+			String setting = "sandbox.filesystem.allowWrite in " + fixture.user.resolve("settings.json");
+			Path granted = Files.createDirectories(fixture.root.resolve("writable"));
+			List<Path> denials = List.of();
+			if (reason.equals("denied"))
+			{
+				granted = fixture.root;
+				denials = List.of(replacement.getParent());
+			}
+			fixture.integration.allowingWrites(new SandboxWrites(List.of(new WriteGrant(granted, setting)),
+				denials));
+
+			Install.Outcome outcome = fixture.install();
+
+			requireThat(String.join(" ", outcome.entries().notices()), "notices").contains(replacement.toString()).
+				doesNotContain(setting);
+		}
+	}
+
+	/**
+	 * Returns the reasons that a folder is not writable by a sandbox.
+	 *
+	 * @return each reason's name
+	 */
+	@DataProvider
+	public static Object[][] unwritableFolders()
+	{
+		return new Object[][]{{"ungranted"}, {"denied"}};
+	}
+
+	/**
+	 * The sandbox of another harness whose home the installer finds also gives the warning: a command of that harness
+	 * can write the replacement program's folder.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if install refuses
+	 */
+	@Test
+	public void replacementWarnsOfOtherHarnessSandbox() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("install-replace-other-")));
+			fixture.recordProgram();
+			Path replacement = fixture.replacementProgram();
+			fixture.goneProgram("missing");
+			String setting = "writable_roots in " + fixture.user.resolve("config.toml");
+			Files.createDirectories(fixture.user.resolve("harness-b-home"));
+			fixture.others.add(new RecordingIntegration("harness-b").allowingWrites(new SandboxWrites(
+				List.of(new WriteGrant(replacement.getParent(), setting)), List.of())));
+
+			Install.Outcome outcome = fixture.install();
+
+			requireThat(String.join(" ", outcome.entries().notices()), "notices").contains(setting);
+		}
+	}
+
+	/**
+	 * A first install, which records no program yet, takes the program from the search path and gives no warning about
+	 * writable folders, even when a sandbox grant covers the program's folder: the folders of the user's search path
+	 * are the user's choice.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if install refuses
+	 */
+	@Test
+	public void firstInstallGivesNoWritableFolderWarning() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("install-first-quiet-")));
+			String setting = "sandbox.filesystem.allowWrite in " + fixture.user.resolve("settings.json");
+			fixture.integration.allowingWrites(new SandboxWrites(List.of(new WriteGrant(fixture.root, setting)),
+				List.of()));
+
+			Install.Outcome outcome = fixture.install();
+
+			requireThat(String.join(" ", outcome.entries().notices()), "notices").doesNotContain(setting);
 		}
 	}
 
@@ -620,6 +791,37 @@ public final class InstallCommandTest
 			Files.createDirectories(policyFile().getParent());
 			TrustPolicy.of(List.of(), URI.create("https://releases.example/cat"), ReleaseVersion.parse("1.0"), 1,
 				Map.of("harness-a", home), Map.of("harness-a", command)).write(policyFile(), replacer());
+		}
+
+		/**
+		 * Puts another harness program first on the installer's search path.
+		 *
+		 * @return the program
+		 * @throws IOException if the program cannot be written
+		 */
+		private Path replacementProgram() throws IOException
+		{
+			Path program = RecordingIntegration.program(root.resolve("other-tools"));
+			environment.put("PATH", program.getParent() + File.pathSeparator + environment.get("PATH"));
+			return program;
+		}
+
+		/**
+		 * Makes the recorded program unusable because it is gone.
+		 *
+		 * @param condition {@code missing} to delete it, or {@code not executable} to keep it without execute rights
+		 * @throws IOException if the program cannot be changed
+		 */
+		private void goneProgram(String condition) throws IOException
+		{
+			Path program = Path.of(command.command().getFirst());
+			switch (condition)
+			{
+				case "missing" -> Files.delete(program);
+				case "not executable" -> Files.setPosixFilePermissions(program,
+					PosixFilePermissions.fromString("rw-------"));
+				default -> throw new AssertionError(condition);
+			}
 		}
 
 		/**

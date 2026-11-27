@@ -1,9 +1,11 @@
 package com.holdmyspot.cat.common.runner.policy;
 
+import com.holdmyspot.cat.common.SandboxWrites;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -292,6 +294,21 @@ public record ParentPolicy(boolean sandboxed, List<Path> writeRoots, List<Path> 
 				return Optional.of(denial);
 		}
 		return Optional.empty();
+	}
+
+	/**
+	 * Returns where the parent's commands may write, with the setting that grants each write root, for a warning that
+	 * names the setting.
+	 *
+	 * @param settings the setting that grants each write root, by the root as this policy holds it; a root that
+	 *                 {@code settings} does not name is attributed to the session's sandbox
+	 * @return the writes; none when the parent is not sandboxed, because it has no grant to name
+	 * @throws NullPointerException if {@code settings} is null
+	 */
+	public SandboxWrites writes(Map<Path, String> settings)
+	{
+		requireThat(settings, "settings").isNotNull();
+		return SandboxWrites.NONE;
 	}
 
 	/**

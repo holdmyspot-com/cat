@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.installer.engine.test;
 
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.SandboxWrites;
 import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
 import com.holdmyspot.cat.common.installer.activation.ConsentRequest;
@@ -121,6 +122,10 @@ public final class RecordingIntegration implements HarnessIntegration
 	 * Whether {@code installReadOnlyEntries} adds entries for its files.
 	 */
 	private boolean readOnly;
+	/**
+	 * Where this harness's sandbox lets its commands write.
+	 */
+	private SandboxWrites writes = SandboxWrites.NONE;
 	/**
 	 * The {@code keepData} argument of each {@code unregister} call, in call order.
 	 */
@@ -316,6 +321,18 @@ public final class RecordingIntegration implements HarnessIntegration
 	public RecordingIntegration denyingWrites()
 	{
 		this.readOnly = true;
+		return this;
+	}
+
+	/**
+	 * Makes {@link #sandboxWrites} return the given writes, as the user-level settings of this harness's home give them.
+	 *
+	 * @param writes where this harness's sandbox lets its commands write
+	 * @return this integration
+	 */
+	public RecordingIntegration allowingWrites(SandboxWrites writes)
+	{
+		this.writes = writes;
 		return this;
 	}
 
@@ -537,6 +554,12 @@ public final class RecordingIntegration implements HarnessIntegration
 	public Path marketplaceFolder(Path home, PluginVersion version)
 	{
 		return layout(harness, home).marketplacePlugin();
+	}
+
+	@Override
+	public SandboxWrites sandboxWrites(Path home, Path userHome)
+	{
+		return writes;
 	}
 
 	@Override

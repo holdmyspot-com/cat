@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.installer.activation;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.FileReplacer;
+import com.holdmyspot.cat.common.SandboxWrites;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import java.io.IOException;
@@ -126,6 +127,23 @@ public interface HarnessIntegration
 	 * @throws IOException          if the configuration cannot be read or changed safely
 	 */
 	void validateConfiguration(Path home) throws IOException;
+
+	/**
+	 * Returns where the harness's sandbox lets its commands write, as the user-level settings of a harness home give
+	 * it, without a project, a managed setting or a command line, which a run of the installer does not have. The
+	 * installer uses it to warn that a command of the sandbox may have written a folder that it takes a harness
+	 * program from. The reading leaves out a setting that it cannot read, so the result can omit a grant.
+	 *
+	 * @param home     the absolute, normalized harness home
+	 * @param userHome the user's absolute home directory
+	 * @return the folders that the sandbox lets commands write, each with the setting that grants it; none when the
+	 *   harness has no such setting
+	 * @throws NullPointerException if any argument is null
+	 */
+	default SandboxWrites sandboxWrites(Path home, Path userHome)
+	{
+		return SandboxWrites.NONE;
+	}
 
 	/**
 	 * Asks the harness to install one plugin version that the installer wrote into the

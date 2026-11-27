@@ -11,8 +11,10 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.SandboxWrites;
 import com.holdmyspot.cat.common.ShellQuoting;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.WriteGrant;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
 import com.holdmyspot.cat.common.installer.activation.HarnessCommand;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
@@ -407,21 +409,22 @@ public final class InvocationTest
 	}
 
 	/**
-	 * When the recorded harness program no longer exists, install from the version folder, which must ask the harness
-	 * to install the plugin, is refused with
-	 * the entry command that records it again, before anything changes.
+	 * When the recorded harness program no longer exists and the installer's search path holds no program of the
+	 * harness, install from the version folder is refused before anything changes, naming the program that it
+	 * recorded and the search path that holds none.
 	 *
 	 * @throws IOException    if the fixture cannot be created or the output cannot be read
 	 * @throws TrustException if the test policy is invalid
 	 */
 	@Test
-	public void refusesMissingHarnessProgram() throws IOException, TrustException
+	public void refusesMissingProgramWithoutOther() throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Installation installation = new Installation(cleanup.add(testDirectory("invocation-program-")));
 			installation.writePolicy(installation.trustPolicy());
 			Files.delete(installation.program);
+			byte[] policy = Files.readAllBytes(installation.policyFile);
 			RecordingIntegration integration = new RecordingIntegration();
 
 			Run run = installation.run(Map.of(), List.of(new RegisteredProvider()), integration, "install", "--harness",
@@ -430,10 +433,10 @@ public final class InvocationTest
 			requireThat(run.status, "status").isEqualTo(3);
 			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("refused");
 			requireThat(run.result().path("message").stringValue(), "message").
-				contains("cat.sh --harness harness-a").contains(installation.program.toString());
+				contains(installation.program.toString()).contains("was not found on PATH");
 			requireThat(integration.calls(), "calls").isEmpty();
 			requireThat(Files.exists(installation.data.resolve("state"), NOFOLLOW_LINKS), "state").isFalse();
-			requireThat(Files.isRegularFile(installation.policyFile), "policy").isTrue();
+			requireThat(Files.readAllBytes(installation.policyFile), "policy").isEqualTo(policy);
 		}
 	}
 
@@ -543,40 +546,96 @@ public final class InvocationTest
 
 	/**
 	 * When the recorded harness program no longer exists, the CAT entry command's install from an extracted plugin
-	 * archive takes no other program from the search path: it is refused before anything changes, telling the user how
-	 * to start over.
+	 * archive runs the first program of the harness on the installer's search path instead, records it in the policy
+	 * with the policy's other values unchanged, and names both programs in its message.
 	 *
 	 * @throws IOException    if the fixture cannot be created or the output cannot be read
 	 * @throws TrustException if the test policy is invalid
 	 */
 	@Test
-	public void archiveInstallKeepsMissingProgram() throws IOException, TrustException
+	public void archiveInstallReplacesMissingProgram() throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Installation installation = new Installation(cleanup.add(testDirectory("invocation-archive-missing-")));
 			installation.writePolicy(installation.trustPolicy());
-			String active = installation.image.getFileName().toString();
-			Files.createDirectories(installation.image.resolve("bin"));
-			Files.writeString(installation.image.resolve("bin/VERSION"), active + "\n");
-			Files.writeString(RecordingIntegration.registeredVersion(installation.home), active + "\n");
+			Path archive = installation.archiveInstallation();
 			Files.delete(installation.program);
-			byte[] policy = Files.readAllBytes(installation.policyFile);
-			Path archive = PluginArchive.create(installation.root.resolve("download"),
-				List.of(trusted("release-key", keyPair())));
-			Path tools = RecordingIntegration.program(installation.root.resolve("other-tools")).getParent();
-			Path user = installation.root.resolve("user");
+			Path replacement = RecordingIntegration.program(installation.root.resolve("other-tools"));
 			RecordingIntegration integration = new RecordingIntegration();
 
-			Run run = run(archive, installation.root, installEnvironment(user, tools), List.of(new RegisteredProvider()),
-				integration, "--home", installation.home.toString(), "install", "--harness", "harness-a");
+			Run run = run(archive, installation.root, installEnvironment(installation.root.resolve("user"),
+				replacement.getParent()), List.of(new RegisteredProvider()), integration, "--home",
+				installation.home.toString(), "install", "--harness", "harness-a");
 
-			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(3);
-			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("refused");
+			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(0);
 			requireThat(run.result().path("message").stringValue(), "message").
-				contains(installation.policyFile.toString()).contains("cat.sh --harness harness-a");
-			requireThat(integration.calls(), "calls").doesNotContain("register");
+				contains(installation.program.toString()).contains(replacement.toString());
+			TrustPolicy recorded = TrustPolicy.read(installation.policyFile);
+			requireThat(recorded.command("harness-a").orElseThrow().command(), "command").
+				isEqualTo(List.of(replacement.toString()));
+			TrustPolicy before = installation.trustPolicy();
+			requireThat(recorded.releaseBaseUrl(), "releaseBaseUrl").isEqualTo(before.releaseBaseUrl());
+			requireThat(recorded.harnesses(), "harnesses").isEqualTo(before.harnesses());
+		}
+	}
+
+	/**
+	 * When the recorded harness program still exists, the CAT entry command's install from an extracted plugin archive
+	 * runs it and keeps the policy as it was, even though the installer's search path holds another program of the
+	 * harness first.
+	 *
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void archiveInstallKeepsExistingProgram() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Installation installation = new Installation(cleanup.add(testDirectory("invocation-archive-kept-")));
+			installation.writePolicy(installation.trustPolicy());
+			Path archive = installation.archiveInstallation();
+			byte[] policy = Files.readAllBytes(installation.policyFile);
+			Path other = RecordingIntegration.program(installation.root.resolve("other-tools")).getParent();
+
+			Run run = run(archive, installation.root, installEnvironment(installation.root.resolve("user"), other),
+				List.of(new RegisteredProvider()), new RecordingIntegration(), "--home", installation.home.toString(),
+				"install", "--harness", "harness-a");
+
+			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(0);
 			requireThat(Files.readAllBytes(installation.policyFile), "policy").isEqualTo(policy);
+		}
+	}
+
+	/**
+	 * A replacement program in a folder that the harness's sandbox lets its commands write comes with a warning in the
+	 * install's message that names the folder and the setting that grants the write.
+	 *
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void archiveReplacementWarnsOfWritableDir() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Installation installation = new Installation(cleanup.add(testDirectory("invocation-archive-warns-")));
+			installation.writePolicy(installation.trustPolicy());
+			Path archive = installation.archiveInstallation();
+			Files.delete(installation.program);
+			Path replacement = RecordingIntegration.program(installation.root.resolve("other-tools"));
+			String setting = "sandbox.filesystem.allowWrite in " + installation.root.resolve("user/settings.json");
+			RecordingIntegration integration = new RecordingIntegration().allowingWrites(new SandboxWrites(
+				List.of(new WriteGrant(replacement.getParent(), setting)), List.of()));
+
+			Run run = run(archive, installation.root, installEnvironment(installation.root.resolve("user"),
+				replacement.getParent()), List.of(new RegisteredProvider()), integration, "--home",
+				installation.home.toString(), "install", "--harness", "harness-a");
+
+			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(0);
+			requireThat(run.result().path("message").stringValue(), "message").
+				contains(replacement.getParent().toString()).contains(setting);
 		}
 	}
 
@@ -1709,6 +1768,23 @@ public final class InvocationTest
 			TrustPolicy defaults = policy(List.of(trusted("protected-key", keyPair())));
 			return TrustPolicy.of(defaults.keys(), defaults.releaseBaseUrl(), defaults.minimum(),
 				defaults.maximumMajor(), Map.of("harness-a", home), Map.of("harness-a", command));
+		}
+
+		/**
+		 * Makes the harness's active version the version folder that the running installer belongs to, and returns an
+		 * extracted plugin archive to install from.
+		 *
+		 * @return the archive's plugin folder
+		 * @throws IOException    if the files cannot be written
+		 * @throws TrustException if the archive's policy is invalid
+		 */
+		private Path archiveInstallation() throws IOException, TrustException
+		{
+			String active = image.getFileName().toString();
+			Files.createDirectories(image.resolve("bin"));
+			Files.writeString(image.resolve("bin/VERSION"), active + "\n");
+			Files.writeString(RecordingIntegration.registeredVersion(home), active + "\n");
+			return PluginArchive.create(root.resolve("download"), List.of(trusted("release-key", keyPair())));
 		}
 
 		/**
