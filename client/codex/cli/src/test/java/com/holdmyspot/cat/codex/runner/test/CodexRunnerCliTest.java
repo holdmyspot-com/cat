@@ -781,9 +781,9 @@ public final class CodexRunnerCliTest
 	}
 
 	/**
-	 * Verifies that on native Windows, where CAT has not verified that Codex's sandbox confines a session, the
-	 * launcher refuses every launch that starts a Codex session, forwarded or not, with a reason that names what is
-	 * missing and directs the user to WSL2.
+	 * Verifies that on native Windows, where Codex's sandbox failed CAT's checks, the launcher refuses every launch
+	 * that starts a Codex session, forwarded or not, with a reason that names the checks that failed, each sandbox
+	 * implementation and what happened under it, and directs the user to WSL2.
 	 *
 	 * @param platform the native Windows platform
 	 */
@@ -800,7 +800,9 @@ public final class CodexRunnerCliTest
 
 			requireThat(refused, "refused").isTrue();
 			requireThat(errors.toString(), "errors").contains("Codex").
-				contains("CAT has not yet verified that Codex's sandbox on native Windows").contains("WSL2").
+				contains("writes, reads and network access").contains("unelevated").
+				contains("refuses to start a session whose policy denies reads").contains("elevated").
+				contains("rejected every command").contains("hard link").contains("public hosts").contains("WSL2").
 				contains("wsl --install");
 		}
 	}

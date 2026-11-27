@@ -22,10 +22,10 @@ import tools.jackson.dataformat.toml.TomlMapper;
 /**
  * Decides on which platforms CAT starts a Codex session, as {@link HarnessSandbox} describes, and in which of Codex's
  * Windows sandbox implementations. Codex confines a session in a sandbox on Linux and macOS. It has a sandbox on
- * native Windows too, but CAT starts no Codex session there until it has verified that this sandbox denies the
- * session the reads that CAT denies, keeps its writes inside the paths that CAT allows, and lets it reach no host
- * other than its model's. Once CAT starts sessions there, it has verified the implementations {@code elevated} and
- * {@code unelevated} only, so it refuses a session that would run in another one, such as {@code mxc}, or in none.
+ * native Windows too, but CAT starts no Codex session there, because that sandbox failed CAT's checks that it denies
+ * the session the reads that CAT denies, keeps its writes inside the paths that CAT allows, and lets it reach no host
+ * other than its model's. CAT's checks covered the implementations {@code elevated} and {@code unelevated} only, so a
+ * session that would run in another one, such as {@code mxc}, or in none, is refused as well.
  */
 public final class CodexSessionSandbox
 {
@@ -50,9 +50,12 @@ public final class CodexSessionSandbox
 		requireThat(platform, "platform").isNotNull();
 		if (platform.isWindows())
 		{
-			return Optional.of(HarnessSandbox.nativeWindowsRefusal("Codex", "CAT has not yet verified that Codex's " +
-				"sandbox on native Windows denies a session the reads that CAT denies, keeps its writes inside the paths " +
-				"that CAT allows, and lets it reach no host other than its model's"));
+			return Optional.of(HarnessSandbox.nativeWindowsRefusal("Codex", "Codex's sandbox on native Windows failed " +
+				"CAT's checks of a session's writes, reads and network access with Codex 0.172.0: with the unelevated " +
+				"implementation, Codex refuses to start a session whose policy denies reads, as the policy of every " +
+				"session that CAT starts does; with the elevated implementation, Codex rejected every command of such a " +
+				"session, a command wrote a file outside its writable folders through a hard link, and commands " +
+				"reached public hosts that the policy did not allow"));
 		}
 		return Optional.empty();
 	}

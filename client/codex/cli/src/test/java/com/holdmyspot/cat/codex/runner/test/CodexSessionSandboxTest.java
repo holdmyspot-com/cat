@@ -20,8 +20,9 @@ import org.testng.annotations.Test;
 public final class CodexSessionSandboxTest
 {
 	/**
-	 * Verifies that CAT refuses every Codex session on native Windows, with a reason that names what is missing and
-	 * directs the user to WSL2, and starts them on Linux and macOS.
+	 * Verifies that CAT refuses every Codex session on native Windows, with a reason that names the checks of Codex's
+	 * Windows sandbox that failed, each sandbox implementation and what happened under it, and directs the user to
+	 * WSL2, and starts them on Linux and macOS.
 	 */
 	@Test
 	public void refusesNativeWindowsOnly()
@@ -33,8 +34,10 @@ public final class CodexSessionSandboxTest
 			{
 				requireThat(refusal, "refusal").withContext(platform, "platform").isPresent();
 				requireThat(refusal.orElseThrow(), "refusal").withContext(platform, "platform").contains("Codex").
-					contains("CAT has not yet verified that Codex's sandbox on native Windows").contains("WSL2").
-					contains("wsl --install");
+					contains("writes, reads and network access").contains("Codex 0.172.0").contains("unelevated").
+					contains("refuses to start a session whose policy denies reads").contains("elevated").
+					contains("rejected every command").contains("hard link").contains("public hosts").
+					contains("WSL2").contains("wsl --install");
 			}
 			else
 				requireThat(refusal, "refusal").withContext(platform, "platform").isEmpty();

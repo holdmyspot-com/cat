@@ -314,7 +314,8 @@ public final class CodexPromptOptimizerTest
 
 	/**
 	 * Verifies that on native Windows, where CAT does not start Codex trials, {@code start} is refused with the reason,
-	 * which names what is missing and directs the user to WSL2.
+	 * which names the checks of Codex's Windows sandbox that failed and each sandbox implementation, and directs the
+	 * user to WSL2.
 	 *
 	 * @throws IOException if a file cannot be written
 	 */
@@ -331,7 +332,8 @@ public final class CodexPromptOptimizerTest
 			JsonNode json = JsonMapper.builder().build().readTree(output.toString());
 			requireThat(json.get("status").asString(), "status").isEqualTo("refused");
 			requireThat(json.get("message").asString(), "message").
-				contains("CAT has not yet verified that Codex's sandbox on native Windows").contains("WSL2");
+				contains("writes, reads and network access").contains("unelevated").contains("elevated").
+				contains("WSL2");
 		}
 	}
 
