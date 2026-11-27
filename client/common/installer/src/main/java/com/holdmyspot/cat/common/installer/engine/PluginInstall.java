@@ -274,6 +274,21 @@ public final class PluginInstall
 		}
 
 		/**
+		 * Returns these entries with one more notice after the others.
+		 *
+		 * @param notice the sentence to add
+		 * @return the entries
+		 * @throws NullPointerException if {@code notice} is null
+		 */
+		public InstalledEntries withNotice(String notice)
+		{
+			requireThat(notice, "notice").isNotNull();
+			List<String> added = new ArrayList<>(notices);
+			added.add(notice);
+			return new InstalledEntries(recorded, added);
+		}
+
+		/**
 		 * Returns a message followed by the notices.
 		 *
 		 * @param message the message

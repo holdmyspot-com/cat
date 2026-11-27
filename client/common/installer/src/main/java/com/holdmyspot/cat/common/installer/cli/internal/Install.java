@@ -50,9 +50,9 @@ import java.util.function.BooleanSupplier;
  * newer release has shaped that data. Every check runs before the first change, and every step can be repeated, so
  * running install again repairs an installation that an earlier install left incomplete.
  * <p>
- * Install takes the harness program from the user's {@code PATH} only when the harness home's policy records none for
- * that home; otherwise it reuses the recorded program and its recorded environment, as {@link HarnessProgram}
- * explains.
+ * Install takes the harness program from the user's {@code PATH} when the harness home's policy records none for that
+ * home, or records one that is gone; otherwise it reuses the recorded program and its recorded environment, as
+ * {@link HarnessProgram} explains.
  */
 public final class Install
 {
@@ -129,9 +129,10 @@ public final class Install
 	 * @return the outcome
 	 * @throws NullPointerException if any argument other than {@code home} is null
 	 * @throws TrustException       if a check refuses install, including when the policy records a harness program
-	 *                              that can no longer be used, a first install does not find the harness program on
-	 *                              the user's search path or finds one that cannot start in the user's environment, or
-	 *                              the user withholds a permission that install needs; the message of the latter is
+	 *                              that exists but can no longer be used, a first install, or an install whose
+	 *                              recorded program is gone, does not find the harness program on the user's search
+	 *                              path or finds one that cannot start in the user's environment, or the user
+	 *                              withholds a permission that install needs; the message of the latter is
 	 *                              the question that the integration asked
 	 * @throws IOException          if the harness configuration is invalid, the harness does not install the plugin, a
 	 *                              data migration fails, or a file cannot be read, written or replaced
@@ -182,8 +183,14 @@ public final class Install
 				"instead.");
 		}
 		HarnessCommand command;
+		boolean replaced = false;
 		if (recorded == null)
-			command = discoverProgram(integration, home, environment);
+			command = HarnessProgram.discover(platform, integration, home, environment, cliFactory, "");
+		else if (HarnessProgram.isGone(recorded))
+		{
+			command = HarnessProgram.replacement(recorded, platform, integration, home, environment, cliFactory);
+			replaced = true;
+		}
 		else
 		{
 			HarnessProgram.requireRecorded(recorded, home, policyFile, integration, cliFactory, entryCommand);
@@ -220,6 +227,11 @@ public final class Install
 		InstalledEntries entries = steps.installEntries(command.environment(), home, installer, installation,
 			otherInstallations, catLocks,
 			PluginInstall.formerLauncherState(userHome), ShellStartupFiles.in(userHome), consented);
+		if (replaced)
+		{
+			entries = entries.withNotice(HarnessProgram.replacementNotice(recorded, command, policyFile, integration,
+				home, others, environment, userHome));
+		}
 		return new Outcome(version, before, versionFolder, installer, startupCache, entries, policy);
 	}
 
@@ -341,51 +353,6 @@ public final class Install
 		if (!home.equals(policy.harnesses().get(harness)))
 			return null;
 		return policy.command(harness).orElse(null);
-	}
-
-	/**
-	 * Finds the harness program on the user's search path and confirms that it is the harness's program.
-	 *
-	 * @param integration the harness's integration
-	 * @param home        the real harness home
-	 * @param environment the user's environment
-	 * @return the command and environment to record
-	 * @throws TrustException if the program is not on the user's search path, or could not start in the user's
-	 *                        environment; the message tells the user to install the harness or to run the installer
-	 *                        with the environment of the harness's sessions
-	 * @throws IOException    if the program cannot be run, or does not identify itself as the harness's program
-	 */
-	private HarnessCommand discoverProgram(HarnessIntegration integration, Path home, Map<String, String> environment)
-		throws TrustException, IOException
-	{
-		HarnessCommand command;
-		try
-		{
-			command = new ExecutableDiscovery(platform).find(integration.programName(), environment,
-				integration.programEnvironment(home, platform.environment(environment)));
-		}
-		catch (ProgramNotFoundException e)
-		{
-			// The same environment finds no program again, so only the user can change the outcome
-			throw refusal(e.getMessage() + " Install " + integration.productName() + ", or run the installer with " +
-				"the PATH your " + integration.productName() + " sessions use, then run the same command again.");
-		}
-		try
-		{
-			HarnessProgram.requireIdentity(command, home, integration, cliFactory);
-		}
-		catch (ProgramStartException e)
-		{
-			// The same environment fails the same way, so only the user can change the outcome
-			throw refusal(e.getMessage() + " Run the installer with the environment your " +
-				integration.productName() + " sessions use.");
-		}
-		catch (IOException e)
-		{
-			throw new IOException("The program " + command.command().getLast() + " that install found on PATH is " +
-				"not the " + integration.harness() + " program: " + e.getMessage(), e);
-		}
-		return command;
 	}
 
 	/**

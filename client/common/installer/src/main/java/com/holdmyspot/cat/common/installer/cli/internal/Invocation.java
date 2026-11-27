@@ -628,9 +628,10 @@ public final class Invocation
 		Optional<UpdateResult> otherHome = refuseOtherHome(own, arguments.home(), managed.home());
 		if (otherHome.isPresent())
 			return print(otherHome.get(), arguments, locations);
-		Optional<UpdateResult> unusable = refuseUnusableProgram(own, locations.policy(), managed);
-		if (unusable.isPresent())
-			return print(unusable.get(), arguments, locations);
+		Program program = checkProgram(own, locations.policy(), managed);
+		if (program.refusal() != null)
+			return print(program.refusal(), arguments, locations);
+		managed = program.managed();
 		UpdateResult result;
 		try (ReleaseConnection source = sources.open(managed.policy().releaseBaseUrl()))
 		{
@@ -648,6 +649,7 @@ public final class Invocation
 			if (!installed.equals(running))
 				result = writeInstalledEntries(result, managed, arguments, running, installed);
 		}
+		result = program.report(result, locations.policy());
 		return print(result, arguments, locations);
 	}
 
@@ -918,9 +920,10 @@ public final class Invocation
 				Managed managed = manage(harness, installation.policy(), false);
 				if (managed.refusal() == null && refuseOtherHome(harness, real, managed.home()).isEmpty())
 				{
-					Optional<UpdateResult> unusable = refuseUnusableProgram(harness, installation.policy(), managed);
-					if (unusable.isPresent())
-						return print(unusable.get(), arguments, null);
+					Program program = checkProgram(harness, installation.policy(), managed);
+					if (program.refusal() != null)
+						return print(program.refusal(), arguments, null);
+					managed = program.managed();
 					resolvedData = installation.dataDirectory();
 					resolvedHarness = harness;
 					List<TrustedKey> releaseKeys = List.of();
@@ -937,6 +940,7 @@ public final class Invocation
 						boolean succeeded = result.result().exitStatus() == 0;
 						if (succeeded && !releaseKeys.isEmpty())
 							result = addReleaseKeys(result, managed.policy(), installation.policy(), releaseKeys);
+						result = program.report(result, installation.policy());
 						return print(result, arguments, null);
 					}
 				}
@@ -1068,29 +1072,48 @@ public final class Invocation
 	}
 
 	/**
-	 * Refuses an install whose recorded harness program can no longer be used. Install runs that program, and never
-	 * takes another one from the search path once the policy records one. Uninstall needs no such check: it runs the
-	 * program only to unregister the plugin, and skips that step when the program is gone.
+	 * Checks the harness program that an install is about to run. A recorded program that exists is reused, and
+	 * refused when it can no longer be used. A recorded program that is gone, because it no longer exists or is not
+	 * executable, is replaced by the first program of the harness on the user's search path, which is recorded in the
+	 * policy, as a first install records its program. Uninstall needs no such check: it runs the program only to
+	 * unregister the plugin, and skips that step when the program is gone.
 	 *
 	 * @param own        the harness
 	 * @param policyFile the installation's policy
 	 * @param managed    the checked installation, which records the program
-	 * @return the refusal, or empty when the program can be used
+	 * @return the installation that install runs, or the refusal
+	 * @throws IOException if the policy cannot be written
 	 */
-	private Optional<UpdateResult> refuseUnusableProgram(String own, Path policyFile, Managed managed)
+	private Program checkProgram(String own, Path policyFile, Managed managed) throws IOException
 	{
 		HarnessCommand command = managed.policy().command(own).orElseThrow();
 		HarnessIntegration integration = integrations.stream().
 			filter(provider -> provider.harness().equals(own)).findFirst().orElseThrow();
 		try
 		{
-			HarnessProgram.requireRecorded(command, managed.home(), policyFile, integration, cliFactory, entryCommand);
-			return Optional.empty();
+			if (!HarnessProgram.isGone(command))
+			{
+				HarnessProgram.requireRecorded(command, managed.home(), policyFile, integration, cliFactory,
+					entryCommand);
+				return new Program(managed, null, null);
+			}
+			HarnessCommand replacement = HarnessProgram.replacement(command, platform, integration, managed.home(),
+				environment, cliFactory);
+			TrustPolicy changed = managed.policy().withCommand(own, replacement);
+			Install.writePolicy(changed, policyFile, replacer);
+			List<HarnessIntegration> others = integrations.stream().
+				filter(provider -> !provider.harness().equals(own)).toList();
+			String notice = HarnessProgram.replacementNotice(command, replacement, policyFile, integration,
+				managed.home(), others, environment, userHome);
+			HarnessSession session = new HarnessSession(integration, cliFactory.create(replacement, managed.home()),
+				replacer);
+			Managed replaced = new Managed(changed, managed.activation(), managed.home(), session, null);
+			return new Program(replaced, null, notice);
 		}
 		catch (TrustException e)
 		{
-			return Optional.of(failure(Result.REFUSED, own, e.getMessage(),
-				List.of(Path.of(command.command().getLast()), policyFile)));
+			return new Program(managed, failure(Result.REFUSED, own, e.getMessage(),
+				List.of(Path.of(command.command().getLast()), policyFile)), null);
 		}
 	}
 
@@ -1535,6 +1558,36 @@ public final class Invocation
 				return Invocation.this.print(result, arguments, null);
 			printed.object().put("message", result.message());
 			return Invocation.this.print(printed.result(), printed.object(), arguments, null);
+		}
+	}
+
+	/**
+	 * The outcome of checking the harness program that an install is about to run.
+	 *
+	 * @param managed the installation that install runs, which records the program that it runs
+	 * @param refusal the refusal, or null when install can run the program
+	 * @param notice  what install tells the user about the program that replaced a recorded program that is gone, or
+	 *                null when it replaced none
+	 */
+	private record Program(Managed managed, UpdateResult refusal, String notice)
+	{
+		/**
+		 * Adds the replacement of the program to the result of an install.
+		 *
+		 * @param result     the result of the install
+		 * @param policyFile the installation's policy, which records the replacement
+		 * @return the result, which reports the replacement, or {@code result} when install replaced no program
+		 */
+		UpdateResult report(UpdateResult result, Path policyFile)
+		{
+			if (notice == null)
+				return result;
+			List<Path> paths = new ArrayList<>(result.paths());
+			if (!paths.contains(policyFile))
+				paths.add(policyFile);
+			return new UpdateResult(result.result(), result.harness(), result.version(), result.previousVersion(),
+				result.message() + " " + notice, paths, result.consistent(), result.keyIds(), result.aotCache(),
+				result.exitDeletions());
 		}
 	}
 

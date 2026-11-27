@@ -518,6 +518,24 @@ public final class TrustPolicy
 	}
 
 	/**
+	 * Returns this policy with another program recorded for a harness and every other value unchanged, including its
+	 * format.
+	 *
+	 * @param harness the harness's identifier
+	 * @param command the program and environment to record for {@code harness}
+	 * @return the policy
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public TrustPolicy withCommand(String harness, HarnessCommand command)
+	{
+		requireThat(harness, "harness").isNotNull();
+		requireThat(command, "command").isNotNull();
+		Map<String, HarnessCommand> changed = new TreeMap<>(commands);
+		changed.put(harness, command);
+		return new TrustPolicy(keys, releaseBaseUrl, minimum, maximumMajor, harnesses, changed, format);
+	}
+
+	/**
 	 * Writes the policy to a file, replacing it atomically.
 	 * <p>
 	 * The policy is written to a new temporary file in the same directory, forced to the storage device, and then
