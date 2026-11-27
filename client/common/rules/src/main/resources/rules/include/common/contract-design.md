@@ -25,6 +25,9 @@
 	reader decision; retain uncertain wording and report the possible improvement instead.
 - When test runs measure an artifact's compliance, measure each conditional obligation where its trigger is absent too,
 	so wording that applies the obligation beyond its trigger fails a test instead of passing every one.
+- Ensure code that estimates something it cannot know exactly states in its contract which way it errs, and that a
+	caller reusing it either needs that direction or gets its own, so that an estimate built to understate is never
+	reused where it must report.
 - Make a prompt file's guidance carry every instruction its model needs, because its Design Goals, which guide its
 	authors, and its comments, which remind the plugin developers why a Design Goal was added, are removed before the
 	model reads it.
@@ -219,3 +222,12 @@ Before removing or relocating guidance as duplicate, compare its trigger, reader
 proposed destination. Remove it only when that destination is authoritative and available for every use of the removed
 guidance; otherwise retain a concise statement or an explicit route. Similar wording alone does not establish
 duplication.
+
+When code estimates something it cannot know exactly, such as a permission or policy reader, a classifier, a size or
+cost estimate, or change detection, its contract states which way it errs. Code that grants or limits access errs toward
+less access; code that detects or warns errs toward reporting.
+
+Before reusing such code, confirm that its direction matches the new caller's. When the directions differ, give the
+caller its own reading or a parameter that picks the direction; do not reuse the code as it is.
+
+A check that cannot decide reports that it could not check, naming the cause, rather than reporting nothing.

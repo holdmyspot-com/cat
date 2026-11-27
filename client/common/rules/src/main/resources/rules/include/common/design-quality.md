@@ -30,6 +30,8 @@ A design must:
 - Reuse suitable existing project and JDK facilities before introducing new abstractions, dependencies, or
 	reimplementations. When the need is a named standardized format or another externally defined capability, lazy load
 	`./prefer-reuse.md` to select among the project, the platform, and permitted external dependencies.
+	When reusing code that estimates something it cannot know exactly, lazy load `./contract-design.md` to check which
+	way it errs.
 - Add an extension boundary only when a supported variation needs independently replaceable behavior; otherwise keep
 	the behavior direct. Do not introduce a configurable abstraction merely for a hypothetical future variation.
 - Do not require a caller or user to investigate, select, derive, or perform routine work that the system can safely

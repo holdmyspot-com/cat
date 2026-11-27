@@ -137,3 +137,6 @@ unavailable. Only an explicit prohibition or the operation's registry, installat
 diagnostic blocks acquisition; a predicted permission problem does not. Report that block and obtain the needed access
 instead of substituting custom code. Custom code is permitted only after every task-permitted source has completed a
 search with no verified suitable candidate. Then document and verify the contract custom code owns.
+
+When reusing code that estimates something it cannot know exactly, lazy load `./contract-design.md` to check which
+way it errs.

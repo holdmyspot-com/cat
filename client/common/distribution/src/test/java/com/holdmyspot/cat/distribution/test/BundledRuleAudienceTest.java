@@ -376,6 +376,41 @@ public final class BundledRuleAudienceTest
 	}
 
 	/**
+	 * Verifies an agent that reuses code that estimates something it cannot know exactly reaches the packaged guidance
+	 * on the direction in which that code errs: the design-quality and prefer-reuse rules route to it, and it says that
+	 * the contract states the direction, that a reuser confirms the direction matches, that differing directions need
+	 * the caller's own reading or a direction parameter, and that an undecidable check reports its cause.
+	 *
+	 * @throws IOException        if the bundled rules cannot be copied, routed, or read
+	 * @throws URISyntaxException if the class path returns a malformed resource location
+	 */
+	@Test
+	public void estimateDirectionGuidanceIsReachable() throws IOException, URISyntaxException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-bundled-rules-"));
+			BundledRules.copy(plugin.resolve("rules"));
+			Path include = plugin.resolve("rules/include/common");
+
+			String contract = oneLine(Files.readString(include.resolve("contract-design.md")));
+			requireThat(contract, "contractDesign").
+				contains("its contract states which way it errs").
+				contains("Code that grants or limits access errs toward less access").
+				contains("code that detects or warns errs toward reporting").
+				contains("confirm that its direction matches the new caller's").
+				contains("give the caller its own reading or a parameter that picks the direction").
+				contains("reports that it could not check, naming the cause");
+			requireThat(oneLine(Files.readString(include.resolve("prefer-reuse.md"))), "preferReuse").
+				contains("When reusing code that estimates something it cannot know exactly, " +
+					"lazy load `./contract-design.md` to check which way it errs.");
+			requireThat(oneLine(Files.readString(include.resolve("design-quality.md"))), "designQuality").
+				contains("When reusing code that estimates something it cannot know exactly, " +
+					"lazy load `./contract-design.md` to check which way it errs.");
+		}
+	}
+
+	/**
 	 * Verifies an agent that is about to rerun a failed operation that is expensive to run in full, or to count a
 	 * conclusion that compares separate runs, can reach the packaged rule for that decision: the failure area index
 	 * routes to the diagnostic-run rule, and the rule routing that every agent of either harness receives at startup
