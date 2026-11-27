@@ -12344,7 +12344,67 @@ unreadable setting. Exit: those tests failed before the change and pass after it
 	refusal's message names it, with the receipts for each; the tests of (a) or of (b) pass and failed before; the clean
 	full offline build passes; the machine-wide changes on the runner are undone with hashes shown; the report names every
 	clause and implementation not run, the two deferred checks among them. No design or plan ID appears in code. Closes R-I32 to R-I34.
-- **Step 1 results:** not run yet.
+- **Step 1 results (2026-11-27):** run on a throwaway branch of the hosted `windows-2025` image (Windows Server 2025
+	Datacenter, build 10.0.26100; the runner user is an administrator), with Codex 0.172.0 installed by `npm install
+	--global @openai/codex@0.172.0` (npm's `latest`, and the newest version that CAT's gates name). No credential was on
+	the runner: no environment variable whose name holds OPENAI, CODEX, API_KEY, TOKEN or SECRET, no `auth.json`, and
+	`codex login status` printed "Not logged in". The runs are `holdmyspot-com/cat` Actions runs 46019986330 (help texts
+	and strings of the build), 46020388448, 46020789898, 46021063090 and 46021520124 (probe iterations) and 46022284616 (the
+	final probe). The branch is deleted. The logs, the workflow and its scripts, and the stub (`stub-model.js`) are in the
+	clone's `.cat-tmp/wi177-step1/` (`run1` to `run6`, `workflow-branch`), not committed.
+	- **(a) Model-free sandbox: it exists, with a different syntax from the one that the step assumed.** There is no
+		`windows` subcommand: `codex sandbox` is the Windows form, and `codex sandbox windows --help` ran `windows` as the
+		command and failed (`CreateProcessAsUserW failed: 2`). Syntax: `codex sandbox -P <profile> [-C <dir>] [-c
+		key=value] [--include-managed-config] -- <command...>`. `-P` (`--permission-profile`) is required (without it:
+		`the following required arguments were not provided: --permission-profile <NAME>`, status 2). The built-in profiles
+		are `:read-only`, `:workspace` and `:danger-full-access`; `:danger-no-sandbox` fails with `unknown built-in
+		profile`, and a bare name such as `workspace` with `default_permissions requires a [permissions] table`. The
+		help text says "Full command args to run under Windows restricted token sandbox". With no login and no model
+		(`Not logged in`), `-P :workspace -C C:\wi177\ws -- cmd /c "echo ok> inside.txt"` created the file, and `-- cmd /c
+		"echo no> C:\wi177\outside\outside.txt"` printed `Access is denied.` and left no file; `-P :read-only` refused the
+		write in the working folder as well; `-P :danger-full-access` created the file in the working folder (the outside
+		write was not tried). The status of `codex sandbox` was 0 in the refused case too, so a check must read the file
+		system, as P38 says. `--include-managed-config` is what makes the command read the machine-wide requirements.
+	- **(b) Implementation values.** `[windows] allowed_sandbox_implementations`, in `C:\ProgramData\OpenAI\Codex\
+		requirements.toml` (the parse error names that path, which confirms the folder; the registry value was not
+		tried), accepts exactly `elevated` and `unelevated`: `bogus` and `mxc` fail with ``unknown variant `x`, expected
+		`elevated` or `unelevated` ``, and an empty list with `cannot be empty`. The config setting `[windows] sandbox`
+		accepts `elevated`, `unelevated` and `mxc`. When nothing sets it, the two entry points differ: `codex sandbox` runs
+		as the caller under a restricted token (`whoami` gives `runneradmin`, as `unelevated` does), and `codex exec` has
+		no Windows sandbox enabled, so the rollout's `turn_context` says `sandbox_policy` `read-only` and the model's command
+		is rejected (`blocked by policy`, approval `never`) and nothing runs. What each needs: `unelevated` needs no
+		setup and no administrator rights (it ran as a standard local user, `whoami` gave that user, and it wrote in the
+		working folder); `elevated` needs administrator rights for a first-use setup, which on the runner ran without a
+		prompt and left the local users `CodexSandboxOffline` and `CodexSandboxOnline`, the group `CodexSandboxUsers`,
+		four outbound and inbound firewall rules named `codex_sandbox_offline_block_*` and `.sandbox*` folders in the
+		Codex home, after which commands run as `codexsandboxoffline`; as a standard user the same command failed with
+		`orchestrator_helper_launch_canceled: ShellExecuteExW failed to launch setup helper: 1223` and wrote nothing.
+		Selection: a requirement overrides the configuration (requirement `["elevated"]` with `unelevated` configured ran
+		as `codexsandboxoffline`; `["unelevated"]` with `elevated` configured ran as `runneradmin`); with both listed, the
+		configured value wins, and with both listed and nothing configured `codex sandbox` and `codex exec` both ran
+		`elevated`. A requirement that does not parse stops `codex exec` before any command (`Error loading config.toml:
+		failed to parse requirements layer`). The implementation in effect shows in `whoami` (`codexsandboxoffline` is
+		`elevated`, the caller is `unelevated`). The build's text says that a managed proxy needs the elevated backend
+		(`managed networking requires the elevated Windows sandbox backend`); that was not run.
+	- **(c) `codex exec` with a stub model provider: it works with no credential.** `config.toml` with `model_provider`
+		naming a table `[model_providers.stub]` that holds `name`, `base_url = "http://127.0.0.1:18777/v1"` and `wire_api
+		= "responses"`, no `env_key` and no `auth.json`: `codex exec --skip-git-repo-check --json -C <dir> <prompt>` called
+		the stub with `POST /v1/responses` and no `Authorization` header (`codex doctor`: "OpenAI auth is not required for
+		the active model provider"), and the stub's Responses stream (`stub-model.js`: one function call, then a final
+		message once the call's output returns) was accepted. In 0.172.0 the shell tool is named `exec_command` with an
+		argument `cmd`, which the child ran through `pwsh.exe -Command`; an unknown model name only prints a metadata
+		warning. With `[windows] sandbox` set to `unelevated` and to `elevated`, the command executed inside the sandbox:
+		`whoami` gave `runneradmin` and `codexsandboxoffline`, the write in the working folder created its file, and the
+		write outside it printed ``Access to the path ... is denied`` and left no file; the output reached the stub as the
+		call's output, and the rollout in `CODEX_HOME\sessions` holds the call, its output and a `turn_context` with the
+		permission profile.
+	- **Not confirmed here:** `mxc`, a third value that `[windows] sandbox` accepts but the allow-list rejects: on this
+		image `windows.sandbox = "mxc"` fails with `native MXC is unavailable on this executor`, the build also reads
+		`windows.allow_mxc` and the requirements `allow_mxc` and `require_mxc`, so it cannot be exercised on a hosted
+		`windows-2025` runner, and whether it is in scope is the open question of the Scope paragraph; the registry value
+		`RequirementsPath` and `managed_config.toml`; `[windows] sandbox` with `elevated` as the machine's default after
+		Windows onboarding (CAT's own child sessions will need to set it, because an unset value leaves `codex exec` in
+		`read-only`); every network, launch and link clause of P38.
 
 ## 6. Dependency order
 
