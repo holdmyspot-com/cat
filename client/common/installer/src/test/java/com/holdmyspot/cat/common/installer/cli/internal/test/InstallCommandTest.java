@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SandboxWrites;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.WritablePathEntries;
 import com.holdmyspot.cat.common.WriteGrant;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.HarnessCommand;
@@ -637,6 +638,86 @@ public final class InstallCommandTest
 	}
 
 	/**
+	 * A warning for a replacement from a folder that a sandbox lets its commands write states which commands the check
+	 * covers, so that the user does not take it for a check of commands that run outside the sandbox.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if install refuses
+	 */
+	@Test
+	public void replacementWarningStatesItsCoverage() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("install-replace-coverage-")));
+			fixture.recordProgram();
+			Path replacement = fixture.replacementProgram();
+			fixture.goneProgram("missing");
+			fixture.integration.allowingWrites(new SandboxWrites(List.of(new WriteGrant(replacement.getParent(),
+				"sandbox.filesystem.allowWrite")), List.of()));
+
+			Install.Outcome outcome = fixture.install();
+
+			requireThat(String.join(" ", outcome.entries().notices()), "notices").contains(WritablePathEntries.COVERAGE);
+		}
+	}
+
+	/**
+	 * A grant that CAT cannot be sure of is reported as one that may be writable, and what CAT could not read is
+	 * listed, so that the user does not take a missing warning for a folder that is safe.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if install refuses
+	 */
+	@Test
+	public void replacementWarnsOfPossibleGrants() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("install-replace-possible-")));
+			fixture.recordProgram();
+			Path replacement = fixture.replacementProgram();
+			fixture.goneProgram("missing");
+			String setting = "sandbox.filesystem.allowWrite in " + fixture.user.resolve("settings.json");
+			fixture.integration.allowingWrites(new SandboxWrites(List.of(new WriteGrant(replacement.getParent(),
+				setting, true)), List.of(), List.of("the settings file managed-settings.json cannot be parsed")));
+
+			Install.Outcome outcome = fixture.install();
+
+			String notices = String.join(" ", outcome.entries().notices());
+			requireThat(notices, "notices").contains(replacement.getParent().toString()).contains("may be writable").
+				contains(setting).contains("managed-settings.json cannot be parsed");
+		}
+	}
+
+	/**
+	 * The installer asks each harness for the sandbox writes of the project that holds the folder that the user ran it
+	 * from.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if install refuses
+	 */
+	@Test
+	public void replacementReadsWorkingDirProject() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("install-replace-project-")));
+			fixture.recordProgram();
+			fixture.replacementProgram();
+			fixture.goneProgram("missing");
+			Files.createDirectories(fixture.user.resolve("harness-b-home"));
+			RecordingIntegration other = new RecordingIntegration("harness-b");
+			fixture.others.add(other);
+
+			fixture.install();
+
+			requireThat(fixture.integration.askedWorkingDirectories(), "own").isEqualTo(List.of(fixture.workingDirectory));
+			requireThat(other.askedWorkingDirectories(), "other").isEqualTo(List.of(fixture.workingDirectory));
+		}
+	}
+
+	/**
 	 * A first install, which records no program yet, takes the program from the search path and gives no warning about
 	 * writable folders, even when a sandbox grant covers the program's folder: the folders of the user's search path
 	 * are the user's choice.
@@ -740,6 +821,10 @@ public final class InstallCommandTest
 		private final HarnessCommand command;
 		private final List<HarnessCommand> started = new ArrayList<>();
 		private Path requestedHome;
+		/**
+		 * The folder that the fixture's installer runs from.
+		 */
+		private final Path workingDirectory;
 
 		/**
 		 * Creates the archive and the user's directories.
@@ -756,6 +841,7 @@ public final class InstallCommandTest
 			this.home = Files.createDirectories(root.resolve("harness-home"));
 			this.requestedHome = home;
 			this.user = Files.createDirectories(root.resolve("user"));
+			this.workingDirectory = Files.createDirectories(root.resolve("working"));
 			environment.put("HOME", user.toString());
 			environment.put(Platform.current().homeVariable(), user.toString());
 			environment.put("XDG_DATA_HOME", root.resolve("xdg-data").toString());
@@ -870,7 +956,7 @@ public final class InstallCommandTest
 				interval -> () ->
 				{
 				});
-			return install.install("harness-a", requestedHome, environment, user, provider,
+			return install.install("harness-a", requestedHome, environment, user, workingDirectory, provider,
 				integration, others, _ -> false);
 		}
 	}

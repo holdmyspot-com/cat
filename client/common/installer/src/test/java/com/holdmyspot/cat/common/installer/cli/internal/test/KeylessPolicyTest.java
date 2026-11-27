@@ -356,7 +356,7 @@ public final class KeylessPolicyTest
 			try (PrintStream stdout = new PrintStream(output, false, UTF_8);
 				PrintStream stderr = new PrintStream(diagnostics, false, UTF_8))
 			{
-				Invocation invocation = new Invocation(image, Platform.current(), environment, null,
+				Invocation invocation = new Invocation(image, Platform.current(), environment, null, null,
 					List.of(new RegisteredProvider()), List.of(new RecordingIntegration()), (recorded, recordedHome) ->
 					RecordingIntegration.cli(), Clock.systemUTC(), interval -> () -> {}, replacer(),
 					_ -> Optional.empty(), command ->

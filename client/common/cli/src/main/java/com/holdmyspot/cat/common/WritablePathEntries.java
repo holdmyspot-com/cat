@@ -24,6 +24,12 @@ import java.util.StringJoiner;
 public final class WritablePathEntries
 {
 	/**
+	 * The sentence that states which commands the check covers.
+	 */
+	public static final String COVERAGE = "This check covers only the commands that run inside the sandbox: a command " +
+		"that runs with the sandbox disabled or excluded from it, and the harness's own file tools, are not covered.";
+
+	/**
 	 * Prevents instantiation.
 	 */
 	private WritablePathEntries()
@@ -88,14 +94,22 @@ public final class WritablePathEntries
 			Path real = RealPaths.resolve(folder.get());
 			if (!seen.add(real) || RealPaths.isInsideAny(real, denials))
 				continue;
+			// A grant that is certain names the folder in preference to one that is only possible
+			int covering = -1;
 			for (int i = 0; i < grantRoots.size(); ++i)
 			{
-				if (real.startsWith(grantRoots.get(i)))
+				if (!real.startsWith(grantRoots.get(i)))
+					continue;
+				if (!writes.grants().get(i).possible())
 				{
-					writable.add(new Writable(folder.get(), writes.grants().get(i)));
+					covering = i;
 					break;
 				}
+				if (covering < 0)
+					covering = i;
 			}
+			if (covering >= 0)
+				writable.add(new Writable(folder.get(), writes.grants().get(covering)));
 		}
 		return List.copyOf(writable);
 	}
@@ -125,29 +139,84 @@ public final class WritablePathEntries
 	}
 
 	/**
-	 * Returns the notice that tells the user which folders of the search path the sandbox lets commands write.
+	 * Returns the notice that tells the user which folders of the search path the sandbox lets commands write, or may
+	 * let them write, and what CAT could not read. It states which commands the check covers.
 	 *
 	 * @param harnessName the name of the harness whose sandbox it is, as the user knows it
-	 * @param writable    the writable folders, which are not empty
+	 * @param writable    the writable folders
+	 * @param problems    what CAT could not read, each as a sentence
 	 * @return the notice
 	 * @throws NullPointerException     if any argument is null
-	 * @throws IllegalArgumentException if {@code writable} is empty
+	 * @throws IllegalArgumentException if {@code writable} and {@code problems} are both empty
 	 */
-	public static String notice(String harnessName, List<Writable> writable)
+	public static String notice(String harnessName, List<Writable> writable, List<String> problems)
 	{
 		requireThat(harnessName, "harnessName").isNotBlank();
-		requireThat(writable, "writable").isNotEmpty();
-		String subject = "a folder";
-		if (writable.size() != 1)
-			subject = "folders";
+		requireThat(writable, "writable").isNotNull();
+		requireThat(problems, "problems").isNotNull();
+		if (writable.isEmpty() && problems.isEmpty())
+			throw new IllegalArgumentException("writable and problems must not both be empty");
 		StringJoiner notice = new StringJoiner("\n");
-		notice.add("CAT: the sandbox of this " + harnessName + " session lets its commands write " + subject +
-			" on PATH, so a command could plant a program there that CAT or another tool outside the sandbox later " +
-			"runs:");
-		for (Writable entry : writable)
-			notice.add("- " + entry.folder() + ", granted by " + entry.grant().setting());
-		notice.add("Remove the folder from PATH, or take the grant out of the setting, to close this.");
+		if (writable.isEmpty())
+		{
+			notice.add("CAT: it could not check the folders on PATH against the sandbox of this " + harnessName +
+				" session:");
+		}
+		else
+		{
+			String subject = "a folder";
+			if (writable.size() != 1)
+				subject = "folders";
+			notice.add("CAT: the sandbox of this " + harnessName + " session " + verb(writable) + " its commands write " +
+				subject + " on PATH, so a command could plant a program there that CAT or another tool outside the " +
+				"sandbox later runs:");
+			for (Writable entry : writable)
+			{
+				if (entry.grant().possible())
+				{
+					notice.add("- " + entry.folder() + ", which may be writable, because " + entry.grant().setting() +
+						" may grant it and CAT cannot tell whether the sandbox applies it");
+				}
+				else
+					notice.add("- " + entry.folder() + ", granted by " + entry.grant().setting());
+			}
+		}
+		if (!problems.isEmpty())
+		{
+			if (!writable.isEmpty())
+				notice.add("CAT could not read everything that can grant a write, so other folders may be writable:");
+			for (String problem : problems)
+				notice.add("- " + problem);
+		}
+		if (!writable.isEmpty())
+			notice.add("Remove the folder from PATH, or take the grant out of the setting, to close this.");
+		notice.add(COVERAGE);
 		return notice.toString();
+	}
+
+	/**
+	 * Returns the verb that states how the sandbox treats the folders.
+	 *
+	 * @param writable the writable folders, which are not empty
+	 * @return {@code "lets"} if the sandbox certainly lets its commands write all of them, {@code "may let"} if it may
+	 *   let them write all of them, otherwise {@code "lets or may let"}
+	 */
+	private static String verb(List<Writable> writable)
+	{
+		boolean anyPossible = false;
+		boolean anyCertain = false;
+		for (Writable entry : writable)
+		{
+			if (entry.grant().possible())
+				anyPossible = true;
+			else
+				anyCertain = true;
+		}
+		if (!anyPossible)
+			return "lets";
+		if (!anyCertain)
+			return "may let";
+		return "lets or may let";
 	}
 
 	/**

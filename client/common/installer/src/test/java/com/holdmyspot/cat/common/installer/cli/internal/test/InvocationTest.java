@@ -14,6 +14,7 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SandboxWrites;
 import com.holdmyspot.cat.common.ShellQuoting;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.WritablePathEntries;
 import com.holdmyspot.cat.common.WriteGrant;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
 import com.holdmyspot.cat.common.installer.activation.HarnessCommand;
@@ -62,6 +63,10 @@ public final class InvocationTest
 	 * home that the tests' environment names.
 	 */
 	private static final Path ACCOUNT_HOME = Path.of("/account");
+	/**
+	 * The folder that the tests' installer is run from.
+	 */
+	private static final Path WORKING_DIRECTORY = Path.of("/working").toAbsolutePath();
 	/**
 	 * A command line argument that makes {@link #run} leave out {@code --json}, so that the installer prints its
 	 * report to a person. Every other command line gets {@code --json} as its last argument, so that the test reads
@@ -649,6 +654,38 @@ public final class InvocationTest
 	}
 
 	/**
+	 * The warning for a replacement program states which commands the check covers, and the installer asks the
+	 * harness for the sandbox of the project that holds the folder that it was run from.
+	 *
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void archiveReplacementStatesCoverage() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Installation installation = new Installation(cleanup.add(testDirectory("invocation-archive-coverage-")));
+			installation.writePolicy(installation.trustPolicy());
+			Path archive = installation.archiveInstallation();
+			Files.delete(installation.program);
+			Path replacement = RecordingIntegration.program(installation.root.resolve("other-tools"));
+			RecordingIntegration integration = new RecordingIntegration().allowingWrites(new SandboxWrites(
+				List.of(new WriteGrant(replacement.getParent(), "sandbox.filesystem.allowWrite", true)), List.of()));
+
+			Run run = run(archive, installation.root, installEnvironment(installation.root.resolve("user"),
+				replacement.getParent()), List.of(new RegisteredProvider()), integration, "--home",
+				installation.home.toString(), "install", "--harness", "harness-a");
+
+			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(0);
+			requireThat(run.result().path("message").stringValue(), "message").contains("may be writable").
+				contains(WritablePathEntries.COVERAGE);
+			requireThat(integration.askedWorkingDirectories(), "askedWorkingDirectories").
+				isEqualTo(List.of(WORKING_DIRECTORY));
+		}
+	}
+
+	/**
 	 * A completed uninstall prints its one-line result itself and keeps CAT's plugin data with the policy.
 	 *
 	 * @throws IOException    if the fixture cannot be created or the output cannot be read
@@ -850,7 +887,7 @@ public final class InvocationTest
 				PrintStream stderr = new PrintStream(new ByteArrayOutputStream(), false, UTF_8))
 			{
 				Invocation invocation = new Invocation(installation.image, Platform.current(), environment, ACCOUNT_HOME,
-					List.of(new RegisteredProvider()), List.of(new RecordingIntegration()), (command, home) ->
+					null, List.of(new RegisteredProvider()), List.of(new RecordingIntegration()), (command, home) ->
 					RecordingIntegration.cli(), Clock.systemUTC(), interval -> () -> {}, replacer(),
 					_ -> Optional.empty(), command ->
 				{
@@ -1704,9 +1741,9 @@ public final class InvocationTest
 			Map<String, String> variables = new HashMap<>(environment);
 			if (defaultHome != null)
 				variables.putIfAbsent(platform.homeVariable(), defaultHome.toString());
-			Invocation invocation = new Invocation(image, platform, variables, ACCOUNT_HOME, activations,
-				List.of(integration), cliFactory, Clock.systemUTC(), interval -> () -> {}, replacer(), terminal, starter,
-				stdout, stderr);
+			Invocation invocation = new Invocation(image, platform, variables, ACCOUNT_HOME,
+				WORKING_DIRECTORY, activations, List.of(integration), cliFactory, Clock.systemUTC(),
+				interval -> () -> {}, replacer(), terminal, starter, stdout, stderr);
 			status = invocation.run(command.toArray(String[]::new));
 		}
 		return new Run(status, output.toString(UTF_8), diagnostics.toString(UTF_8));

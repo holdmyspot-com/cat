@@ -250,12 +250,13 @@ public final class HarnessProgram
 	 * @param others      the integrations of the other harnesses
 	 * @param environment the user's environment, which selects the other harnesses' homes
 	 * @param userHome    the user's home directory
+	 * @param workingDirectory the absolute folder that the user ran the installer from, or null if it is not known
 	 * @return the notice
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public static String replacementNotice(HarnessCommand recorded, HarnessCommand replacement, Path policyFile,
 		HarnessIntegration integration, Path home, List<HarnessIntegration> others, Map<String, String> environment,
-		Path userHome)
+		Path userHome, Path workingDirectory)
 	{
 		requireThat(recorded, "recorded").isNotNull();
 		requireThat(replacement, "replacement").isNotNull();
@@ -281,27 +282,49 @@ public final class HarnessProgram
 			if (Files.isDirectory(otherHome))
 				homes.put(other, otherHome);
 		}
+		boolean covered = false;
 		for (Map.Entry<HarnessIntegration, Path> entry : homes.entrySet())
 		{
 			HarnessIntegration sandboxed = entry.getKey();
 			try
 			{
-				SandboxWrites writes = sandboxed.sandboxWrites(entry.getValue(), userHome);
+				SandboxWrites writes = sandboxed.sandboxWrites(entry.getValue(), userHome, workingDirectory);
 				for (Writable writable : WritablePathEntries.find(folder.toString(), userHome, writes))
 				{
-					notice.add("Warning: " + writable.folder() + ", the folder of " + program + ", is one that the " +
-						"sandbox of " + sandboxed.productName() + " lets its commands write, granted by " +
-						writable.grant().setting() + ", so a command of that sandbox may have planted the program. " +
-						"Check it before you rely on it, and take the grant out of the setting or the folder out " +
-						"of PATH.");
+					covered = true;
+					if (writable.grant().possible())
+					{
+						notice.add("Warning: " + writable.folder() + ", the folder of " + program + ", may be writable " +
+							"by the sandbox of " + sandboxed.productName() + ", because " + writable.grant().setting() +
+							" may grant it and CAT cannot tell whether the sandbox applies it, so a command of that " +
+							"sandbox may have planted the program. Check it before you rely on it, and take the grant " +
+							"out of the setting or the folder out of PATH.");
+					}
+					else
+					{
+						notice.add("Warning: " + writable.folder() + ", the folder of " + program + ", is one that " +
+							"the sandbox of " + sandboxed.productName() + " lets its commands write, granted by " +
+							writable.grant().setting() + ", so a command of that sandbox may have planted the " +
+							"program. Check it before you rely on it, and take the grant out of the setting or the " +
+							"folder out of PATH.");
+					}
+				}
+				if (!writes.problems().isEmpty())
+				{
+					covered = true;
+					notice.add("CAT could not read everything that can let the sandbox of " + sandboxed.productName() +
+						" write " + folder + ", so it may be writable: " + String.join("; ", writes.problems()) + ".");
 				}
 			}
 			catch (IOException e)
 			{
+				covered = true;
 				notice.add("CAT could not check whether the sandbox of " + sandboxed.productName() + " lets its " +
 					"commands write " + folder + ": " + e.getMessage() + ".");
 			}
 		}
+		if (covered)
+			notice.add(WritablePathEntries.COVERAGE);
 		return notice.toString();
 	}
 }

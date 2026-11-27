@@ -26,6 +26,7 @@ import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Clock;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -126,6 +127,11 @@ public final class RecordingIntegration implements HarnessIntegration
 	 * Where this harness's sandbox lets its commands write.
 	 */
 	private SandboxWrites writes = SandboxWrites.NONE;
+	/**
+	 * The working directories that the installer passed when it asked where this harness's sandbox lets its commands
+	 * write.
+	 */
+	private final List<Path> askedWorkingDirectories = new ArrayList<>();
 	/**
 	 * The {@code keepData} argument of each {@code unregister} call, in call order.
 	 */
@@ -557,9 +563,21 @@ public final class RecordingIntegration implements HarnessIntegration
 	}
 
 	@Override
-	public SandboxWrites sandboxWrites(Path home, Path userHome)
+	public SandboxWrites sandboxWrites(Path home, Path userHome, Path workingDirectory)
 	{
+		askedWorkingDirectories.add(workingDirectory);
 		return writes;
+	}
+
+	/**
+	 * Returns the working directories that the installer passed each time it asked where this harness's sandbox lets
+	 * its commands write.
+	 *
+	 * @return the working directories, each null if the installer did not know one
+	 */
+	public List<Path> askedWorkingDirectories()
+	{
+		return Collections.unmodifiableList(askedWorkingDirectories);
 	}
 
 	@Override

@@ -157,4 +157,81 @@ public final class WritablePathEntriesTest
 			requireThat(found, "found").isEmpty();
 		}
 	}
+
+	/**
+	 * A folder that a possible grant and a certain grant both cover is reported with the certain grant, and a folder
+	 * that only a possible grant covers is reported with that grant, which stays marked as possible.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void prefersCertainGrantAndKeepsPossibleMark() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("writable-path-")).toRealPath();
+			Path both = Files.createDirectories(root.resolve("both/bin"));
+			Path onlyPossible = Files.createDirectories(root.resolve("possible/bin"));
+			WriteGrant possibleBoth = new WriteGrant(root.resolve("both"), "a pattern", true);
+			WriteGrant certainBoth = new WriteGrant(root.resolve("both"), "sandbox.filesystem.allowWrite");
+			WriteGrant possible = new WriteGrant(root.resolve("possible"), "a pattern", true);
+
+			List<Writable> found = WritablePathEntries.find(both + File.pathSeparator + onlyPossible, root,
+				new SandboxWrites(List.of(possibleBoth, certainBoth, possible), List.of()));
+
+			requireThat(found, "found").isEqualTo(List.of(new Writable(both, certainBoth),
+				new Writable(onlyPossible, possible)));
+		}
+	}
+
+	/**
+	 * A notice marks a possible grant as one that may be writable, names the setting, lists what CAT could not read,
+	 * and states which commands the check covers.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void noticeMarksPossibleAndStatesCoverage() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("writable-path-")).toRealPath();
+			Path certain = Files.createDirectories(root.resolve("certain"));
+			Path possible = Files.createDirectories(root.resolve("possible"));
+			List<Writable> writable = List.of(
+				new Writable(certain, new WriteGrant(certain, "sandbox.filesystem.allowWrite in a.json")),
+				new Writable(possible, new WriteGrant(possible, "sandbox.filesystem.allowWrite in b.json", true)));
+
+			String notice = WritablePathEntries.notice("Claude Code", writable,
+				List.of("b.json holds no list in sandbox.filesystem.denyWrite"));
+
+			requireThat(notice, "notice").contains("- " + certain + ", granted by sandbox.filesystem.allowWrite in a.json").
+				contains(possible + ", which may be writable").contains("sandbox.filesystem.allowWrite in b.json").
+				contains("b.json holds no list in sandbox.filesystem.denyWrite").contains(WritablePathEntries.COVERAGE);
+			requireThat(WritablePathEntries.COVERAGE, "coverage").contains("disabled or excluded").
+				contains("file tools");
+		}
+	}
+
+	/**
+	 * A notice with no writable folder but a problem says that CAT could not check, names the problem and states the
+	 * coverage; a notice with neither is refused.
+	 */
+	@Test
+	public void noticeForProblemsAlone()
+	{
+		String notice = WritablePathEntries.notice("Codex", List.of(), List.of("config.toml cannot be parsed"));
+
+		requireThat(notice, "notice").contains("could not check").contains("config.toml cannot be parsed").
+			contains(WritablePathEntries.COVERAGE).doesNotContain("Remove the folder");
+		try
+		{
+			WritablePathEntries.notice("Codex", List.of(), List.of());
+			throw new AssertionError("expected a refusal");
+		}
+		catch (IllegalArgumentException _)
+		{
+			// Expected
+		}
+	}
 }

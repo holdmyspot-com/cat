@@ -1,14 +1,9 @@
 package com.holdmyspot.cat.common.runner.policy;
 
-import com.holdmyspot.cat.common.SandboxWrites;
-import com.holdmyspot.cat.common.WriteGrant;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -297,34 +292,6 @@ public record ParentPolicy(boolean sandboxed, List<Path> writeRoots, List<Path> 
 				return Optional.of(denial);
 		}
 		return Optional.empty();
-	}
-
-	/**
-	 * Returns where the parent's commands may write, with the setting that grants each write root, for a warning that
-	 * names the setting.
-	 *
-	 * @param settings the setting that grants each write root, by an absolute path that reaches the root; a root that
-	 *                 {@code settings} does not name is attributed to the session's sandbox
-	 * @return the writes; none when the parent is not sandboxed, because it has no grant to name
-	 * @throws NullPointerException     if {@code settings} is null
-	 * @throws IllegalArgumentException if a key of {@code settings} is relative
-	 * @throws IOException              if a symbolic link in a path cannot be read, or a path follows more than 40 links
-	 */
-	public SandboxWrites writes(Map<Path, String> settings) throws IOException
-	{
-		requireThat(settings, "settings").isNotNull();
-		if (!sandboxed)
-			return SandboxWrites.NONE;
-		Map<Path, String> byRealPath = new HashMap<>();
-		for (Map.Entry<Path, String> entry : settings.entrySet())
-			byRealPath.putIfAbsent(RealPaths.resolve(entry.getKey()), entry.getValue());
-		List<WriteGrant> grants = new ArrayList<>();
-		for (Path root : writeRoots)
-		{
-			String setting = byRealPath.getOrDefault(RealPaths.resolve(root), "the session's sandbox");
-			grants.add(new WriteGrant(root, setting));
-		}
-		return new SandboxWrites(grants, writeDenials);
 	}
 
 	/**

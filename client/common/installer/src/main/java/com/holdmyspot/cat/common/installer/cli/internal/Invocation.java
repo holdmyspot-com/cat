@@ -117,6 +117,10 @@ public final class Invocation
 	 */
 	private Path userHome;
 	/**
+	 * The folder that the user ran the installer from, or null if it is not known.
+	 */
+	private final Path workingDirectory;
+	/**
 	 * The permission and sandbox entries that the report to a person lists, once the operation that lists them has
 	 * read them.
 	 */
@@ -137,6 +141,9 @@ public final class Invocation
 	 * @param accountHome  the home directory that the user database records for the account that runs the installer,
 	 *                     or null if it cannot be determined; a message that tells the user to run the CAT entry
 	 *                     command writes the environment's {@code HOME} into it unless {@code HOME} is this directory
+	 * @param workingDirectory the absolute folder that the user ran the installer from, whose project's sandbox
+	 *                     settings an install that replaces the recorded harness program reads, or null if it is not
+	 *                     known
 	 * @param activations  the installed activation services
 	 * @param integrations the installed harness integration services
 	 * @param cliFactory   runs the recorded harness program
@@ -153,11 +160,13 @@ public final class Invocation
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public Invocation(Path image, Platform platform, Map<String, String> environment, Path accountHome,
-		List<PluginActivation> activations, List<HarnessIntegration> integrations, HarnessCliFactory cliFactory,
-		Clock clock, Waiting waiting, FileReplacer replacer, Terminal terminal, ProcessStarter starter,
+		Path workingDirectory, List<PluginActivation> activations, List<HarnessIntegration> integrations,
+		HarnessCliFactory cliFactory, Clock clock, Waiting waiting, FileReplacer replacer, Terminal terminal,
+		ProcessStarter starter,
 		PrintStream stdout, PrintStream stderr)
 	{
-		this(image, platform, environment, accountHome, activations, integrations, cliFactory, clock, waiting,
+		this(image, platform, environment, accountHome, workingDirectory, activations, integrations, cliFactory, clock,
+			waiting,
 			replacer, terminal, starter, releaseBaseUrl -> new HttpsReleaseSource(releaseBaseUrl, environment,
 				CONNECT_LIMIT, REQUEST_LIMIT), new InstallerProcess(platform, environment,
 				ExecutableFiles.retrying(waiting)), stdout, stderr);
@@ -174,6 +183,9 @@ public final class Invocation
 	 * @param accountHome  the home directory that the user database records for the account that runs the installer,
 	 *                     or null if it cannot be determined; a message that tells the user to run the CAT entry
 	 *                     command writes the environment's {@code HOME} into it unless {@code HOME} is this directory
+	 * @param workingDirectory the absolute folder that the user ran the installer from, whose project's sandbox
+	 *                     settings an install that replaces the recorded harness program reads, or null if it is not
+	 *                     known
 	 * @param activations  the installed activation services
 	 * @param integrations the installed harness integration services
 	 * @param cliFactory   runs the recorded harness program
@@ -191,8 +203,9 @@ public final class Invocation
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public Invocation(Path image, Platform platform, Map<String, String> environment, Path accountHome,
-		List<PluginActivation> activations, List<HarnessIntegration> integrations, HarnessCliFactory cliFactory,
-		Clock clock, Waiting waiting, FileReplacer replacer, Terminal terminal, ProcessStarter starter,
+		Path workingDirectory, List<PluginActivation> activations, List<HarnessIntegration> integrations,
+		HarnessCliFactory cliFactory, Clock clock, Waiting waiting, FileReplacer replacer, Terminal terminal,
+		ProcessStarter starter,
 		ReleaseSources sources, InstallerProcess installers, PrintStream stdout, PrintStream stderr)
 	{
 		requireThat(image, "image").isNotNull();
@@ -211,6 +224,9 @@ public final class Invocation
 		this.platform = platform;
 		this.environment = Map.copyOf(environment);
 		this.entryCommand = new EntryCommand(platform, this.environment, accountHome);
+		if (workingDirectory != null)
+			requireThat(workingDirectory, "workingDirectory").isAbsolute();
+		this.workingDirectory = workingDirectory;
 		this.activations = List.copyOf(activations);
 		this.integrations = List.copyOf(integrations);
 		this.cliFactory = cliFactory;
@@ -1104,7 +1120,7 @@ public final class Invocation
 			List<HarnessIntegration> others = integrations.stream().
 				filter(provider -> !provider.harness().equals(own)).toList();
 			String notice = HarnessProgram.replacementNotice(command, replacement, policyFile, integration,
-				managed.home(), others, environment, userHome);
+				managed.home(), others, environment, userHome, workingDirectory);
 			HarnessSession session = new HarnessSession(integration, cliFactory.create(replacement, managed.home()),
 				replacer);
 			Managed replaced = new Managed(changed, managed.activation(), managed.home(), session, null);
@@ -1189,7 +1205,8 @@ public final class Invocation
 		{
 			outcome = new Install(plugin, platform, replacer, cliFactory, ProcessElevation::isElevated,
 				new ProcessMigrationRunner(), entryCommand, waiting).
-				install(harness, arguments.home(), environment, userHome, activation, integration, others, consent);
+				install(harness, arguments.home(), environment, userHome, workingDirectory, activation, integration, others,
+					consent);
 		}
 		catch (TrustException e)
 		{

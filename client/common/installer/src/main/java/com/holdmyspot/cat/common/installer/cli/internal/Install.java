@@ -121,6 +121,7 @@ public final class Install
 	 * @param environment the user's environment, which selects the harness homes, and whose {@code PATH} a first
 	 *                    install searches for the harness program
 	 * @param userHome    the user's home directory, which holds the capacity locks
+	 * @param workingDirectory the absolute folder that the user ran the installer from, or null if it is not known
 	 * @param activation  the harness's activation provider
 	 * @param integration the harness's integration
 	 * @param others      the integrations of the other harnesses, whose CAT installations the harness's sandbox may
@@ -138,8 +139,8 @@ public final class Install
 	 *                              data migration fails, or a file cannot be read, written or replaced
 	 */
 	public Outcome install(String harness, Path home, Map<String, String> environment, Path userHome,
-		PluginActivation activation, HarnessIntegration integration, List<HarnessIntegration> others,
-		Consent consent) throws TrustException, IOException
+		Path workingDirectory, PluginActivation activation, HarnessIntegration integration,
+		List<HarnessIntegration> others, Consent consent) throws TrustException, IOException
 	{
 		requireThat(harness, "harness").isNotBlank();
 		requireThat(environment, "environment").isNotNull();
@@ -230,7 +231,7 @@ public final class Install
 		if (replaced)
 		{
 			entries = entries.withNotice(HarnessProgram.replacementNotice(recorded, command, policyFile, integration,
-				home, others, environment, userHome));
+				home, others, environment, userHome, workingDirectory));
 		}
 		return new Outcome(version, before, versionFolder, installer, startupCache, entries, policy);
 	}

@@ -129,18 +129,24 @@ public interface HarnessIntegration
 	void validateConfiguration(Path home) throws IOException;
 
 	/**
-	 * Returns where the harness's sandbox lets its commands write, as the user-level settings of a harness home give
-	 * it, without a project, a managed setting or a command line, which a run of the installer does not have. The
-	 * installer uses it to warn that a command of the sandbox may have written a folder that it takes a harness
-	 * program from. The reading leaves out a setting that it cannot read, so the result can omit a grant.
+	 * Returns where the harness's sandbox lets its commands write, or may let them write, as the harness's settings
+	 * that exist without a session give it: the user-level settings of a harness home, the managed settings of the
+	 * machine, and the settings of the project that holds {@code workingDirectory}. A run of the installer has no
+	 * command line, so it reads none. The installer uses the result to warn that a command of the sandbox may have
+	 * written a folder that it takes a harness program from. The reading overestimates: a grant that it cannot
+	 * interpret for certain is included as possible, a denial is included only when it is certain, and what it cannot
+	 * read is listed in the result's problems.
 	 *
-	 * @param home     the absolute, normalized harness home
-	 * @param userHome the user's absolute home directory
+	 * @param home             the absolute, normalized harness home
+	 * @param userHome         the user's absolute home directory
+	 * @param workingDirectory the absolute folder that the installer ran from, or null if it is not known; the
+	 *                         project is the folder that holds it
 	 * @return the folders that the sandbox lets commands write, each with the setting that grants it; none when the
 	 *   harness has no such setting
-	 * @throws NullPointerException if any argument is null
+	 * @throws NullPointerException     if {@code home} or {@code userHome} are null
+	 * @throws IllegalArgumentException if {@code home}, {@code userHome} or {@code workingDirectory} are relative
 	 */
-	default SandboxWrites sandboxWrites(Path home, Path userHome)
+	default SandboxWrites sandboxWrites(Path home, Path userHome, Path workingDirectory)
 	{
 		return SandboxWrites.NONE;
 	}

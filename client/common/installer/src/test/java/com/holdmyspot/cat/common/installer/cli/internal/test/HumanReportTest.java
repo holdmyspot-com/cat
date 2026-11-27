@@ -464,7 +464,8 @@ public final class HumanReportTest
 				PrintStream stderr = new PrintStream(diagnostics, false, UTF_8))
 			{
 				Invocation invocation = new Invocation(plugin, Platform.current(),
-					environment, null, List.of(new RegisteredProvider()), List.of(integration),
+					environment, null, null, List.of(new RegisteredProvider()),
+					List.of(integration),
 					(command, harnessHome) -> RecordingIntegration.cli(), Clock.systemUTC(), interval -> () ->
 					{
 					}, new FileReplacer(Platform.current(), () ->

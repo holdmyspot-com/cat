@@ -194,7 +194,7 @@ public final class InstallerActivationTest
 				PrintStream stderr = new PrintStream(diagnostics, false, UTF_8))
 			{
 				status = new Invocation(image, platform, Map.of("HOME", userHome.toString()), userHome,
-					List.of(provider(PluginActivation.class, harness)), List.of(integration), ProcessHarnessCli::new,
+					null, List.of(provider(PluginActivation.class, harness)), List.of(integration), ProcessHarnessCli::new,
 					Clock.systemUTC(), waiting, FileReplacer.retrying(waiting),
 					new ProcessTerminal(platform), new DetachedProcessStarter(), stdout, stderr).
 					run(arguments.toArray(String[]::new));
@@ -877,7 +877,7 @@ public final class InstallerActivationTest
 				FileReplacer replacer = new FileReplacer(platform, () ->
 				{
 				}, Clock.systemUTC());
-				new Invocation(plugin, platform, environment, null,
+				new Invocation(plugin, platform, environment, null, null,
 					List.copyOf(ServiceLoader.load(PluginActivation.class).stream().map(ServiceLoader.Provider::get).
 						toList()),
 					List.copyOf(ServiceLoader.load(HarnessIntegration.class).stream().map(ServiceLoader.Provider::get).
