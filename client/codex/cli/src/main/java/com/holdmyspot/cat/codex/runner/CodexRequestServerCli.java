@@ -7,6 +7,7 @@ import com.holdmyspot.cat.common.JvmScope;
 import com.holdmyspot.cat.common.MainJvmScope;
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.ProcessTreeStop;
 import com.holdmyspot.cat.common.runner.RequestServer;
@@ -14,7 +15,6 @@ import com.holdmyspot.cat.common.runner.RequestedRunner;
 import com.holdmyspot.cat.common.runner.launcher.ProcessHandleTable;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
-import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -50,11 +50,13 @@ public final class CodexRequestServerCli
 	/**
 	 * Serves the Codex session whose command runs the program until that session's Codex process ends, as
 	 * {@link RequestServer#serve(String[], RequestServer.Host, PrintWriter)} describes.
+	 * <p>
+	 * If the server cannot read or answer the session's requests, it prints why, without a stack trace, and exits with
+	 * status {@value HarnessRunnerOptions#FAILED_LAUNCH_STATUS}.
 	 *
 	 * @param args the program's arguments, which must be none
-	 * @throws IOException if the session's requests cannot be read or answered
 	 */
-	public static void main(String[] args) throws IOException
+	public static void main(String[] args)
 	{
 		Map<String, String> environment = Platform.current().environment(System.getenv());
 		Path plugin = PluginDirectory.of(CodexRequestServerCli.class);
@@ -62,19 +64,52 @@ public final class CodexRequestServerCli
 		int status;
 		try (JvmScope scope = new MainJvmScope(environment, Pause::sleeping))
 		{
-			RequestServer.Host host = new RequestServer.Host(HARNESS_ID, CodexRunnerCli.MARKERS.running(environment),
-				CodexSessionSandbox.refusal(Platform.current()), plugin,
-				CodexRunnerCli.installedCopies(environment),
-				() -> CodexServedSession.sandboxed(RequestServer.program(plugin), environment),
-				CodexServedSession.sessions(environment),
-				directory -> CodexRunnerCli.toolScope(directory, environment, scope.waiting()),
-				RequestServer.LoginServices.system(environment),
-				variables -> starter(scope, plugin, environment, variables),
-				new ProcessHandleTable(HarnessProcesses.system()),
-				Pause.sleeping(POLL), Platform.current());
-			status = RequestServer.serve(args, host, new PrintWriter(System.err, true, StandardCharsets.UTF_8));
+			RequestServer.Host host = host(scope, environment, plugin, Platform.current(), Pause.sleeping(POLL));
+			status = HarnessRunnerOptions.reportingFailures(() -> RequestServer.serve(args, host, errors()), errors());
 		}
 		System.exit(status);
+	}
+
+	/**
+	 * Returns what the Codex plugin gives its request server.
+	 *
+	 * @param scope       the borrowed process scope, which starts each requested session's runner
+	 * @param environment the server's environment
+	 * @param plugin      the absolute folder of the plugin
+	 * @param platform    the platform that runs the server, which decides whether the server refuses to run
+	 * @param pause       the wait between two checks of the server for its session's requests
+	 * @return what the plugin gives the server
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code plugin} is not absolute
+	 */
+	public static RequestServer.Host host(JvmScope scope, Map<String, String> environment, Path plugin,
+		Platform platform, Pause pause)
+	{
+		requireThat(scope, "scope").isNotNull();
+		requireThat(environment, "environment").isNotNull();
+		requireThat(plugin, "plugin").isNotNull();
+		requireThat(platform, "platform").isNotNull();
+		requireThat(pause, "pause").isNotNull();
+		return new RequestServer.Host(HARNESS_ID, CodexRunnerCli.MARKERS.running(environment),
+			CodexSessionSandbox.refusal(platform), plugin,
+			CodexRunnerCli.installedCopies(environment),
+			() -> CodexServedSession.sandboxed(RequestServer.program(plugin, platform), environment),
+			CodexServedSession.sessions(environment),
+			directory -> CodexRunnerCli.toolScope(directory, environment, scope.waiting()),
+			RequestServer.LoginServices.system(environment),
+			variables -> starter(scope, plugin, environment, variables),
+			new ProcessHandleTable(HarnessProcesses.system()),
+			pause, platform);
+	}
+
+	/**
+	 * Returns a writer for the server's standard error that flushes each line.
+	 *
+	 * @return the writer
+	 */
+	private static PrintWriter errors()
+	{
+		return new PrintWriter(System.err, true, StandardCharsets.UTF_8);
 	}
 
 	/**

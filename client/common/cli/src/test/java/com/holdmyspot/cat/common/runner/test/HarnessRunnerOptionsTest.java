@@ -15,6 +15,7 @@ import com.holdmyspot.cat.common.runner.launcher.RunnerArguments;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.FileSystems;
 import java.nio.file.Path;
@@ -111,6 +112,59 @@ public final class HarnessRunnerOptionsTest
 		int status = HarnessRunnerOptions.refusingInvalidArguments(() -> 75, new PrintWriter(errors, true));
 		requireThat(status, "status").isEqualTo(75);
 		requireThat(errors.toString(), "errors").isEmpty();
+	}
+
+	/**
+	 * Verifies that a launcher's program reports a launch that fails with an {@link IOException} without
+	 * a stack trace and ends with the status of a failed launch: by the failure's message, such as a harness refusing
+	 * to start a session, or for a file that may not be read or written, by the file and the reason.
+	 */
+	@Test
+	public void programReportsFailureWithoutStackTrace()
+	{
+		String refusal = "Codex app-server did not start the thread: error creating thread: failed to prepare " +
+			"Windows sandbox: windows unelevated restricted-token sandbox cannot enforce deny-read restrictions " +
+			"directly; refusing to run unsandboxed";
+		StringWriter errors = new StringWriter();
+		int status = HarnessRunnerOptions.reportingFailures(() ->
+		{
+			throw new IOException(refusal);
+		}, new PrintWriter(errors, true));
+		requireThat(status, "status").isEqualTo(HarnessRunnerOptions.FAILED_LAUNCH_STATUS);
+		requireThat(errors.toString(), "errors").isEqualTo(refusal + System.lineSeparator());
+
+		Path file = path("home/config.toml");
+		StringWriter denied = new StringWriter();
+		status = HarnessRunnerOptions.reportingFailures(() ->
+		{
+			throw new AccessDeniedException(file.toString());
+		}, new PrintWriter(denied, true));
+		requireThat(status, "status").isEqualTo(HarnessRunnerOptions.FAILED_LAUNCH_STATUS);
+		requireThat(denied.toString(), "denied").isEqualTo(file + ": permission denied" + System.lineSeparator());
+	}
+
+	/**
+	 * Verifies that a launcher's program still refuses a launch whose options are invalid with the status of a refused
+	 * launch, and that a failure that is not an {@link IOException} propagates.
+	 */
+	@Test
+	public void programRefusesInvalidArguments()
+	{
+		StringWriter errors = new StringWriter();
+		PrintWriter writer = new PrintWriter(errors, true);
+		int status = HarnessRunnerOptions.reportingFailures(() ->
+		{
+			HarnessRunnerOptions.parse(launch("--receipt", absolute("receipt")), "claude", SESSION);
+			return 0;
+		}, writer);
+		requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+		requireThat(errors.toString(), "errors").isEqualTo("--receipt requires --output" + System.lineSeparator());
+		IllegalArgumentException failure = expectThrows(IllegalArgumentException.class, () ->
+			HarnessRunnerOptions.reportingFailures(() ->
+			{
+				throw new IllegalArgumentException("broken");
+			}, writer));
+		requireThat(failure.getMessage(), "message").isEqualTo("broken");
 	}
 
 	/**

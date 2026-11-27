@@ -100,7 +100,9 @@ public final class ClaudeRunnerCli
 	 * With {@code --verify-artifact} and an artifact, it verifies the artifact and prints its folder.
 	 * <p>
 	 * Every other launch goes along its route, as {@link #launch(String[], Map, Waiting, Reader, OutputStream,
-	 * PrintWriter)} describes, and the launcher exits with the launch's status.
+	 * PrintWriter)} describes, and the launcher exits with the launch's status. If the launch fails, for example
+	 * because the harness refuses to start the session, the launcher prints why, without a stack trace, and exits with
+	 * status {@value HarnessRunnerOptions#FAILED_LAUNCH_STATUS}.
 	 * <p>
 	 * With {@value ChildNeedsReport#OPTION} and a file, optionally followed by the launch's
 	 * {@value AuthenticationOptions#HOME_OPTION} and {@value AuthenticationOptions#LOGIN_CLASS_OPTION}, it writes what a
@@ -139,7 +141,7 @@ public final class ClaudeRunnerCli
 			String[] needsArgs = args;
 			try (HarnessRunnerScope scope = new MainHarnessRunnerScope(environment, Pause::sleeping))
 			{
-				status = HarnessRunnerOptions.refusingInvalidArguments(() -> reportChildNeeds(scope, environment,
+				status = HarnessRunnerOptions.reportingFailures(() -> reportChildNeeds(scope, environment,
 					Path.of(needsArgs[1]), AuthenticationOptions.parseAlone(Arrays.copyOfRange(needsArgs, 2, needsArgs.length)),
 					PluginDirectory.of(ClaudeRunnerCli.class), errors()), errors());
 			}
@@ -149,7 +151,7 @@ public final class ClaudeRunnerCli
 		}
 		String[] launch = args;
 		ProcessTreeStop.onExit();
-		System.exit(HarnessRunnerOptions.refusingInvalidArguments(() -> launch(launch, environment, Pause::sleeping,
+		System.exit(HarnessRunnerOptions.reportingFailures(() -> launch(launch, environment, Pause::sleeping,
 			new InputStreamReader(System.in, UTF_8), System.out, errors()), errors()));
 	}
 

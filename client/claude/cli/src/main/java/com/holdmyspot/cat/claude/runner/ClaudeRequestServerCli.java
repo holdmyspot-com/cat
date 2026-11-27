@@ -13,6 +13,7 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionHarness;
 import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
+import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.ProcessTreeStop;
 import com.holdmyspot.cat.common.runner.RequestServer;
@@ -75,11 +76,13 @@ public final class ClaudeRequestServerCli
 	/**
 	 * Serves the Claude Code session whose command runs the program until that session's Claude Code process ends,
 	 * as {@link RequestServer#serve(String[], RequestServer.Host, PrintWriter)} describes.
+	 * <p>
+	 * If the server cannot read or answer the session's requests, it prints why, without a stack trace, and exits with
+	 * status {@value HarnessRunnerOptions#FAILED_LAUNCH_STATUS}.
 	 *
 	 * @param args the program's arguments, which must be none
-	 * @throws IOException if the session's requests cannot be read or answered
 	 */
-	public static void main(String[] args) throws IOException
+	public static void main(String[] args)
 	{
 		Map<String, String> environment = Platform.current().environment(System.getenv());
 		Path plugin = PluginDirectory.of(ClaudeRequestServerCli.class);
@@ -97,13 +100,25 @@ public final class ClaudeRequestServerCli
 				variables -> starter(scope, plugin, environment, variables),
 				new ProcessHandleTable(HarnessProcesses.system()),
 				Pause.sleeping(POLL), Platform.current());
-			Optional<RequestServer.ComparisonHost> comparison = Optional.empty();
+			Optional<RequestServer.ComparisonHost> comparison;
 			if (Platform.current().isLinux())
 				comparison = Optional.of(ClaudeCodexComparison.host(environment));
-			status = RequestServer.serve(args, host, new PrintWriter(System.err, true, StandardCharsets.UTF_8),
-				comparison);
+			else
+				comparison = Optional.empty();
+			status = HarnessRunnerOptions.reportingFailures(() -> RequestServer.serve(args, host, errors(), comparison),
+				errors());
 		}
 		System.exit(status);
+	}
+
+	/**
+	 * Returns a writer for the server's standard error that flushes each line.
+	 *
+	 * @return the writer
+	 */
+	private static PrintWriter errors()
+	{
+		return new PrintWriter(System.err, true, StandardCharsets.UTF_8);
 	}
 
 	/**

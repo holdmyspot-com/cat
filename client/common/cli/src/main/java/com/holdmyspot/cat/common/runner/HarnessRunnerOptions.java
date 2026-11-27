@@ -8,6 +8,9 @@ import com.holdmyspot.cat.common.runner.launcher.RunnerArguments;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.nio.file.AccessDeniedException;
+import java.nio.file.FileSystemException;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -82,6 +85,10 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 	 * The exit status of a runner launcher that refuses its launch before it does anything else.
 	 */
 	public static final int REFUSED_LAUNCH_STATUS = 2;
+	/**
+	 * The exit status of a launcher whose launch fails after it starts.
+	 */
+	public static final int FAILED_LAUNCH_STATUS = 1;
 	/**
 	 * The option that chooses the CAT artifact that a bridge runs. A runner launcher refuses it, since it runs outside
 	 * the sandbox of the agent that starts it.
@@ -484,6 +491,60 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 			errors.println(e.getMessage());
 			return REFUSED_LAUNCH_STATUS;
 		}
+	}
+
+	/**
+	 * Runs a launcher's launch as the outermost step of the launcher's program, so that its user reads why it stopped
+	 * rather than a stack trace. A launch whose options are invalid is refused as
+	 * {@link #refusingInvalidArguments(Launch, PrintWriter)} refuses it. A launch that fails with an
+	 * {@link IOException}, such as when the harness refuses to start a session or a file may not be read, prints what
+	 * failed without a stack trace and ends with status {@value #FAILED_LAUNCH_STATUS}. Any other failure propagates.
+	 *
+	 * @param launch the launch
+	 * @param errors receives the reason for a refusal or a failure
+	 * @return the launch's exit status, {@value #REFUSED_LAUNCH_STATUS} if its options are invalid, or
+	 *         {@value #FAILED_LAUNCH_STATUS} if it fails with an {@link IOException}
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public static int reportingFailures(Launch launch, PrintWriter errors)
+	{
+		requireThat(launch, "launch").isNotNull();
+		requireThat(errors, "errors").isNotNull();
+		try
+		{
+			return refusingInvalidArguments(launch, errors);
+		}
+		catch (IOException e)
+		{
+			errors.println(describe(e));
+			return FAILED_LAUNCH_STATUS;
+		}
+	}
+
+	/**
+	 * Describes a failed launch. The message of a file-system failure that names only its file, such as
+	 * an {@link AccessDeniedException}, does not say what went wrong, so the reason follows the file.
+	 *
+	 * @param failure the failure
+	 * @return the description
+	 */
+	private static String describe(IOException failure)
+	{
+		if (failure instanceof FileSystemException fileSystem && fileSystem.getFile() != null &&
+			fileSystem.getReason() == null)
+		{
+			String reason = switch (failure)
+			{
+				case AccessDeniedException _ -> "permission denied";
+				case NoSuchFileException _ -> "no such file or folder";
+				default -> failure.getClass().getSimpleName();
+			};
+			return fileSystem.getMessage() + ": " + reason;
+		}
+		String message = failure.getMessage();
+		if (message == null || message.isBlank())
+			return failure.getClass().getSimpleName();
+		return message;
 	}
 
 	/**

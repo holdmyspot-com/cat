@@ -123,7 +123,9 @@ public final class CodexRunnerCli
 	 * With {@code --verify-artifact} and an artifact, it verifies the artifact and prints its folder.
 	 * <p>
 	 * Every other launch goes along its route, as {@link #launch(String[], Map, Waiting, Reader, OutputStream,
-	 * PrintWriter)} describes, and the launcher exits with the launch's status.
+	 * PrintWriter)} describes, and the launcher exits with the launch's status. If the launch fails, for example
+	 * because the harness refuses to start the session, the launcher prints why, without a stack trace, and exits with
+	 * status {@value HarnessRunnerOptions#FAILED_LAUNCH_STATUS}.
 	 * <p>
 	 * With {@code serve}, {@value ChildNeedsReport#OPTION} and a file, optionally followed by the launch's
 	 * {@value AuthenticationOptions#HOME_OPTION} and {@value AuthenticationOptions#LOGIN_CLASS_OPTION}, it writes what a
@@ -161,7 +163,7 @@ public final class CodexRunnerCli
 				System.exit(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
 			}
 			String[] needsArgs = args;
-			int status = HarnessRunnerOptions.refusingInvalidArguments(() -> reportChildNeeds(environment,
+			int status = HarnessRunnerOptions.reportingFailures(() -> reportChildNeeds(environment,
 				Path.of(needsArgs[2]), AuthenticationOptions.parseAlone(Arrays.copyOfRange(needsArgs, 3,
 					needsArgs.length)), errors()), errors());
 			if (status != 0)
@@ -175,7 +177,7 @@ public final class CodexRunnerCli
 		}
 		String[] launch = args;
 		ProcessTreeStop.onExit();
-		System.exit(HarnessRunnerOptions.refusingInvalidArguments(() -> launch(launch, environment, Pause::sleeping,
+		System.exit(HarnessRunnerOptions.reportingFailures(() -> launch(launch, environment, Pause::sleeping,
 			new InputStreamReader(System.in, UTF_8), System.out, errors()), errors()));
 	}
 
