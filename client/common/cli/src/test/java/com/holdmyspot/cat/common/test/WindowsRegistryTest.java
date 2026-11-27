@@ -19,6 +19,10 @@ public final class WindowsRegistryTest
 	 * The key that every Windows machine has.
 	 */
 	private static final String VERSION_KEY = "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion";
+	/**
+	 * The key that holds the folders of every Windows machine's user profiles, as expandable values.
+	 */
+	private static final String PROFILE_LIST_KEY = VERSION_KEY + "\\ProfileList";
 
 	/**
 	 * Creates a test instance.
@@ -42,6 +46,25 @@ public final class WindowsRegistryTest
 
 		requireThat(value.isPresent(), "present").isTrue();
 		requireThat(Path.of(value.get()), "folder").isAbsolute().isDirectory();
+	}
+
+	/**
+	 * Verifies that an expandable text value is returned as stored, with its environment variables unexpanded, so
+	 * that a value such as {@code %SystemDrive%\Users} is not an absolute path. Every Windows machine stores the
+	 * folder of its user profiles as such a value.
+	 *
+	 * @throws IOException   if Windows cannot be asked
+	 * @throws SkipException if the platform is not Windows
+	 */
+	@Test
+	public void readsExpandableValueUnexpanded() throws IOException
+	{
+		requireWindows();
+
+		Optional<String> value = WindowsRegistry.machineText(PROFILE_LIST_KEY, "ProfilesDirectory");
+
+		requireThat(value.orElseThrow(), "value").startsWith("%SystemDrive%");
+		requireThat(Path.of(value.orElseThrow()).isAbsolute(), "absolute").isFalse();
 	}
 
 	/**
