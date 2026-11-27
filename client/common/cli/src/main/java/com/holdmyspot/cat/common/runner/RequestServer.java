@@ -284,7 +284,8 @@ public final class RequestServer
 	}
 
 	/**
-	 * Returns the path of the request server of a plugin.
+	 * Returns the path of the request server of a plugin. On Windows the plugin holds only command launchers, so the
+	 * path is that of the {@code .cmd} launcher.
 	 *
 	 * @param plugin   the plugin's folder
 	 * @param platform the platform that runs the server
@@ -295,7 +296,10 @@ public final class RequestServer
 	{
 		requireThat(plugin, "plugin").isNotNull();
 		requireThat(platform, "platform").isNotNull();
-		return plugin.resolve(PluginDirectory.BIN).resolve(PROGRAM);
+		String name = PROGRAM;
+		if (platform.isWindows())
+			name += ".cmd";
+		return plugin.resolve(PluginDirectory.BIN).resolve(name);
 	}
 
 	/**

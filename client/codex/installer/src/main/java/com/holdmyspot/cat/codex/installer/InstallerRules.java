@@ -17,7 +17,8 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Writes and recognizes the CAT-owned Codex execution-policy file. Latest updates require the complete installer
  * script through run-part and a trusted outer shell. Bare installer status is allowed, and uninstall asks the user.
- * On POSIX, the request server and prompt optimizer beside the installer may also run outside the sandbox.
+ * The request server beside the installer may also run outside the sandbox, and on POSIX the prompt optimizer
+ * beside it too.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -55,6 +56,11 @@ public final class InstallerRules
 	 */
 	private static final String REQUEST_SERVER = "request-server";
 	/**
+	 * The file name of the request server's launcher beside the installer launcher on Windows, where the plugin holds
+	 * only command launchers.
+	 */
+	private static final String WINDOWS_REQUEST_SERVER = "request-server.cmd";
+	/**
 	 * The file names of the runner launchers beside the installer launcher, which earlier installers let Codex run
 	 * outside its sandbox.
 	 */
@@ -76,10 +82,11 @@ public final class InstallerRules
 	}
 
 	/**
-	 * Returns the file content that permits the agent operations on one installer launcher and, except on Windows,
-	 * where no session starts through a request server, lets the request server beside it run without asking and
-	 * outside the sandbox, so that it can start the sessions that the session's sandboxed commands request inside
-	 * Codex's own sandbox, which a sandboxed command cannot do. Codex matches each path only as spelled.
+	 * Returns the file content that permits the agent operations on one installer launcher and lets the request server
+	 * beside it run without asking and outside the sandbox, so that it can start the sessions that the session's
+	 * sandboxed commands request inside Codex's own sandbox, which a sandboxed command cannot do, and can read the
+	 * launch of the session that it serves. On Windows the request server is its {@code .cmd} launcher. Codex matches
+	 * each path only as spelled.
 	 *
 	 * @param environment the environment recorded when the harness program was bound
 	 * @param launcher    the absolute, normalized path of the installer launcher in the active version folder
@@ -91,6 +98,24 @@ public final class InstallerRules
 	 */
 	public static String render(Map<String, String> environment, Path launcher, boolean windows)
 	{
+		return render(environment, launcher, windows, siblings(windows));
+	}
+
+	/**
+	 * Returns the file content for one installer launcher with the rules for some launchers beside it.
+	 *
+	 * @param environment the environment recorded when the harness program was bound
+	 * @param launcher    the absolute, normalized path of the installer launcher in the active version folder
+	 * @param windows     {@code true} to name the launcher script through PowerShell, as Windows runs it
+	 * @param siblings    the file names of the launchers beside {@code launcher} that a rule lets run
+	 * @return the complete file content, ending with a line feed
+	 * @throws NullPointerException     if any required argument is null
+	 * @throws IllegalArgumentException if a path is relative, not normalized or contains a line break, or a required
+	 *                                  recorded Windows binding is missing or invalid
+	 */
+	private static String render(Map<String, String> environment, Path launcher, boolean windows,
+		List<String> siblings)
+	{
 		String script = latestUpdateCommand(environment, launcher, windows);
 		List<String> command = launcherCommand(launcher, windows);
 		StringBuilder content = new StringBuilder(HEADER.length() + BINDINGS_PREFIX.length() + 2).
@@ -101,7 +126,7 @@ public final class InstallerRules
 		for (List<String> shell : shells(environment, windows))
 			rule(content, shell, List.of(script), ALLOW);
 		rule(content, command, List.of("uninstall", "--harness", CodexActivation.HARNESS), UNINSTALL_DECISION);
-		for (String sibling : siblings(windows))
+		for (String sibling : siblings)
 			rule(content, List.of(launcher.resolveSibling(sibling).toString()), List.of(), ALLOW);
 		return content.toString();
 	}
@@ -246,12 +271,12 @@ public final class InstallerRules
 	 * Returns the launchers beside the installer launcher that {@link #render} lets Codex run outside its sandbox.
 	 *
 	 * @param windows {@code true} if the rules name the launcher script through PowerShell
-	 * @return the request server, or none on Windows
+	 * @return the request server and the prompt optimizer, or the request server's command launcher alone on Windows
 	 */
 	private static List<String> siblings(boolean windows)
 	{
 		if (windows)
-			return List.of();
+			return List.of(WINDOWS_REQUEST_SERVER);
 		return List.of(REQUEST_SERVER, "prompt-optimizer");
 	}
 
@@ -366,7 +391,8 @@ public final class InstallerRules
 	/**
 	 * Reports whether a file's content is exactly what {@link #render} writes for the launcher that its first rule
 	 * names, what an earlier installer wrote with the runner launchers' rules instead of the request server's, or
-	 * what CAT's installer wrote before it added either, so that the installer may replace the file.
+	 * what CAT's installer wrote before it added either or, on Windows, before it added the request server's launcher,
+	 * so that the installer may replace the file.
 	 *
 	 * @param content the file's content
 	 * @param windows {@code true} if the file names the launcher through PowerShell
@@ -376,7 +402,7 @@ public final class InstallerRules
 	public static boolean isWrittenByCat(String content, boolean windows)
 	{
 		return isCurrentRender(content, windows) ||
-			isRenderedUnder(HEADER, content, windows, false, siblings(windows)) ||
+			!windows && isRenderedUnder(HEADER, content, false, false, siblings(false)) ||
 			!windows && isRenderedUnder(HEADER, content, false, false, List.of(REQUEST_SERVER)) ||
 			!windows && isRenderedUnder(HEADER, content, false, false, RUNNER_LAUNCHERS) ||
 			isRenderedUnder(HEADER, content, windows, false, List.of());
@@ -427,7 +453,8 @@ public final class InstallerRules
 			if (!pattern.isArray() || !pattern.path(index).isString())
 				return false;
 			Path launcher = Path.of(pattern.path(index).stringValue());
-			return content.equals(render(environment, launcher, windows));
+			return content.equals(render(environment, launcher, windows, siblings(windows))) ||
+				windows && content.equals(render(environment, launcher, true, List.of()));
 		}
 		catch (JacksonException | IllegalArgumentException _)
 		{

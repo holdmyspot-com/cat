@@ -541,16 +541,16 @@ public final class CodexPolicyReaderTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
-			session.write("home/.codex/config.toml", LEGACY_WITH_NETWORK);
+			session.write("home/.codex/config.toml", "sandbox_mode = \"workspace-write\"\n");
 
 			ParentPolicy launched = session.readWindowsLaunch(
 				"\"C:\\Program Files\\Codex\\vendor\\bin\\codex.exe\" exec --sandbox=workspace-write " +
-					"-c \"sandbox_workspace_write.network_access=false\" \"summarize this\"");
+					"-c \"sandbox_workspace_write.network_access=true\" \"summarize this\"");
 
 			ParentPolicy direct = session.read("exec", "--sandbox=workspace-write", "-c",
-				"sandbox_workspace_write.network_access=false", "summarize this");
+				"sandbox_workspace_write.network_access=true", "summarize this");
 			requireThat(launched, "launched").isEqualTo(direct);
-			requireThat(launched.hosts(), "hosts").isNotEqualTo(HostAccess.ALL);
+			requireThat(launched.hosts(), "hosts").isEqualTo(HostAccess.ALL);
 		}
 	}
 

@@ -223,12 +223,12 @@ sessions, one level less deep. Without `--session-requests`, the session may sta
 requested session and its response path.
 
 Outside a nested session, the launcher asks this session's request server, `${CAT_PLUGIN_ROOT}/bin/request-server`, to
-start the session outside this session's sandbox, inside its harness's own sandbox, and waits until it ends. Before your
-first launch, start the request server once in the background, by its absolute path, as a command of its own with no
-arguments and nothing in front of it: in Claude Code as a background command, in Codex as a command that keeps running.
-Launch once it prints that it serves this session's launches; it serves them until this session ends. When it exits with
-status `2` instead, report its reason to the user and do not launch, unless the reason says that another request server
-already serves this session.
+start the session outside this session's sandbox, inside its harness's own sandbox, and waits until it ends. On Windows
+the request server is `${CAT_PLUGIN_ROOT}\bin\request-server.cmd`. Before your first launch, start the request server
+once in the background, by its absolute path, as a command of its own with no arguments and nothing in front of it: in
+Claude Code as a background command, in Codex as a command that keeps running. Launch once it prints that it serves
+this session's launches; it serves them until this session ends. When it exits with status `2` instead, report its
+reason to the user and do not launch, unless the reason says that another request server already serves this session.
 
 Never pass `--policy-bound`, `--child-needs`,
 `--continue-after-failed-turn`, `--slot-id`, `--resume-slot`, `--inherited-deny-read`, `--inherited-source-home` or

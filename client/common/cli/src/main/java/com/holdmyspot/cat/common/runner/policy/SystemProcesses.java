@@ -1,6 +1,8 @@
 package com.holdmyspot.cat.common.runner.policy;
 
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.WindowsCommandLine;
+import com.holdmyspot.cat.common.WindowsProcessCommandLine;
 import com.holdmyspot.cat.common.secrets.HarnessProcessesSecrets;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -17,8 +19,9 @@ import java.util.Optional;
  * memory page (4 KiB), such as a harness started with long inline settings. The arguments of a Linux process
  * therefore come from its {@code cmdline} file in the process folder; a process whose file cannot be read reports
  * none, and every reader that needs them refuses. macOS reports every argument through {@link ProcessHandle}.
- * Windows reports none, so every reader that needs them refuses there; no request server serves a session on
- * native Windows.
+ * Windows reports none through {@link ProcessHandle}, so the arguments of a Windows process come from the command
+ * line that Windows holds for it, split as the program that started it reads it; a process whose command line
+ * Windows does not let the caller read reports none, and every reader that needs them refuses.
  * <p>
  * The {@link ProcessDescription#start() start} of a Linux process comes from the process folder too: the boot's
  * identifier from {@code sys/kernel/random/boot_id}, and the clock ticks since the boot from field 22 of
@@ -29,7 +32,7 @@ final class SystemProcesses implements HarnessProcesses
 {
 	static
 	{
-		HarnessProcessesSecrets.setHarnessProcessesAccess(SystemProcesses::new);
+		HarnessProcessesSecrets.setHarnessProcessesAccess(processFolder -> new SystemProcesses(processFolder, false));
 	}
 
 	/**
@@ -46,6 +49,10 @@ final class SystemProcesses implements HarnessProcesses
 	 * identifier, or null to take the arguments and the start from {@link ProcessHandle}.
 	 */
 	private final Path processFolder;
+	/**
+	 * {@code true} to take the arguments of each process from the command line that Windows holds for it.
+	 */
+	private final boolean windows;
 
 	/**
 	 * Creates the processes of this computer's operating system.
@@ -57,7 +64,7 @@ final class SystemProcesses implements HarnessProcesses
 		Path processFolder = null;
 		if (Platform.current().isLinux())
 			processFolder = Path.of("/proc");
-		return new SystemProcesses(processFolder);
+		return new SystemProcesses(processFolder, Platform.current().isWindows());
 	}
 
 	/**
@@ -65,10 +72,13 @@ final class SystemProcesses implements HarnessProcesses
 	 *
 	 * @param processFolder Linux's process folder, or null to take the arguments and the start of each process from
 	 *                      {@link ProcessHandle}
+	 * @param windows       {@code true} to take the arguments of each process from the command line that Windows holds
+	 *                      for it
 	 */
-	private SystemProcesses(Path processFolder)
+	private SystemProcesses(Path processFolder, boolean windows)
 	{
 		this.processFolder = processFolder;
+		this.windows = windows;
 	}
 
 	@Override
@@ -107,10 +117,10 @@ final class SystemProcesses implements HarnessProcesses
 	private ProcessDescription describe(ProcessHandle handle)
 	{
 		ProcessHandle.Info info = handle.info();
-		Optional<LinuxCommandLine> linuxCommandLine = linuxCommandLine(handle);
-		Optional<String> argumentZero = linuxCommandLine.map(LinuxCommandLine::argumentZero);
-		Optional<List<String>> arguments = linuxCommandLine.map(LinuxCommandLine::arguments);
-		if (processFolder == null)
+		Optional<CommandLine> commandLine = commandLine(handle);
+		Optional<String> argumentZero = commandLine.map(CommandLine::argumentZero);
+		Optional<List<String>> arguments = commandLine.map(CommandLine::arguments);
+		if (processFolder == null && !windows)
 			arguments = info.arguments().map(List::of);
 		return new ProcessDescription(handle.pid(), start(handle, info), info.command(), argumentZero, arguments);
 	}
@@ -167,13 +177,16 @@ final class SystemProcesses implements HarnessProcesses
 	}
 
 	/**
-	 * Returns the first argument and the arguments after it from a Linux process's command line.
+	 * Returns the first argument and the arguments after it from a process's command line, as Linux or Windows
+	 * reports it.
 	 *
 	 * @param handle the process
 	 * @return the command line, or empty if the system does not report it
 	 */
-	private Optional<LinuxCommandLine> linuxCommandLine(ProcessHandle handle)
+	private Optional<CommandLine> commandLine(ProcessHandle handle)
 	{
+		if (windows)
+			return windowsCommandLine(handle);
 		if (processFolder == null)
 			return Optional.empty();
 		byte[] commandLine;
@@ -195,10 +208,36 @@ final class SystemProcesses implements HarnessProcesses
 		if (commandLine[end - 1] == 0)
 			--end;
 		String[] words = new String(commandLine, 0, end, StandardCharsets.UTF_8).split("\0", -1);
-		return Optional.of(new LinuxCommandLine(words[0], List.of(words).subList(1, words.length)));
+		return Optional.of(new CommandLine(words[0], List.of(words).subList(1, words.length)));
 	}
 
-	private record LinuxCommandLine(String argumentZero, List<String> arguments)
+	/**
+	 * Returns the first argument and the arguments after it from the command line that Windows holds for a process.
+	 *
+	 * @param handle the process
+	 * @return the command line, or empty if Windows does not let the caller read it
+	 */
+	private static Optional<CommandLine> windowsCommandLine(ProcessHandle handle)
+	{
+		Optional<String> line;
+		try
+		{
+			line = WindowsProcessCommandLine.read(handle.pid());
+		}
+		catch (IOException _)
+		{
+			// Windows cannot be asked, so no reader can rely on the process's arguments
+			return Optional.empty();
+		}
+		if (line.isEmpty())
+			return Optional.empty();
+		List<String> words = WindowsCommandLine.split(line.get());
+		if (words.isEmpty())
+			return Optional.empty();
+		return Optional.of(new CommandLine(words.getFirst(), words.subList(1, words.size())));
+	}
+
+	private record CommandLine(String argumentZero, List<String> arguments)
 	{
 	}
 }
