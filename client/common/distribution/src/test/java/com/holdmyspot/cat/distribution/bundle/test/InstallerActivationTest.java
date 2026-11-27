@@ -418,9 +418,15 @@ public final class InstallerActivationTest
 			Path launcher = versionFolder.resolve("bin").resolve("installer");
 			if (platform.isWindows())
 				launcher = launcher.resolveSibling("installer.ps1");
-			// The request server runs outside the sandbox where the harnesses sandbox commands
+			// The request server runs outside the sandbox where the harnesses sandbox commands, and on Windows Codex's
+			// rule allows its batch launcher alone
 			String server = "";
-			if (!platform.isWindows())
+			if (platform.isWindows())
+			{
+				if (harness.equals("codex"))
+					server = ", request-server.cmd";
+			}
+			else
 			{
 				server = ", request-server";
 				if (harness.equals("codex"))
