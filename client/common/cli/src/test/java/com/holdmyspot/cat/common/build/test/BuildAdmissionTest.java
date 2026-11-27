@@ -536,6 +536,41 @@ public final class BuildAdmissionTest
 	}
 
 	/**
+	 * Verifies a calibration that exits successfully before any of its processes is sampled records no calibration
+	 * and releases its reservation, so the next build of the family is admitted and calibrates instead of waiting
+	 * for a reservation that never ends.
+	 *
+	 * @throws IOException if fixture setup or the ledger read fails
+	 * @throws InterruptedException if fixture synchronization is interrupted
+	 */
+	@Test
+	public void unsampledCalibrationReleases() throws IOException, InterruptedException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); BatchFixture fixture = new BatchFixture(cleanup))
+		{
+			fixture.enqueue(LaunchPlan.completeBeforeSample(), LaunchPlan.complete());
+			BuildAdmission.Job unsampled = fixture.job("unsampled", fixture.project, fixture.gate, "source",
+				fixture.root.resolve("unsampled-invocation"));
+			BuildAdmission.Job next = fixture.job("next", fixture.project, fixture.gate, "source",
+				fixture.root.resolve("next-invocation"));
+
+			ControllerCall unsampledCall = fixture.start(() -> fixture.admission.run(unsampled, fixture.evidence));
+			IOException failure = fixture.awaitCall(unsampledCall);
+			requireThat(failure, "unsampledCalibrationFailure").isNotNull();
+			JsonNode ledger = fixture.ledger();
+			requireThat(ledger.path("reservations").size(), "unsampledReservationReleased").isEqualTo(0);
+			requireThat(ledger.path("calibrations").size(), "unsampledCalibrationNotRecorded").isEqualTo(0);
+
+			ControllerCall nextCall = fixture.start(() -> fixture.admission.run(next, fixture.evidence));
+			IOException nextFailure = fixture.awaitCall(nextCall);
+			requireThat(nextFailure, "nextBuildFailure").isNull();
+			JobResult result = (JobResult) nextCall.result.get();
+			requireThat(result.passed(), "nextBuildPassed").isTrue();
+			requireThat(fixture.ledger().path("calibrations").size(), "nextBuildCalibrated").isEqualTo(1);
+		}
+	}
+
+	/**
 	 * Creates an immutable build request for path-boundary checks.
 	 *
 	 * @param project Maven project root
@@ -625,6 +660,7 @@ public final class BuildAdmissionTest
 		private final Map<Long, BatchProcess> processesByPid = new ConcurrentHashMap<>();
 		private final Map<Long, BatchProcess> registeredProcessesByPid = new ConcurrentHashMap<>();
 		private final Map<Long, Path> processStatusPaths = new ConcurrentHashMap<>();
+		private final Set<Long> exitedBeforeSample = ConcurrentHashMap.newKeySet();
 		private final BlockingQueue<LaunchPlan> launchPlans = new LinkedBlockingQueue<>();
 		private final Map<Path, LaunchPlan> launchPlansByInvocation = new ConcurrentHashMap<>();
 		private final BlockingQueue<Long> launchedProcesses = new LinkedBlockingQueue<>();
@@ -681,6 +717,9 @@ public final class BuildAdmissionTest
 				{
 					if (!registeredProcessesByPid.containsKey(pid))
 						return Optional.empty();
+					if (exitedBeforeSample.contains(pid))
+						return Optional.of(new BuildObservations.RawProcess(pid, ProcessHandle.current().pid(),
+							ProcessState.EXITED));
 					ProcessState state;
 					if (processesByPid.containsKey(pid))
 						state = ProcessState.LIVE;
@@ -738,6 +777,8 @@ public final class BuildAdmissionTest
 					BatchProcess process = new BatchProcess(pid, plan, this);
 					processesByPid.put(pid, process);
 					registeredProcessesByPid.put(pid, process);
+					if (plan.exitedBeforeSample())
+						exitedBeforeSample.add(pid);
 					launchedProcesses.add(pid);
 					if (plan.automatic())
 						processControllers.add(process.completeAfterWaitStarts());
@@ -842,6 +883,17 @@ public final class BuildAdmissionTest
 			call.thread = controller;
 			controllers.add(call);
 			return call;
+		}
+
+		/**
+		 * Reads the shared reservation ledger.
+		 *
+		 * @return parsed ledger
+		 * @throws IOException if the ledger cannot be read
+		 */
+		private JsonNode ledger() throws IOException
+		{
+			return scope.json().readTree(context.ledgerPath().resolve("ledger.json").toFile());
 		}
 
 		/**
@@ -1200,8 +1252,9 @@ public final class BuildAdmissionTest
 	 * @param automatic whether the process completes on its first wait
 	 * @param exitCode controlled Maven exit code
 	 * @param startFailure whether the launch boundary throws before a process is created
+	 * @param exitedBeforeSample whether the process table reports the process as exited at the first memory sample
 	 */
-	private record LaunchPlan(boolean automatic, int exitCode, boolean startFailure)
+	private record LaunchPlan(boolean automatic, int exitCode, boolean startFailure, boolean exitedBeforeSample)
 	{
 		/**
 		 * Creates a worker that exits successfully when first observed.
@@ -1210,7 +1263,7 @@ public final class BuildAdmissionTest
 		 */
 		private static LaunchPlan complete()
 		{
-			return new LaunchPlan(true, 0, false);
+			return new LaunchPlan(true, 0, false, false);
 		}
 
 		/**
@@ -1221,7 +1274,18 @@ public final class BuildAdmissionTest
 		 */
 		private static LaunchPlan completeWithExit(int exitCode)
 		{
-			return new LaunchPlan(true, exitCode, false);
+			return new LaunchPlan(true, exitCode, false, false);
+		}
+
+		/**
+		 * Creates a worker that exits successfully, and that the process table reports as exited from the worker's
+		 * first memory sample on, so that no sample of it yields a resident set.
+		 *
+		 * @return successful automatic process plan that is never sampled
+		 */
+		private static LaunchPlan completeBeforeSample()
+		{
+			return new LaunchPlan(true, 0, false, true);
 		}
 
 		/**
@@ -1231,7 +1295,7 @@ public final class BuildAdmissionTest
 		 */
 		private static LaunchPlan blocked()
 		{
-			return new LaunchPlan(false, 0, false);
+			return new LaunchPlan(false, 0, false, false);
 		}
 
 		/**
@@ -1241,7 +1305,7 @@ public final class BuildAdmissionTest
 		 */
 		private static LaunchPlan failToStart()
 		{
-			return new LaunchPlan(false, 0, true);
+			return new LaunchPlan(false, 0, true, false);
 		}
 	}
 

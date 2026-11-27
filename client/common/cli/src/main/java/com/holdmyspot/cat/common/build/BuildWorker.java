@@ -348,8 +348,27 @@ public final class BuildWorker
 			BuildAdmission.JobResult result = writeTerminal(job, claim, reservations, evidence, mavenLog,
 				status, exit, retained, calibrationResult, "reaped");
 			if (claim.kind() == BuildReservations.Claim.Kind.CALIBRATION && exit != null && exit == 0)
-				reservations.calibrated(claim, peak, samples, maximumGapMillis, observedProcessCount, job,
-					result.terminalReceiptPath());
+			{
+				try
+				{
+					reservations.calibrated(claim, peak, samples, maximumGapMillis, observedProcessCount, job,
+						result.terminalReceiptPath());
+				}
+				catch (IOException calibrationFailure)
+				{
+					// The worker is reaped and its receipt is published, so the reservation is released even though
+					// no calibration was recorded: the next build of the family calibrates again.
+					try
+					{
+						reservations.terminal(claim, result);
+					}
+					catch (IOException releaseFailure)
+					{
+						calibrationFailure.addSuppressed(releaseFailure);
+					}
+					throw calibrationFailure;
+				}
+			}
 			reservations.terminal(claim, result);
 			if (ioFailure != null)
 				throw new BuildAdmission.Failure(BuildAdmission.Failure.Kind.PROCESS_IO_FAILED, wrapperLog, job.jobId(),
