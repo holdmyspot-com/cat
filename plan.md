@@ -4317,6 +4317,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-174 | `optimize-xhigh` | Lets install, update and repair run the harness's first program on `PATH` when the recorded program is gone and record it, and warns the user of `PATH` folders that a harness sandbox can write, at session start and when the installer selects a program from one; an error lets a `PATH` change redirect an install while the recorded program exists, blocks a session, warns for a folder that the sandbox cannot write, or misses one that it can. |
 | WI-175 | `optimize-xhigh` | Makes the `PATH` write check read the sandbox write grants widely, reports a grant that it cannot interpret with certainty as "may be writable", reads managed and project settings in the installer, says that the warnings cover sandboxed commands only, and tells the user when a session's policy cannot be read; a session or install with no sandbox in effect reports no folder at all (follow-up, user ruling 2026-11-27); an error hides a grant that may exist, narrows the child-session readers, applies a denial that is not certain, or leaves the user unaware that the check did not run. |
 | WI-176 | `optimize-xhigh` | Makes every place where CAT reads or reproduces Codex's machine-wide layer use the folder and files that Codex uses on Windows (`OpenAI\Codex` in the program data folder that Windows names, no machine-wide managed configuration, `requirements.toml` through the registry), so that the session-start and installer `PATH` write checks and the child-session layer check run on Windows; a failure to name the folder is a could-not-check line in the check and a refusal in the readers that limit a child session (user ruling 2026-11-27, "Support codex on windows now"). |
+| WI-177 | Orchestrator for the live checks, which need the user's host and sign-in and a judgment on each result; `optimize-xhigh` for the code that follows | Decides from live checks whether CAT starts Codex sessions on native Windows, and changes the refusal that stops them; an error lifts it for a sandbox that lets a session write, read or connect beyond its policy, or keeps users off sessions that the sandbox contains (user ruling 2026-11-27, "Plan the live checks"). |
 | WI-108 | `optimize-medium` | Changes how every CAT launcher starts its JVM; an error makes launchers fail outside a sandbox too, or lets two JVMs in separate PID namespaces write the same perf-data file. |
 | WI-107 | `optimize-medium` | Changes what every nested session may read and which host permissions a Claude session receives; an error lets trials and judges read the user's project again, denies a session its own run or evidence, or removes a grant that trials need. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
@@ -5537,6 +5538,7 @@ models that `codex debug models` reports and asked; given `gpt-6-luna`, `low`, i
 | Build controller: calibration that yields no memory sample | Fixed 2026-11-27 and integrated on v1.0 (`f6e4f1a79`; `BuildAdmissionTest.unsampledCalibrationReleases` failed first with the reservation still held, and passes 30 of 30 runs alone and 30 of 30 under load). Found while fixing the missing-`VmRSS` race (`9a5993108`), which omits a process that has exited from a sample: a calibration that exits 0 while every sample omits its processes has no positive whole-tree resident set, and `BuildReservations.calibrated` threw before `BuildWorker.run` published the terminal result, so the calibration's reservation stayed in phase `running`, every later build was deferred with "another calibration or uncalibrated build owns the host", and a recovery pass left it unresolved. A calibration whose Maven run passes but yields no positive whole-tree resident set now returns the passed result (user ruling, 2026-11-27: "report it as passed"; no `IOException`), records no calibration, releases its reservation after its terminal receipt, which records `coverage_result` `failed`, and so the next build of the family calibrates again; neither the batch loop nor any receipt text treats it as an infrastructure failure, because only a thrown failure becomes one. `BuildAdmissionTest.unsampledCalibrationReleases` was changed to expect that result and failed first on the thrown `IOException`; it passes 30 of 30 runs alone with the build cache off. `design.md` has no section on the build controller, so it records nothing here; the reservation rules are in `.cat/rules/include/build.md`, which now states this case. |
 | WI-175 | Implemented 2026-11-27 and integrated on v1.0 (delegate full build with the build cache on: BUILD SUCCESS; the uncached clean acceptance build runs before the next push). User ruling, 2026-11-27: the `PATH` write check overestimates the sandbox's write grants (D186), the installer reads managed and project settings too (D185), the warnings state their coverage, and an unreadable policy is shown to the user (D184). A follow-up ruling the same day: with no sandbox in effect (Claude Code with `sandbox.enabled` not true, Codex with no sandbox mode or permissions profile or `danger-full-access`) the check reports nothing and drops the implicit working-folder, `/tmp` and `TMPDIR` grants; layers that disagree stay "may be writable"; the "could not check" line stays. The child-session readers keep their narrowing. |
 | WI-176 | Implemented 2026-11-27 on branch `fix` of the clone `.cat/sessions/cb14029f-9a5f-4e8c-a631-f9fa7f7ec6ce/temp/codex-windows/clone` (not yet integrated). User ruling, 2026-11-27: "Support codex on windows now". `CodexSystemFolder` owns Codex's machine-wide folder (D187); the Windows calls (`SHGetKnownFolderPath`, `RegGetValueW`) are in `common/cli` and are exercised by Windows-only tests that CAT has not run on Windows. Unconfirmed on a Windows machine: Codex's own Windows folder, the registry value and its types, and that Codex reads no `managed_config.toml` there. CAT's Codex child sessions on native Windows still stop at `CodexSessionSandbox.refusal`, which this item does not lift. |
+| WI-177 | Not started; needs a Windows host and sign-in from the user. User ruling, 2026-11-27: "Plan the live checks". Planned in `design.md` P38 and D188 and in this plan; no code, no host and no check yet. `CodexSessionSandbox.refusal` still refuses every Codex launch on native Windows. |
 | WI-145 | Implemented 2026-11-16 (Claude implementer; `87db96986`..`a378c7aa5`; clean full build 6034 tests, 0 failures, 0 errors, 6 skipped): one in-place registrar (`GitWorktreeRegistrar`) for add, recreate, remove and repair behind `Fork`, `GitForks` and the session-start sweep; worktree requests (`worktree-<uuid>.tar`, document of operation and campaign only) served on a thread of their own by the request server (with the `.git/config`/`.git/hooks` write check against the session's policy) and by a run's runner (the one campaign of that identifier in the run's project; refused when the run allows no requests), counted against no limit; the client (`WorktreeRequestClient`) sends by the launch route, sends nothing for intact links, and `start`, `run`, `choose` and `cancel` refuse with status 2 before any change when no server serves the session; the Claude runner's `.git/worktrees` grant removed (session environment version 25); the build-command limit stated in the prompt-optimizer skill. Remaining: the live checks in Claude Code and Codex. Claude Code live checks 2026-11-25 on `1.0+b9f5d9358d3d2` (`.cat/sessions/cb14029f-9a5f-4e8c-a631-f9fa7f7ec6ce/temp/wi145-live/receipt.md`): `start` creating the worktree, `start` with no server refusing with the command, and an in-run `start` served by the run's runner passed; `status` after the worktree's deletion did not reconnect. Two defects, fixed in `c8b85c8a0` and `703f2db8e` (tests failed first; scoped verify green, 4492 tests; design.md now names every fork-opening command as recreating the worktree): a deleted worktree makes `continue`, `decide` and `request-changes` refuse ("has no usable fork") instead of recreating it, and a `start` refused after the worktree was added leaves the worktree, registration and campaign folder. The Verification's "`stop` removes it" contradicted design §3.7, where `stop` keeps the campaign; corrected to the cleanup after a certified delivery or a kept incumbent. The SessionStart sweep and the removal were not demonstrated; Codex was not run (the brief gave no login class; Codex launches use `subscription`). Decided 2026-11-16: the code stays (`status` never reconnects; a campaign without its worktree is not a fork, `ForksContract.missingWorktreeIsNotAFork`), and the live check names the next command that reconnects (`run` or `choose`) instead. Probe evidence: `~/cat/worktrees/gitwt-probe4/` and `gitwt-probe3/`. |
 | Incremental build-workflow rule (user request, 2026-10-25) | Done 2026-10-27 (Codex; `ebe1687e7d`, released in v1.0). Record: [history](plan-history.md). |
 | G9 Git diff owner (`4da627d85c`) | Done 2026-10-27 (Claude `optimize-high`). Record: [history](plan-history.md). |
@@ -6086,6 +6088,9 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-I29 | The session-start warning and the installer's warning state that they cover sandboxed commands only, not a command run with the sandbox disabled or excluded from it, and not the harness's own file tools. | §8, D186 | WI-175 | U: `ClaudeSessionStartHookTest`, `CodexSessionStartHookTest`, `InstallCommandTest`, `WritablePathEntriesTest` |
 | R-I30 | When a session's sandbox settings or configuration cannot be read at session start, the hook's `systemMessage` says that CAT could not check the `PATH` folders and names what failed, and the session continues. | §8, D184, D186 | WI-175 | U: `ClaudeSessionStartHookTest`, `CodexSessionStartHookTest` |
 | R-I31 | Every place where CAT reads or reproduces Codex's machine-wide layer takes Codex's folder from one owner: `/etc/codex` on Linux and macOS, and on Windows `OpenAI\Codex` below the program data folder that Windows names (`C:\ProgramData` when it names none), with no machine-wide managed configuration file and `requirements.toml` at the registry value `RequirementsPath` of `HKLM\SOFTWARE\Policies\OpenAI\Codex` when it is set. The session-start `PATH` write check, the installer's check and the child-session layer check run on Windows; the `PATH` check says that it could not check, naming the cause, when Windows names no folder, and the readers that limit a child session refuse on that, on a registry value that cannot be read and on a relative one. Linux and macOS are unchanged. | §8, D187 | WI-176 | U: `CodexSystemFolderTest`, `CodexWriteGrantsTest`, `IntegrationTest` (Codex), `CodexPolicyReaderTest`, `CodexConnectionConfigurationTest`, `CodexSessionStartHookTest`, `CodexSystemFilesTest`; Windows only: `WindowsKnownFoldersTest`, `WindowsRegistryTest` |
+| R-I32 | On native Windows, CAT starts a Codex session through the request server or a runner launcher only after every check of P38 has passed for every Codex sandbox implementation in scope, and until then `CodexSessionSandbox.refusal` refuses on that platform. When every check has passed, `refusal` gives none on Windows, and Linux, macOS and Claude Code's Windows refusal are unchanged. When a check has failed, the refusal stays, exits with the status that it has today, and its message names the failed clause, the implementation and what happened. | §8, D188 | WI-177 | P: P38; U: `CodexSessionSandboxTest`, `CodexRequestServerCliTest`, `CodexRunnerCliTest`, `ClaudeSessionSandboxTest` |
+| R-I33 | On a Windows host, under each sandbox implementation in scope, a Codex session that CAT starts writes only where its policy grants, reads nothing that the policy denies, reaches the network as the policy says and its model's host, is started and served by the request server and by forwarded launches, and is narrowed by the machine-wide `config.toml` and `requirements.toml` and by the registry value `RequirementsPath` as on Linux, in each form that P38 lists. | §8, D187, D188, P38 | WI-177 | P: P38 (1) to (5); E: the live checks of WI-177 on the user's host |
+| R-I34 | Each P38 receipt names the host, the Windows build, the Codex version and path, the implementation in effect and how it was observed, the policy in force and each command with its result, reads the outcome from the file system, the network and the rollout rather than from the model's account, and records a clause that did not run as not run. Machine-wide folder and registry changes that a check makes are undone, and the receipt shows the file's hash and the key's value before and after. | §12, D188 | WI-177 | P: P38 (6) |
 | R-T1 | The testability contract T1–T7 holds. | §10 | WI-1 | U: `TestabilityAuditTest` (source scan of the optimizer and capacity code: no non-`final` static fields, no `Thread.sleep`, no reads of `HOME`, `user.home` or `System.getenv` outside `main` classes and harness production scopes, only `final` fields in test classes); review audit at each work item's exit |
 | R-T2 | Packages, ports and adapters follow §9: the harness-neutral core imports no harness package, and production sources import no test-support type. | §9 | WI-1 | U: `TestabilityAuditTest` (import scan) |
 
@@ -12243,7 +12248,105 @@ unreadable setting. Exit: those tests failed before the change and pass after it
 - **Tier and dependencies:** `optimize-xhigh`. Needs WI-175.
 - **Exit:** the tests pass and failed before; the full build with the cache on passes. No design or plan ID appears in
 	code. Closes R-I31. Not closed here: Codex child sessions on native Windows, which `CodexSessionSandbox.refusal`
-	still refuses until Codex's Windows sandbox is verified.
+	still refuses until Codex's Windows sandbox is verified; WI-177 runs the live checks that decide it.
+
+### WI-177 — Live checks of Codex's Windows sandbox, and the Windows refusal that they decide (user ruling, 2026-11-27)
+
+- **Problem:** CAT refuses every Codex child session (optimizer trials, runner sessions and the sessions that they
+	request) on native Windows. `CodexSessionSandbox.refusal(Platform)` gives the refusal to the request server and to the
+	runner launchers, because nobody has verified that Codex's Windows sandbox denies a session the reads that CAT denies,
+	keeps its writes inside the paths that CAT allows, and lets it reach no host other than its model's. WI-176 made the
+	readers that compute a child's policy run on Windows, so the refusal is the one remaining stop. The user ruled "Plan the
+	live checks": run live checks of Codex's Windows sandbox, and lift the refusal if they pass.
+- **Scope:** which Codex Windows sandbox implementations CAT must handle: every implementation that an effective Codex
+	configuration can select on Windows, that is, each value that the installed Codex build accepts for `[windows]
+	allowed_sandbox_implementations` (`elevated` is the one that the user named; the research notes in `system-folder.md`
+	do not list the others, so step 1 below records the accepted values from the build) and the build's default when the
+	setting is absent, because that is the state of a machine that sets nothing. An implementation that needs administrator
+	rights to set up is in scope and is set up on a host that allows it. Not in scope: Claude Code's sessions on Windows
+	(refused for Claude Code's reason, unchanged), Codex's behaviour on Linux and macOS, and a Windows sandbox that CAT
+	would build. Code and text, in `client/codex/cli` (`CodexSessionSandbox`, and the call sites `CodexRequestServerCli`
+	and `CodexRunnerCli`), `client/common/cli` (`HarnessSandbox.nativeWindowsRefusal`, if the message changes), their
+	tests, `docs/security-model.md`, this design and plan.
+- **Change:** as `design.md` P38 and D188 define it. The checks run first on a candidate build, the commit that would be
+	integrated with the refusal removed, so that CAT's own request server, runner and forwarded launches are what is
+	checked; there is no environment variable or option that skips the refusal. The decision rule has two outcomes:
+	(A) every clause of P38 passes for every implementation in scope: the refusal is removed, with the tests below seen
+	to fail on the tree before the change, and the candidate commit is integrated; (B) any clause fails: the refusal
+	stays, its message names the failed clause, the implementation and what happened, a test that fails first asserts that
+	message, and the candidate is not integrated. A clause that could not run leaves the refusal as it is and the premise
+	unrun, and the report names it.
+- **Order:** (1) With no host: list, from the installed Codex build's documentation or source at its version, the values
+	that `[windows] allowed_sandbox_implementations` accepts, what each implementation needs (administrator rights, a
+	firewall rule, dedicated local users), what the build does when the setting is absent, and how a running session shows
+	which implementation it uses; record them in P38's result, and ask the user, with the choices below, for the inputs
+	under Prerequisites. (2) The tests of (a) and (b) below, failing first, on a branch for the candidate build; the
+	candidate's Windows package comes from the existing Build run on a hosted Windows runner. (3) Once the user has
+	supplied the host and the sign-in: install the candidate's package there, record the starting state of the machine-wide
+	Codex folder and registry key, then run P38 (1) to (6) for each implementation in scope, using `gpt-6-luna` at `low`
+	effort for each launch and a probe prompt that asks for the action as ordinary work and never says what is expected or
+	that it is a check. P36 (3) and P32 (2) and (3) (the Credential Manager login) can run in the same visit if the user
+	supplies that login; they are not part of this decision. (4) Undo the machine-wide changes and show the hashes and
+	values before and after. (5) Apply the outcome. (6) The clean full offline build. (7) The documents and the scan for
+	design and plan IDs.
+- **Verification:** write these first and see each fail on the current tree, with CAT's real classes, the platform
+	injected, and no model. (a) Outcome A: `CodexSessionSandboxTest`, with the Windows platform, gives no refusal, and with
+	Linux and macOS gives none as before; `CodexRequestServerCliTest` and `CodexRunnerCliTest`, with the Windows platform,
+	start the session through a double of the harness process instead of exiting with the refusal's status; the Claude
+	Code runner's refusal on Windows is unchanged (`ClaudeSessionSandboxTest`). (b) Outcome B, instead of (a): the same
+	three tests assert that the refusal stays, exits with the same status, and names the failed clause, the implementation
+	and what happened. Then, on the user's host, the live checks of P38, each reading its outcome from the file system, the
+	network and Codex's rollout: (1) the child's file creation in each granted folder succeeds and the same command leaves
+	no file for each denied form in P38 (1), whether it runs under `cmd`, PowerShell or a process that a command starts;
+	(2) each denied read, list and copy of a denied file and folder, the source home's `auth.json` among them, fails in
+	every form of (1) and through a link; (3) with network access off, a connection to a public address, a name lookup and
+	a loopback connection fail, with `allow_local_binding` the loopback connection works, with a managed proxy only its
+	hosts are reached, and the child's turn completes through its model's host in each; (4) the server starts outside
+	the sandbox, serves a request, the child's runner forwards a nested request, the nested policy is no wider than its
+	parent's, a response that Windows still holds open is read when it is released, and ending the harness process ends
+	the server and the sessions with their process trees; (5) a `config.toml` and a `requirements.toml` below the program
+	data folder and a `requirements.toml` at the registry value each narrow a child as the Linux layers do and CAT's reader
+	reports what Codex enforces, a `managed_config.toml` changes nothing, a relative registry value refuses, and the
+	implementation that a layer does not list is refused or replaced as the setting says; (6) each receipt holds what R-I34
+	lists. A clause that does not run is reported as not run.
+- **Prerequisites (user-supplied inputs):** (i) a Windows host with Codex installed and signed in. Candidate hosts: a
+	GitHub-hosted Windows runner (the Build's `windows-2025` image) reached through the `remote-runner-session` skill, on
+	which the agent installs Codex and the user supplies the sign-in; or a Windows machine that the user supplies, with
+	Codex already installed and signed in, and a way for the agent to run commands on it (a remote shell, or the user
+	running the commands that the agent gives and returning the output). The host and the sign-in are the user's to
+	supply. (ii) The user's ruling on Q30 below when the host is a hosted runner. (iii) On a user's machine, permission
+	to write `OpenAI\Codex` below its program data folder and the registry key `HKLM\SOFTWARE\Policies\OpenAI\Codex`, and to
+	set up an implementation that needs administrator rights, with CAT restoring both afterward. (iv) The Codex version that
+	the host holds is the one that its receipt names; CAT's other gates name 0.172.0.
+- **Choices, open (the user decides; neither is made here):**
+	- **Q30, whether a GitHub-hosted runner may hold a Codex login.** A check can fail by letting a child read what its
+		policy denies, and the source home's `auth.json` is one of the denied paths, so on a failing run a model-driven child
+		may read the login that the runner holds, and the runner's job holds it as long as it lives. (a) The user's own
+		subscription login on the runner: no new account or key to make, and it exercises the login that users have; the
+		credential is on GitHub's machine for the job, a leak is account-wide, and a refresh by the runner's Codex can
+		invalidate the user's own login (H57 gives that only the user's top Codex refreshes). (b) A disposable sign-in that
+		the user creates and revokes afterward, such as a second account or seat, or an API key with a spend limit: a leak
+		costs one revocable credential, but an API key exercises another login path than a subscription, so the Credential
+		Manager and ChatGPT-sign-in paths stay unrun, and the user does the creating and revoking. (c) No credential on a
+		hosted runner: the checks run on a machine that the user supplies, which holds the login already, with the
+		machine-wide changes of clause (5) made on the user's machine. (d) Model-free clauses on a hosted runner and
+		model-needing clauses on the user's machine: this needs a way to run a command under Codex's Windows sandbox with
+		no model, which step 1 establishes or rules out; clause (3)'s turn and the forwarded launches would still need a
+		model.
+	- **Q31, a pass for some implementations and a failure for others.** The rule above is all or none: one failing
+		implementation keeps the refusal for every Windows host, including one whose Codex configuration permits only an
+		implementation that passed. The alternative lifts the refusal for the implementations that passed, which requires
+		CAT to read the implementation in effect on the host, refuse the others and name them, a change of its own with its
+		own requirement and tests. Choosing it is a later ruling after the results exist.
+- **Classes affected:** `CodexSessionSandbox`, `CodexRequestServerCli`, `CodexRunnerCli`, `HarnessSandbox`, and their
+	tests.
+- **Tier and dependencies:** the orchestrator runs the live checks and applies the decision rule; `optimize-xhigh` makes
+	the code change that follows. Needs WI-176, whose readers the checks exercise, and WI-168's login service, which serves
+	a child's login. It needs the host and the sign-in, which the user supplies.
+- **Exit:** P38 has passed for every implementation in scope and the refusal is removed, or a check has failed and the
+	refusal's message names it, with the receipts for each; the tests of (a) or of (b) pass and failed before; the clean
+	full offline build passes; the machine-wide changes on the host are undone with hashes shown; the report names every
+	clause and implementation not run. No design or plan ID appears in code. Closes R-I32 to R-I34.
 
 ## 6. Dependency order
 
@@ -12416,6 +12519,7 @@ blocks only the part of a work item that it names.
 | WI-174 | WI-173 |
 | WI-175 | WI-174 |
 | WI-176 | WI-175 |
+| WI-177 | WI-168, WI-176. Its checks need a Windows host and a sign-in that the user supplies. |
 | WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57, WI-60 to WI-69, WI-90, WI-91, WI-92, WI-93, WI-95, WI-96, WI-97, WI-98, WI-99, WI-100, WI-101, WI-102, WI-103, WI-104, WI-105, WI-107, WI-108, WI-109, WI-110, WI-114, WI-115 and WI-116. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
