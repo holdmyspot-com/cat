@@ -171,7 +171,9 @@ public final class CodexRunner
 	 *   {@code codex login} and {@code codex logout} to the session's commands. The login ends when the app-server
 	 *   ends.
 	 * @return the live owned Codex run session
-	 * @throws SessionRefusedException if the session's sandbox would be wider than its policy or cannot confine it
+	 * @throws SessionRefusedException if the session's sandbox would be wider than its policy or cannot confine it,
+	 *                                 or on Windows would run in a sandbox implementation that CAT has not verified,
+	 *                                 or in none
 	 * @throws IOException             if validation, copying, or process startup fails
 	 */
 	@SuppressWarnings("PMD.CloseResource")
@@ -263,7 +265,10 @@ public final class CodexRunner
 				CodexConnectionConfiguration.copy(configuration(hostHome), stagedConfiguration, isolatedHome,
 					login.settings(codexFolder), worktree, caches, temporaryDirectory, toolOutputTokenLimit,
 					requestAccess, Platform.current(), parentState, policy, extraPermissions, retainedConfiguration);
-				CodexConnectionConfiguration.requireNarrowingLayers(CodexSystemFolder.ofThisMachine(), policy);
+				CodexSystemFolder system = CodexSystemFolder.ofThisMachine();
+				CodexConnectionConfiguration.requireNarrowingLayers(system, policy);
+				if (Platform.current().isWindows())
+					CodexSessionSandbox.requireVerifiedImplementation(configuration(hostHome), system);
 				policyListener.accept(policy);
 				sandbox = sessionSandbox(stagedConfiguration, manager, nestedSession, readOnlyEvidence, deniedReads,
 					Platform.current(), environment, requestAccess, appServer, policy);

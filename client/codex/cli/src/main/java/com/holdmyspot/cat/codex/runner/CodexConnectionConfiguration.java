@@ -434,8 +434,8 @@ public final class CodexConnectionConfiguration
 
 	/**
 	 * Copies supported connection and project instruction settings, exposes verified dependency caches to shell
-	 * commands and limits each tool output's retained tokens. On Windows, it prefers Codex's MXC sandbox where the
-	 * system offers it.
+	 * commands and limits each tool output's retained tokens. On Windows, the session runs in the Windows sandbox
+	 * implementation that the host configuration selects.
 	 *
 	 * @param source               the host configuration file
 	 * @param destination          the isolated configuration file
@@ -749,11 +749,15 @@ public final class CodexConnectionConfiguration
 		}
 		copied.append("TMPDIR = \"").append(toml(temporaryDirectory)).append('"').append(System.lineSeparator());
 		ObjectNode features = mapper.createObjectNode();
-		if (platform.isWindows())
+		ObjectNode windows = mapper.createObjectNode();
+		// Without a Windows sandbox implementation, Codex runs the session read-only and rejects every command, so the
+		// session runs in the one that its parent selects, or in the machine-wide configuration's when the parent
+		// selects none
+		if (platform.isWindows() && parentConfiguration != null)
 		{
-			// Without an administrator's setup, Windows offers only Codex's unelevated sandbox, which refuses a profile
-			// that denies reads, and MXC, which enforces it
-			features.put("prefer_mxc", true);
+			JsonNode implementation = parentConfiguration.path("windows").path("sandbox");
+			if (!implementation.isMissingNode())
+				windows.set("sandbox", implementation);
 		}
 		ObjectNode agents = mapper.createObjectNode();
 		if (parentConfiguration != null)
@@ -764,6 +768,7 @@ public final class CodexConnectionConfiguration
 			features.put(NETWORK_PROXY_FEATURE, true);
 		appendTable(copied, mapper, "features", features);
 		appendTable(copied, mapper, "agents", agents);
+		appendTable(copied, mapper, "windows", windows);
 		appendRunnerProfile(copied, sessionHome, codexFolder, writable, temporaryDirectory, project, platform, policy);
 		Files.createDirectories(destination.getParent());
 		Files.writeString(destination, copied.toString());
@@ -1021,7 +1026,7 @@ public final class CodexConnectionConfiguration
 	 */
 	private static void addProjectGitPermissions(Map<String, String> filesystem, Path project, Platform platform)
 	{
-		// Windows uses MXC or the native Windows sandbox rather than Linux's read-only mounts. Without verified
+		// Windows uses Codex's own Windows sandbox rather than Linux's read-only mounts. Without verified
 		// protection for config and hooks there, keep Git metadata under the built-in workspace restrictions.
 		if (platform.isWindows())
 			return;

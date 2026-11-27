@@ -139,13 +139,13 @@ public final class CodexMultiAgentInheritanceTest
 	}
 
 	/**
-	 * Verifies that a Windows session gets the multi-agent entries in the same {@code [features]} table as its sandbox
-	 * preference.
+	 * Verifies that a Windows session gets the parent's multi-agent entries as the only entries of its
+	 * {@code [features]} table, with no preference for the MXC sandbox, which CAT has not verified.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
 	@Test
-	public void windowsMergesFeatureTables() throws IOException
+	public void windowsCopiesFeatureEntries() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -154,7 +154,7 @@ public final class CodexMultiAgentInheritanceTest
 			JsonNode session = session(root, "[features]\nmulti_agent_v2 = true\n", CodexParentMultiAgentState.NONE,
 				Platform.WINDOWS_X64);
 
-			requireTable(session, "features", "prefer_mxc = true\nmulti_agent_v2 = true");
+			requireTable(session, "features", "multi_agent_v2 = true");
 		}
 	}
 

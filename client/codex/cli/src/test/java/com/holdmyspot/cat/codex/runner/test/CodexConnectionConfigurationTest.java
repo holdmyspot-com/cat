@@ -663,49 +663,87 @@ public final class CodexConnectionConfigurationTest
 	}
 
 	/**
-	 * Verifies that a Windows session prefers Codex's MXC sandbox, which enforces a profile that denies reads without an
-	 * administrator's setup.
+	 * Verifies that a Windows session runs in the Windows sandbox implementation that its parent's configuration
+	 * selects, and that its configuration no longer asks Codex to prefer the MXC sandbox, which CAT has not verified.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
 	@Test
-	public void windowsPrefersMxcSandbox() throws IOException
+	public void windowsCarriesParentSandbox() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-codex-mxc-"));
-			Path destination = root.resolve("isolated/config.toml");
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-windows-sandbox-"));
+			for (String implementation : List.of("elevated", "unelevated"))
+			{
+				Path source = Files.writeString(root.resolve(implementation + ".toml"), """
+					model = "parent-model"
+					[windows]
+					sandbox = "%s"
+					sandbox_private_desktop = false
+					""".formatted(implementation));
+				Path destination = root.resolve(implementation + "/config.toml");
 
-			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, root.resolve("project"),
-				HarnessDependencyCaches.NONE,
-				root.resolve("tmp"), 0, Platform.WINDOWS_X64);
+				CodexConnectionConfiguration.copy(source, destination, root.resolve("project"),
+					HarnessDependencyCaches.NONE, root.resolve("tmp"), 0, Platform.WINDOWS_X64);
 
-			List<String> lines = Files.readAllLines(destination);
-			int features = lines.indexOf("[features]");
-			requireThat(features, "features").isNotNegative();
-			requireThat(lines.get(features + 1), "featureLine").isEqualTo("prefer_mxc = true");
+				String configuration = Files.readString(destination);
+				JsonNode windows = TomlMapper.builder().build().readTree(configuration).path("windows");
+				requireThat(windows.path("sandbox").asString(""), "sandbox").isEqualTo(implementation);
+				requireThat(windows.size(), "windowsEntries").isEqualTo(1);
+				requireThat(configuration, "configuration").doesNotContain("prefer_mxc");
+			}
 		}
 	}
 
 	/**
-	 * Verifies that a session on another platform, whose sandbox ignores the MXC preference, gets a configuration
-	 * without it, so that adding the preference leaves that platform's sessions unchanged.
+	 * Verifies that a Windows session whose parent's configuration selects no Windows sandbox implementation sets none
+	 * either, so that Codex takes the machine-wide configuration's value for it, as it does for the parent.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
 	@Test
-	public void otherPlatformsOmitMxcPreference() throws IOException
+	public void windowsWithoutParentSandboxSetsNone() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-codex-mxc-"));
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-windows-sandbox-"));
 			Path destination = root.resolve("isolated/config.toml");
 
 			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, root.resolve("project"),
-				HarnessDependencyCaches.NONE,
-				root.resolve("tmp"), 0, Platform.LINUX_X64);
+				HarnessDependencyCaches.NONE, root.resolve("tmp"), 0, Platform.WINDOWS_X64);
 
-			requireThat(Files.readString(destination), "configuration").doesNotContain("prefer_mxc");
+			String configuration = Files.readString(destination);
+			requireThat(TomlMapper.builder().build().readTree(configuration).has("windows"), "windows").isFalse();
+			requireThat(configuration, "configuration").doesNotContain("prefer_mxc");
+		}
+	}
+
+	/**
+	 * Verifies that a session on another platform, whose Codex has no Windows sandbox, gets no {@code [windows]} table
+	 * even when its parent's configuration has one, so that carrying the Windows implementation leaves that platform's
+	 * sessions unchanged.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void otherPlatformsOmitWindowsSandbox() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-windows-sandbox-"));
+			Path source = Files.writeString(root.resolve("parent.toml"), """
+				[windows]
+				sandbox = "elevated"
+				""");
+			Path destination = root.resolve("isolated/config.toml");
+
+			CodexConnectionConfiguration.copy(source, destination, root.resolve("project"),
+				HarnessDependencyCaches.NONE, root.resolve("tmp"), 0, Platform.LINUX_X64);
+
+			String configuration = Files.readString(destination);
+			requireThat(TomlMapper.builder().build().readTree(configuration).has("windows"), "windows").isFalse();
+			requireThat(configuration, "configuration").doesNotContain("prefer_mxc");
 		}
 	}
 
