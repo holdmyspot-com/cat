@@ -70,8 +70,21 @@ that lists no key, such as one that a build without a release key wrote, gets th
 install succeeds, and the command's result says that it added the key.
 
 The first install records the installation's protected data and policy paths, the harness home and the harness program.
-Later changes to `HOME`, `PATH`, `CLAUDE_CONFIG_DIR` or `CODEX_HOME` cannot redirect a routine operation, and an
-installed installer refuses a `--home` other than the one its policy records. A first install refuses, changing
+Later changes to `HOME`, `CLAUDE_CONFIG_DIR` or `CODEX_HOME` cannot redirect a routine operation, and an
+installed installer refuses a `--home` other than the one its policy records. Later changes to `PATH` cannot redirect
+it either, while the recorded program exists: install, update and repair keep running the recorded program with its
+recorded environment. Once that program no longer exists or is no longer executable, they run the first program of the
+harness on the installer's `PATH` instead, confirm it as a first install does, and record its path in the policy; the
+result says which program replaced which. A recorded program that exists but cannot start, or no longer identifies
+itself as the harness's program, still refuses the install. So a process that can both remove the recorded program and
+change the `PATH` of an installer run could choose the program that a later install runs outside the sandbox; CAT warns
+you about the folders that could let a sandboxed command do that. At the start of each session, CAT checks that no folder
+on `PATH` is writable by the session's sandbox, meaning that the sandbox lets its commands write the folder or a folder
+above it: for Claude Code, its sandbox's write allowlist less its write denials, as the session's settings give them, and
+for Codex, its writable roots. When a folder is, the notice that CAT shows you at the start of the session names each
+folder and the setting that grants the write, and the session continues. An install that replaces the recorded program
+with one from such a folder warns the same way, from the user-level sandbox settings of each harness home that it
+finds. A first install refuses, changing
 nothing, when `PATH` holds no program of the harness or the program it holds cannot start in the installer's
 environment. An installation serves only its own harness: its installer refuses a `--harness` that names the other one.
 A first install also refuses a release older than the data version in `migration-version` in the data directory, which
