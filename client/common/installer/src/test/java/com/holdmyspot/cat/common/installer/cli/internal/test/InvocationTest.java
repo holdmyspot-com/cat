@@ -673,9 +673,12 @@ public final class InvocationTest
 			RecordingIntegration integration = new RecordingIntegration().allowingWrites(new SandboxWrites(
 				List.of(new WriteGrant(replacement.getParent(), "sandbox.filesystem.allowWrite", true)), List.of()));
 
+			// The environment's search path is in the form of the platform that runs the test, so the installer runs on it
 			Run run = run(archive, installation.root, installEnvironment(installation.root.resolve("user"),
-				replacement.getParent()), List.of(new RegisteredProvider()), integration, "--home",
-				installation.home.toString(), "install", "--harness", "harness-a");
+				replacement.getParent()), List.of(new RegisteredProvider()), integration, Platform.current(), command ->
+				{
+					throw new AssertionError("Started " + command);
+				}, "--home", installation.home.toString(), "install", "--harness", "harness-a");
 
 			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(0);
 			requireThat(run.result().path("message").stringValue(), "message").contains("may be writable").
