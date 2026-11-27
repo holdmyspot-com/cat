@@ -411,6 +411,67 @@ public final class BundledRuleAudienceTest
 	}
 
 	/**
+	 * Verifies an agent that splits work into shards or parallel parts reaches the packaged coverage requirement from
+	 * every place that tells it to split: the CI shard guidance of the performance-change rule, the concurrent-units
+	 * guidance of the monotonic-progress rule, the subtask guidance of the delegation rule, and the workflow area index
+	 * and the rule routing that every agent receives at startup. The requirement lives in one rule, which has the
+	 * splitter add a check after the shards finish that compares an independent enumeration of the work with what the
+	 * shards report and fails, naming the items, for one that no shard executed, that several executed, or that failed,
+	 * and which counts an empty or unreadable shard report as failed, not as zero items.
+	 *
+	 * @throws IOException        if the bundled rules cannot be copied, routed, or read
+	 * @throws URISyntaxException if the class path returns a malformed resource location
+	 */
+	@Test
+	public void shardCoverageGuidanceIsReachable() throws IOException, URISyntaxException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-bundled-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-bundled-rules-project-"));
+			BundledRules.copy(plugin.resolve("rules"));
+			RuleArtifactRouter.route(plugin, scope.yaml());
+			Path include = plugin.resolve("rules/include/common");
+
+			String rule = oneLine(Files.readString(include.resolve("shard-coverage.md")));
+			requireThat(rule, "shardCoverage").
+				startsWith("# Shard Coverage ").
+				contains("add a coverage check that runs after every shard has finished").
+				contains("compares the full list of work items with what the shards report").
+				contains("fails, naming the items,").
+				contains("was executed by no shard").
+				contains("was executed by more than one shard").
+				contains("failed, including a shard that crashed or timed out without reporting its items").
+				contains("independent enumeration of the work").
+				contains("not from the shards' own counts").
+				contains("An empty or unreadable shard report counts as failed, never as zero items.");
+
+			String lazyLoad = "lazy load `${CAT_PLUGIN_ROOT}/rules/include/common/shard-coverage.md`";
+			requireThat(oneLine(Files.readString(include.resolve("performance-changes.md"))), "performanceChanges").
+				contains(lazyLoad);
+			requireThat(oneLine(Files.readString(include.resolve("monotonic-progress.md"))), "monotonicProgress").
+				contains(lazyLoad);
+			requireThat(oneLine(Files.readString(include.resolve("delegation.md"))), "delegation").
+				contains(lazyLoad);
+			String workflowIndex = oneLine(Files.readString(include.resolve("rule-routing/workflows.md")));
+			requireThat(workflowIndex, "workflowIndex").contains(lazyLoad).
+				doesNotContain("compares the full list of work items");
+
+			ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml());
+			for (String harness : List.of("claude", "codex"))
+			{
+				requireThat(oneLine(loader.loadForMainAgent(plugin, project, harness)), harness + "Main").
+					contains("when splitting work into shards or parallel parts").
+					contains("include/common/rule-routing/workflows.md`");
+				requireThat(oneLine(loader.loadForSubagent(plugin, project, harness, "cat:reviewer")),
+					harness + "Subagent").
+					contains("when splitting work into shards or parallel parts").
+					contains("include/common/rule-routing/workflows.md`");
+			}
+		}
+	}
+
+	/**
 	 * Verifies an agent that is about to rerun a failed operation that is expensive to run in full, or to count a
 	 * conclusion that compares separate runs, can reach the packaged rule for that decision: the failure area index
 	 * routes to the diagnostic-run rule, and the rule routing that every agent of either harness receives at startup
