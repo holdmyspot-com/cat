@@ -61,6 +61,10 @@ public final class SessionRequestForwarder
 	 */
 	public static final Duration RESPONSE_POLL = Duration.ofMillis(100);
 	/**
+	 * The number of checks at which a response that stays unreadable is reported instead of waited for.
+	 */
+	private static final int MAXIMUM_UNREADABLE_RESPONSE_CHECKS = 600;
+	/**
 	 * Options that the parent runner chooses for the sessions it requests inside a nested session, and their manifest
 	 * fields.
 	 */
@@ -972,6 +976,7 @@ public final class SessionRequestForwarder
 		Path transcript = directory.resolve("transcript.jsonl");
 		Path response = directory.resolve("response.json");
 		long copied = 0;
+		int unreadable = 0;
 		while (true)
 		{
 			// The parent publishes the response after the session's last record, so a final copy after it appears
@@ -987,7 +992,22 @@ public final class SessionRequestForwarder
 				output.flush();
 			}
 			if (ended)
-				return json.readTree(response.toFile());
+			{
+				try
+				{
+					return json.readTree(response.toFile());
+				}
+				catch (JacksonException e)
+				{
+					// Right after the parent moves the response into place, Windows can refuse to open it while another
+					// process, such as an indexer or antivirus, still holds it, and some file systems can briefly show
+					// an incomplete document. Both end by themselves, so the read is retried, but a response that stays
+					// unreadable is reported instead of waited for.
+					++unreadable;
+					if (unreadable >= MAXIMUM_UNREADABLE_RESPONSE_CHECKS)
+						throw e;
+				}
+			}
 			pause.pause();
 		}
 	}

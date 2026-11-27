@@ -118,6 +118,53 @@ public final class SessionRequestForwarderTest
 	}
 
 	/**
+	 * Verifies that a launch keeps waiting when the response exists but cannot be read yet, and returns the response once
+	 * it can be read.
+	 * <p>
+	 * On Windows the parent's freshly moved {@code response.json} can be held open briefly by another process, so the
+	 * first read fails; some file systems can also briefly show an incomplete document. The test stands for either with
+	 * a truncated document that the next check finds complete.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void waitsForUnreadableResponse() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "forward-")).
+				toRealPath());
+			ByteArrayOutputStream output = new ByteArrayOutputStream();
+			int[] pauses = {0};
+
+			int status = SessionRequestForwarder.forward("harness-a", new String[]{"--project",
+				fixture.project.toString(), "--model", "model-a", "--effort", "effort-a"}, new StringReader(RECORDS),
+				fixture.requests, () ->
+			{
+				pauses[0] += 1;
+				Path response = fixture.responseDirectory();
+				if (pauses[0] == 1)
+				{
+					fixture.readRequest();
+					Files.createDirectories(response);
+					Files.writeString(response.resolve("transcript.jsonl"), Fixture.TRANSCRIPT);
+					Files.writeString(response.resolve("response.json"), "{\"status\":");
+				}
+				else if (pauses[0] == 2)
+				{
+					Files.writeString(response.resolve("response.json"), "{\"status\":\"completed\",\"reason\":\"\"}");
+				}
+				else
+					throw new AssertionError("The response was readable, but the forwarder kept waiting");
+			}, output, new PrintWriter(fixture.errors, true));
+
+			requireThat(status, "status").withContext(fixture.errors, "errors").isEqualTo(0);
+			requireThat(output.toString(StandardCharsets.UTF_8), "transcript").isEqualTo(Fixture.TRANSCRIPT);
+		}
+	}
+
+	/**
 	 * Verifies that the records may come from an input file and that the transcript goes to the named output file.
 	 *
 	 * @throws IOException if fixture I/O fails
