@@ -2,6 +2,7 @@ package com.holdmyspot.cat.codex.policy;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.codex.layout.CodexSystemFolder;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -103,13 +104,29 @@ public record CodexConfiguration(List<Layer> layers, ObjectNode merged, boolean 
 		throws IOException, PolicyRefusal
 	{
 		List<Path> sources = new ArrayList<>();
-		Path requirements = systemFiles.folder().resolve("requirements.toml");
+		CodexSystemFolder system = systemFiles.system();
+		Optional<String> unsure = system.fallbackCause();
+		if (unsure.isPresent())
+		{
+			throw new PolicyRefusal("CAT cannot tell where Codex reads its machine-wide files from: " + unsure.get(),
+				"Make Windows name the program data folder, then start a new Codex session");
+		}
+		Path requirements;
+		try
+		{
+			requirements = system.requirements();
+		}
+		catch (IOException e)
+		{
+			throw new PolicyRefusal("CAT cannot tell where Codex reads its requirements file from: " + e.getMessage(),
+				"Make the registry value readable, or remove it, then start a new Codex session");
+		}
 		Optional<ObjectNode> requirementValues = readFile(requirements, sources);
 		if (requirementValues.isPresent())
 			requireUninterpretedRequirements(requirements, requirementValues.get());
 
 		List<Layer> lower = new ArrayList<>();
-		addFileLayer(systemFiles.folder().resolve("config.toml"), systemFiles.folder(), lower, sources);
+		addFileLayer(system.config(), system.folder(), lower, sources);
 		if (!launch.ignoreUserConfig())
 			addFileLayer(codexHome.resolve("config.toml"), codexHome, lower, sources);
 		if (launch.profile().isPresent())
@@ -125,7 +142,9 @@ public record CodexConfiguration(List<Layer> layers, ObjectNode merged, boolean 
 		Layer flags = new Layer(overrideLayer(launch.overrides(), cwd), true, Optional.empty());
 		List<Layer> upper = new ArrayList<>();
 		upper.add(flags);
-		addFileLayer(systemFiles.folder().resolve("managed_config.toml"), systemFiles.folder(), upper, sources);
+		Optional<Path> managed = system.managedConfig();
+		if (managed.isPresent())
+			addFileLayer(managed.get(), system.folder(), upper, sources);
 
 		List<Layer> withoutProjects = new ArrayList<>(lower);
 		withoutProjects.addAll(upper);

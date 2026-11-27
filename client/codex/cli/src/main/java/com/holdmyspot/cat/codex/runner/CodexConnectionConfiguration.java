@@ -2,6 +2,7 @@ package com.holdmyspot.cat.codex.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.codex.layout.CodexSystemFolder;
 import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
@@ -56,17 +57,6 @@ public final class CodexConnectionConfiguration
 	 * The {@code [features]} entry that makes Codex limit a profile's network to its {@code domains}.
 	 */
 	static final String NETWORK_PROXY_FEATURE = "network_proxy";
-	/**
-	 * The Codex configuration layer that a system administrator installs on Linux and macOS. The session's own
-	 * configuration overrides its values, but Codex merges its tables, such as a permission profile's, into the
-	 * session's.
-	 */
-	public static final Path SYSTEM_LAYER = Path.of("/etc/codex/config.toml");
-	/**
-	 * The Codex configuration layer that an administrator manages on Linux and macOS. Its values override the
-	 * session's own configuration.
-	 */
-	public static final Path MANAGED_LAYER = Path.of("/etc/codex/managed_config.toml");
 	/**
 	 * The permission profiles that CAT gives a session's thread.
 	 */
@@ -172,21 +162,29 @@ public final class CodexConnectionConfiguration
 	 * {@code forced_login_method}, {@code model_provider} or {@code model_providers}, which would replace the credential
 	 * or the model host that the session takes from its source home.
 	 *
-	 * @param systemLayer  the system layer, which may not exist
-	 * @param managedLayer the managed layer, which may not exist
-	 * @param policy       the session's policy
+	 * @param system the machine-wide folder, which holds the system layer, and on a platform that has one the managed
+	 *               layer, each of which may not exist
+	 * @param policy the session's policy
 	 * @throws NullPointerException    if any of the arguments are null
 	 * @throws SessionRefusedException if a layer cannot be parsed, would widen the session or sets a credential setting
 	 * @throws IOException             if a layer cannot be read
 	 */
-	public static void requireNarrowingLayers(Path systemLayer, Path managedLayer, ChildPolicy policy)
-		throws IOException
+	public static void requireNarrowingLayers(CodexSystemFolder system, ChildPolicy policy) throws IOException
 	{
-		requireThat(systemLayer, "systemLayer").isNotNull();
-		requireThat(managedLayer, "managedLayer").isNotNull();
+		requireThat(system, "system").isNotNull();
 		requireThat(policy, "policy").isNotNull();
-		requireNarrowingLayer(systemLayer, false, policy);
-		requireNarrowingLayer(managedLayer, true, policy);
+		Optional<String> unsure = system.fallbackCause();
+		if (unsure.isPresent())
+		{
+			throw new SessionRefusedException("CAT does not start the session: " + unsure.get() + ", so it cannot " +
+				"tell whether the Codex configuration layers that Codex merges into the session's configuration give the " +
+				"session more access than its sandbox policy allows. Make Windows name the program data folder, then " +
+				"start the session again.");
+		}
+		requireNarrowingLayer(system.config(), false, policy);
+		Optional<Path> managed = system.managedConfig();
+		if (managed.isPresent())
+			requireNarrowingLayer(managed.get(), true, policy);
 	}
 
 	/**

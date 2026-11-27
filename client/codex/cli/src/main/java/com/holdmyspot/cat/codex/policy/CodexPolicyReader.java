@@ -165,7 +165,7 @@ public final class CodexPolicyReader
 			}
 		}
 		Optional<Path> slashTmp = Optional.ofNullable(systemFiles.slashTmp());
-		SandboxWrites writes = CodexWriteGrants.read(new CodexWriteGrants.Session(systemFiles.folder(),
+		SandboxWrites writes = CodexWriteGrants.read(new CodexWriteGrants.Session(systemFiles.system(),
 			systemFiles.managedPreferences(), codexHome, session.accountHome(), session.cwd(), session.environment(),
 			slashTmp, launch, recorded));
 		problems.addAll(writes.problems());
@@ -191,7 +191,7 @@ public final class CodexPolicyReader
 			{
 				throw new PolicyRefusal("Codex reads managed preferences from " + preferences + ", which CAT " +
 					"cannot parse", "Ask the administrator who manages Codex on this machine to deliver its " +
-					"configuration through /etc/codex instead, then start a new Codex session");
+					"configuration through " + systemFiles.system().folder() + " instead, then start a new Codex session");
 			}
 		}
 		Path codexHome = CodexInstallation.resolveHome(session.environment(), session.accountHome(), session.cwd());

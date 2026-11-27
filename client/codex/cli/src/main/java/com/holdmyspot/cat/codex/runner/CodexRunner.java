@@ -7,6 +7,7 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.codex.installer.CodexIntegration;
 import com.holdmyspot.cat.codex.layout.CodexInstallation;
+import com.holdmyspot.cat.codex.layout.CodexSystemFolder;
 import com.holdmyspot.cat.codex.optimizer.InstalledPlugins;
 import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.ExecutableFiles;
@@ -262,11 +263,7 @@ public final class CodexRunner
 				CodexConnectionConfiguration.copy(configuration(hostHome), stagedConfiguration, isolatedHome,
 					login.settings(codexFolder), worktree, caches, temporaryDirectory, toolOutputTokenLimit,
 					requestAccess, Platform.current(), parentState, policy, extraPermissions, retainedConfiguration);
-				if (!Platform.current().isWindows())
-				{
-					CodexConnectionConfiguration.requireNarrowingLayers(CodexConnectionConfiguration.SYSTEM_LAYER,
-						CodexConnectionConfiguration.MANAGED_LAYER, policy);
-				}
+				CodexConnectionConfiguration.requireNarrowingLayers(CodexSystemFolder.ofThisMachine(), policy);
 				policyListener.accept(policy);
 				sandbox = sessionSandbox(stagedConfiguration, manager, nestedSession, readOnlyEvidence, deniedReads,
 					Platform.current(), environment, requestAccess, appServer, policy);

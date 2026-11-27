@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.codex.policy.test;
 
+import com.holdmyspot.cat.codex.layout.CodexSystemFolder;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.codex.policy.CodexHookSandbox;
 import com.holdmyspot.cat.codex.policy.CodexPolicyReader;
 import com.holdmyspot.cat.codex.policy.CodexSession;
@@ -32,7 +34,8 @@ public final class CodexParentSession
 	private final Path home;
 	private final Path codexHome;
 	private final Path project;
-	private final Path system;
+	private CodexSystemFolder systemFolder;
+	private Path system;
 	private Path slashTmp;
 	private Optional<Path> transcript = Optional.empty();
 
@@ -50,6 +53,7 @@ public final class CodexParentSession
 		this.project = Files.createDirectories(root.resolve("project"));
 		Files.createDirectories(project.resolve(".git"));
 		this.system = Files.createDirectories(root.resolve("etc-codex"));
+		this.systemFolder = CodexSystemFolder.at(system);
 		Files.createDirectories(root.resolve("tmp"));
 		Files.createDirectories(root.resolve("other"));
 		this.slashTmp = Files.createDirectories(root.resolve("slash-tmp"));
@@ -112,6 +116,34 @@ public final class CodexParentSession
 	public void writeSystem(String name, String text) throws IOException
 	{
 		Files.writeString(system.resolve(name), text);
+	}
+
+	/**
+	 * Makes the session's machine a Windows machine, whose Codex reads its machine-wide files from the program data
+	 * folder that Windows names, which here is a folder of the session's files.
+	 *
+	 * @param registry reads the registry of the machine
+	 * @throws IOException if the folder cannot be created
+	 */
+	public void onWindows(CodexSystemFolder.RegistryLookup registry) throws IOException
+	{
+		Path programData = root.resolve("ProgramData");
+		systemFolder = CodexSystemFolder.of(Platform.WINDOWS_X64, () -> programData, registry);
+		system = Files.createDirectories(systemFolder.folder());
+	}
+
+	/**
+	 * Makes the session's machine a Windows machine on which Windows names no program data folder, so that the
+	 * machine-wide files are in the folder that Codex falls back to, which is not one of the session's files.
+	 *
+	 * @param failure why Windows names no folder
+	 */
+	public void onWindowsWithoutProgramData(String failure)
+	{
+		systemFolder = CodexSystemFolder.of(Platform.WINDOWS_X64, () ->
+		{
+			throw new IOException(failure);
+		}, (key, name) -> Optional.empty());
 	}
 
 	/**
@@ -295,6 +327,6 @@ public final class CodexParentSession
 	 */
 	private CodexPolicyReader reader()
 	{
-		return new CodexPolicyReader(new CodexSystemFiles(system, List.of(root.resolve("managed.plist")), slashTmp));
+		return new CodexPolicyReader(new CodexSystemFiles(systemFolder, List.of(root.resolve("managed.plist")), slashTmp));
 	}
 }

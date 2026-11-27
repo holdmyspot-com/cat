@@ -3,6 +3,7 @@ package com.holdmyspot.cat.codex.runner.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static org.testng.Assert.expectThrows;
 
+import com.holdmyspot.cat.codex.layout.CodexSystemFolder;
 import com.holdmyspot.cat.codex.optimizer.InstalledPlugins;
 import com.holdmyspot.cat.codex.runner.CodexAuthentication;
 import com.holdmyspot.cat.codex.runner.CodexConnectionConfiguration;
@@ -970,7 +971,7 @@ public final class CodexConnectionConfigurationTest
 				List.of(), List.of(), Set.of()));
 
 			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
-				() -> CodexConnectionConfiguration.requireNarrowingLayers(system, managedLayer, policy));
+				() -> CodexConnectionConfiguration.requireNarrowingLayers(CodexSystemFolder.at(root), policy));
 
 			requireThat(refusal.getMessage(), "message").contains(file.toString()).contains(setting);
 		}
@@ -1438,7 +1439,7 @@ public final class CodexConnectionConfigurationTest
 				List.of(), List.of(), Set.of()));
 
 			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
-				() -> CodexConnectionConfiguration.requireNarrowingLayers(system, managedLayer, policy));
+				() -> CodexConnectionConfiguration.requireNarrowingLayers(CodexSystemFolder.at(root), policy));
 
 			requireThat(refusal.getMessage(), "message").contains(file.toString()).contains(setting);
 		}
@@ -1470,12 +1471,87 @@ public final class CodexConnectionConfigurationTest
 				[features]
 				fast_mode = false
 				""".formatted(toml(sessionFolder.resolve("home"))));
-			Path managed = root.resolve("managed_config.toml");
 			ChildPolicy policy = ChildPolicy.intersect(ParentPolicy.UNSANDBOXED, new ChildNeeds(sessionFolder, List.of(),
 				List.of(), Set.of("chatgpt.com")));
 
-			CodexConnectionConfiguration.requireNarrowingLayers(system, managed, policy);
-			CodexConnectionConfiguration.requireNarrowingLayers(root.resolve("missing.toml"), managed, policy);
+			CodexConnectionConfiguration.requireNarrowingLayers(CodexSystemFolder.at(root), policy);
+			Files.delete(system);
+			CodexConnectionConfiguration.requireNarrowingLayers(CodexSystemFolder.at(root), policy);
+		}
+	}
+
+	/**
+	 * Verifies that on Windows the runner reads the system layer from the program data folder, and refuses a layer
+	 * there that sets a credential setting.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void readsWindowsSystemLayer() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path programData = cleanup.add(Files.createTempDirectory("cat-codex-windows-layer-"));
+			Path folder = Files.createDirectories(programData.resolve("OpenAI").resolve("Codex"));
+			Path layer = Files.writeString(folder.resolve("config.toml"), "openai_base_url = \"https://example.com\"\n");
+			CodexSystemFolder system = CodexSystemFolder.of(Platform.WINDOWS_X64, () -> programData,
+				(key, name) -> Optional.empty());
+			ChildPolicy policy = ChildPolicy.intersect(ParentPolicy.UNSANDBOXED, new ChildNeeds(
+				programData.resolve("session"), List.of(), List.of(), Set.of()));
+
+			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
+				() -> CodexConnectionConfiguration.requireNarrowingLayers(system, policy));
+
+			requireThat(refusal.getMessage(), "message").contains(layer.toString()).contains("openai_base_url");
+		}
+	}
+
+	/**
+	 * Verifies that on Windows, which has no machine-wide managed layer, the runner does not read a file of that name
+	 * in the program data folder, as Codex does not.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void ignoresWindowsManagedLayer() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path programData = cleanup.add(Files.createTempDirectory("cat-codex-windows-managed-"));
+			Path folder = Files.createDirectories(programData.resolve("OpenAI").resolve("Codex"));
+			Files.writeString(folder.resolve("managed_config.toml"), "sandbox_mode = \"danger-full-access\"\n");
+			CodexSystemFolder system = CodexSystemFolder.of(Platform.WINDOWS_X64, () -> programData,
+				(key, name) -> Optional.empty());
+			ChildPolicy policy = ChildPolicy.intersect(ParentPolicy.UNSANDBOXED, new ChildNeeds(
+				programData.resolve("session"), List.of(), List.of(), Set.of()));
+
+			CodexConnectionConfiguration.requireNarrowingLayers(system, policy);
+		}
+	}
+
+	/**
+	 * Verifies that on Windows the runner refuses to start a session when Windows names no program data folder,
+	 * because the layers that it reads from the fallback folder may not be the ones that Codex merges.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void refusesWhenProgramDataIsUnknown() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-windows-unknown-"));
+			CodexSystemFolder system = CodexSystemFolder.of(Platform.WINDOWS_X64, () ->
+			{
+				throw new IOException("SHGetKnownFolderPath failed with HRESULT 0x80070005");
+			}, (key, name) -> Optional.empty());
+			ChildPolicy policy = ChildPolicy.intersect(ParentPolicy.UNSANDBOXED, new ChildNeeds(root.resolve("session"),
+				List.of(), List.of(), Set.of()));
+
+			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
+				() -> CodexConnectionConfiguration.requireNarrowingLayers(system, policy));
+
+			requireThat(refusal.getMessage(), "message").contains("0x80070005");
 		}
 	}
 

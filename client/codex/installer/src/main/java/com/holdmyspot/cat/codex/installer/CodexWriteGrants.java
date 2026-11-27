@@ -2,6 +2,7 @@ package com.holdmyspot.cat.codex.installer;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.codex.layout.CodexSystemFolder;
 import com.holdmyspot.cat.common.SandboxWrites;
 import com.holdmyspot.cat.common.WriteGrant;
 import java.io.IOException;
@@ -134,8 +135,7 @@ public final class CodexWriteGrants
 	/**
 	 * What CAT knows of a session.
 	 *
-	 * @param systemFolder       the folder that holds the machine-wide {@code config.toml} and
-	 *                           {@code managed_config.toml}
+	 * @param system             the machine-wide folder, which holds the machine-wide configuration
 	 * @param managedPreferences the files in which a platform delivers managed configuration, which CAT cannot parse
 	 * @param codexHome          Codex's home
 	 * @param userHome           the user's home folder
@@ -146,15 +146,14 @@ public final class CodexWriteGrants
 	 * @param launch             the session's command line, or empty if CAT cannot read it
 	 * @param recorded           the policies that the session's rollouts record
 	 */
-	public record Session(Path systemFolder, List<Path> managedPreferences, Path codexHome, Path userHome,
+	public record Session(CodexSystemFolder system, List<Path> managedPreferences, Path codexHome, Path userHome,
 		Path workingDirectory, Map<String, String> environment, Optional<Path> slashTmp, Optional<Launch> launch,
 		List<Recorded> recorded)
 	{
 		/**
 		 * Creates the session.
 		 *
-		 * @param systemFolder       the folder that holds the machine-wide {@code config.toml} and
-	 *                           {@code managed_config.toml}
+		 * @param system             the machine-wide folder, which holds the machine-wide configuration
 		 * @param managedPreferences the files in which a platform delivers managed configuration, which CAT cannot parse
 		 * @param codexHome          Codex's home
 		 * @param userHome           the user's home folder
@@ -169,7 +168,7 @@ public final class CodexWriteGrants
 		 */
 		public Session
 		{
-			requireThat(systemFolder, "systemFolder").isAbsolute();
+			requireThat(system, "system").isNotNull();
 			managedPreferences = List.copyOf(managedPreferences);
 			requireThat(codexHome, "codexHome").isAbsolute();
 			requireThat(userHome, "userHome").isAbsolute();
@@ -182,7 +181,8 @@ public final class CodexWriteGrants
 	}
 
 	/**
-	 * Returns the files in which a platform delivers Codex's managed configuration.
+	 * Returns the files in which a platform delivers Codex's managed configuration. Windows delivers none in files, so
+	 * there the list is empty.
 	 *
 	 * @param user the name of the user that runs Codex
 	 * @return the files
@@ -192,6 +192,8 @@ public final class CodexWriteGrants
 	{
 		requireThat(user, "user").isNotNull();
 		Path folder = Path.of("/Library/Managed Preferences");
+		if (!folder.isAbsolute())
+			return List.of();
 		if (user.isBlank() || user.contains("/"))
 			return List.of(folder.resolve("com.openai.codex.plist"));
 		return List.of(folder.resolve("com.openai.codex.plist"), folder.resolve(user).resolve("com.openai.codex.plist"));
@@ -253,6 +255,7 @@ public final class CodexWriteGrants
 		 */
 		private SandboxWrites read()
 		{
+			session.system().fallbackCause().ifPresent(problems::add);
 			for (Path preferences : session.managedPreferences())
 			{
 				if (Files.exists(preferences))
@@ -370,7 +373,7 @@ public final class CodexWriteGrants
 		private void addLayers()
 		{
 			Optional<Launch> launch = session.launch();
-			Path system = session.systemFolder();
+			Path system = session.system().folder();
 			addFile(system.resolve("config.toml"), launchKnown, system);
 			boolean ignoreUser = launch.isPresent() && launch.get().ignoreUserConfig();
 			if (!ignoreUser)
@@ -396,7 +399,9 @@ public final class CodexWriteGrants
 					addFile(file, false, folder);
 			}
 			launch.ifPresent(options -> options.overrides().forEach(this::addOverride));
-			addFile(system.resolve("managed_config.toml"), launchKnown, system);
+			Optional<Path> managed = session.system().managedConfig();
+			if (managed.isPresent())
+				addFile(managed.get(), launchKnown, system);
 		}
 
 		/**

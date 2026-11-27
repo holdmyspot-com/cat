@@ -1045,6 +1045,64 @@ public final class CodexSessionStartHookTest
 	}
 
 	/**
+	 * Verifies that a SessionStart on Windows checks the folders on {@code PATH} against the machine-wide
+	 * configuration in the program data folder: a folder that its {@code writable_roots} grants is reported.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void warnsOfWritablePathFolderOnWindows() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			writeReadingGuidance(plugin);
+			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-hook")));
+			Path tools = session.folder("other/tools");
+			Path bin = Files.createDirectories(tools.resolve("bin"));
+			session.onWindows((key, name) -> Optional.empty());
+			session.writeSystem("config.toml", """
+				sandbox_mode = "workspace-write"
+				[sandbox_workspace_write]
+				writable_roots = [%s]
+				""".formatted(CodexParentSession.toml(tools)));
+
+			HookResult result = invokeInSandbox(event(session.project()), session, plugin, bin);
+
+			requireThat(result.error(), "error").isEmpty();
+			requireThat(readResponse(result).path("systemMessage").asString(), "systemMessage").contains(bin.toString()).
+				contains("sandbox_workspace_write.writable_roots");
+		}
+	}
+
+	/**
+	 * Verifies that a SessionStart on Windows, where Windows names no program data folder, tells the user that it
+	 * could not check the folders on {@code PATH}, and why, because the machine-wide files that it reads from the
+	 * fallback folder may not be the ones that Codex reads.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void reportsUnknownProgramDataOnWindows() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			writeReadingGuidance(plugin);
+			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-hook")));
+			Path bin = Files.createDirectories(session.folder("other/tools").resolve("bin"));
+			session.write("home/.codex/config.toml", "sandbox_mode = \"workspace-write\"\n");
+			session.onWindowsWithoutProgramData("SHGetKnownFolderPath failed with HRESULT 0x80070005");
+
+			HookResult result = invokeInSandbox(event(session.project()), session, plugin, bin);
+
+			requireThat(readResponse(result).path("systemMessage").asString(), "systemMessage").
+				contains("could not check the folders on PATH").contains("0x80070005");
+			requireThat(result.error(), "error").contains("0x80070005");
+		}
+	}
+
+	/**
 	 * Verifies that a SessionStart adds nothing for the user when no folder on {@code PATH} is writable by the
 	 * sandbox, and when the session has no sandbox, including a session that no layer gives a sandbox mode.
 	 *
@@ -1192,8 +1250,8 @@ public final class CodexSessionStartHookTest
 
 	/**
 	 * Verifies that the hook's public entry point, which reads the sandbox of the process that runs it, injects the
-	 * project's rules on every platform that Codex runs on, so that a machine whose files differ from the ones that
-	 * the sandbox reader assumes does not stop the session's rules.
+	 * project's rules on every platform that Codex runs on, so that a machine on which the sandbox cannot be read does
+	 * not stop the session's rules.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */

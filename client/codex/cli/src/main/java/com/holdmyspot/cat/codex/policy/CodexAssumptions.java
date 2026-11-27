@@ -53,7 +53,7 @@ public final class CodexAssumptions
 
 	/**
 	 * Returns the files of the managed preferences that an administrator may push to Codex on macOS. The reader
-	 * cannot parse them, so it refuses when one exists.
+	 * cannot parse them, so it refuses when one exists. Windows delivers none in files, so there the list is empty.
 	 *
 	 * @param user the name of the user that runs Codex
 	 * @return the files
@@ -61,6 +61,8 @@ public final class CodexAssumptions
 	public static List<Path> managedPreferences(String user)
 	{
 		Path folder = Path.of("/Library/Managed Preferences");
+		if (!folder.isAbsolute())
+			return List.of();
 		if (user.isBlank() || user.contains("/"))
 			return List.of(folder.resolve("com.openai.codex.plist"));
 		return List.of(folder.resolve("com.openai.codex.plist"), folder.resolve(user).resolve("com.openai.codex.plist"));

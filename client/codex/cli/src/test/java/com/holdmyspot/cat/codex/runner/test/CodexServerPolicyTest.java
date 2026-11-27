@@ -2,6 +2,7 @@ package com.holdmyspot.cat.codex.runner.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.codex.layout.CodexSystemFolder;
 import com.holdmyspot.cat.codex.policy.CodexPolicyReader;
 import com.holdmyspot.cat.codex.policy.CodexSystemFiles;
 import com.holdmyspot.cat.codex.policy.CodexSession;
@@ -522,7 +523,7 @@ public final class CodexServerPolicyTest extends ParentPolicySourceContract
 			};
 			CodexSession session = new CodexSession(List.of(), Map.of("HOME", home.toString()), home, project,
 				Optional.empty(), SESSION_ID);
-			CodexPolicyReader reader = new CodexPolicyReader(new CodexSystemFiles(system,
+			CodexPolicyReader reader = new CodexPolicyReader(new CodexSystemFiles(CodexSystemFolder.at(system),
 				List.of(system.resolve("managed.plist")), slashTmp));
 			return CodexServedSession.policySource(reader, processes, new ProcessIdentity(CODEX_PID, CODEX_START),
 				session);

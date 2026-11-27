@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.codex.runner.test;
 
+import com.holdmyspot.cat.codex.layout.CodexSystemFolder;
 import com.holdmyspot.cat.codex.policy.CodexPolicyReader;
 import com.holdmyspot.cat.codex.policy.CodexSystemFiles;
 import com.holdmyspot.cat.codex.runner.CodexServedSession;
@@ -365,7 +366,7 @@ public final class CodexServedSessionTest
 		 */
 		CodexPolicyReader reader()
 		{
-			return new CodexPolicyReader(new CodexSystemFiles(home.resolve("etc"), List.of(), null));
+			return new CodexPolicyReader(new CodexSystemFiles(CodexSystemFolder.at(home.resolve("etc")), List.of(), null));
 		}
 
 		/**

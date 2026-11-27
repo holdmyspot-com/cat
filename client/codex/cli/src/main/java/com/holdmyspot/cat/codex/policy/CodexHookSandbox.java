@@ -6,7 +6,6 @@ import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
 import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Optional;
 
 /**
  * What a Codex hook needs to read the sandbox of the session that runs it.
@@ -37,15 +36,12 @@ public record CodexHookSandbox(List<ProcessDescription> ancestors, CodexPolicyRe
 	/**
 	 * Returns the source for the hook that this process runs, on this machine.
 	 *
-	 * @return the source, or empty if this machine's Codex files are not where the reader looks for them, because
-	 *         {@link CodexSystemFiles#FOLDER} is relative here
+	 * @return the source
 	 */
-	public static Optional<CodexHookSandbox> ofThisProcess()
+	public static CodexHookSandbox ofThisProcess()
 	{
-		if (!CodexSystemFiles.FOLDER.isAbsolute())
-			return Optional.empty();
-		return Optional.of(new CodexHookSandbox(HarnessProcesses.ancestorsOf(ProcessHandle.current()),
+		return new CodexHookSandbox(HarnessProcesses.ancestorsOf(ProcessHandle.current()),
 			new CodexPolicyReader(CodexSystemFiles.ofThisMachine(System.getProperty("user.name", ""))),
-			Path.of(System.getProperty("user.home")).toAbsolutePath()));
+			Path.of(System.getProperty("user.home")).toAbsolutePath());
 	}
 }

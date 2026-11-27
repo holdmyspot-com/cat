@@ -3,6 +3,7 @@ package com.holdmyspot.cat.codex.installer.test;
 import static com.holdmyspot.cat.common.installer.contract.test.HarnessIntegrationContract.permissionEnvironment;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.codex.layout.CodexSystemFolder;
 import com.holdmyspot.cat.codex.installer.CodexIntegration;
 import com.holdmyspot.cat.codex.installer.CodexPluginCommand;
 import com.holdmyspot.cat.codex.installer.InstallerRules;
@@ -24,6 +25,7 @@ import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.ServiceLoader;
 import java.util.TreeMap;
 import java.util.regex.Matcher;
@@ -1547,7 +1549,7 @@ public final class IntegrationTest
 			Files.writeString(work.resolve(".codex/config.toml"), "[sandbox_workspace_write]\nwritable_roots = [" +
 				MAPPER.writeValueAsString(projectTools.toString()) + "]\n");
 
-			SandboxWrites writes = new CodexIntegration(system).sandboxWrites(home, userHome, work);
+			SandboxWrites writes = new CodexIntegration(CodexSystemFolder.at(system)).sandboxWrites(home, userHome, work);
 
 			Map<Path, WriteGrant> byPath = new TreeMap<>();
 			for (WriteGrant grant : writes.grants())
@@ -1558,6 +1560,43 @@ public final class IntegrationTest
 			requireThat(byPath.get(machineTools).setting(), "machine").contains(system.resolve("config.toml").toString());
 			requireThat(byPath.get(projectTools).setting(), "project").
 				contains(work.resolve(".codex/config.toml").toString());
+			requireThat(writes.problems(), "problems").isEmpty();
+		}
+	}
+
+	/**
+	 * On Windows the installer reads the machine-wide configuration from the folder that Windows names, so that the
+	 * check of {@code PATH} runs there, and reads no machine-wide managed configuration, which Codex does not read.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void readsWindowsMachineFolder() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path userHome = cleanup.add(Files.createTempDirectory(testRoot(), "integration-")).toRealPath();
+			Path home = Files.createDirectories(userHome.resolve(".codex"));
+			Path work = Files.createDirectories(userHome.resolve("work"));
+			Path programData = userHome.resolve("ProgramData");
+			CodexSystemFolder windows = CodexSystemFolder.of(Platform.WINDOWS_X64, () -> programData,
+				(key, name) -> Optional.empty());
+			Path machineTools = userHome.resolve("machine-tools");
+			Path managedTools = userHome.resolve("managed-tools");
+			Files.createDirectories(windows.folder());
+			Files.writeString(home.resolve("config.toml"), "sandbox_mode = \"workspace-write\"\n");
+			Files.writeString(windows.config(), "[sandbox_workspace_write]\nwritable_roots = [" +
+				MAPPER.writeValueAsString(machineTools.toString()) + "]\n");
+			Files.writeString(windows.folder().resolve("managed_config.toml"), "[sandbox_workspace_write]\n" +
+				"writable_roots = [" + MAPPER.writeValueAsString(managedTools.toString()) + "]\n");
+
+			SandboxWrites writes = new CodexIntegration(windows).sandboxWrites(home, userHome, work);
+
+			Map<Path, WriteGrant> byPath = new TreeMap<>();
+			for (WriteGrant grant : writes.grants())
+				byPath.putIfAbsent(grant.path(), grant);
+			requireThat(byPath.get(machineTools).setting(), "machine").contains(windows.config().toString());
+			requireThat(byPath.containsKey(managedTools), "managedGranted").isFalse();
 			requireThat(writes.problems(), "problems").isEmpty();
 		}
 	}
@@ -1585,7 +1624,7 @@ public final class IntegrationTest
 			Files.createDirectories(work.resolve(".codex"));
 			Files.writeString(work.resolve(".codex/config.toml"), "[sandbox_workspace_write]\nwritable_roots = [" +
 				MAPPER.writeValueAsString(userHome.resolve("project-tools").toString()) + "]\n");
-			CodexIntegration integration = new CodexIntegration(system);
+			CodexIntegration integration = new CodexIntegration(CodexSystemFolder.at(system));
 
 			SandboxWrites unset = integration.sandboxWrites(home, userHome, work);
 
@@ -1616,7 +1655,7 @@ public final class IntegrationTest
 			Path userHome = cleanup.add(Files.createTempDirectory(testRoot(), "integration-")).toRealPath();
 			Path home = Files.createDirectories(userHome.resolve(".codex"));
 			Path system = Files.createDirectories(userHome.resolve("etc-codex"));
-			CodexIntegration integration = new CodexIntegration(system);
+			CodexIntegration integration = new CodexIntegration(CodexSystemFolder.at(system));
 
 			requireThat(integration.sandboxWrites(home, userHome, userHome).problems(), "missing").isEmpty();
 

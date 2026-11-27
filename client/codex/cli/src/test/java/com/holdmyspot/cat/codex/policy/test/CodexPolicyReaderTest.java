@@ -635,4 +635,114 @@ public final class CodexPolicyReaderTest
 			session.read("exec", "summarize");
 		}
 	}
+
+	/**
+	 * Verifies that on Windows the reader takes the machine-wide configuration from the program data folder.
+	 */
+	@Test
+	public void readsWindowsMachineConfiguration() throws IOException, PolicyRefusal
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
+			Path extra = session.folder("other/extra");
+			session.onWindows((key, name) -> Optional.empty());
+			session.writeSystem("config.toml", LEGACY_WITH_NETWORK + "writable_roots = [" + toml(extra) + "]\n");
+
+			ParentPolicy policy = session.read("exec", "summarize");
+
+			requireThat(policy.writeRoots(), "writeRoots").contains(extra);
+		}
+	}
+
+	/**
+	 * Verifies that on Windows, which has no machine-wide managed configuration, the reader does not read a file of
+	 * that name, as Codex does not.
+	 */
+	@Test
+	public void ignoresWindowsManagedConfig() throws IOException, PolicyRefusal
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
+			session.write("home/.codex/config.toml", LEGACY_WITH_NETWORK);
+			session.onWindows((key, name) -> Optional.empty());
+			session.writeSystem("managed_config.toml", "sandbox_mode = [unterminated\n");
+
+			ParentPolicy policy = session.read("exec", "summarize");
+
+			requireThat(policy.sandboxed(), "sandboxed").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that on Windows the reader refuses requirements that constrain the sandbox when the registry moves the
+	 * requirements file, which it reads from where the registry names.
+	 */
+	@Test(expectedExceptions = PolicyRefusal.class, expectedExceptionsMessageRegExp = ".*allowed_sandbox_modes.*")
+	public void readsRequirementsWhereRegistryNamesThem() throws IOException, PolicyRefusal
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
+			session.write("home/.codex/config.toml", LEGACY_WITH_NETWORK);
+			Path relocated = session.write("other/policy/requirements.toml", "allowed_sandbox_modes = [\"read-only\"]\n");
+			session.onWindows((key, name) -> Optional.of(relocated.toString()));
+
+			session.read("exec", "summarize");
+		}
+	}
+
+	/**
+	 * Verifies that on Windows the reader refuses a session whose requirements file it cannot locate because the
+	 * registry cannot be read, rather than assuming that there are no requirements.
+	 */
+	@Test(expectedExceptions = PolicyRefusal.class, expectedExceptionsMessageRegExp = ".*error 5.*")
+	public void refusesWhenRegistryCannotBeRead() throws IOException, PolicyRefusal
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
+			session.write("home/.codex/config.toml", LEGACY_WITH_NETWORK);
+			session.onWindows((key, name) ->
+			{
+				throw new IOException("RegGetValueW failed with error 5");
+			});
+
+			session.read("exec", "summarize");
+		}
+	}
+
+	/**
+	 * Verifies that on Windows the reader refuses a registry value that names a relative path, which Codex refuses.
+	 */
+	@Test(expectedExceptions = PolicyRefusal.class, expectedExceptionsMessageRegExp = ".*policy.requirements\\.toml.*")
+	public void refusesRelativeRequirementsPath() throws IOException, PolicyRefusal
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
+			session.write("home/.codex/config.toml", LEGACY_WITH_NETWORK);
+			session.onWindows((key, name) -> Optional.of("policy\\requirements.toml"));
+
+			session.read("exec", "summarize");
+		}
+	}
+
+	/**
+	 * Verifies that on Windows the reader refuses a session when Windows names no program data folder, because the
+	 * machine-wide files that it reads from the fallback folder may not be the ones that Codex reads.
+	 */
+	@Test(expectedExceptions = PolicyRefusal.class, expectedExceptionsMessageRegExp = ".*0x80070005.*")
+	public void refusesWhenProgramDataIsUnknown() throws IOException, PolicyRefusal
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
+			session.write("home/.codex/config.toml", LEGACY_WITH_NETWORK);
+			session.onWindowsWithoutProgramData("SHGetKnownFolderPath failed with HRESULT 0x80070005");
+
+			session.read("exec", "summarize");
+		}
+	}
 }

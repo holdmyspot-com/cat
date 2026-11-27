@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.codex.installer.PermissionProfile.Access;
 import com.holdmyspot.cat.codex.layout.CodexInstallation;
+import com.holdmyspot.cat.codex.layout.CodexSystemFolder;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SandboxWrites;
@@ -133,29 +134,27 @@ public final class CodexIntegration implements HarnessIntegration
 	private static final JsonMapper MAPPER = JsonMapper.builder().build();
 
 	/**
-	 * The folder of Codex's machine-wide configuration.
+	 * Codex's machine-wide folder.
 	 */
-	private final Path systemFolder;
+	private final CodexSystemFolder systemFolder;
 
 	/**
 	 * Creates the integration used by service discovery.
 	 */
 	public CodexIntegration()
 	{
-		this(Path.of("/etc/codex"));
+		this(CodexSystemFolder.ofThisMachine());
 	}
 
 	/**
 	 * Creates an integration whose machine-wide configuration is in another folder.
 	 *
-	 * @param systemFolder the absolute folder that holds the machine-wide {@code config.toml} and
-	 *                     {@code managed_config.toml}
-	 * @throws NullPointerException     if {@code systemFolder} is null
-	 * @throws IllegalArgumentException if {@code systemFolder} is relative
+	 * @param systemFolder Codex's machine-wide folder
+	 * @throws NullPointerException if {@code systemFolder} is null
 	 */
-	public CodexIntegration(Path systemFolder)
+	public CodexIntegration(CodexSystemFolder systemFolder)
 	{
-		requireThat(systemFolder, "systemFolder").isAbsolute();
+		requireThat(systemFolder, "systemFolder").isNotNull();
 		this.systemFolder = systemFolder;
 	}
 

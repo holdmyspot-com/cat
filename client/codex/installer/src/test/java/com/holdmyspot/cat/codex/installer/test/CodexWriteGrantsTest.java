@@ -6,6 +6,8 @@ import com.holdmyspot.cat.codex.installer.CodexWriteGrants;
 import com.holdmyspot.cat.codex.installer.CodexWriteGrants.Launch;
 import com.holdmyspot.cat.codex.installer.CodexWriteGrants.Recorded;
 import com.holdmyspot.cat.codex.installer.CodexWriteGrants.Session;
+import com.holdmyspot.cat.codex.layout.CodexSystemFolder;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SandboxWrites;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.WriteGrant;
@@ -489,7 +491,7 @@ public final class CodexWriteGrantsTest
 			fixture.write(fixture.codexHome.resolve("config.toml"), "sandbox_mode = \"workspace-write\"\n" +
 				"[sandbox_workspace_write]\nwritable_roots = [" + Fixture.toml(tools) + ", 7]\n");
 			fixture.write(fixture.systemFolder.resolve("config.toml"), "this is = = not toml");
-			Session session = new Session(fixture.systemFolder, List.of(preferences), fixture.codexHome,
+			Session session = new Session(CodexSystemFolder.at(fixture.systemFolder), List.of(preferences), fixture.codexHome,
 				fixture.userHome, fixture.project, fixture.environment(), Optional.of(fixture.slashTmp),
 				Optional.of(Fixture.NO_OPTIONS), List.of());
 
@@ -500,6 +502,79 @@ public final class CodexWriteGrantsTest
 			requireThat(problems, "problems").contains(fixture.systemFolder.resolve("config.toml").toString()).
 				contains("writable_roots").contains(preferences.toString());
 		}
+	}
+
+	/**
+	 * On Windows, Codex reads {@code config.toml} from the folder that Windows names, and reads no machine-wide
+	 * {@code managed_config.toml}, though the folder holds a file of that name: the grants of the first are reported and
+	 * those of the second are not.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void readsWindowsConfigNotManagedFile() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup);
+			Path programData = fixture.root.resolve("ProgramData");
+			CodexSystemFolder windows = CodexSystemFolder.of(Platform.WINDOWS_X64, () -> programData,
+				(key, name) -> Optional.empty());
+			Path system = fixture.root.resolve("system-tools");
+			Path managed = fixture.root.resolve("managed-tools");
+			fixture.write(windows.config(), "sandbox_mode = \"workspace-write\"\n[sandbox_workspace_write]\n" +
+				"writable_roots = [" + Fixture.toml(system) + "]\n");
+			fixture.write(windows.folder().resolve("managed_config.toml"), "[sandbox_workspace_write]\n" +
+				"writable_roots = [" + Fixture.toml(managed) + "]\n");
+
+			SandboxWrites writes = CodexWriteGrants.read(fixture.session(windows));
+
+			requireThat(fixture.grantAt(writes, system).setting(), "system").contains(windows.config().toString());
+			requireThat(writes.grants().stream().anyMatch(grant -> grant.path().equals(managed)), "managedGranted").
+				isFalse();
+			requireThat(writes.problems(), "problems").isEmpty();
+		}
+	}
+
+	/**
+	 * When Windows names no program data folder, the reading uses the folder that Codex falls back to, and lists the
+	 * cause among its problems, so that the user is told that CAT may have read the wrong folder.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void listsWhyWindowsFolderIsAFallback() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup);
+			CodexSystemFolder windows = CodexSystemFolder.of(Platform.WINDOWS_X64, () ->
+			{
+				throw new IOException("SHGetKnownFolderPath failed with HRESULT 0x80070005");
+			}, (key, name) -> Optional.empty());
+
+			SandboxWrites writes = CodexWriteGrants.read(fixture.session(windows));
+
+			requireThat(String.join("\n", writes.problems()), "problems").contains("0x80070005").
+				contains(windows.folder().toString());
+		}
+	}
+
+	/**
+	 * Verifies that the files of the managed preferences, which only macOS delivers, are absolute paths that a session
+	 * can hold, so that the check runs on every platform: Windows has none.
+	 */
+	@Test
+	public void managedPreferencesSuitThisPlatform()
+	{
+		List<Path> files = CodexWriteGrants.managedPreferences("someone");
+
+		for (Path file : files)
+			requireThat(file, "file").isAbsolute();
+		if (Platform.current().isWindows())
+			requireThat(files, "files").isEmpty();
+		else
+			requireThat(files, "files").isNotEmpty();
 	}
 
 	/**
@@ -592,7 +667,31 @@ public final class CodexWriteGrantsTest
 		 */
 		private Session session(Optional<Launch> launch, List<Recorded> recorded)
 		{
-			return new Session(systemFolder, List.of(), codexHome, userHome, project, environment(),
+			return session(CodexSystemFolder.at(systemFolder), launch, recorded);
+		}
+
+		/**
+		 * Returns a session whose command line is known, on a machine whose Codex reads another machine-wide folder.
+		 *
+		 * @param system the machine-wide folder
+		 * @return the session
+		 */
+		private Session session(CodexSystemFolder system)
+		{
+			return session(system, Optional.of(NO_OPTIONS), List.of());
+		}
+
+		/**
+		 * Returns a session.
+		 *
+		 * @param system   the machine-wide folder
+		 * @param launch   the command line options, or empty if CAT cannot read them
+		 * @param recorded the policies that the session's rollouts record
+		 * @return the session
+		 */
+		private Session session(CodexSystemFolder system, Optional<Launch> launch, List<Recorded> recorded)
+		{
+			return new Session(system, List.of(), codexHome, userHome, project, environment(),
 				Optional.of(slashTmp), launch, recorded);
 		}
 
