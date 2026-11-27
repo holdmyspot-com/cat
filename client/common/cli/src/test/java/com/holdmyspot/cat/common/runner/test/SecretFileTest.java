@@ -1,6 +1,8 @@
 package com.holdmyspot.cat.common.runner.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.testng.Assert.expectThrows;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.SecretFile;
@@ -8,13 +10,17 @@ import java.io.IOException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.AclEntry;
+import java.nio.file.attribute.AclEntryPermission;
+import java.nio.file.attribute.AclEntryType;
+import java.nio.file.attribute.AclFileAttributeView;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 /**
@@ -97,8 +103,9 @@ public final class SecretFileTest
 	}
 
 	/**
-	 * Verifies that a file whose mode lets its owner only write it, which the test's process therefore cannot read, is
-	 * accepted from its metadata alone: the check never opens the file.
+	 * Verifies that a file that lets its owner only write it, which the test's process therefore cannot read, is
+	 * accepted from its metadata alone: the check never opens the file. The file's mode, or on Windows its access list,
+	 * grants its owner write access without read access.
 	 *
 	 * @throws IOException if the test's file cannot be created
 	 */
@@ -106,12 +113,12 @@ public final class SecretFileTest
 	public void acceptsUnreadableFileWithoutOpeningIt() throws IOException
 	{
 		// Requirement: R-I14
-		requirePosix();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("secret-file-"));
-			Path key = Files.writeString(directory.resolve("key"), "sk-ant-api03-fixture");
-			Files.setPosixFilePermissions(key, PosixFilePermissions.fromString("-w-------"));
+			Path key = directory.resolve("key");
+			SecretFile.create(key, "sk-ant-api03-fixture".getBytes(UTF_8));
+			makeWriteOnly(key);
 			try
 			{
 				Optional<String> problem = SecretFile.problem(key, SecretFile.read(key));
@@ -119,7 +126,7 @@ public final class SecretFileTest
 			}
 			finally
 			{
-				Files.setPosixFilePermissions(key, PosixFilePermissions.fromString("rw-------"));
+				makeOwnerOnly(key);
 			}
 		}
 	}
@@ -134,12 +141,12 @@ public final class SecretFileTest
 	public void refusesSymbolicLink() throws IOException
 	{
 		// Requirement: R-I14
-		requirePosix();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("secret-file-"));
-			Path key = Files.writeString(directory.resolve("key"), "sk-ant-api03-fixture");
-			Files.setPosixFilePermissions(key, PosixFilePermissions.fromString("rw-------"));
+			Path key = directory.resolve("key");
+			SecretFile.create(key, "sk-ant-api03-fixture".getBytes(UTF_8));
+			requireThat(SecretFile.problem(key, SecretFile.read(key)), "targetProblem").isEmpty();
 			Path link = Files.createSymbolicLink(directory.resolve("link"), key);
 
 			Optional<String> problem = SecretFile.problem(link, SecretFile.read(link));
@@ -173,11 +180,65 @@ public final class SecretFileTest
 	}
 
 	/**
-	 * Skips a test that needs POSIX permissions on a file system without them.
+	 * Returns whether the default file system reports POSIX permissions, as opposed to access lists.
+	 *
+	 * @return {@code true} if it reports POSIX permissions
 	 */
-	private static void requirePosix()
+	private static boolean hasPosixPermissions()
 	{
-		if (!FileSystems.getDefault().supportedFileAttributeViews().contains("posix"))
-			throw new SkipException("The file system has no POSIX permissions");
+		return FileSystems.getDefault().supportedFileAttributeViews().contains("posix");
+	}
+
+	/**
+	 * Lets the owner of a file write it but not read it: its mode on a file system with POSIX permissions, otherwise its
+	 * access list. The owner keeps the right to read and change the access list, so that the file can be restored.
+	 *
+	 * @param file the file
+	 * @throws IOException if the file's access cannot be changed
+	 */
+	private static void makeWriteOnly(Path file) throws IOException
+	{
+		if (hasPosixPermissions())
+		{
+			Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("-w-------"));
+			return;
+		}
+		AclFileAttributeView view = Files.getFileAttributeView(file, AclFileAttributeView.class);
+		Set<AclEntryPermission> permissions = EnumSet.complementOf(EnumSet.of(AclEntryPermission.READ_DATA));
+		view.setAcl(List.of(ownerEntry(view, permissions)));
+		// The fixture is only a write-only file if the process is really kept from reading it
+		expectThrows(IOException.class, () -> Files.readAllBytes(file));
+	}
+
+	/**
+	 * Lets the owner of a file read and write it and keeps every other user from using it.
+	 *
+	 * @param file the file
+	 * @throws IOException if the file's access cannot be changed
+	 */
+	private static void makeOwnerOnly(Path file) throws IOException
+	{
+		if (hasPosixPermissions())
+		{
+			Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rw-------"));
+			return;
+		}
+		AclFileAttributeView view = Files.getFileAttributeView(file, AclFileAttributeView.class);
+		view.setAcl(List.of(ownerEntry(view, EnumSet.allOf(AclEntryPermission.class))));
+	}
+
+	/**
+	 * Returns the access list entry that allows a file's owner some access.
+	 *
+	 * @param view        the file's access list
+	 * @param permissions the access that the entry allows
+	 * @return the entry
+	 * @throws IOException if the owner cannot be read
+	 */
+	private static AclEntry ownerEntry(AclFileAttributeView view, Set<AclEntryPermission> permissions)
+		throws IOException
+	{
+		return AclEntry.newBuilder().setType(AclEntryType.ALLOW).setPrincipal(view.getOwner()).
+			setPermissions(permissions).build();
 	}
 }
