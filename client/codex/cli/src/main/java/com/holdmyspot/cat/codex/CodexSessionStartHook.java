@@ -2,6 +2,7 @@ package com.holdmyspot.cat.codex;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.codex.policy.CodexHookSandbox;
 import com.holdmyspot.cat.codex.secrets.CodexSessionStartHookSecrets;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionIgnore;
@@ -12,6 +13,7 @@ import java.io.OutputStream;
 import java.io.PrintStream;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Implements the Codex SessionStart hook protocol for CAT project rules.
@@ -21,7 +23,7 @@ public final class CodexSessionStartHook
 	static
 	{
 		CodexSessionStartHookSecrets.setCodexSessionStartHookAccess((args, input, output, error, environment,
-			workingDirectory, waiting, git) ->
+			workingDirectory, waiting, git, sandbox) ->
 		{
 			requireThat(args, "args").isNotNull();
 			requireThat(input, "input").isNotNull();
@@ -31,8 +33,9 @@ public final class CodexSessionStartHook
 			requireThat(workingDirectory, "workingDirectory").isNotNull();
 			requireThat(waiting, "waiting").isNotNull();
 			requireThat(git, "git").isNotNull();
+			requireThat(sandbox, "sandbox").isNotNull();
 			CodexRuleInjectionHook.run("SessionStart", args, input, output, error, environment, workingDirectory, waiting,
-				git);
+				git, sandbox);
 		});
 	}
 
@@ -73,7 +76,7 @@ public final class CodexSessionStartHook
 		requireThat(workingDirectory, "workingDirectory").isNotNull();
 		requireThat(waiting, "waiting").isNotNull();
 		CodexRuleInjectionHook.run("SessionStart", args, input, output, error, environment, workingDirectory, waiting,
-			SessionIgnore.GIT_PROCESS);
+			SessionIgnore.GIT_PROCESS, Optional.of(CodexHookSandbox.ofThisProcess()));
 	}
 
 	/**

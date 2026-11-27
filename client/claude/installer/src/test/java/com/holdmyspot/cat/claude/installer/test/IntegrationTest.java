@@ -9,6 +9,8 @@ import com.holdmyspot.cat.claude.layout.ClaudeInstallation;
 import com.holdmyspot.cat.codex.layout.CodexInstallation;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.SandboxWrites;
+import com.holdmyspot.cat.common.WriteGrant;
 import com.holdmyspot.cat.common.ShellQuoting;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.Waiting;
@@ -1957,6 +1959,64 @@ public final class IntegrationTest
 		if (Platform.current().isWindows())
 			name += ".ps1";
 		return new ClaudeInstallation(home).versionFolder(version).resolve(name);
+	}
+
+	/**
+	 * The user-level settings' write grants and denials are the folders that the installer warns of: the
+	 * {@code allowWrite} and {@code additionalDirectories} entries are grants that name the setting and the file that
+	 * holds them, {@code denyWrite} entries are denials, and a relative entry resolves against the Claude Code home,
+	 * which holds the settings file.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void readsUserSandboxWrites() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path userHome = cleanup.add(testDirectory()).toRealPath();
+			Path home = Files.createDirectories(userHome.resolve(".claude"));
+			Path settings = home.resolve("settings.json");
+			Files.writeString(settings, """
+				{"sandbox":{"filesystem":{"allowWrite":["~/tools","bin","./local","~/*.glob"],
+				"denyWrite":["~/tools/private"]}},
+				"permissions":{"additionalDirectories":["~/extra"]}}
+				""");
+
+			SandboxWrites writes = new Integration(Platform.LINUX_X64).sandboxWrites(home, userHome);
+
+			requireThat(writes.grants().stream().map(WriteGrant::path).toList(), "grantPaths").
+				containsExactly(List.of(userHome.resolve("tools"), home.resolve("bin"), home.resolve("local"),
+					userHome.resolve("extra")));
+			requireThat(writes.grants().get(0).setting(), "setting").contains("sandbox.filesystem.allowWrite").
+				contains(settings.toString());
+			requireThat(writes.grants().get(3).setting(), "additionalSetting").
+				contains("permissions.additionalDirectories").contains(settings.toString());
+			requireThat(writes.denials(), "denials").containsExactly(List.of(userHome.resolve("tools/private")));
+		}
+	}
+
+	/**
+	 * A home with no settings file, or a settings file that is not JSON, gives no grants, because the reading leaves
+	 * out what it cannot read.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void readsNothingFromBadSettings() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path userHome = cleanup.add(testDirectory()).toRealPath();
+			Path home = Files.createDirectories(userHome.resolve(".claude"));
+			Integration integration = new Integration(Platform.LINUX_X64);
+
+			requireThat(integration.sandboxWrites(home, userHome), "missing").isEqualTo(SandboxWrites.NONE);
+
+			Files.writeString(home.resolve("settings.json"), "{not json");
+
+			requireThat(integration.sandboxWrites(home, userHome), "malformed").isEqualTo(SandboxWrites.NONE);
+		}
 	}
 
 	/**

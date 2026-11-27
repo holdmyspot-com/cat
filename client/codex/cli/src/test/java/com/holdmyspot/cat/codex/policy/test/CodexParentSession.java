@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.codex.policy.test;
 
+import com.holdmyspot.cat.codex.policy.CodexHookSandbox;
 import com.holdmyspot.cat.codex.policy.CodexPolicyReader;
 import com.holdmyspot.cat.codex.policy.CodexSession;
 import com.holdmyspot.cat.codex.policy.CodexSystemFiles;
@@ -197,6 +198,27 @@ public final class CodexParentSession
 	public ParentPolicy readForCommandWithSandboxHelper(String... arguments) throws IOException, PolicyRefusal
 	{
 		return reader().readForCommand(sessionWithSandboxHelper(arguments), Optional.empty());
+	}
+
+	/**
+	 * Returns what a hook of the session needs to read the session's sandbox, when Codex runs with some arguments.
+	 *
+	 * @param arguments the arguments of the Codex process after its executable
+	 * @return the sandbox source
+	 */
+	public CodexHookSandbox sandbox(String... arguments)
+	{
+		return new CodexHookSandbox(session(arguments).ancestors(), reader(), home);
+	}
+
+	/**
+	 * Returns the home folder of the session's user.
+	 *
+	 * @return the folder
+	 */
+	public Path home()
+	{
+		return home;
 	}
 
 	/**

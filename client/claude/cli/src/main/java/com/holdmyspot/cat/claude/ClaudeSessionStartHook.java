@@ -6,11 +6,13 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionIgnore;
 import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.Pause;
+import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Injects CAT rules into a Claude SessionStart context.
@@ -27,7 +29,7 @@ public final class ClaudeSessionStartHook
 	static
 	{
 		ClaudeSessionStartHookSecrets.setClaudeSessionStartHookAccess((args, input, output, error, environment,
-			workingDirectory, waiting, git) ->
+			workingDirectory, waiting, git, processes) ->
 		{
 			requireThat(args, "args").isNotNull();
 			requireThat(input, "input").isNotNull();
@@ -37,8 +39,9 @@ public final class ClaudeSessionStartHook
 			requireThat(workingDirectory, "workingDirectory").isNotNull();
 			requireThat(waiting, "waiting").isNotNull();
 			requireThat(git, "git").isNotNull();
+			requireThat(processes, "processes").isNotNull();
 			ClaudeRuleInjectionHook.run("SessionStart", args, input, output, error, environment, workingDirectory, waiting,
-				git);
+				git, processes);
 		});
 	}
 
@@ -79,7 +82,7 @@ public final class ClaudeSessionStartHook
 		requireThat(workingDirectory, "workingDirectory").isNotNull();
 		requireThat(waiting, "waiting").isNotNull();
 		ClaudeRuleInjectionHook.run("SessionStart", args, input, output, error, environment, workingDirectory, waiting,
-			SessionIgnore.GIT_PROCESS);
+			SessionIgnore.GIT_PROCESS, Optional.of(HarnessProcesses.system()));
 	}
 
 	/**

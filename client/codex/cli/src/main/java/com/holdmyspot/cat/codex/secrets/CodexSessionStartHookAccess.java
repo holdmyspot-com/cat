@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.codex.secrets;
 
+import com.holdmyspot.cat.codex.policy.CodexHookSandbox;
 import com.holdmyspot.cat.common.SessionIgnore;
 import com.holdmyspot.cat.common.Waiting;
 import java.io.InputStream;
@@ -7,6 +8,7 @@ import java.io.OutputStream;
 import java.io.PrintStream;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Exposes to the module's tests a Codex SessionStart hook whose session directory decides what to add to the project's
@@ -26,8 +28,30 @@ public interface CodexSessionStartHookAccess
 	 * @param workingDirectory a non-null process working directory
 	 * @param waiting          how the hook waits between the attempts of a retried operation
 	 * @param git              answers what Git ignores in the project
+	 * @param sandbox          reads the session's sandbox, for the check of the folders on {@code PATH} that it lets
+	 *                         commands write; empty to skip the check
 	 * @throws NullPointerException if any argument is null
 	 */
 	void run(String[] args, InputStream input, OutputStream output, PrintStream error, Map<String, String> environment,
-		Path workingDirectory, Waiting waiting, SessionIgnore.GitQueries git);
+		Path workingDirectory, Waiting waiting, SessionIgnore.GitQueries git, Optional<CodexHookSandbox> sandbox);
+
+	/**
+	 * Processes one Codex SessionStart event without the check of the folders on {@code PATH}, and writes CAT's hook
+	 * response.
+	 *
+	 * @param args             a non-null empty command-line argument array
+	 * @param input            non-null harness hook input
+	 * @param output           non-null harness hook output
+	 * @param error            non-null diagnostic output
+	 * @param environment      a non-null process environment
+	 * @param workingDirectory a non-null process working directory
+	 * @param waiting          how the hook waits between the attempts of a retried operation
+	 * @param git              answers what Git ignores in the project
+	 * @throws NullPointerException if any argument is null
+	 */
+	default void run(String[] args, InputStream input, OutputStream output, PrintStream error,
+		Map<String, String> environment, Path workingDirectory, Waiting waiting, SessionIgnore.GitQueries git)
+	{
+		run(args, input, output, error, environment, workingDirectory, waiting, git, Optional.empty());
+	}
 }

@@ -32,18 +32,26 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Stream;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
+import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
+import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 
 /**
  * Tests {@link com.holdmyspot.cat.claude.ClaudeSessionStartHook}.
  */
 public final class ClaudeSessionStartHookTest
 {
+	/**
+	 * The process identifier of the Claude Code session that the sandbox tests run in.
+	 */
+	private static final long CLAUDE_PROCESS_ID = 4242;
+
 	private static final String SESSION_ID = "6b1f7c1e-5d0a-4c55-9a8e-2f6c0f1d2e3a";
 	private static final String CAT_TEMP_RULE = "`CAT_TEMP` is `${CAT_PROJECT_ROOT}/.cat/sessions/" +
 		SessionDirectory.SESSION_ID_DIRECTIVE + "/temp`.\n";
@@ -1436,5 +1444,194 @@ public final class ClaudeSessionStartHookTest
 	private static String jsonString(Path path)
 	{
 		return "\"" + path.toString().replace("\\", "\\\\") + "\"";
+	}
+
+	/**
+	 * Returns the settings that grant a sandbox write, which the session-start check names.
+	 *
+	 * @return the setting that grants the write, and the settings file's content that holds it, for a folder
+	 */
+	@DataProvider
+	public static Object[][] writeGrantSettings()
+	{
+		return new Object[][]{
+			{"sandbox.filesystem.allowWrite", "{\"sandbox\":{\"enabled\":true,\"filesystem\":{\"allowWrite\":[%s]}}}"},
+			{"permissions.additionalDirectories", "{\"sandbox\":{\"enabled\":true},\"permissions\":" +
+				"{\"additionalDirectories\":[%s]}}"}};
+	}
+
+	/**
+	 * Verifies that a SessionStart whose sandbox lets the session's commands write a folder on {@code PATH} tells the
+	 * user, through {@code systemMessage}, which folder and which setting grants the write, and still gives the agent
+	 * its rules.
+	 *
+	 * @param setting  the setting that grants the write
+	 * @param template the settings file's content, with the granted folder in place of {@code %s}
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test(dataProvider = "writeGrantSettings")
+	public void warnsOfWritablePathFolder(String setting, String template) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-")).toRealPath();
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path tools = cleanup.add(Files.createTempDirectory("cat-tools-")).toRealPath();
+			Path bin = Files.createDirectories(tools.resolve("bin"));
+			copyBundledRules(plugin);
+			Path settings = project.resolve(".claude/settings.json");
+			write(project, ".claude/settings.json", template.formatted(jsonString(tools)));
+
+			Map<String, String> environment = sandboxEnvironment(project, plugin, cleanup, bin);
+			HookResult result = invokeInSandbox(cwdInput(project), environment, project, runningClaude());
+
+			requireThat(result.error(), "error").isEmpty();
+			JsonNode response = scope.json().readTree(result.output());
+			requireThat(response.path("systemMessage").asString(), "systemMessage").contains(bin.toString()).
+				contains(setting).contains(settings.toString());
+			requireThat(response.path("hookSpecificOutput").path("additionalContext").asString(), "context").
+				doesNotContain(bin.toString()).doesNotContain(setting);
+		}
+	}
+
+	/**
+	 * Verifies that a SessionStart whose project folder holds a folder of {@code PATH} names the project folder as what
+	 * grants the write, because Claude Code's sandbox always lets the session's commands write the project folder.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void warnsOfPathFolderInProject() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-")).toRealPath();
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			copyBundledRules(plugin);
+			Path bin = Files.createDirectories(project.resolve("node_modules/.bin"));
+			write(project, ".claude/settings.json", "{\"sandbox\":{\"enabled\":true}}");
+
+			Map<String, String> environment = sandboxEnvironment(project, plugin, cleanup, bin);
+			HookResult result = invokeInSandbox(cwdInput(project), environment, project, runningClaude());
+
+			requireThat(scope.json().readTree(result.output()).path("systemMessage").asString(), "systemMessage").
+				contains(bin.toString()).contains("project folder");
+		}
+	}
+
+	/**
+	 * Verifies that a SessionStart adds nothing for the user when no folder on {@code PATH} is writable by the sandbox,
+	 * when the session has no sandbox, and when the sandbox's policy cannot be read, and that it reports an unreadable
+	 * policy on its diagnostic output only.
+	 *
+	 * @param condition what the session's sandbox is like
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test(dataProvider = "quietSandboxes")
+	public void addsNothingWhenNoPathFolderIsWritable(String condition) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-")).toRealPath();
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path tools = cleanup.add(Files.createTempDirectory("cat-tools-")).toRealPath();
+			Path bin = Files.createDirectories(tools.resolve("bin"));
+			copyBundledRules(plugin);
+			HarnessProcesses processes = runningClaude();
+			switch (condition)
+			{
+				case "not granted" -> write(project, ".claude/settings.json", "{\"sandbox\":{\"enabled\":true}}");
+				case "no sandbox" -> write(project, ".claude/settings.json", "{\"sandbox\":{\"enabled\":false," +
+					"\"filesystem\":{\"allowWrite\":[" + jsonString(tools) + "]}}}");
+				case "unreadable" ->
+				{
+					write(project, ".claude/settings.json", "{\"sandbox\":{\"enabled\":true,\"filesystem\":" +
+						"{\"allowWrite\":[" + jsonString(tools) + "]}}}");
+					processes = _ -> Optional.empty();
+				}
+				default -> throw new AssertionError(condition);
+			}
+
+			Map<String, String> environment = sandboxEnvironment(project, plugin, cleanup, bin);
+			HookResult result = invokeInSandbox(cwdInput(project), environment, project, processes);
+
+			requireThat(scope.json().readTree(result.output()).has("systemMessage"), "hasSystemMessage").isFalse();
+			if (condition.equals("unreadable"))
+				requireThat(result.error(), "error").isNotBlank();
+			else
+				requireThat(result.error(), "error").isEmpty();
+		}
+	}
+
+	/**
+	 * Returns the sandboxes whose session-start check tells the user nothing.
+	 *
+	 * @return each sandbox's name
+	 */
+	@DataProvider
+	public static Object[][] quietSandboxes()
+	{
+		return new Object[][]{{"not granted"}, {"no sandbox"}, {"unreadable"}};
+	}
+
+	/**
+	 * Returns the processes of a machine that runs the Claude Code session whose hooks the tests run.
+	 *
+	 * @return the processes
+	 */
+	private static HarnessProcesses runningClaude()
+	{
+		return processId ->
+		{
+			if (processId != CLAUDE_PROCESS_ID)
+				return Optional.empty();
+			return Optional.of(new ProcessDescription(processId, Optional.of("2026-11-26T00:00:00Z-4242"),
+				Optional.of("/usr/local/bin/claude"), Optional.empty(), Optional.of(List.of())));
+		};
+	}
+
+	/**
+	 * Returns the environment of a hook that Claude Code runs in a project, with the folder on {@code PATH}.
+	 *
+	 * @param project the project folder
+	 * @param plugin  the plugin folder
+	 * @param cleanup removes the configuration folder that the environment names
+	 * @param bin     the folder that {@code PATH} names
+	 * @return the environment
+	 * @throws IOException if the configuration folder cannot be created
+	 */
+	private static Map<String, String> sandboxEnvironment(Path project, Path plugin, TemporaryDirectories cleanup,
+		Path bin) throws IOException
+	{
+		Path configuration = cleanup.add(Files.createTempDirectory("cat-claude-config-")).toRealPath();
+		return Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString(), "CLAUDE_CONFIG_DIR", configuration.toString(),
+			"CLAUDE_PID", Long.toString(CLAUDE_PROCESS_ID), "CLAUDE_PROJECT_DIR", project.toString(),
+			"PATH", bin.toString());
+	}
+
+	/**
+	 * Runs the SessionStart hook with the processes of the machine that runs the session, and captures its standard
+	 * streams.
+	 *
+	 * @param input            the hook input
+	 * @param environment      the process environment
+	 * @param workingDirectory the process working directory
+	 * @param processes        the processes of the machine
+	 * @return the captured standard streams
+	 * @throws IOException if a home folder for the hook cannot be created
+	 */
+	private static HookResult invokeInSandbox(String input, Map<String, String> environment, Path workingDirectory,
+		HarnessProcesses processes) throws IOException
+	{
+		ByteArrayOutputStream output = new ByteArrayOutputStream();
+		ByteArrayOutputStream error = new ByteArrayOutputStream();
+		try (TemporaryDirectories homes = new TemporaryDirectories())
+		{
+			ClaudeSessionStartHookSecrets.getClaudeSessionStartHookAccess().run(new String[0],
+				new ByteArrayInputStream(sessionInput(input).getBytes(UTF_8)), output, new PrintStream(error, true, UTF_8),
+				withHome(environment, homes), workingDirectory, Yielding.waiting(), GitProjects.IGNORING,
+				Optional.of(processes));
+		}
+		return new HookResult(output.toString(UTF_8), error.toString(UTF_8));
 	}
 }

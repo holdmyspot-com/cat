@@ -14,6 +14,7 @@ import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.SessionIgnore;
 import com.holdmyspot.cat.common.SessionRules;
 import com.holdmyspot.cat.common.Waiting;
+import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -78,6 +79,30 @@ final class ClaudeRuleInjectionHook
 	 */
 	static void run(String eventName, String[] args, InputStream input, OutputStream output, PrintStream error,
 		Map<String, String> environment, Path workingDirectory, Waiting waiting, SessionIgnore.GitQueries git)
+	{
+		run(eventName, args, input, output, error, environment, workingDirectory, waiting, git, Optional.empty());
+	}
+
+	/**
+	 * Loads rules for one Claude hook event and emits its harness JSON response, as
+	 * {@code run} without a sandbox source does, and, at SessionStart, checks the folders on {@code PATH} against
+	 * the session's sandbox.
+	 *
+	 * @param eventName the Claude hook event name
+	 * @param args the hook command-line arguments
+	 * @param input the harness hook input
+	 * @param output the harness hook output
+	 * @param error diagnostics for the host
+	 * @param environment the hook environment
+	 * @param workingDirectory the hook process directory
+	 * @param waiting how the hook waits between the attempts of a retried operation
+	 * @param git answers what Git ignores in the project when the event creates a CAT session directory
+	 * @param processes describes the session's Claude Code process, for the check of the folders on {@code PATH}; empty
+	 *   to skip the check
+	 */
+	static void run(String eventName, String[] args, InputStream input, OutputStream output, PrintStream error,
+		Map<String, String> environment, Path workingDirectory, Waiting waiting, SessionIgnore.GitQueries git,
+		Optional<HarnessProcesses> processes)
 	{
 		try (HookScope scope = ClaudeHookScope.open(environment, waiting, git))
 		{

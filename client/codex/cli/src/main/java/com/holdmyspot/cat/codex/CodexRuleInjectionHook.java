@@ -3,6 +3,7 @@ package com.holdmyspot.cat.codex;
 import static com.holdmyspot.cat.codex.CodexPluginInfo.HARNESS_ID;
 
 import com.holdmyspot.cat.codex.optimizer.CodexRuleVariables;
+import com.holdmyspot.cat.codex.policy.CodexHookSandbox;
 import com.holdmyspot.cat.common.HomeProject;
 import com.holdmyspot.cat.common.HookScope;
 import com.holdmyspot.cat.common.Platform;
@@ -100,6 +101,29 @@ final class CodexRuleInjectionHook
 	 */
 	static void run(String eventName, String[] args, InputStream input, OutputStream output, PrintStream error,
 		Map<String, String> environment, Path workingDirectory, Waiting waiting, SessionIgnore.GitQueries git)
+	{
+		run(eventName, args, input, output, error, environment, workingDirectory, waiting, git, Optional.empty());
+	}
+
+	/**
+	 * Loads rules for one Codex hook event and emits its harness JSON response, as
+	 * {@code run} without a sandbox source does, and, at SessionStart, checks the folders on {@code PATH} against
+	 * the session's sandbox.
+	 *
+	 * @param eventName the Codex hook event name
+	 * @param args the hook command-line arguments
+	 * @param input the harness hook input
+	 * @param output the harness hook output
+	 * @param error diagnostics for the host
+	 * @param environment the hook environment
+	 * @param workingDirectory the hook process directory
+	 * @param waiting how the hook waits between the attempts of a retried operation
+	 * @param git answers what Git ignores in the project when the event creates a CAT session directory
+	 * @param sandbox reads the session's sandbox, for the check of the folders on {@code PATH}; empty to skip the check
+	 */
+	static void run(String eventName, String[] args, InputStream input, OutputStream output, PrintStream error,
+		Map<String, String> environment, Path workingDirectory, Waiting waiting, SessionIgnore.GitQueries git,
+		Optional<CodexHookSandbox> sandbox)
 	{
 		try (HookScope scope = CodexHookScope.open(environment, waiting, git))
 		{

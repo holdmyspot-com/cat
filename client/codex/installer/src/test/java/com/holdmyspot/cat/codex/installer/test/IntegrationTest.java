@@ -8,6 +8,8 @@ import com.holdmyspot.cat.codex.installer.CodexPluginCommand;
 import com.holdmyspot.cat.codex.installer.InstallerRules;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.SandboxWrites;
+import com.holdmyspot.cat.common.WriteGrant;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
@@ -1515,6 +1517,56 @@ public final class IntegrationTest
 		return new FileReplacer(Platform.current(), () ->
 		{
 		}, Clock.systemUTC());
+	}
+
+	/**
+	 * The {@code writable_roots} of the user's {@code config.toml} are the folders that the installer warns of, each
+	 * with the setting and the file that hold it.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void readsWritableRoots() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path userHome = cleanup.add(Files.createTempDirectory(testRoot(), "integration-")).toRealPath();
+			Path home = Files.createDirectories(userHome.resolve(".codex"));
+			Path tools = userHome.resolve("tools");
+			Path configuration = home.resolve("config.toml");
+			Files.writeString(configuration, "[sandbox_workspace_write]\nwritable_roots = [" +
+				MAPPER.writeValueAsString(tools.toString()) + "]\n");
+
+			SandboxWrites writes = provider().sandboxWrites(home, userHome);
+
+			requireThat(writes.grants().stream().map(WriteGrant::path).toList(), "grantPaths").
+				containsExactly(List.of(tools));
+			requireThat(writes.grants().get(0).setting(), "setting").
+				contains("sandbox_workspace_write.writable_roots").contains(configuration.toString());
+			requireThat(writes.denials(), "denials").isEmpty();
+		}
+	}
+
+	/**
+	 * A home with no {@code config.toml}, or one that is not TOML, gives no grants, because the reading leaves out
+	 * what it cannot read.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void readsNothingFromBadConfiguration() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path userHome = cleanup.add(Files.createTempDirectory(testRoot(), "integration-")).toRealPath();
+			Path home = Files.createDirectories(userHome.resolve(".codex"));
+
+			requireThat(provider().sandboxWrites(home, userHome), "missing").isEqualTo(SandboxWrites.NONE);
+
+			Files.writeString(home.resolve("config.toml"), "writable_roots = [");
+
+			requireThat(provider().sandboxWrites(home, userHome), "malformed").isEqualTo(SandboxWrites.NONE);
+		}
 	}
 
 	/**
