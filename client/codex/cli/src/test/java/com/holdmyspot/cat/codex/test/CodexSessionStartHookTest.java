@@ -3,6 +3,7 @@ package com.holdmyspot.cat.codex.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.codex.CodexSessionStartHook;
 import com.holdmyspot.cat.codex.policy.CodexHookSandbox;
 import com.holdmyspot.cat.codex.policy.test.CodexParentSession;
 import com.holdmyspot.cat.codex.runner.CodexAuthentication;
@@ -1155,6 +1156,37 @@ public final class CodexSessionStartHookTest
 			requireThat(message, "systemMessage").contains("Codex process").contains(bin.toString()).
 				contains("may be writable");
 			requireThat(result.error(), "error").contains("Codex process");
+		}
+	}
+
+	/**
+	 * Verifies that the hook's public entry point, which reads the sandbox of the process that runs it, injects the
+	 * project's rules on every platform that Codex runs on, so that a machine whose files differ from the ones that
+	 * the sandbox reader assumes does not stop the session's rules.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void injectsRulesFromThisProcess() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			writeReadingGuidance(plugin);
+			Path project = cleanup.add(Files.createTempDirectory("cat-session-start-"));
+			Path ruleDirectory = Files.createDirectories(project.resolve(".cat/rules/common"));
+			Files.writeString(ruleDirectory.resolve("session.md"), "project session rule");
+			ByteArrayOutputStream output = new ByteArrayOutputStream();
+			ByteArrayOutputStream error = new ByteArrayOutputStream();
+			Map<String, String> environment = Map.of("PLUGIN_ROOT", plugin.toString(),
+				Platform.current().homeVariable(),
+				Path.of(System.getProperty("java.io.tmpdir"), "cat-absent-home").toString());
+
+			CodexSessionStartHook.run(new String[0], new ByteArrayInputStream(event(project).getBytes(UTF_8)), output,
+				new PrintStream(error, true, UTF_8), environment, project, Yielding.waiting());
+
+			HookResult result = new HookResult(output.toString(UTF_8), error.toString(UTF_8));
+			requireThat(sessionRules(result), "rules").contains("project session rule");
 		}
 	}
 
