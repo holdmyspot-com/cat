@@ -5,13 +5,20 @@ CAT requires JDK 27 and ShellCheck.
 Run the complete Java, TestNG, and ShellCheck verification:
 
 ```bash
-client/mvnw -q -Dmaven.build.cache.enabled=false -f client/pom.xml verify
+client/mvnw -q -f client/pom.xml verify
 ```
 
 Build the artifacts for the current platform:
 
 ```bash
-client/mvnw -q -Dmaven.build.cache.enabled=false -f client/pom.xml package
+client/mvnw -q -f client/pom.xml package
+```
+
+**Acceptance build:** run this clean, uncached build to pass the build gate. It rebuilds every output instead of reusing
+cached results.
+
+```bash
+client/mvnw -q -Dmaven.build.cache.enabled=false -f client/pom.xml clean verify
 ```
 
 ## Install a locally built artifact
