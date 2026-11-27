@@ -158,7 +158,7 @@ public final class ClaudeWriteGrantsTest
 			Fixture fixture = new Fixture(cleanup);
 			Path tools = fixture.root.resolve("tools");
 			fixture.write(fixture.config.resolve("settings.json"), "{\"sandbox\":{\"enabled\":true,\"filesystem\":" +
-				"{\"allowWrite\":[" + Fixture.json(tools.resolve("b*")) + "]}}}");
+				"{\"allowWrite\":[" + Fixture.jsonPattern(tools, "b*") + "]}}}");
 
 			SandboxWrites writes = ClaudeWriteGrants.read(fixture.known());
 
@@ -205,7 +205,7 @@ public final class ClaudeWriteGrantsTest
 			Fixture fixture = new Fixture(cleanup);
 			Path tools = fixture.root.resolve("tools");
 			fixture.write(fixture.config.resolve("settings.json"), "{\"sandbox\":{\"enabled\":true},\"permissions\":" +
-				"{\"allow\":[\"Edit(/" + tools + ")\",\"Edit(/elsewhere)\"]}}");
+				"{\"allow\":[\"Edit(" + Fixture.ruleSpelling(tools) + ")\",\"Edit(/elsewhere)\"]}}");
 
 			SandboxWrites writes = ClaudeWriteGrants.read(fixture.known());
 
@@ -213,7 +213,10 @@ public final class ClaudeWriteGrantsTest
 			requireThat(exact.possible(), "exactPossible").isFalse();
 			requireThat(exact.setting(), "setting").contains("permissions.allow");
 			requireThat(fixture.grantAt(writes, fixture.config.resolve("elsewhere")).possible(), "ambiguous").isTrue();
-			requireThat(fixture.grantAt(writes, Path.of("/elsewhere")).possible(), "absolute").isTrue();
+			// A path that starts with one slash is absolute only where a slash alone names the root of a filesystem
+			Path absolute = Path.of("/elsewhere");
+			if (absolute.isAbsolute())
+				requireThat(fixture.grantAt(writes, absolute).possible(), "absolute").isTrue();
 		}
 	}
 
@@ -488,15 +491,15 @@ public final class ClaudeWriteGrantsTest
 			Path tools = fixture.root.resolve("tools");
 			Path viaRule = fixture.root.resolve("by-rule");
 			fixture.write(fixture.config.resolve("settings.json"), "{\"sandbox\":{\"enabled\":true,\"filesystem\":" +
-				"{\"denyWrite\":[" + Fixture.json(tools.resolve("private")) + "," + Fixture.json(tools.resolve("p*")) +
-				"]}},\"permissions\":{\"deny\":[\"Edit(/" + viaRule + ")\"]}}");
+				"{\"denyWrite\":[" + Fixture.json(tools.resolve("private")) + "," + Fixture.jsonPattern(tools, "p*") +
+				"]}},\"permissions\":{\"deny\":[\"Edit(" + Fixture.ruleSpelling(viaRule) + ")\"]}}");
 
 			SandboxWrites known = ClaudeWriteGrants.read(fixture.known());
 			SandboxWrites candidates = ClaudeWriteGrants.read(fixture.session(List.of(fixture.project), false,
 				Optional.empty()));
 
 			requireThat(known.denials(), "denials").contains(tools.resolve("private")).contains(viaRule).
-				doesNotContain(tools.resolve("p*"));
+				doesNotContain(tools);
 			requireThat(known.denials().stream().anyMatch(denial -> denial.toString().contains("*")), "pattern").
 				isFalse();
 			requireThat(candidates.denials(), "candidateDenials").contains(tools.resolve("private"));
@@ -647,6 +650,35 @@ public final class ClaudeWriteGrantsTest
 					return grant;
 			}
 			return grants.getFirst();
+		}
+
+		/**
+		 * Returns the spelling that a permission rule uses for an absolute path: two slashes before the path on Linux and
+		 * macOS, and two slashes, the drive's letter and the rest of the path on Windows.
+		 *
+		 * @param path the path
+		 * @return the spelling, which holds no character that a JSON string must escape
+		 */
+		private static String ruleSpelling(Path path)
+		{
+			String spelled = path.toString();
+			if (!path.getFileSystem().getSeparator().equals("\\"))
+				return "/" + spelled;
+			return "//" + Character.toLowerCase(spelled.charAt(0)) + spelled.substring(2).replace('\\', '/');
+		}
+
+		/**
+		 * Returns a pattern in a folder as a JSON string. The pattern is not a valid path on every platform, so it is
+		 * joined to the folder as text.
+		 *
+		 * @param folder  the folder
+		 * @param pattern the pattern
+		 * @return the JSON string, with its quotes
+		 */
+		private static String jsonPattern(Path folder, String pattern)
+		{
+			String separator = folder.getFileSystem().getSeparator();
+			return "\"" + (folder + separator + pattern).replace("\\", "\\\\") + "\"";
 		}
 
 		/**
