@@ -30,10 +30,12 @@ When the change is meant to speed up a slow build or workflow, locate where its 
 	packages, prefer splitting it into shard jobs that run on separate machines in parallel. Use the test tool's own
 	partitioning where it has one, such as `--partition hash:N/M` or `--shard-count` with `--shard-index`. Build what
 	every shard needs once, in a producer job whose outputs the shards download (see `build-caching.md`). A final job
-	merges the shards' reports and runs any gate or comparison once, so that it checks what it checked before. Pick
-	the shard count from the step's measured duration and a target duration per shard, counting each shard's repeated
-	setup, which raises total machine minutes while it lowers elapsed time. Cap the count at the platform's concurrent
-	runner limit, because shards beyond it only wait in the queue, as scarce runners such as hosted macOS often do.
+	merges the shards' reports and runs any gate or comparison once, so that it checks what it checked before. When you
+	split the work into shards, lazy load `./shard-coverage.md` for the coverage check that this final job also runs.
+	Pick the shard count from the step's measured duration and a target duration per shard, counting each shard's
+	repeated setup, which raises total machine minutes while it lowers elapsed time. Cap the count at the platform's
+	concurrent runner limit, because shards beyond it only wait in the queue, as scarce runners such as hosted macOS
+	often do.
 	Separate machines also remove failures caused by tests competing for one machine; a baseline recorded from
 	unsharded runs may differ in the first sharded run.
 - Count how many times each expensive dependency is built across the whole workflow: every shard, platform and build

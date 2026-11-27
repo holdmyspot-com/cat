@@ -46,7 +46,9 @@ When independently executable units can run concurrently, choose the highest bou
 available capacity and the workflow's isolation guarantees. When independent ready work is intended to run
 concurrently, check whether its execution resources permit actual overlap. Account for queue groups, locks, shared
 mutable resources, and capacity. Remove unnecessary serialization within existing authority; otherwise record the
-constraint and continue other eligible work. A persistent parent must own and reap every child, record
-each terminal result, and return failure when any required child fails; a parent that exits while children run cannot
-establish their result. Give concurrent units separate mutable resources and durable evidence. Do not treat partial
-output, a started process, or a child that has not reached a terminal recorded state as successful work.
+constraint and continue other eligible work. When the units are parts of one list of work items, lazy load
+`./shard-coverage.md` to check that every item ran exactly once and succeeded. A persistent parent must own and reap
+every child, record each terminal result, and return failure when any required child fails; a parent that exits while
+children run cannot establish their result. Give concurrent units separate mutable resources and durable evidence. Do
+not treat partial output, a started process, or a child that has not reached a terminal recorded state as successful
+work.

@@ -160,13 +160,13 @@ agent wrote and that is too large to read in one tool output, and when designing
 delegates work, exchanges information between agents, delivers data to another workflow step or recipient, or hands
 off, retries, or resumes progress; before installing,
 updating or uninstalling CAT or any plugin, including repair or reinstall; when executing a multi-step plan or goal;
-when dispatching independent work units to run concurrently; when applying a skill would cause you to ask for permission
-or confirmation, pause, leave requested work unfinished, or diverge from the user's intent; when creating, using, or
-handing off temporary files or directories; when creating or receiving a clone, worktree, or branch for your own work;
-while you have a temporary file or directory, clone, worktree, or branch for your own work, after merging a clone's or
-worktree's changes, when a step or work item finishes, when abandoning work, and before handing back your result or
-sending your final reply; or when a task needs a state change that something else produces, lazy load
-`../include/common/rule-routing/workflows.md`.
+when dispatching independent work units to run concurrently; when splitting work into shards or parallel parts; when
+applying a skill would cause you to ask for permission or confirmation, pause, leave requested work unfinished, or
+diverge from the user's intent; when creating, using, or handing off temporary files or directories; when creating or
+receiving a clone, worktree, or branch for your own work; while you have a temporary file or directory, clone, worktree,
+or branch for your own work, after merging a clone's or worktree's changes, when a step or work item finishes, when
+abandoning work, and before handing back your result or sending your final reply; or when a task needs a state change
+that something else produces, lazy load `../include/common/rule-routing/workflows.md`.
 
 When locating or selecting a Git commit, file history, or change to amend, backport, or replay, or creating or revising
 a Git commit message, lazy load `../include/common/rule-routing/git.md`.

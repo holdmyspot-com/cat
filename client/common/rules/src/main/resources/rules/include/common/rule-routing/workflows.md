@@ -41,3 +41,6 @@ exiting, a subagent returning, another session's turn ending, or a file or log g
 
 When defining, changing, executing, retrying, or resuming a workflow with progress handoff, retry, or resumption, or
 before dispatching independent work units to run concurrently, lazy load `../monotonic-progress.md`.
+
+When splitting work into shards or parallel parts, such as a partitioned test run, a matrix of jobs, or subagents that
+each take part of a list of items, lazy load `../shard-coverage.md`.

@@ -96,10 +96,11 @@ choosing which work to delegate next while executing a plan, lazy load `implemen
 verification-closed behavior cluster: one coherent observable outcome whose production changes and focused tests end in
 its own exact gate. Paths that overlap do not make independently testable lifecycle, schema, or quality changes one
 cluster. A piece that cannot be split further without losing its own exact gate stays one subtask, however long it
-takes. Launch the subtasks that the conflict graph below shows as independent concurrently. A subtask that consumes
-another subtask's output waits for that output, and subtasks whose write sets overlap run in sequence through one
-exclusive writer or stay with the higher authority. Do not delegate work when accepting it would require the parent to
-rederive its decisions or review work as broadly as implementing it directly.
+takes. Launch the subtasks that the conflict graph below shows as independent concurrently. When the subtasks are
+parts of one list of work items, lazy load `./shard-coverage.md` to check that every item was done exactly once and
+succeeded. A subtask that consumes another subtask's output waits for that output, and subtasks whose write sets overlap
+run in sequence through one exclusive writer or stay with the higher authority. Do not delegate work when accepting it
+would require the parent to rederive its decisions or review work as broadly as implementing it directly.
 
 After a cybersecurity stop, if permissible work is eligible for delegation, use the documented direct subagent launch
 operation, if available, to ask a planning subagent for a breakdown of that work. While the stop is unresolved, include
