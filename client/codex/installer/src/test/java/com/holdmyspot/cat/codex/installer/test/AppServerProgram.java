@@ -18,7 +18,9 @@ import tools.jackson.databind.node.ObjectNode;
  * The messages follow the schema that {@code codex app-server generate-json-schema --experimental} wrote for codex-cli
  * 0.172.0 ({@code InitializeResponse}, {@code ConfigWarningNotification}, {@code HooksListResponse}) and the exchange
  * that CAT recorded with that version on 2026-11-26 in a Codex home holding CAT's plugin, in which each hook record
- * held every field that {@link #hook} writes.
+ * held every field that {@link #hook} writes. codex-cli 0.160.0+41 answered the same exchange in the same shapes on the
+ * same day, except that each hook's {@code currentHash} held its declaration hash alone and no record held
+ * {@code environmentId}.
  */
 final class AppServerProgram
 {
@@ -96,7 +98,9 @@ final class AppServerProgram
 	 * @param source      where Codex found the hook, such as {@code plugin} or {@code project}
 	 * @param pluginId    the plugin that declares the hook, or null for a hook that no plugin declares
 	 * @param sourcePath  the file that declares the hook
-	 * @param currentHash the hashes that Codex computes for the hook, {@code <declaration hash>/<content hash>}
+	 * @param currentHash the hashes that Codex computes for the hook: {@code <declaration hash>/<content hash>}, as
+	 *                    Codex 0.172.0 lists them, or the declaration hash alone, as codex-cli 0.160.0+41, which keeps
+	 *                    no content hash, lists it
 	 * @param trustStatus {@code trusted}, {@code untrusted}, {@code modified} or {@code managed}
 	 * @return the hook's record
 	 */

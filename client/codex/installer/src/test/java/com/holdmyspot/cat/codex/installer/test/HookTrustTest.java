@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installer.activation.EntryEffect;
 import com.holdmyspot.cat.common.installer.activation.EntryGroup;
+import com.holdmyspot.cat.common.installer.activation.HarnessCli;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.engine.PluginInstall;
 import java.io.IOException;
@@ -774,6 +775,47 @@ public final class HookTrustTest
 	}
 
 	/**
+	 * A Codex that keeps no content hash lists each of CAT's hooks with its declaration hash alone. Install writes
+	 * nothing and succeeds, and its message names the program that it ran, by its path and the version that its
+	 * {@code --version} prints, says that this Codex runs CAT's hooks by their declaration hash alone, and warns that a
+	 * newer Codex may ask the user to review them.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void namesCodexThatListsNoContentHash() throws IOException
+	{
+		// Requirement: R-I23
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			Path installer = plugin(home, VERSION, CAT_HOOKS);
+			Path hooksFile = installer.getParent().getParent().resolve("hooks/hooks.json");
+			Path configuration = home.resolve("config.toml");
+			String original = "model = \"gpt\"\n\n" +
+				"[hooks.state.\"" + SESSION_START + "\"]\ntrusted_hash = \"" + SESSION_START_HASH + "\"\n" +
+				"trusted_content_hash = \"" + EARLIER_CONTENT_HASH + "\"\n\n" +
+				trusted(POST_TOOL_USE, POST_TOOL_USE_HASH) + "\n" + trusted(SUBAGENT_START, SUBAGENT_START_HASH);
+			Files.writeString(configuration, original);
+			List<ObjectNode> listed = List.of(
+				AppServerProgram.hook(POST_TOOL_USE, "plugin", "cat@cat", hooksFile, POST_TOOL_USE_HASH, "trusted"),
+				AppServerProgram.hook(SESSION_START, "plugin", "cat@cat", hooksFile, SESSION_START_HASH, "trusted"),
+				AppServerProgram.hook(SUBAGENT_START, "plugin", "cat@cat", hooksFile, SUBAGENT_START_HASH, "trusted"));
+			HarnessCli cli = CodexProgram.cli(home, () -> AppServerProgram.listing(listed));
+
+			PluginInstall.InstalledEntries entries = installEntries(home, installer, cli);
+
+			requireThat(Files.readString(configuration), "configuration").isEqualTo(original);
+			requireThat(entries.notices().toString(), "notices").
+				contains(cli.program().toString()).
+				contains(CodexProgram.versionAnswer().output().strip()).
+				contains("declaration hash alone").
+				contains("may ask you to review").
+				doesNotContain("did not list");
+		}
+	}
+
+	/**
 	 * Supplies app-servers that do not list the hooks.
 	 *
 	 * @return each case's name and its app-server
@@ -839,9 +881,25 @@ public final class HookTrustTest
 	private static PluginInstall.InstalledEntries installEntries(Path home, Path installer,
 		Supplier<Process> appServer) throws IOException
 	{
+		return installEntries(home, installer, CodexProgram.cli(home, appServer));
+	}
+
+	/**
+	 * Installs the entries of a plugin version as install, update and repair do after registration, running Codex's
+	 * program through a runner.
+	 *
+	 * @param home      the Codex home
+	 * @param installer the plugin version's installer launcher
+	 * @param cli       runs Codex's program
+	 * @return the installed entries
+	 * @throws IOException if an entry cannot be installed
+	 */
+	private static PluginInstall.InstalledEntries installEntries(Path home, Path installer, HarnessCli cli)
+		throws IOException
+	{
 		HarnessIntegration provider = provider();
 		Path locks = home.resolveSibling("user/.cat/locks");
-		return new PluginInstall(provider, CodexProgram.cli(home, appServer), replacer(), NO_WAIT).
+		return new PluginInstall(provider, cli, replacer(), NO_WAIT).
 			installEntries(permissionEnvironment(home), home, installer, provider.installation(home), List.of(),
 				locks, locks.resolveSibling("sessions"), List.of(), false);
 	}
