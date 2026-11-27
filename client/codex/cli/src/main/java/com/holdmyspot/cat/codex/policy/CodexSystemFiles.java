@@ -18,6 +18,12 @@ import java.util.List;
 public record CodexSystemFiles(Path folder, List<Path> managedPreferences, Path slashTmp)
 {
 	/**
+	 * The folder of the machine's configuration, requirements and managed configuration files, on a platform whose
+	 * paths start at a root. On a platform whose paths start with a drive, this path is relative and names no folder.
+	 */
+	public static final Path FOLDER = Path.of("/etc/codex");
+
+	/**
 	 * Creates the files.
 	 *
 	 * @param folder             the folder of the machine's configuration, requirements and managed configuration
@@ -45,7 +51,8 @@ public record CodexSystemFiles(Path folder, List<Path> managedPreferences, Path 
 	 *
 	 * @param user the name of the user that runs Codex
 	 * @return the files
-	 * @throws NullPointerException if {@code user} is null
+	 * @throws NullPointerException     if {@code user} is null
+	 * @throws IllegalArgumentException if {@link #FOLDER} is relative on this machine
 	 */
 	public static CodexSystemFiles ofThisMachine(String user)
 	{
@@ -53,6 +60,6 @@ public record CodexSystemFiles(Path folder, List<Path> managedPreferences, Path 
 		Path slashTmp = Path.of("/tmp");
 		if (!slashTmp.isAbsolute())
 			slashTmp = null;
-		return new CodexSystemFiles(Path.of("/etc/codex"), CodexAssumptions.managedPreferences(user), slashTmp);
+		return new CodexSystemFiles(FOLDER, CodexAssumptions.managedPreferences(user), slashTmp);
 	}
 }

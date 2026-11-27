@@ -13,7 +13,6 @@ import java.io.OutputStream;
 import java.io.PrintStream;
 import java.nio.file.Path;
 import java.util.Map;
-import java.util.Optional;
 
 /**
  * Implements the Codex SessionStart hook protocol for CAT project rules.
@@ -76,7 +75,7 @@ public final class CodexSessionStartHook
 		requireThat(workingDirectory, "workingDirectory").isNotNull();
 		requireThat(waiting, "waiting").isNotNull();
 		CodexRuleInjectionHook.run("SessionStart", args, input, output, error, environment, workingDirectory, waiting,
-			SessionIgnore.GIT_PROCESS, Optional.of(CodexHookSandbox.ofThisProcess()));
+			SessionIgnore.GIT_PROCESS, CodexHookSandbox.ofThisProcess());
 	}
 
 	/**
