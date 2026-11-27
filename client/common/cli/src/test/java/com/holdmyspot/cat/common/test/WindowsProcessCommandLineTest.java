@@ -80,7 +80,8 @@ public final class WindowsProcessCommandLineTest
 		requireThat(line, "line").isPresent();
 		List<String> arguments = WindowsCommandLine.split(line.get());
 		String program = ProcessHandle.current().info().command().orElseThrow();
-		requireThat(Path.of(arguments.getFirst()).getFileName(), "program").isEqualTo(Path.of(program).getFileName());
+		// The launcher may have started the JVM by a name without the extension, which Windows adds
+		requireThat(stem(arguments.getFirst()), "program").isEqualTo(stem(program));
 	}
 
 	/**
@@ -117,6 +118,20 @@ public final class WindowsProcessCommandLineTest
 		requireThat(child.waitFor(30, TimeUnit.SECONDS), "exited").isTrue();
 
 		requireThat(WindowsProcessCommandLine.read(child.pid()), "line").isEqualTo(Optional.empty());
+	}
+
+	/**
+	 * Returns the name of a program's file without its folder and its extension, in lower case.
+	 *
+	 * @param program the program's path or name
+	 * @return the name
+	 */
+	private static String stem(String program)
+	{
+		String name = Path.of(program).getFileName().toString().toLowerCase(Locale.ROOT);
+		if (name.endsWith(".exe"))
+			return name.substring(0, name.length() - ".exe".length());
+		return name;
 	}
 
 	/**
