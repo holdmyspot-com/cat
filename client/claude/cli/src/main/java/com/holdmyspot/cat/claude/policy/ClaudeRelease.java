@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.claude.policy;
 
+import com.holdmyspot.cat.claude.installer.ClaudeWriteGrants;
 import com.holdmyspot.cat.claude.policy.ClaudeOption.Arity;
 import com.holdmyspot.cat.claude.policy.ClaudeOption.Effect;
 import java.nio.file.Path;
@@ -118,61 +119,58 @@ final class ClaudeRelease
 	/**
 	 * The folder of the managed settings on Linux.
 	 */
-	static final Path LINUX_MANAGED_DIRECTORY = Path.of("/etc/claude-code");
+	static final Path LINUX_MANAGED_DIRECTORY = ClaudeWriteGrants.LINUX_MANAGED_DIRECTORY;
 	/**
 	 * The folder of the managed settings on macOS.
 	 */
-	static final Path MACOS_MANAGED_DIRECTORY = Path.of("/Library/Application Support/ClaudeCode");
+	static final Path MACOS_MANAGED_DIRECTORY = ClaudeWriteGrants.MACOS_MANAGED_DIRECTORY;
 	/**
 	 * The folder of the managed settings on native Windows.
 	 */
-	static final Path WINDOWS_MANAGED_DIRECTORY = Path.of("C:\\Program Files\\ClaudeCode");
+	static final Path WINDOWS_MANAGED_DIRECTORY = ClaudeWriteGrants.WINDOWS_MANAGED_DIRECTORY;
 	/**
 	 * The folder of the Windows managed settings, which Claude Code also reads on WSL when an administrator source
 	 * asks it to.
 	 */
-	static final Path WSL_WINDOWS_MANAGED_DIRECTORY = Path.of("/mnt/c/Program Files/ClaudeCode");
+	static final Path WSL_WINDOWS_MANAGED_DIRECTORY = ClaudeWriteGrants.WSL_WINDOWS_MANAGED_DIRECTORY;
 	/**
 	 * The managed settings file, inside a managed settings folder.
 	 */
-	static final String MANAGED_FILE = "managed-settings.json";
+	static final String MANAGED_FILE = ClaudeWriteGrants.MANAGED_FILE;
 	/**
 	 * The folder of managed settings drop-in files, inside a managed settings folder. Claude Code merges its
 	 * {@code .json} files onto the managed settings file in the order of their names.
 	 */
-	static final String MANAGED_DROP_INS = "managed-settings.d";
+	static final String MANAGED_DROP_INS = ClaudeWriteGrants.MANAGED_DROP_INS;
 	/**
 	 * The macOS managed preferences that may hold managed settings, as {@code %s} for the user's name. CAT cannot read
 	 * them.
 	 */
-	static final List<String> MACOS_MANAGED_PREFERENCES = List.of(
-		"/Library/Managed Preferences/com.anthropic.claudecode.plist",
-		"/Library/Managed Preferences/%s/com.anthropic.claudecode.plist");
+	static final List<String> MACOS_MANAGED_PREFERENCES = ClaudeWriteGrants.MACOS_MANAGED_PREFERENCES;
 	/**
 	 * The copy of the settings that the user's organization manages from its server, inside Claude Code's
 	 * configuration folder. It is read as managed settings whose precedence over the managed files is not known.
 	 */
-	static final String REMOTE_SETTINGS = "remote-settings.json";
+	static final String REMOTE_SETTINGS = ClaudeWriteGrants.REMOTE_SETTINGS;
 	/**
 	 * The settings key that makes Claude Code on WSL apply the Windows policy chain, including registry policies that
 	 * CAT cannot read.
 	 */
-	static final String WSL_INHERITS_WINDOWS_SETTINGS = "wslInheritsWindowsSettings";
+	static final String WSL_INHERITS_WINDOWS_SETTINGS = ClaudeWriteGrants.WSL_INHERITS_WINDOWS_SETTINGS;
 	/**
 	 * The folders that the sandbox lets commands write without any setting, other than the working directories. On
 	 * Windows, where they name no folder that exists, they lie on the current drive.
 	 */
-	static final List<Path> BUILT_IN_WRITES = List.of(Path.of("/tmp/claude").toAbsolutePath(),
-		Path.of("/private/tmp/claude").toAbsolutePath());
+	static final List<Path> BUILT_IN_WRITES = ClaudeWriteGrants.BUILT_IN_WRITES;
 	/**
 	 * The environment variable that names the temporary folder that Claude Code gives commands, which the sandbox lets
 	 * them write.
 	 */
-	static final String TEMPORARY_DIRECTORY_VARIABLE = "CLAUDE_CODE_TMPDIR";
+	static final String TEMPORARY_DIRECTORY_VARIABLE = ClaudeWriteGrants.TEMPORARY_DIRECTORY_VARIABLE;
 	/**
 	 * The paths inside each folder that commands may write that the sandbox keeps them from writing.
 	 */
-	static final List<String> BUILT_IN_WRITE_DENIALS = List.of(".claude", ".git/hooks", ".git/config");
+	static final List<String> BUILT_IN_WRITE_DENIALS = ClaudeWriteGrants.BUILT_IN_WRITE_DENIALS;
 	/**
 	 * The settings of each scope that Claude Code loads, by the name that {@code --setting-sources} gives it.
 	 */

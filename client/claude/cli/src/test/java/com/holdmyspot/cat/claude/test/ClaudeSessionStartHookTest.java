@@ -11,6 +11,7 @@ import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
+import com.holdmyspot.cat.common.WritablePathEntries;
 import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.TestToolScope;
 import com.holdmyspot.cat.claude.runner.ClaudeRunner;
@@ -1488,7 +1489,7 @@ public final class ClaudeSessionStartHookTest
 			requireThat(result.error(), "error").isEmpty();
 			JsonNode response = scope.json().readTree(result.output());
 			requireThat(response.path("systemMessage").asString(), "systemMessage").contains(bin.toString()).
-				contains(setting).contains(settings.toString());
+				contains(setting).contains(settings.toString()).contains(WritablePathEntries.COVERAGE);
 			requireThat(response.path("hookSpecificOutput").path("additionalContext").asString(), "context").
 				doesNotContain(bin.toString()).doesNotContain(setting);
 		}
@@ -1520,9 +1521,8 @@ public final class ClaudeSessionStartHookTest
 	}
 
 	/**
-	 * Verifies that a SessionStart adds nothing for the user when no folder on {@code PATH} is writable by the sandbox,
-	 * when the session has no sandbox, and when the sandbox's policy cannot be read, and that it reports an unreadable
-	 * policy on its diagnostic output only.
+	 * Verifies that a SessionStart adds nothing for the user, and nothing to its diagnostic output, when no folder on
+	 * {@code PATH} is writable by the sandbox, and when the session has no sandbox.
 	 *
 	 * @param condition what the session's sandbox is like
 	 * @throws IOException if the test filesystem cannot be used
@@ -1537,29 +1537,19 @@ public final class ClaudeSessionStartHookTest
 			Path tools = cleanup.add(Files.createTempDirectory("cat-tools-")).toRealPath();
 			Path bin = Files.createDirectories(tools.resolve("bin"));
 			copyBundledRules(plugin);
-			HarnessProcesses processes = runningClaude();
 			switch (condition)
 			{
 				case "not granted" -> write(project, ".claude/settings.json", "{\"sandbox\":{\"enabled\":true}}");
 				case "no sandbox" -> write(project, ".claude/settings.json", "{\"sandbox\":{\"enabled\":false," +
 					"\"filesystem\":{\"allowWrite\":[" + jsonString(tools) + "]}}}");
-				case "unreadable" ->
-				{
-					write(project, ".claude/settings.json", "{\"sandbox\":{\"enabled\":true,\"filesystem\":" +
-						"{\"allowWrite\":[" + jsonString(tools) + "]}}}");
-					processes = _ -> Optional.empty();
-				}
 				default -> throw new AssertionError(condition);
 			}
 
 			Map<String, String> environment = sandboxEnvironment(project, plugin, cleanup, bin);
-			HookResult result = invokeInSandbox(cwdInput(project), environment, project, processes);
+			HookResult result = invokeInSandbox(cwdInput(project), environment, project, runningClaude());
 
 			requireThat(scope.json().readTree(result.output()).has("systemMessage"), "hasSystemMessage").isFalse();
-			if (condition.equals("unreadable"))
-				requireThat(result.error(), "error").isNotBlank();
-			else
-				requireThat(result.error(), "error").isEmpty();
+			requireThat(result.error(), "error").isEmpty();
 		}
 	}
 
@@ -1571,7 +1561,98 @@ public final class ClaudeSessionStartHookTest
 	@DataProvider
 	public static Object[][] quietSandboxes()
 	{
-		return new Object[][]{{"not granted"}, {"no sandbox"}, {"unreadable"}};
+		return new Object[][]{{"not granted"}, {"no sandbox"}};
+	}
+
+	/**
+	 * Verifies that a SessionStart whose sandbox settings grant a pattern that may match a folder of {@code PATH}
+	 * tells the user that the folder may be writable, names the setting, and says what the check covers.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void warnsOfPossiblyWritablePathFolder() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-")).toRealPath();
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path tools = cleanup.add(Files.createTempDirectory("cat-tools-")).toRealPath();
+			Path bin = Files.createDirectories(tools.resolve("bin"));
+			copyBundledRules(plugin);
+			Path settings = project.resolve(".claude/settings.json");
+			write(project, ".claude/settings.json", "{\"sandbox\":{\"enabled\":true,\"filesystem\":{\"allowWrite\":[" +
+				jsonString(tools.resolve("b*")) + "]}}}");
+
+			Map<String, String> environment = sandboxEnvironment(project, plugin, cleanup, bin);
+			HookResult result = invokeInSandbox(cwdInput(project), environment, project, runningClaude());
+
+			requireThat(result.error(), "error").isEmpty();
+			String message = scope.json().readTree(result.output()).path("systemMessage").asString();
+			requireThat(message, "systemMessage").contains(bin.toString()).contains("may be writable").
+				contains("sandbox.filesystem.allowWrite").contains(settings.toString()).
+				contains(WritablePathEntries.COVERAGE);
+		}
+	}
+
+	/**
+	 * Verifies that a SessionStart that cannot read the session's Claude Code process tells the user that it could not
+	 * check exactly, names what failed, and still reports the folder that the settings may make writable.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void tellsUserWhenProcessCannotBeRead() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-")).toRealPath();
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path tools = cleanup.add(Files.createTempDirectory("cat-tools-")).toRealPath();
+			Path bin = Files.createDirectories(tools.resolve("bin"));
+			copyBundledRules(plugin);
+			write(project, ".claude/settings.json", "{\"sandbox\":{\"enabled\":true,\"filesystem\":" +
+				"{\"allowWrite\":[" + jsonString(tools) + "]}}}");
+
+			Map<String, String> environment = sandboxEnvironment(project, plugin, cleanup, bin);
+			HookResult result = invokeInSandbox(cwdInput(project), environment, project, _ -> Optional.empty());
+
+			String message = scope.json().readTree(result.output()).path("systemMessage").asString();
+			requireThat(message, "systemMessage").contains("could not").contains("Claude Code process " +
+				CLAUDE_PROCESS_ID).contains(bin.toString()).contains("may be writable").
+				contains(WritablePathEntries.COVERAGE);
+			requireThat(result.error(), "error").contains("Claude Code process " + CLAUDE_PROCESS_ID);
+		}
+	}
+
+	/**
+	 * Verifies that a SessionStart whose settings give a write grant in a form that CAT cannot read tells the user,
+	 * naming the setting and the file, even when no folder on {@code PATH} is known to be writable.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void tellsUserOfUnreadableSetting() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-")).toRealPath();
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path tools = cleanup.add(Files.createTempDirectory("cat-tools-")).toRealPath();
+			Path bin = Files.createDirectories(tools.resolve("bin"));
+			copyBundledRules(plugin);
+			Path settings = project.resolve(".claude/settings.json");
+			write(project, ".claude/settings.json", "{\"sandbox\":{\"enabled\":true}," +
+				"\"permissions\":{\"additionalDirectories\":{\"a\":1}}}");
+
+			Map<String, String> environment = sandboxEnvironment(project, plugin, cleanup, bin);
+			HookResult result = invokeInSandbox(cwdInput(project), environment, project, runningClaude());
+
+			String message = scope.json().readTree(result.output()).path("systemMessage").asString();
+			requireThat(message, "systemMessage").contains("could not check").
+				contains("permissions.additionalDirectories").contains(settings.toString()).
+				contains(WritablePathEntries.COVERAGE);
+		}
 	}
 
 	/**

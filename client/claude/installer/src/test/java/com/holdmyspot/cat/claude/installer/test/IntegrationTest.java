@@ -1962,10 +1962,10 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * The user-level settings' write grants and denials are the folders that the installer warns of: the
-	 * {@code allowWrite} and {@code additionalDirectories} entries are grants that name the setting and the file that
-	 * holds them, {@code denyWrite} entries are denials, and a relative entry resolves against the Claude Code home,
-	 * which holds the settings file.
+	 * The user-level settings' write grants and denials are what the installer warns of: the {@code allowWrite} and
+	 * {@code additionalDirectories} entries are grants that name the setting and the file that holds them, an entry
+	 * that holds a wildcard is a possible grant of the folder that its literal part names, a relative entry is a
+	 * possible grant of each folder that the release may resolve it to, and {@code denyWrite} entries are denials.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -1978,45 +1978,158 @@ public final class IntegrationTest
 			Path home = Files.createDirectories(userHome.resolve(".claude"));
 			Path settings = home.resolve("settings.json");
 			Files.writeString(settings, """
-				{"sandbox":{"filesystem":{"allowWrite":["~/tools","bin","./local","~/*.glob"],
+				{"sandbox":{"enabled":true,"filesystem":{"allowWrite":["~/tools","bin","~/*.glob"],
 				"denyWrite":["~/tools/private"]}},
 				"permissions":{"additionalDirectories":["~/extra"]}}
 				""");
 
-			SandboxWrites writes = new Integration(Platform.LINUX_X64).sandboxWrites(home, userHome);
+			SandboxWrites writes = noManagedSettings().sandboxWrites(home, userHome, null);
 
-			requireThat(writes.grants().stream().map(WriteGrant::path).toList(), "grantPaths").
-				containsExactly(List.of(userHome.resolve("tools"), home.resolve("bin"), home.resolve("local"),
-					userHome.resolve("extra")));
-			requireThat(writes.grants().get(0).setting(), "setting").contains("sandbox.filesystem.allowWrite").
+			WriteGrant tools = grant(writes, userHome.resolve("tools"));
+			requireThat(tools.possible(), "toolsPossible").isFalse();
+			requireThat(tools.setting(), "setting").contains("sandbox.filesystem.allowWrite").
 				contains(settings.toString());
-			requireThat(writes.grants().get(3).setting(), "additionalSetting").
+			requireThat(grant(writes, userHome.resolve("extra")).setting(), "additionalSetting").
 				contains("permissions.additionalDirectories").contains(settings.toString());
-			requireThat(writes.denials(), "denials").containsExactly(List.of(userHome.resolve("tools/private")));
+			requireThat(grant(writes, home.resolve("bin")).possible(), "relativePossible").isTrue();
+			requireThat(grant(writes, userHome).possible(), "wildcardPossible").isTrue();
+			requireThat(writes.denials(), "denials").contains(userHome.resolve("tools/private"));
+			requireThat(writes.problems(), "problems").isEmpty();
 		}
 	}
 
 	/**
-	 * A home with no settings file, or a settings file that is not JSON, gives no grants, because the reading leaves
-	 * out what it cannot read.
+	 * A home with no settings file gives no grants and no problem, and a settings file that is not JSON is a problem
+	 * that names the file, so that the user does not take a missing warning for a folder that is safe.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void readsNothingFromBadSettings() throws IOException
+	public void reportsBadSettingsAsProblems() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path userHome = cleanup.add(testDirectory()).toRealPath();
 			Path home = Files.createDirectories(userHome.resolve(".claude"));
-			Integration integration = new Integration(Platform.LINUX_X64);
+			Integration integration = noManagedSettings();
 
-			requireThat(integration.sandboxWrites(home, userHome), "missing").isEqualTo(SandboxWrites.NONE);
+			SandboxWrites missing = integration.sandboxWrites(home, userHome, null);
 
-			Files.writeString(home.resolve("settings.json"), "{not json");
+			requireThat(missing.grants(), "missingGrants").isEmpty();
+			requireThat(missing.problems(), "missingProblems").isEmpty();
 
-			requireThat(integration.sandboxWrites(home, userHome), "malformed").isEqualTo(SandboxWrites.NONE);
+			Path settings = Files.writeString(home.resolve("settings.json"), "{not json");
+
+			SandboxWrites malformed = integration.sandboxWrites(home, userHome, null);
+
+			requireThat(malformed.grants(), "malformedGrants").isEmpty();
+			requireThat(String.join("\n", malformed.problems()), "malformedProblems").contains(settings.toString());
 		}
+	}
+
+	/**
+	 * The installer also reads the managed settings of the machine and the settings of the project that holds its
+	 * working directory: a managed grant is a grant, and a project grant is a possible grant, because the installer
+	 * cannot tell that the session's project is that folder. The project is the folders from the working directory up
+	 * to the nearest folder that holds a {@code .git} entry.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void readsManagedAndProjectSettings() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path userHome = cleanup.add(testDirectory()).toRealPath();
+			Path home = Files.createDirectories(userHome.resolve(".claude"));
+			Path managed = Files.createDirectories(userHome.resolve("managed"));
+			Path managedFile = Files.writeString(managed.resolve("managed-settings.json"),
+				"{\"sandbox\":{\"enabled\":true,\"filesystem\":{\"allowWrite\":[" + json(userHome.resolve("from-managed")) +
+				"]}}}");
+			Path repository = Files.createDirectories(userHome.resolve("repository"));
+			Files.createDirectories(repository.resolve(".git"));
+			Path inner = Files.createDirectories(repository.resolve("modules/inner"));
+			Path projectFile = repository.resolve(".claude/settings.json");
+			Files.createDirectories(projectFile.getParent());
+			Files.writeString(projectFile, "{\"sandbox\":{\"filesystem\":{\"allowWrite\":[" +
+				json(userHome.resolve("from-project")) + "]}}}");
+
+			SandboxWrites writes = new Integration(Platform.LINUX_X64, List.of(managed)).
+				sandboxWrites(home, userHome, inner);
+
+			WriteGrant fromManaged = grant(writes, userHome.resolve("from-managed"));
+			requireThat(fromManaged.possible(), "managedPossible").isFalse();
+			requireThat(fromManaged.setting(), "managedSetting").contains(managedFile.toString());
+			WriteGrant fromProject = grant(writes, userHome.resolve("from-project"));
+			requireThat(fromProject.possible(), "projectPossible").isTrue();
+			requireThat(fromProject.setting(), "projectSetting").contains(projectFile.toString());
+		}
+	}
+
+	/**
+	 * The installer reads project settings only from the folders between its working directory and the nearest
+	 * repository root, so that it does not read the settings of unrelated folders above them.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void readsProjectSettingsToRepositoryRoot() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path userHome = cleanup.add(testDirectory()).toRealPath();
+			Path home = Files.createDirectories(userHome.resolve(".claude"));
+			Files.writeString(home.resolve("settings.json"), "{\"sandbox\":{\"enabled\":true}}");
+			Path outer = Files.createDirectories(userHome.resolve("outer"));
+			Path repository = Files.createDirectories(outer.resolve("repository"));
+			Files.createDirectories(repository.resolve(".git"));
+			Files.createDirectories(outer.resolve(".claude"));
+			Files.writeString(outer.resolve(".claude/settings.json"), "{\"sandbox\":{\"filesystem\":" +
+				"{\"allowWrite\":[" + json(userHome.resolve("from-outer")) + "]}}}");
+			Files.createDirectories(repository.resolve(".claude"));
+			Files.writeString(repository.resolve(".claude/settings.json"), "{\"sandbox\":{\"filesystem\":" +
+				"{\"allowWrite\":[" + json(userHome.resolve("from-repository")) + "]}}}");
+
+			SandboxWrites writes = noManagedSettings().sandboxWrites(home, userHome, repository);
+
+			requireThat(writes.grants().stream().map(WriteGrant::path).toList(), "paths").
+				contains(userHome.resolve("from-repository")).doesNotContain(userHome.resolve("from-outer"));
+		}
+	}
+
+	/**
+	 * Returns an integration that finds no managed settings, whatever the machine holds.
+	 *
+	 * @return the integration
+	 */
+	private static Integration noManagedSettings()
+	{
+		return new Integration(Platform.LINUX_X64, List.of());
+	}
+
+	/**
+	 * Returns the grant of a folder.
+	 *
+	 * @param writes the sandbox writes
+	 * @param folder the folder
+	 * @return the first grant of the folder
+	 */
+	private static WriteGrant grant(SandboxWrites writes, Path folder)
+	{
+		List<WriteGrant> grants = writes.grants().stream().filter(candidate -> candidate.path().equals(folder)).toList();
+		requireThat(grants, "grants").withContext(folder, "folder").withContext(writes, "writes").isNotEmpty();
+		return grants.getFirst();
+	}
+
+	/**
+	 * Returns a path as a JSON string.
+	 *
+	 * @param path the path
+	 * @return the JSON string, with its quotes
+	 */
+	private static String json(Path path)
+	{
+		return MAPPER.writeValueAsString(path.toString());
 	}
 
 	/**

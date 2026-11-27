@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.claude.policy;
 
+import com.holdmyspot.cat.claude.installer.ClaudeWriteGrants;
 import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
@@ -12,7 +13,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumSet;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -87,6 +87,43 @@ public final class ClaudePolicyReader
 	{
 		requireThat(session, "session").isNotNull();
 		return read(session, null);
+	}
+
+	/**
+	 * Reads the options of the command line that started a session, for the reading of where its sandbox lets commands
+	 * write. It does not read any settings file.
+	 *
+	 * @param session the session
+	 * @return the options that decide which settings apply to the session
+	 * @throws NullPointerException if {@code session} is null
+	 * @throws PolicyRefusal        if the session's process is not running, the operating system does not report its
+	 *                              command line, or the command line holds an option that CAT cannot read
+	 */
+	public ClaudeWriteGrants.Launch readLaunch(ClaudeSession session) throws PolicyRefusal
+	{
+		requireThat(session, "session").isNotNull();
+		long processId = session.processId();
+		ProcessDescription process = processes.find(processId).orElseThrow(() -> new PolicyRefusal("the session's " +
+			"Claude Code process " + processId + " is not running", PROCESS_FIX));
+		if (process.command().isEmpty() || process.arguments().isEmpty())
+		{
+			throw new PolicyRefusal("the operating system does not report the command line of the Claude Code " +
+				"process " + processId, PROCESS_FIX);
+		}
+		ClaudeCommandLine commandLine = ClaudeCommandLine.parse(process.arguments().get());
+		Optional<Set<String>> sources = Optional.empty();
+		if (commandLine.settingSources().isPresent())
+		{
+			Set<String> names = new LinkedHashSet<>();
+			for (Map.Entry<String, SettingsScope> entry : ClaudeRelease.SETTING_SOURCE_NAMES.entrySet())
+			{
+				if (commandLine.settingSources().get().contains(entry.getValue()))
+					names.add(entry.getKey());
+			}
+			sources = Optional.of(names);
+		}
+		return new ClaudeWriteGrants.Launch(commandLine.addDirectories(), commandLine.settings(), sources,
+			commandLine.deniedTools(), commandLine.restricted());
 	}
 
 	/**
@@ -218,7 +255,6 @@ public final class ClaudePolicyReader
 
 		ParentPolicy policy = null;
 		Set<String> portLimitedDomains = new LinkedHashSet<>();
-		Map<Path, String> writeSettings = new LinkedHashMap<>();
 		for (int subset = 0; subset < 1 << uncertain.size(); ++subset)
 		{
 			List<SettingsLayer> layers = new ArrayList<>(certain);
@@ -231,7 +267,6 @@ public final class ClaudePolicyReader
 			layers.sort(Comparator.comparing(SettingsLayer::scope));
 			ClaudePolicyComputation.Computed computed = ClaudePolicyComputation.compute(layers, commandLine, session);
 			portLimitedDomains.addAll(computed.portLimitedDomains());
-			computed.writeSettings().forEach(writeSettings::putIfAbsent);
 			if (policy == null)
 				policy = computed.policy();
 			else
@@ -240,7 +275,7 @@ public final class ClaudePolicyReader
 		assert policy != null;
 		for (Path source : sources)
 			policy.requireTrusted(source);
-		return new ClaudePolicyReading(policy, start, sources, portLimitedDomains, writeSettings);
+		return new ClaudePolicyReading(policy, start, sources, portLimitedDomains);
 	}
 
 	/**
