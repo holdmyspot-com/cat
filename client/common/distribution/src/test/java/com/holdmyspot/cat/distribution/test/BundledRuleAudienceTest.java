@@ -472,6 +472,52 @@ public final class BundledRuleAudienceTest
 	}
 
 	/**
+	 * Verifies the packaged guidance for cheaper ways to verify and to diagnose is present in the rule that owns each
+	 * topic and reachable from the routing that precedes the work: the expensive-run rule has the agent test run-output
+	 * consumers locally on downloaded artifacts, run a changed CI definition's static checks locally, and give a
+	 * workflow's own planning and reporting logic a mode without the expensive steps; the flaky-test rule has the agent
+	 * rerun the smallest scope and read the job's own retry attempts before calling a failure a flake; and the request
+	 * execution rule has the agent switch to a cheaper or faster way that it recommends in the same turn.
+	 *
+	 * @throws IOException        if the bundled rules cannot be copied, routed, or read
+	 * @throws URISyntaxException if the class path returns a malformed resource location
+	 */
+	@Test
+	public void cheaperWorkGuidanceIsReachable() throws IOException, URISyntaxException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-bundled-rules-"));
+			BundledRules.copy(plugin.resolve("rules"));
+			RuleArtifactRouter.route(plugin, scope.yaml());
+			Path include = plugin.resolve("rules/include/common");
+
+			requireThat(oneLine(Files.readString(include.resolve("expensive-verification-runs.md"))), "expensiveRuns").
+				contains("only consumes the outputs that earlier runs produced").
+				contains("on artifacts downloaded from a recent run").
+				contains("needs the runner's environment").
+				contains("run locally every static check that the definition has").
+				contains("`actionlint`").
+				contains("`shellcheck`").
+				contains("give it a mode that runs that logic without the expensive steps that it coordinates");
+			requireThat(oneLine(Files.readString(include.resolve("flaky-tests.md"))), "flakyTests").
+				contains("rerun the smallest scope that can show it").
+				contains("only the named tests through a stress or repeat input").
+				contains("read the job's log for the retry attempts that it already makes").
+				contains("failed every attempt reproduces under that job's conditions");
+			requireThat(oneLine(Files.readString(plugin.resolve("rules/common/request-execution.md"))),
+				"requestExecution").
+				contains("recommend a cheaper or faster way to do the work in progress").
+				contains("switch to it in the same turn");
+
+			String testingIndex = oneLine(Files.readString(include.resolve("rule-routing/testing-and-builds.md")));
+			requireThat(testingIndex, "testingIndex").
+				contains("`${CAT_PLUGIN_ROOT}/rules/include/common/expensive-verification-runs.md`").
+				contains("`${CAT_PLUGIN_ROOT}/rules/include/common/flaky-tests.md`");
+		}
+	}
+
+	/**
 	 * Verifies an agent that is about to rerun a failed operation that is expensive to run in full, or to count a
 	 * conclusion that compares separate runs, can reach the packaged rule for that decision: the failure area index
 	 * routes to the diagnostic-run rule, and the rule routing that every agent of either harness receives at startup
