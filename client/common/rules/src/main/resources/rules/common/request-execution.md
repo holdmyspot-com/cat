@@ -22,6 +22,11 @@ Before escalating a choice during authorized implementation, such as asking the 
 or pausing work for that choice, and before deciding whether such a choice is a product-policy gap, lazy load
 `../include/common/request-execution/gap-classification.md`.
 
+When you recommend a cheaper or faster way to do the work in progress, such as a smaller scope, a local check in place
+of a hosted run, or a narrower command, switch to it in the same turn, unless the choice is the user's to make, such as
+one that changes what the user receives, what it costs them, or what they authorized. Do not carry on with the costlier
+way after recommending the cheaper one.
+
 When translating a request into a tool or workflow invocation, supply an optional limit, policy, or setting only when
 the requester explicitly provides it or the request identifies the project's documented default. Authorization to use a
 capability does not authorize selecting its optional parameters. For example, create or resume a goal without a token

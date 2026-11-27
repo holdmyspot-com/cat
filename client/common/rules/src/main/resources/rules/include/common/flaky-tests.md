@@ -39,6 +39,11 @@ a scratch location outside the repository. Then:
 3. Remove the temporary test before committing or handing off the work.
 4. Report the runs, failures, and conditions, such as load, thread count, and machine, before and after the fix.
 
+When you decide whether a failure is a flake, rerun the smallest scope that can show it, not the whole workflow: only
+the failed jobs, or only the named tests through a stress or repeat input. Before you call the failure a flake, read
+the job's log for the retry attempts that it already makes. A test that failed every attempt reproduces under that
+job's conditions, so it needs a cause, not a rerun.
+
 Before you rerun a check that fails on only some runs, such as a test, build step or CI job, or run a temporary test
 to reproduce such a failure, set a reproduction budget: a number of runs and a time limit. Size it from the failure's
 observed rate: at a rate p, about 3/p runs show the failure with 95% probability, for example 60 runs for a failure seen

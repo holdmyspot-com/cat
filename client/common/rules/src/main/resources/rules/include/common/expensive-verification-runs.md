@@ -30,6 +30,10 @@
 	the agent needs, such as a cache that does not yet exist, and is cancelled at once otherwise, when the agent started
 	it.
 
+- Code that only consumes the outputs of earlier runs, a changed CI definition, and a workflow's own planning or
+	reporting logic are each tested at the cheapest boundary that can show their defects, so that a defect in them costs
+	a local run and not a hosted one.
+
 ## Guidance
 
 This rule applies before preparing, starting, dispatching or requesting a run of a build, test suite, workflow or probe
@@ -42,6 +46,18 @@ Before repeating a slow or expensive check, look for a recorded pass. Reuse it w
 affect the result still match and the check covers the current question. Start a new run only when a new failure
 points to the behavior it checks, the question still needs evidence that the earlier result cannot provide, or the
 verification requires a fresh run, such as when repetition is the measurement.
+
+Before you start a run to test a change to code that only consumes the outputs that earlier runs produced, such as
+result comparison, shard coverage or report tooling, run the changed code locally on artifacts downloaded from a recent
+run. Start a run only for what needs the runner's environment.
+
+Before you start a run to test a changed CI definition, run locally every static check that the definition has. For a
+GitHub Actions workflow, run `actionlint`, which also runs `shellcheck` on the workflow's scripts. A run that fails on
+a mistake that such a check reports spends runner time to learn what the local check shows at once.
+
+When a workflow's own planning, selection or reporting logic needs repeated testing, give it a mode that runs that
+logic without the expensive steps that it coordinates, such as a dry-run input that prints the plan or the report and
+starts no build or test. Test the logic through that mode, and run the full workflow once, after the logic works.
 
 Before expensive setup or dispatch, identify which prerequisites could fail early and invalidate the result. Use
 the smallest supported check that observes the relevant boundary in the environment that will run the work. For
