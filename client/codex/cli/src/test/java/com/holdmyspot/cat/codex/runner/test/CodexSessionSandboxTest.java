@@ -27,6 +27,7 @@ public final class CodexSessionSandboxTest
 	@Test
 	public void refusesNativeWindowsOnly()
 	{
+		// Requirement: R-I32
 		for (Platform platform : Platform.values())
 		{
 			Optional<String> refusal = CodexSessionSandbox.refusal(platform);

@@ -790,6 +790,7 @@ public final class CodexRunnerCliTest
 	@Test(dataProvider = "nativeWindows")
 	public void refusesSessionOnNativeWindows(Platform platform)
 	{
+		// Requirement: R-I32
 		for (Map<String, String> environment : List.of(Map.<String, String>of(),
 			Map.of(SessionRequestAccess.REQUESTS_VARIABLE, "requests")))
 		{

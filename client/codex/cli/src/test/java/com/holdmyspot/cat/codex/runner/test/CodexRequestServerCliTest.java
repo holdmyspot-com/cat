@@ -51,6 +51,7 @@ public final class CodexRequestServerCliTest
 	@Test(dataProvider = "nativeWindows")
 	public void refusesOnNativeWindows(Platform platform) throws IOException
 	{
+		// Requirement: R-I32
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
 			TestJvmScope jvm = new TestJvmScope())
 		{
@@ -77,6 +78,7 @@ public final class CodexRequestServerCliTest
 	@Test
 	public void runsOnLinuxAndMacOs() throws IOException
 	{
+		// Requirement: R-I32
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
 			TestJvmScope jvm = new TestJvmScope())
 		{
