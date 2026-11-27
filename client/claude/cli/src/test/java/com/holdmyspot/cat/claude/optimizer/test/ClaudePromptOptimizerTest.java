@@ -132,6 +132,41 @@ public final class ClaudePromptOptimizerTest
 	}
 
 	/**
+	 * Verifies that an installed-plugins query for a plugin name without a marketplace is refused as invalid input
+	 * that states the form of the name, instead of reporting that the plugin has no installed copy.
+	 *
+	 * @throws IOException if a file cannot be written
+	 */
+	@Test
+	public void rejectsPluginNameWithoutMarketplace() throws IOException
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Setup setup = setup(scope);
+			Path configuration = Files.createDirectory(setup.home().resolve("claude-configuration"));
+			Path records = configuration.resolve("plugins/installed_plugins.json");
+			Files.createDirectories(records.getParent());
+			Files.writeString(records, "{\"version\":2,\"plugins\":{\"docs@fixture\":[]}}");
+			ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+			String[] args = {"evaluator-info", "installed-plugins", setup.root().toString(), "docs"};
+			int exit;
+			try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
+			{
+				exit = PromptOptimizerCli.run(args, _ ->
+					ClaudeOptimizerCommandScopeSecrets.getClaudeOptimizerCommandScopeAccess().
+						newClaudeOptimizerCommandScope(Map.of("CLAUDE_CONFIG_DIR", configuration.toString()),
+							setup.home(), setup.root(), setup.home().resolve("artifact"), Yielding.waiting()),
+					ZoneOffset.UTC, out);
+			}
+			requireThat(exit, "exit").isEqualTo(2);
+			JsonNode report = JsonMapper.builder().build().readTree(bytes.toString(StandardCharsets.UTF_8));
+			requireThat(report.path("status").stringValue(), "status").isEqualTo("invalid_input");
+			requireThat(report.path("message").stringValue(), "message").contains("docs").
+				contains("<plugin>@<marketplace>");
+		}
+	}
+
+	/**
 	 * Verifies that on native Windows, where CAT does not start Claude trials, {@code start} is refused with the reason,
 	 * which names what is missing and directs the user to WSL2.
 	 *

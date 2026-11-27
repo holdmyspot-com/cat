@@ -173,6 +173,83 @@ public final class CodexPromptOptimizerTest
 	}
 
 	/**
+	 * Verifies that an installed-plugins query for a plugin name without a marketplace is refused as invalid input
+	 * that states the form of the name, rather than as a failure to inspect the installation.
+	 *
+	 * @throws IOException if the installation fixture cannot be created
+	 */
+	@Test
+	public void rejectsPluginNameWithoutMarketplace() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("codex-evaluator-project")).toRealPath();
+			Path home = cleanup.add(Files.createTempDirectory("codex-evaluator-home")).toRealPath();
+			Path codexHome = Files.createDirectory(home.resolve("custom-codex-home"));
+			Files.writeString(codexHome.resolve("config.toml"), "[plugins.\"docs@fixture\"]\nenabled = true\n");
+			StringBuilder output = new StringBuilder();
+			int exit = runInstalledPlugins(project, home, codexHome, "docs", output);
+			requireThat(exit, "exit").isEqualTo(2);
+			JsonNode report = JsonMapper.builder().build().readTree(output.toString());
+			requireThat(report.path("status").stringValue(), "status").isEqualTo("invalid_input");
+			requireThat(report.path("message").stringValue(), "message").contains("docs").
+				contains("<plugin>@<marketplace>");
+		}
+	}
+
+	/**
+	 * Verifies that an installed-plugins query whose install records cannot be parsed reports that the records could
+	 * not be read and names them, without quoting their content.
+	 *
+	 * @throws IOException if the installation fixture cannot be created
+	 */
+	@Test
+	public void namesUnreadableInstallRecordsInFailure() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("codex-evaluator-project")).toRealPath();
+			Path home = cleanup.add(Files.createTempDirectory("codex-evaluator-home")).toRealPath();
+			Path codexHome = Files.createDirectory(home.resolve("custom-codex-home"));
+			Path configuration = Files.writeString(codexHome.resolve("config.toml"), "token = \"secret-value\n[plugins");
+			StringBuilder output = new StringBuilder();
+			int exit = runInstalledPlugins(project, home, codexHome, "docs@fixture", output);
+			requireThat(exit, "exit").isEqualTo(1);
+			JsonNode report = JsonMapper.builder().build().readTree(output.toString());
+			requireThat(report.path("status").stringValue(), "status").isEqualTo("error");
+			requireThat(report.path("message").stringValue(), "message").contains("install records").
+				contains(configuration.toString()).doesNotContain("secret-value");
+		}
+	}
+
+	/**
+	 * Runs {@code evaluator-info installed-plugins} against a Codex home.
+	 *
+	 * @param project the project
+	 * @param home the user's home directory
+	 * @param codexHome the Codex home directory
+	 * @param name the plugin name to look up
+	 * @param output receives the command's output
+	 * @return the exit code
+	 */
+	private static int runInstalledPlugins(Path project, Path home, Path codexHome, String name,
+		StringBuilder output)
+	{
+		ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+		String[] args = {"evaluator-info", "installed-plugins", project.toString(), name};
+		int exit;
+		try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
+		{
+			exit = PromptOptimizerCli.run(args, _ ->
+				CodexOptimizerCommandScopeSecrets.getCodexOptimizerCommandScopeAccess().
+					newCodexOptimizerCommandScope(Map.of("CODEX_HOME", codexHome.toString()), home, project,
+						home.resolve("artifact"), Yielding.waiting()), ZoneOffset.UTC, out);
+		}
+		output.append(bytes.toString(StandardCharsets.UTF_8));
+		return exit;
+	}
+
+	/**
 	 * Startup-hook inspection reports native home overlays and adapter inputs without running the declared command.
 	 *
 	 * @throws IOException if the fixture cannot be created or read

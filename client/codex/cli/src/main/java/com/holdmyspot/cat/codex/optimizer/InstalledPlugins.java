@@ -112,14 +112,14 @@ public final class InstalledPlugins
 		Path configuration = new CodexInstallation(home.toAbsolutePath()).configuration();
 		if (!Files.isRegularFile(configuration))
 			return MissingNode.getInstance();
-		String text = BoundedInput.readUtf8(configuration, MAXIMUM_CONFIGURATION_BYTES, "Codex configuration");
+		String text = BoundedInput.readUtf8(configuration, MAXIMUM_CONFIGURATION_BYTES, "Codex install records");
 		try
 		{
 			return TomlMapper.builder().build().readTree(text).path("plugins");
 		}
 		catch (JacksonException e)
 		{
-			throw new IOException("Cannot parse Codex configuration from " + configuration, e);
+			throw new IOException("Cannot parse the Codex install records in " + configuration, e);
 		}
 	}
 }

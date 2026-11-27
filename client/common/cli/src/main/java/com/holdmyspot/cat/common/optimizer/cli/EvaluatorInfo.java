@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.node.ArrayNode;
@@ -46,8 +47,12 @@ final class EvaluatorInfo
 	static final String EARLY_HOOKS = "early-hooks";
 	private static final String USAGE = COMMAND +
 		" <absolute-project> <absolute-staged-source> <relative-target> [<absolute-plugin-bases-file>] or " +
-		COMMAND + " " + INSTALLED + " <absolute-project> <plugin-name> or " + COMMAND + " " + EARLY_HOOKS +
+		COMMAND + " " + INSTALLED + " <absolute-project> <plugin>@<marketplace> or " + COMMAND + " " + EARLY_HOOKS +
 		" <absolute-project> <absolute-staged-source> <absolute-plugin-bases-file> [<absolute-trial-home>]";
+	/**
+	 * The form of the name that both harnesses record an installed plugin under, {@code <plugin>@<marketplace>}.
+	 */
+	private static final Pattern PLUGIN_NAME = Pattern.compile("[^@]+@[^@]+");
 	private static final int MAXIMUM_PATH_LENGTH = 16_384;
 	private static final int MAXIMUM_BINDING_BYTES = 1_048_576;
 	private static final int MAXIMUM_BINDINGS = 4_096;
@@ -217,6 +222,13 @@ final class EvaluatorInfo
 		if (!project.isAbsolute() || !Files.isDirectory(project))
 			return invalid(scope, out);
 		Harness harness = scope.harness();
+		if (!PLUGIN_NAME.matcher(name).matches())
+		{
+			out.println(Commands.statusMessage(scope.json(), "invalid_input", "The plugin name \"" + name +
+				"\" must be <plugin>@<marketplace>, as in cat@cat. Expected " + COMMAND + " " + INSTALLED +
+				" <absolute-project> <plugin>@<marketplace>"));
+			return 2;
+		}
 		try
 		{
 			List<Path> installed = scope.evaluatorInspection(project, project.resolve("results")).installedPlugins(name);
@@ -228,10 +240,16 @@ final class EvaluatorInfo
 			out.println(scope.json().writeValueAsString(report));
 			return 0;
 		}
-		catch (IOException | UncheckedIOException | JacksonException | IllegalArgumentException _)
+		catch (IOException | UncheckedIOException | IllegalArgumentException e)
+		{
+			// The messages of these exceptions name the failed record or argument, never its content
+			return PromptOptimizerCli.fail(scope.json(), out, harness.productName() +
+				" could not inspect its installed plugins: " + e.getMessage());
+		}
+		catch (JacksonException _)
 		{
 			return PromptOptimizerCli.fail(scope.json(), out, harness.productName() +
-				" could not inspect its installed plugins.");
+				" could not write its installed plugins report.");
 		}
 	}
 
