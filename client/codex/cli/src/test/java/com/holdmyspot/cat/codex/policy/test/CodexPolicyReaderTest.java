@@ -408,11 +408,11 @@ public final class CodexPolicyReaderTest
 				default_permissions = "p"
 				[permissions.p]
 				extends = ":workspace"
-				[permissions.p.filesystem]
-				%s = "none"
+				[permissions.p.filesystem.":workspace_roots"]
+				"secret-*" = "none"
 				[permissions.p.network]
 				enabled = true
-				""".formatted(toml(session.project().resolve("secret-*"))));
+				""");
 
 			ParentPolicy policy = session.read("exec", "summarize");
 
