@@ -12277,7 +12277,10 @@ unreadable setting. Exit: those tests failed before the change and pass after it
 	to fail on the tree before the change, and the candidate commit is integrated; (B) any clause fails: the refusal
 	stays, its message names the failed clause, the implementation and what happened, a test that fails first asserts that
 	message, and the candidate is not integrated. A clause that could not run leaves the refusal as it is and the premise
-	unrun, and the report names it.
+	unrun, and the report names it. The candidate also gives every Codex session that CAT starts on Windows the
+	`[windows] sandbox` of its parent's configuration and refuses one whose effective configuration selects `mxc` or no
+	implementation, and drops `features.prefer_mxc`, as `design.md` D189 says; under outcome (B) these are not
+	integrated either.
 - **Order:** (1) With no host: list, from the installed Codex build's documentation or source at its version, the values
 	that `[windows] allowed_sandbox_implementations` accepts, what each implementation needs (administrator rights, a
 	firewall rule, dedicated local users), what the build does when the setting is absent, and how a running session shows
@@ -12303,7 +12306,7 @@ unreadable setting. Exit: those tests failed before the change and pass after it
 	start the session through a double of the harness process instead of exiting with the refusal's status; the Claude
 	Code runner's refusal on Windows is unchanged (`ClaudeSessionSandboxTest`). (b) Outcome B, instead of (a): the same
 	three tests assert that the refusal stays, exits with the same status, and names the failed clause, the implementation
-	and what happened. Then, on the hosted runner, the live checks of P38, each reading its outcome from the file system, the
+	and what happened. (c) Both outcomes' candidate, failing first: `CodexConnectionConfigurationTest` gives a Windows session the source configuration's `[windows] sandbox` and no `prefer_mxc`, and `CodexSessionSandboxTest` refuses `mxc` (configured or required) and no implementation, and accepts `elevated` and `unelevated`. Then, on the hosted runner, the live checks of P38, each reading its outcome from the file system, the
 	network and Codex's rollout: (1) the child's file creation in each granted folder succeeds and the same command leaves
 	no file for each denied form in P38 (1), whether it runs under `cmd`, PowerShell or a process that a command starts;
 	(2) each denied read, list and copy of a denied file and folder, the source home's `auth.json` among them, fails in
@@ -12337,8 +12340,8 @@ unreadable setting. Exit: those tests failed before the change and pass after it
 		keeps the refusal for every Windows host, including one whose Codex configuration permits only an implementation that
 		passed. A per-implementation lift, which would need CAT to read the implementation in effect, refuse the others and
 		name them, is a change of its own and is not made.
-- **Classes affected:** `CodexSessionSandbox`, `CodexRequestServerCli`, `CodexRunnerCli`, `HarnessSandbox`, and their
-	tests.
+- **Classes affected:** `CodexSessionSandbox`, `CodexRequestServerCli`, `CodexRunnerCli`, `HarnessSandbox`,
+	`CodexConnectionConfiguration` and `CodexRunner` (D189), and their tests.
 - **Tier and dependencies:** the orchestrator runs the live checks and applies the decision rule; `optimize-xhigh` makes
 	the code change that follows. Needs WI-176, whose readers the checks exercise, and WI-168's login service, which serves
 	a child's login. It needs a hosted Windows runner, which needs no sign-in.
