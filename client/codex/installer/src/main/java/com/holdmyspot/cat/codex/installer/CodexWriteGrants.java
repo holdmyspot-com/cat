@@ -32,6 +32,9 @@ import tools.jackson.databind.JsonNode;
  * unknown, the sandbox mode is not certain, the grant comes from a project configuration that Codex may not trust, a
  * path cannot be resolved for certain, or a recorded policy might have hidden it. It applies a denial only when it is
  * sure of the grant that the denial limits, and lists in the problems what it cannot read.
+ * <p>
+ * A session that has no sandbox has no grant to report: no layer and no option names a sandbox mode, or the only mode
+ * that they name is {@code danger-full-access}. The missing sandbox already lets commands write anywhere.
  */
 public final class CodexWriteGrants
 {
@@ -48,9 +51,13 @@ public final class CodexWriteGrants
 	 */
 	private static final Pattern PROFILE_NAME = Pattern.compile("[A-Za-z0-9_-]+");
 	/**
+	 * The sandbox mode that runs commands without a sandbox.
+	 */
+	private static final String NO_SANDBOX_MODE = "danger-full-access";
+	/**
 	 * The sandbox modes that give commands no write grant.
 	 */
-	private static final Set<String> NO_WRITE_MODES = Set.of("read-only", "danger-full-access");
+	private static final Set<String> NO_WRITE_MODES = Set.of("read-only", NO_SANDBOX_MODE);
 	/**
 	 * The sandbox mode that grants the working directory and the temporary folders.
 	 */
@@ -267,7 +274,7 @@ public final class CodexWriteGrants
 					permissionsInUse = true;
 			}
 			launch.flatMap(Launch::sandboxMode).ifPresent(modes::add);
-			if (launchKnown && !permissionsInUse && !modes.isEmpty() && NO_WRITE_MODES.containsAll(modes))
+			if (!permissionsInUse && (hasNoSandbox(modes) || launchKnown && NO_WRITE_MODES.containsAll(modes)))
 				return result(session.recorded());
 			certainMode = launchKnown && !permissionsInUse && modes.equals(Set.of(WORKSPACE_WRITE));
 			addImplicitGrants();
@@ -283,6 +290,20 @@ public final class CodexWriteGrants
 			}
 			launch.ifPresent(this::addAddedFolders);
 			return result(session.recorded());
+		}
+
+		/**
+		 * Indicates whether no layer and no option gives the session a sandbox: none names a mode, or the only mode
+		 * that they name runs commands without one. A session without a sandbox has no grant to report, because the
+		 * missing sandbox already lets commands write anywhere, and that includes the working directory and the
+		 * temporary folders. Modes that disagree leave the session possibly sandboxed, so they do not count.
+		 *
+		 * @param modes the sandbox modes that the layers and the options name
+		 * @return {@code true} if the session has no sandbox
+		 */
+		private static boolean hasNoSandbox(Set<String> modes)
+		{
+			return modes.isEmpty() || modes.equals(Set.of(NO_SANDBOX_MODE));
 		}
 
 		/**

@@ -86,7 +86,12 @@ Codex the machine-wide, managed, user, profile and project configuration, the co
 session's rollout records. A grant that CAT cannot interpret for certain, such as a setting of a form it does not know,
 a pattern it cannot resolve, a project setting that the session may or may not apply, or a recorded policy that could hide
 a configured grant, is reported as one that may be writable, and the notice names the setting. CAT applies a denial only
-when it is certain of it. The notice that CAT shows you at the start of the session names each folder and the setting
+when it is certain of it. A session or an install that has no sandbox gets no such notice, because a missing sandbox
+already lets commands write anywhere: for Claude Code, no settings layer enables the sandbox, and for Codex, no
+configuration layer or command-line option sets a sandbox mode, or the mode is `danger-full-access`. It reports no
+folder at all then, including the working folder and the temporary folders that a sandbox would let a command write,
+unless the layers disagree on whether a sandbox applies, in which case it still reports what may be writable. The
+notice that CAT shows you at the start of the session names each folder and the setting
 that grants the write, and the session continues. When CAT cannot read part of the policy, such as a settings file that is
 not valid, a setting of the wrong type, or the command line of the session's process, the notice says what it could not
 check, and the session continues. The notice states that it covers only the commands that run inside the sandbox: a

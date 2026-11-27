@@ -31,6 +31,10 @@ import tools.jackson.databind.json.JsonMapper;
  * The reading overestimates. A grant that the settings give in a form that CAT interprets for certain is a certain
  * grant. A grant that CAT cannot interpret for certain, or whose settings may not apply to the session, is a possible
  * grant. A denial counts only when CAT is certain of it. What CAT cannot read is listed as a problem.
+ * <p>
+ * A session whose settings never enable the sandbox has no grant to report, not even for its project folder: the
+ * missing sandbox already lets commands write anywhere. Settings that disagree on whether the sandbox is enabled leave
+ * it possibly on, so their grants are possible.
  */
 public final class ClaudeWriteGrants
 {
