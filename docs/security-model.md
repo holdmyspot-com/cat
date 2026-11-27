@@ -78,13 +78,22 @@ harness on the installer's `PATH` instead, confirm it as a first install does, a
 result says which program replaced which. A recorded program that exists but cannot start, or no longer identifies
 itself as the harness's program, still refuses the install. So a process that can both remove the recorded program and
 change the `PATH` of an installer run could choose the program that a later install runs outside the sandbox; CAT warns
-you about the folders that could let a sandboxed command do that. At the start of each session, CAT checks that no folder
-on `PATH` is writable by the session's sandbox, meaning that the sandbox lets its commands write the folder or a folder
-above it: for Claude Code, its sandbox's write allowlist less its write denials, as the session's settings give them, and
-for Codex, its writable roots. When a folder is, the notice that CAT shows you at the start of the session names each
-folder and the setting that grants the write, and the session continues. An install that replaces the recorded program
-with one from such a folder warns the same way, from the user-level sandbox settings of each harness home that it
-finds. A first install refuses, changing
+you about the folders that could let a sandboxed command do that. At the start of each session, CAT checks whether a
+folder on `PATH` is writable by the session's sandbox, meaning that the sandbox lets its commands write the folder or a
+folder above it. This check reads the sandbox's write grants more widely than the policy that bounds a child session
+does: it overestimates. For Claude Code it reads the managed, command-line, local, project and user settings, and for
+Codex the machine-wide, managed, user, profile and project configuration, the command line, and the policy that the
+session's rollout records. A grant that CAT cannot interpret for certain, such as a setting of a form it does not know,
+a pattern it cannot resolve, a project setting that the session may or may not apply, or a recorded policy that could hide
+a configured grant, is reported as one that may be writable, and the notice names the setting. CAT applies a denial only
+when it is certain of it. The notice that CAT shows you at the start of the session names each folder and the setting
+that grants the write, and the session continues. When CAT cannot read part of the policy, such as a settings file that is
+not valid, a setting of the wrong type, or the command line of the session's process, the notice says what it could not
+check, and the session continues. The notice states that it covers only the commands that run inside the sandbox: a
+command that runs with the sandbox disabled or excluded from it, and the harness's own file tools, are not covered. An
+install that replaces the recorded program with one from such a folder warns the same way, from the managed settings, the
+user-level settings of each harness home that it finds, and the settings of the project that the installer's working
+directory is in. A first install refuses, changing
 nothing, when `PATH` holds no program of the harness or the program it holds cannot start in the installer's
 environment. An installation serves only its own harness: its installer refuses a `--harness` that names the other one.
 A first install also refuses a release older than the data version in `migration-version` in the data directory, which
