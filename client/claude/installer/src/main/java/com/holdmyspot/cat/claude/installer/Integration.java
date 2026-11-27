@@ -8,7 +8,9 @@ import com.holdmyspot.cat.claude.credential.CredentialRefusedException;
 import com.holdmyspot.cat.claude.layout.ClaudeInstallation;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.SandboxWrites;
 import com.holdmyspot.cat.common.ShellQuoting;
+import com.holdmyspot.cat.common.WriteGrant;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
@@ -20,6 +22,7 @@ import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.activation.PermissionRecorder;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -296,6 +299,86 @@ public final class Integration implements HarnessIntegration
 		Path settings = home.normalize().resolve(SETTINGS);
 		Locations.checkLinks(home, settings);
 		return settings;
+	}
+
+	/**
+	 * Reads where Claude Code's user-level settings let the sandbox's commands write: the
+	 * {@code sandbox.filesystem.allowWrite} and {@code permissions.additionalDirectories} entries are grants, and the
+	 * {@code sandbox.filesystem.denyWrite} entries are denials. An entry that starts with {@code ~/} names a folder of
+	 * the user's home, one that starts with {@code //} or {@code /} an absolute folder, and any other relative
+	 * entry a folder of {@code home}, which holds the settings file. An entry that holds a wildcard is left out, and so
+	 * is a settings file that is missing or cannot be read.
+	 *
+	 * @param home     the absolute Claude Code configuration directory
+	 * @param userHome the user's absolute home directory
+	 * @return the grants and denials
+	 * @throws NullPointerException     if any argument is null
+	 * @throws IllegalArgumentException if {@code home} or {@code userHome} are relative
+	 */
+	@Override
+	public SandboxWrites sandboxWrites(Path home, Path userHome)
+	{
+		requireThat(home, "home").isAbsolute();
+		requireThat(userHome, "userHome").isAbsolute();
+		Path file = home.resolve(SETTINGS);
+		if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
+			return SandboxWrites.NONE;
+		JsonNode settings;
+		try
+		{
+			settings = MAPPER.readTree(Files.readString(file));
+		}
+		catch (IOException | JacksonException _)
+		{
+			return SandboxWrites.NONE;
+		}
+		List<WriteGrant> grants = new ArrayList<>();
+		for (Path folder : folders(settings.path("sandbox").path("filesystem").path("allowWrite"), home, userHome))
+			grants.add(new WriteGrant(folder, ALLOW_WRITE + " in " + file));
+		for (Path folder : folders(settings.path("permissions").path("additionalDirectories"), home, userHome))
+			grants.add(new WriteGrant(folder, "permissions.additionalDirectories in " + file));
+		return new SandboxWrites(grants, folders(settings.path("sandbox").path("filesystem").path("denyWrite"), home,
+			userHome));
+	}
+
+	/**
+	 * Returns the folders that the entries of a settings array name.
+	 *
+	 * @param entries  the array, or a missing node
+	 * @param home     the folder that a relative entry is relative to
+	 * @param userHome the user's home directory
+	 * @return the absolute, normalized folders of the entries that name one
+	 */
+	private static List<Path> folders(JsonNode entries, Path home, Path userHome)
+	{
+		List<Path> folders = new ArrayList<>();
+		for (JsonNode node : entries)
+		{
+			if (!node.isString())
+				continue;
+			String entry = node.stringValue();
+			if (entry.isBlank() || entry.indexOf('*') >= 0 || entry.indexOf('?') >= 0 || entry.indexOf('[') >= 0)
+				continue;
+			try
+			{
+				Path folder;
+				if (entry.equals("~"))
+					folder = userHome;
+				else if (entry.startsWith("~/"))
+					folder = userHome.resolve(entry.substring(2));
+				else if (entry.startsWith("//"))
+					folder = Path.of(entry.substring(1));
+				else
+					folder = home.resolve(entry);
+				if (folder.isAbsolute())
+					folders.add(folder.normalize());
+			}
+			catch (InvalidPathException _)
+			{
+				// An entry that is not a path names no folder
+			}
+		}
+		return folders;
 	}
 
 	/**

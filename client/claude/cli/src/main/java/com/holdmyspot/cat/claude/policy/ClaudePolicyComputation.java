@@ -10,9 +10,11 @@ import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -70,6 +72,10 @@ final class ClaudePolicyComputation
 	 * on every port, so such an entry gives them no host.
 	 */
 	private final Set<String> portLimitedDomains = new LinkedHashSet<>();
+	/**
+	 * The setting that grants each write root, by the root as the computation added it.
+	 */
+	private final Map<Path, String> writeSettings = new LinkedHashMap<>();
 
 	/**
 	 * Creates a computation.
@@ -101,7 +107,7 @@ final class ClaudePolicyComputation
 	{
 		ClaudePolicyComputation computation = new ClaudePolicyComputation(List.copyOf(layers), commandLine, session);
 		ParentPolicy policy = computation.compute();
-		return new Computed(policy, Set.copyOf(computation.portLimitedDomains));
+		return new Computed(policy, Set.copyOf(computation.portLimitedDomains), computation.writeSettings);
 	}
 
 	/**
@@ -110,9 +116,23 @@ final class ClaudePolicyComputation
 	 * @param policy             the policy
 	 * @param portLimitedDomains the allowed domains that the policy leaves out because they limit a host to one port,
 	 *                           as the settings spell them
+	 * @param writeSettings      the setting that grants each write root of the policy, by the root as the computation
+	 *                           added it
 	 */
-	record Computed(ParentPolicy policy, Set<String> portLimitedDomains)
+	record Computed(ParentPolicy policy, Set<String> portLimitedDomains, Map<Path, String> writeSettings)
 	{
+		/**
+		 * Creates a computed policy.
+		 *
+		 * @param policy             the policy
+		 * @param portLimitedDomains the allowed domains that the policy leaves out
+		 * @param writeSettings      the setting that grants each write root of the policy
+		 */
+		Computed
+		{
+			portLimitedDomains = Set.copyOf(portLimitedDomains);
+			writeSettings = Map.copyOf(writeSettings);
+		}
 	}
 
 	/**
@@ -255,16 +275,23 @@ final class ClaudePolicyComputation
 				"Claude Code's option --disallowedTools"));
 		}
 
-		writeRoots.add(session.projectDirectory());
+		grant(writeRoots, session.projectDirectory(), "the session's project folder");
 		for (String directory : commandLine.addDirectories())
-			writeRoots.add(session.projectDirectory().resolve(directory).normalize());
+		{
+			grant(writeRoots, session.projectDirectory().resolve(directory).normalize(),
+				"Claude Code's option --add-dir");
+		}
 		for (SettingsLayer layer : layers)
 		{
 			boolean grants = !managedRulesOnly || layer.scope() == MANAGED;
 			if (grants)
 			{
 				for (String entry : strings(layer, "permissions", "additionalDirectories"))
-					paths.granted(entry, Syntax.SANDBOX, layer.root()).ifPresent(writeRoots::add);
+				{
+					Optional<Path> path = paths.granted(entry, Syntax.SANDBOX, layer.root());
+					if (path.isPresent())
+						grant(writeRoots, path.get(), "permissions.additionalDirectories in " + layer.source());
+				}
 			}
 			if (layer.scope() == PROJECT && projectRestricted)
 				continue;
@@ -273,7 +300,7 @@ final class ClaudePolicyComputation
 				Optional<Path> path = paths.granted(entry, Syntax.SANDBOX, layer.root());
 				// The release ignores a project entry that would reopen a denied path
 				if (path.isPresent() && (layer.scope() != PROJECT || !isInsideAny(path.get(), writeDenials)))
-					writeRoots.add(path.get());
+					grant(writeRoots, path.get(), "sandbox.filesystem.allowWrite in " + layer.source());
 			}
 			if (!grants)
 				continue;
@@ -281,11 +308,17 @@ final class ClaudePolicyComputation
 			{
 				Optional<String> specifier = specifier(rule, "Edit");
 				if (specifier.isPresent())
-					paths.granted(specifier.get(), Syntax.RULE, layer.root()).ifPresent(writeRoots::add);
+				{
+					Optional<Path> path = paths.granted(specifier.get(), Syntax.RULE, layer.root());
+					if (path.isPresent())
+						grant(writeRoots, path.get(), "permissions.allow in " + layer.source());
+				}
 			}
 		}
-		writeRoots.addAll(ClaudeRelease.BUILT_IN_WRITES);
-		session.temporaryDirectory().ifPresent(writeRoots::add);
+		for (Path root : ClaudeRelease.BUILT_IN_WRITES)
+			grant(writeRoots, root, "Claude Code's built-in write folders");
+		if (session.temporaryDirectory().isPresent())
+			grant(writeRoots, session.temporaryDirectory().get(), "the session's temporary folder");
 
 		for (Path root : List.copyOf(writeRoots))
 		{
@@ -300,6 +333,20 @@ final class ClaudePolicyComputation
 			if (layer.scope() == FLAG && layer.file().isPresent())
 				writeDenials.add(layer.file().get());
 		}
+	}
+
+	/**
+	 * Adds a folder that commands may write, and remembers the setting that grants it unless an earlier setting
+	 * granted the same folder.
+	 *
+	 * @param writeRoots the folders that commands may write
+	 * @param root       the folder to add
+	 * @param setting    the setting that grants the folder, as the user knows it
+	 */
+	private void grant(List<Path> writeRoots, Path root, String setting)
+	{
+		writeRoots.add(root);
+		writeSettings.putIfAbsent(root, setting);
 	}
 
 	/**

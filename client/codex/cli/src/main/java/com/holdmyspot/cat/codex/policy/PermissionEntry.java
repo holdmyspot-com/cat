@@ -9,21 +9,42 @@ import java.nio.file.Path;
  *
  * @param path   the absolute path that the entry governs, with everything below it
  * @param access what the session's commands may do with the path
+ * @param setting the setting that gives the entry, as the user knows it
  */
-public record PermissionEntry(Path path, Access access)
+public record PermissionEntry(Path path, Access access, String setting)
 {
 	/**
+	 * The setting of an entry whose source is not known.
+	 */
+	public static final String SANDBOX = "the session's sandbox";
+
+	/**
 	 * Creates an entry.
+	 *
+	 * @param path    the absolute path that the entry governs, with everything below it
+	 * @param access  what the session's commands may do with the path
+	 * @param setting the setting that gives the entry, as the user knows it
+	 * @throws NullPointerException     if any argument is null
+	 * @throws IllegalArgumentException if {@code path} is relative, or {@code setting} is blank
+	 */
+	public PermissionEntry
+	{
+		requireThat(path, "path").isAbsolute();
+		requireThat(access, "access").isNotNull();
+		requireThat(setting, "setting").isNotBlank();
+	}
+
+	/**
+	 * Creates an entry whose setting is not known.
 	 *
 	 * @param path   the absolute path that the entry governs, with everything below it
 	 * @param access what the session's commands may do with the path
 	 * @throws NullPointerException     if any argument is null
 	 * @throws IllegalArgumentException if {@code path} is relative
 	 */
-	public PermissionEntry
+	public PermissionEntry(Path path, Access access)
 	{
-		requireThat(path, "path").isAbsolute();
-		requireThat(access, "access").isNotNull();
+		this(path, access, SANDBOX);
 	}
 
 	/**

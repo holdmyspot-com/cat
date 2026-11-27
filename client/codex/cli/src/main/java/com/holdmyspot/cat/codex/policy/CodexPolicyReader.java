@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.codex.layout.CodexInstallation;
 import com.holdmyspot.cat.codex.optimizer.RolloutInterruptSignal;
+import com.holdmyspot.cat.common.SandboxWrites;
 import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 import com.holdmyspot.cat.common.runner.policy.HostAccess;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
@@ -13,6 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
@@ -85,6 +87,53 @@ public final class CodexPolicyReader
 	{
 		requireThat(session, "session").isNotNull();
 		requireThat(threadId, "threadId").isNotNull();
+		return readWithSettings(session, threadId, true).policy();
+	}
+
+	/**
+	 * Reads where the session's commands may write, with the setting that grants each folder. A session whose network
+	 * is off is read all the same, because its writes do not depend on its network.
+	 *
+	 * @param session  the session
+	 * @param threadId the {@code CODEX_THREAD_ID} of the thread that asks, or empty for the session's main thread
+	 * @return the writes
+	 * @throws NullPointerException if any argument is null
+	 * @throws IOException          if a file cannot be read
+	 * @throws PolicyRefusal        if the policy cannot be read safely, or the session's network is off
+	 */
+	public SandboxWrites readWrites(CodexSession session, Optional<String> threadId)
+		throws IOException, PolicyRefusal
+	{
+		requireThat(session, "session").isNotNull();
+		requireThat(threadId, "threadId").isNotNull();
+		Reading reading = readWithSettings(session, threadId, false);
+		return reading.policy().writes(reading.writeSettings());
+	}
+
+	/**
+	 * A policy, with the setting that grants each of its write roots.
+	 *
+	 * @param policy        the policy
+	 * @param writeSettings the setting of each write root, by a path that reaches the root
+	 */
+	private record Reading(ParentPolicy policy, Map<Path, String> writeSettings)
+	{
+	}
+
+	/**
+	 * Reads the policy, with the setting that grants each of its write roots.
+	 *
+	 * @param session  the session
+	 * @param threadId the thread that asks
+	 * @param requireNetwork {@code true} to refuse a session whose network is off
+	 * @return the reading
+	 * @throws IOException   if a file cannot be read
+	 * @throws PolicyRefusal if the policy cannot be read safely, or {@code requireNetwork} and the session's network
+	 *                       is off
+	 */
+	private Reading readWithSettings(CodexSession session, Optional<String> threadId, boolean requireNetwork)
+		throws IOException, PolicyRefusal
+	{
 		CodexLaunch launch = CodexCommandLine.parse(codexArguments(session));
 		for (Path preferences : systemFiles.managedPreferences())
 		{
@@ -137,9 +186,9 @@ public final class CodexPolicyReader
 			for (Path source : sources)
 				claim.requireTrusted(source);
 		}
-		if (policy.sandboxed() && reachesNoHost(policy.hosts()))
+		if (requireNetwork && policy.sandboxed() && reachesNoHost(policy.hosts()))
 			throw networkOff(resolved.profile());
-		return policy;
+		return new Reading(policy, resolved.sandbox().writeSettings());
 	}
 
 	/**

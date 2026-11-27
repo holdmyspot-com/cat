@@ -9,6 +9,7 @@ import java.nio.file.FileSystems;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -46,6 +47,14 @@ public final class CodexPermissions
 	private final Map<String, String> environment;
 	private final Path slashTmp;
 	private final List<Path> workspaceRoots = new ArrayList<>();
+	/**
+	 * The setting that gives each workspace root, by the root as it was added.
+	 */
+	private final Map<Path, String> workspaceSettings = new HashMap<>();
+	/**
+	 * The name of the user permissions profile that is being resolved, which names the setting of its entries.
+	 */
+	private String profileName = "";
 
 	/**
 	 * Creates a resolver.
@@ -108,9 +117,9 @@ public final class CodexPermissions
 		if (launch.bypassSandbox())
 			return new Resolved(CodexSandbox.UNSANDBOXED, Optional.empty());
 		ObjectNode merged = configuration.merged();
-		workspaceRoots.add(cwd);
+		addWorkspaceRoot(cwd, "the session's working directory");
 		for (String added : launch.addDirs())
-			workspaceRoots.add(cwd.resolve(path(added, "--add-dir")).normalize());
+			addWorkspaceRoot(cwd.resolve(path(added, "--add-dir")).normalize(), "Codex's option --add-dir");
 
 		if (usesLegacySyntax())
 		{
@@ -203,20 +212,66 @@ public final class CodexPermissions
 			settings = configuration.merged().path("sandbox_workspace_write");
 		else
 			settings = JsonNodeFactory.instance.objectNode();
+		String writableRootsSetting = "sandbox_workspace_write.writable_roots";
+		if (legacySettings)
+			writableRootsSetting = settingIn("sandbox_workspace_write", "writable_roots");
 		for (JsonNode root : settings.path("writable_roots"))
-			workspaceRoots.add(cwd.resolve(path(root.asString(""), "writable_roots")).normalize());
+		{
+			addWorkspaceRoot(cwd.resolve(path(root.asString(""), "writable_roots")).normalize(),
+				writableRootsSetting);
+		}
 		List<PermissionEntry> entries = new ArrayList<>();
 		for (Path root : FileSystems.getDefault().getRootDirectories())
 			entries.add(new PermissionEntry(root, Access.READ));
 		for (Path root : workspaceRoots)
-			entries.add(new PermissionEntry(root, Access.WRITE));
+			entries.add(new PermissionEntry(root, Access.WRITE, workspaceSettings.get(root)));
 		if (!settings.path("exclude_slash_tmp").asBoolean(false))
-			slashTmp().ifPresent(tmp -> entries.add(new PermissionEntry(tmp, Access.WRITE)));
+		{
+			slashTmp().ifPresent(tmp -> entries.add(new PermissionEntry(tmp, Access.WRITE,
+				"Codex's workspace-write mode, which writes /tmp")));
+		}
 		if (!settings.path("exclude_tmpdir_env_var").asBoolean(false))
-			tmpdir().ifPresent(tmp -> entries.add(new PermissionEntry(tmp, Access.WRITE)));
+		{
+			tmpdir().ifPresent(tmp -> entries.add(new PermissionEntry(tmp, Access.WRITE,
+				"Codex's workspace-write mode, which writes the folder that TMPDIR names")));
+		}
 		if (settings.path("network_access").asBoolean(false))
 			return new CodexSandbox(true, entries, HostAccess.ALL, true);
 		return new CodexSandbox(true, entries, HostAccess.NONE, false);
+	}
+
+	/**
+	 * Adds a workspace root and remembers the setting that gives it, unless an earlier setting gave the same root.
+	 *
+	 * @param root    the root
+	 * @param setting the setting that gives the root, as the user knows it
+	 */
+	private void addWorkspaceRoot(Path root, String setting)
+	{
+		workspaceRoots.add(root);
+		workspaceSettings.putIfAbsent(root, setting);
+	}
+
+	/**
+	 * Returns the setting of a configuration value as the user knows it: the table and key, and the file of the
+	 * layer whose value applies.
+	 *
+	 * @param table the table that holds the key
+	 * @param key   the key
+	 * @return the setting, such as {@code sandbox_workspace_write.writable_roots in /home/alice/.codex/config.toml}
+	 */
+	private String settingIn(String table, String key)
+	{
+		String setting = table + "." + key;
+		for (Layer layer : configuration.layers().reversed())
+		{
+			if (!layer.values().path(table).has(key))
+				continue;
+			if (layer.file().isPresent())
+				return setting + " in " + layer.file().get();
+			return setting + " in Codex's option -c";
+		}
+		return setting;
 	}
 
 	/**
@@ -230,10 +285,14 @@ public final class CodexPermissions
 	private CodexSandbox userProfile(String name) throws IOException, PolicyRefusal
 	{
 		ObjectNode profile = resolveProfile(name);
+		profileName = name;
 		for (Entry<String, JsonNode> root : profile.path("workspace_roots").properties())
 		{
 			if (root.getValue().asBoolean(false))
-				workspaceRoots.add(absolutePath(root.getKey(), "workspace_roots").normalize());
+			{
+				addWorkspaceRoot(absolutePath(root.getKey(), "workspace_roots").normalize(),
+					"permissions." + name + ".workspace_roots");
+			}
 		}
 		JsonNode filesystem = profile.path("filesystem");
 		int globDepth = filesystem.path("glob_scan_max_depth").asInt(DEFAULT_GLOB_DEPTH);
@@ -363,9 +422,12 @@ public final class CodexPermissions
 				target = base.toString();
 			else
 				target = base.toString().replaceAll("/+$", "") + "/" + subpath;
+			String setting = "permissions." + profileName + ".filesystem";
+			if (workspaceSettings.containsKey(base) && subpath.equals("."))
+				setting = workspaceSettings.get(base);
 			if (!GlobDenials.isGlob(target))
 			{
-				entries.add(new PermissionEntry(Path.of(target).normalize(), access));
+				entries.add(new PermissionEntry(Path.of(target).normalize(), access, setting));
 				continue;
 			}
 			if (access == Access.DENY)
@@ -376,7 +438,7 @@ public final class CodexPermissions
 			}
 			String subtree = target.replaceAll("/\\*\\*$", "");
 			if (!GlobDenials.isGlob(subtree))
-				entries.add(new PermissionEntry(Path.of(subtree).normalize(), access));
+				entries.add(new PermissionEntry(Path.of(subtree).normalize(), access, setting));
 			// Codex does not fully enforce other read or write globs; leaving them out is narrower
 		}
 	}

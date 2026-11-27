@@ -12,8 +12,10 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import tools.jackson.core.JacksonException;
@@ -216,6 +218,7 @@ public final class ClaudePolicyReader
 
 		ParentPolicy policy = null;
 		Set<String> portLimitedDomains = new LinkedHashSet<>();
+		Map<Path, String> writeSettings = new LinkedHashMap<>();
 		for (int subset = 0; subset < 1 << uncertain.size(); ++subset)
 		{
 			List<SettingsLayer> layers = new ArrayList<>(certain);
@@ -228,6 +231,7 @@ public final class ClaudePolicyReader
 			layers.sort(Comparator.comparing(SettingsLayer::scope));
 			ClaudePolicyComputation.Computed computed = ClaudePolicyComputation.compute(layers, commandLine, session);
 			portLimitedDomains.addAll(computed.portLimitedDomains());
+			computed.writeSettings().forEach(writeSettings::putIfAbsent);
 			if (policy == null)
 				policy = computed.policy();
 			else
@@ -236,7 +240,7 @@ public final class ClaudePolicyReader
 		assert policy != null;
 		for (Path source : sources)
 			policy.requireTrusted(source);
-		return new ClaudePolicyReading(policy, start, sources, portLimitedDomains);
+		return new ClaudePolicyReading(policy, start, sources, portLimitedDomains, writeSettings);
 	}
 
 	/**

@@ -156,6 +156,8 @@ final class ClaudeRuleInjectionHook
 					session.relativeRuleReferencesFile(), error);
 				if (!warning.isEmpty())
 					notices.add(warning);
+				if (eventName.equals("SessionStart") && processes.isPresent())
+					ClaudePathCheck.notice(environment, projectDir, processes.get(), error).ifPresent(notices::add);
 			}
 			if (!notices.isEmpty())
 				response.put("systemMessage", String.join("\n\n", notices));

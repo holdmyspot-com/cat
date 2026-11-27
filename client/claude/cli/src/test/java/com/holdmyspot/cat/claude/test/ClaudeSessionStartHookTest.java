@@ -1585,7 +1585,7 @@ public final class ClaudeSessionStartHookTest
 		{
 			if (processId != CLAUDE_PROCESS_ID)
 				return Optional.empty();
-			return Optional.of(new ProcessDescription(processId, Optional.of("2026-11-26T00:00:00Z-4242"),
+			return Optional.of(new ProcessDescription(processId, Optional.of("0f1e2d3c4b5a69788796a5b4c3d2e1f0t4200000"),
 				Optional.of("/usr/local/bin/claude"), Optional.empty(), Optional.of(List.of())));
 		};
 	}

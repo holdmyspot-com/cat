@@ -68,19 +68,22 @@ public record CodexConfiguration(List<Layer> layers, ObjectNode merged, boolean 
 	 *
 	 * @param values the layer's values, with relative paths resolved
 	 * @param flags  {@code true} if the layer holds the {@code -c} overrides
+	 * @param file   the layer's file, or empty for the {@code -c} overrides
 	 */
-	public record Layer(ObjectNode values, boolean flags)
+	public record Layer(ObjectNode values, boolean flags, Optional<Path> file)
 	{
 		/**
 		 * Creates a layer.
 		 *
 		 * @param values the layer's values, with relative paths resolved
 		 * @param flags  {@code true} if the layer holds the {@code -c} overrides
-		 * @throws NullPointerException if {@code values} is null
+		 * @param file   the layer's file, or empty for the {@code -c} overrides
+		 * @throws NullPointerException if any argument is null
 		 */
 		public Layer
 		{
 			requireThat(values, "values").isNotNull();
+			requireThat(file, "file").isNotNull();
 		}
 	}
 
@@ -119,7 +122,7 @@ public record CodexConfiguration(List<Layer> layers, ObjectNode merged, boolean 
 			}
 			addFileLayer(codexHome.resolve(profile + ".config.toml"), codexHome, lower, sources);
 		}
-		Layer flags = new Layer(overrideLayer(launch.overrides(), cwd), true);
+		Layer flags = new Layer(overrideLayer(launch.overrides(), cwd), true, Optional.empty());
 		List<Layer> upper = new ArrayList<>();
 		upper.add(flags);
 		addFileLayer(systemFiles.folder().resolve("managed_config.toml"), systemFiles.folder(), upper, sources);
@@ -139,7 +142,7 @@ public record CodexConfiguration(List<Layer> layers, ObjectNode merged, boolean 
 			if (values.isEmpty())
 				continue;
 			resolveRelativePaths(values.get(), dotCodex);
-			layers.add(new Layer(values.get(), false));
+			layers.add(new Layer(values.get(), false, Optional.of(file)));
 		}
 		layers.addAll(upper);
 		return new CodexConfiguration(layers, merge(layers), trust.decides(cwd), sources);
@@ -185,7 +188,7 @@ public record CodexConfiguration(List<Layer> layers, ObjectNode merged, boolean 
 		if (values.isEmpty())
 			return;
 		resolveRelativePaths(values.get(), base);
-		layers.add(new Layer(values.get(), false));
+		layers.add(new Layer(values.get(), false, Optional.of(file)));
 	}
 
 	/**

@@ -6,6 +6,8 @@ import com.holdmyspot.cat.codex.installer.PermissionProfile.Access;
 import com.holdmyspot.cat.codex.layout.CodexInstallation;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.SandboxWrites;
+import com.holdmyspot.cat.common.WriteGrant;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
@@ -316,6 +318,45 @@ public final class CodexIntegration implements HarnessIntegration
 			String created = SandboxModeProfile.create(content, mode.get(), file);
 			PermissionProfile.requireEditable(created, SandboxModeProfile.catProfile(mode.get()), file);
 		}
+	}
+
+	/**
+	 * Reads where the user's {@code config.toml} lets the sandbox's commands write: each entry of
+	 * {@code sandbox_workspace_write.writable_roots} is a grant. An entry that is not an absolute path is left out, and
+	 * so is a configuration that is missing or cannot be read.
+	 *
+	 * @param home     the absolute Codex home
+	 * @param userHome the user's absolute home directory
+	 * @return the grants, and no denials
+	 * @throws NullPointerException     if any argument is null
+	 * @throws IllegalArgumentException if {@code home} or {@code userHome} are relative
+	 */
+	@Override
+	public SandboxWrites sandboxWrites(Path home, Path userHome)
+	{
+		requireThat(home, "home").isAbsolute();
+		requireThat(userHome, "userHome").isAbsolute();
+		Path file = new CodexInstallation(home).configuration();
+		if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
+			return SandboxWrites.NONE;
+		List<WriteGrant> grants = new ArrayList<>();
+		try
+		{
+			ObjectNode document = TomlText.parse(read(file), file);
+			for (JsonNode root : document.path("sandbox_workspace_write").path("writable_roots"))
+			{
+				if (!root.isString())
+					continue;
+				Path folder = Path.of(root.stringValue());
+				if (folder.isAbsolute())
+					grants.add(new WriteGrant(folder.normalize(), "sandbox_workspace_write.writable_roots in " + file));
+			}
+		}
+		catch (IOException | InvalidPathException _)
+		{
+			return SandboxWrites.NONE;
+		}
+		return new SandboxWrites(grants, List.of());
 	}
 
 	/**

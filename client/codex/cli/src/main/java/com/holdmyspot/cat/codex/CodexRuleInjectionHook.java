@@ -180,6 +180,11 @@ final class CodexRuleInjectionHook
 				directory.ignoreNotice().ifPresent(notice -> notices.add(notice.forUser()));
 				if (!warning.isEmpty())
 					notices.add(warning);
+				if (eventName.equals("SessionStart") && sandbox.isPresent())
+				{
+					CodexPathCheck.notice(event, environment, projectDir, sandbox.get(), error).
+						ifPresent(notices::add);
+				}
 				if (!notices.isEmpty())
 					response.put("systemMessage", String.join("\n\n", notices));
 				output.write(json.writeValueAsBytes(response));
