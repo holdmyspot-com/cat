@@ -25,10 +25,11 @@ public final class WindowsRegistry
 	 */
 	private static final long HKEY_LOCAL_MACHINE = 0xFFFFFFFF80000002L;
 	/**
-	 * {@code RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ | RRF_SUBKEY_WOW64_64KEY}: a text value, whose environment variables
-	 * Windows expands, read from the 64-bit view of the registry.
+	 * {@code RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ | RRF_SUBKEY_WOW64_64KEY | RRF_NOEXPAND}: a text value, read from
+	 * the 64-bit view of the registry as it is stored, with the environment variables of an expandable value left
+	 * unexpanded.
 	 */
-	private static final int TEXT_FROM_64_BIT_VIEW = 0x2 | 0x4 | 0x10000;
+	private static final int TEXT_FROM_64_BIT_VIEW = 0x2 | 0x4 | 0x10000 | 0x10000000;
 	private static final int ERROR_FILE_NOT_FOUND = 2;
 	private static final int ERROR_PATH_NOT_FOUND = 3;
 	private static final int ERROR_MORE_DATA = 234;
@@ -49,8 +50,8 @@ public final class WindowsRegistry
 	 *
 	 * @param subkey the key below {@code HKEY_LOCAL_MACHINE}, such as {@code SOFTWARE\Policies\OpenAI\Codex}
 	 * @param name   the value's name
-	 * @return the value, with the environment variables of an expandable value expanded, or empty if the key or the
-	 *         value does not exist
+	 * @return the value as it is stored, with the environment variables of an expandable value such as
+	 *         {@code %ProgramData%} left unexpanded, or empty if the key or the value does not exist
 	 * @throws NullPointerException if any argument is null
 	 * @throws IOException          if Windows cannot be asked, or it fails, such as when the value is not text or the
 	 *                              user may not read the key

@@ -79,7 +79,8 @@ public final class CodexSystemFolder
 		 *
 		 * @param subkey the key below {@code HKEY_LOCAL_MACHINE}
 		 * @param name   the value's name
-		 * @return the value, or empty if the key or the value does not exist
+		 * @return the value as it is stored, with the environment variables of an expandable value left
+		 *         unexpanded, or empty if the key or the value does not exist
 		 * @throws IOException if the registry cannot be read for another reason
 		 */
 		Optional<String> machineText(String subkey, String name) throws IOException;
@@ -202,7 +203,10 @@ public final class CodexSystemFolder
 
 	/**
 	 * Returns the machine-wide requirements file, which may not exist. On Windows the registry value
-	 * {@code RequirementsPath} moves it, and a key or value that does not exist leaves it in the folder.
+	 * {@code RequirementsPath} moves it, and a key or value that does not exist leaves it in the folder. Codex
+	 * reads the value as it is stored, so a value that names an environment variable, such as
+	 * {@code %ProgramData%\OpenAI\Codex\requirements.toml}, is a relative path to Codex, which refuses it, and CAT
+	 * refuses it as well.
 	 *
 	 * @return the file
 	 * @throws IOException if the registry cannot be read, or its value is not an absolute path, so that CAT cannot
