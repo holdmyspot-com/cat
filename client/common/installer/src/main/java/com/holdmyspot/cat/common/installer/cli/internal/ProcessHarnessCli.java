@@ -73,6 +73,12 @@ public final class ProcessHarnessCli implements HarnessCli
 		this.starter = starter;
 	}
 
+	@Override
+	public Path program()
+	{
+		return Path.of(command.command().getLast());
+	}
+
 	/**
 	 * Runs the recorded command followed by {@code arguments}, with exactly the recorded environment and the harness
 	 * home as working directory, without a shell and with standard input closed, and waits for it to exit.

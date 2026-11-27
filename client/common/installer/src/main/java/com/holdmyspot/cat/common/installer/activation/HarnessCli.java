@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.common.installer.activation;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.List;
 
 /**
@@ -8,6 +9,13 @@ import java.util.List;
  */
 public interface HarnessCli
 {
+	/**
+	 * Returns the harness program that this runner runs.
+	 *
+	 * @return the program's path, as setup recorded it
+	 */
+	Path program();
+
 	/**
 	 * Runs the recorded command followed by {@code arguments}, with exactly the recorded environment and the harness
 	 * home as working directory, without a shell and with standard input closed, and waits for it to exit.
