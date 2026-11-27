@@ -52,7 +52,9 @@ allocating each new build worker, atomically acquire a reservation from a host-w
 active scheduler and nested instance. Admit the worker only when the current `MemAvailable`, less every held reservation
 and the candidate reservation, remains greater than 8 GiB. Reserve the calibrated whole-tree peak plus 25% for each
 build; do not substitute a parent Maven process's RSS for that peak. Release its reservation only after its terminal
-result is recorded. Before the same allocation, measure current host CPU utilization; when it is 95% or higher, do not
+result is recorded. A calibration whose build passes but whose process tree yields no positive resident-set sample
+reports its build as passed, records no calibration and releases its reservation, so the next build of the family
+calibrates again. Before the same allocation, measure current host CPU utilization; when it is 95% or higher, do not
 allocate another worker until a fresh measurement is lower or an allocated worker reaches a terminal result. Also do
 not exceed the available CPU count. Do not wait for an earlier snapshot's result merely because acceptance is
 chronological; wait for every build's terminal result and accept the workflow only when every required snapshot passes.
