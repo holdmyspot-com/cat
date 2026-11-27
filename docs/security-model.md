@@ -87,7 +87,9 @@ session's rollout records. On Linux and macOS Codex's machine-wide folder is `/e
 data folder that Windows names, or in `C:\ProgramData` when Windows names none, in which case CAT says that it could not
 check; Windows has no machine-wide managed configuration file, so CAT reads none there, and an administrator's registry
 value `RequirementsPath` under `HKLM\SOFTWARE\Policies\OpenAI\Codex` moves the requirements file that a child
-session's policy reader reads. A grant that CAT cannot interpret for certain, such as a setting of a form it does not know,
+session's policy reader reads. Codex reads that value as it is stored, without expanding environment variables, so
+CAT does too: a value such as `%ProgramData%\OpenAI\Codex\requirements.toml` is not an absolute path, and Codex
+refuses to load it and CAT refuses to start a child session. A grant that CAT cannot interpret for certain, such as a setting of a form it does not know,
 a pattern it cannot resolve, a project setting that the session may or may not apply, or a recorded policy that could hide
 a configured grant, is reported as one that may be writable, and the notice names the setting. CAT applies a denial only
 when it is certain of it. A session or an install that has no sandbox gets no such notice, because a missing sandbox
