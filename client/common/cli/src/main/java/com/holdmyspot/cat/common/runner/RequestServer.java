@@ -219,11 +219,12 @@ public final class RequestServer
 	 *                          runner's environment holds no harness markers
 	 * @param processes         tells whether the session's harness process still runs
 	 * @param pause             paces the checks for requests and for the harness process's end
+	 * @param platform          the platform that runs the server, whose launcher's name its messages give
 	 */
 	public record Host(String harness, Set<String> running, Optional<String> refusal, Path plugin,
 		InstalledCopies installed, Supplier<String> sandboxed, SessionFinder sessions, Function<Path, ToolScope> scopes,
 		LoginServices logins, Function<Map<String, String>, RequestedRunner.Resolver> starter, ProcessTable processes,
-		Pause pause)
+		Pause pause, Platform platform)
 	{
 		/**
 		 * Creates what a plugin gives its server.
@@ -241,6 +242,7 @@ public final class RequestServer
 		 *                          variables that reach the login service
 		 * @param processes         tells whether the session's harness process still runs
 		 * @param pause             paces the checks for requests and for the harness process's end
+		 * @param platform          the platform that runs the server
 		 * @throws NullPointerException     if any of the arguments are null
 		 * @throws IllegalArgumentException if {@code harness} is blank or {@code plugin} is not absolute
 		 */
@@ -258,6 +260,7 @@ public final class RequestServer
 			requireThat(starter, "starter").isNotNull();
 			requireThat(processes, "processes").isNotNull();
 			requireThat(pause, "pause").isNotNull();
+			requireThat(platform, "platform").isNotNull();
 		}
 	}
 
@@ -269,7 +272,7 @@ public final class RequestServer
 	}
 
 	/**
-	 * Returns the path of the request server of a plugin.
+	 * Returns the path of the request server of a plugin on the platform that runs this process.
 	 *
 	 * @param plugin the plugin's folder
 	 * @return the path
@@ -277,7 +280,21 @@ public final class RequestServer
 	 */
 	public static Path program(Path plugin)
 	{
+		return program(plugin, Platform.current());
+	}
+
+	/**
+	 * Returns the path of the request server of a plugin.
+	 *
+	 * @param plugin   the plugin's folder
+	 * @param platform the platform that runs the server
+	 * @return the path
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public static Path program(Path plugin, Platform platform)
+	{
 		requireThat(plugin, "plugin").isNotNull();
+		requireThat(platform, "platform").isNotNull();
 		return plugin.resolve(PluginDirectory.BIN).resolve(PROGRAM);
 	}
 
@@ -430,14 +447,16 @@ public final class RequestServer
 	/**
 	 * Returns why a client finds no request server, naming the command that starts one.
 	 *
-	 * @param plugin the folder of the plugin that holds the client
+	 * @param plugin   the folder of the plugin that holds the client
+	 * @param platform the platform that runs the client
 	 * @return the reason
-	 * @throws NullPointerException if {@code plugin} is null
+	 * @throws NullPointerException if any of the arguments are null
 	 */
-	private static String ownServer(Path plugin)
+	private static String ownServer(Path plugin, Platform platform)
 	{
 		return "No request server serves this session, and outside a nested session every session starts through it. " +
-			"Start it in the background once, as a command of its own: " + program(plugin) + ". Then launch again.";
+			"Start it in the background once, as a command of its own: " + program(plugin, platform) +
+			". Then launch again.";
 	}
 
 	/**
@@ -453,10 +472,28 @@ public final class RequestServer
 	 */
 	public static String missingServer(Path plugin, List<Path> installed) throws IOException
 	{
+		return missingServer(plugin, installed, Platform.current());
+	}
+
+	/**
+	 * Returns why a client finds no request server, naming the command that starts one. Only the installed plugin's
+	 * request server has the sandbox exception that lets it run outside the session's sandbox, so a client in any other
+	 * copy of CAT names the installed plugin's.
+	 *
+	 * @param plugin    the folder of the plugin that holds the client
+	 * @param installed the folders of the installed plugin
+	 * @param platform  the platform that runs the client, which decides the name of the server's launcher
+	 * @return the reason
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if a folder cannot be resolved
+	 */
+	public static String missingServer(Path plugin, List<Path> installed, Platform platform) throws IOException
+	{
 		requireThat(plugin, "plugin").isNotNull();
 		requireThat(installed, "installed").isNotNull();
+		requireThat(platform, "platform").isNotNull();
 		if (isInstalled(plugin, installed))
-			return ownServer(plugin);
+			return ownServer(plugin, platform);
 		String reason = "No request server serves this session, and outside a nested session every session starts " +
 			"through it. Only the installed plugin's launchers start sessions, and ";
 		if (installed.isEmpty())
@@ -466,7 +503,7 @@ public final class RequestServer
 		}
 		return reason + "this copy of CAT, " + plugin + ", is not the installed plugin: its request server has no " +
 			"sandbox exception, so it would run inside the session's sandbox. Start the installed plugin's request " +
-			"server in the background once, as a command of its own: " + program(installed.getFirst()) +
+			"server in the background once, as a command of its own: " + program(installed.getFirst(), platform) +
 			". Then launch again with the installed plugin's launcher.";
 	}
 
@@ -516,15 +553,16 @@ public final class RequestServer
 	 * Returns why a command that a harness session runs outside a nested session cannot have its optimization worktree's
 	 * registration changed, because no request server serves the session, naming the command that starts one.
 	 *
-	 * @param plugin the folder of the plugin that holds the command
+	 * @param plugin   the folder of the plugin that holds the command
+	 * @param platform the platform that runs the command
 	 * @return the reason
-	 * @throws NullPointerException if {@code plugin} is null
+	 * @throws NullPointerException if any of the arguments are null
 	 */
-	private static String ownWorktreeServer(Path plugin)
+	private static String ownWorktreeServer(Path plugin, Platform platform)
 	{
 		return "No request server serves this session, and the prompt optimizer adds, repairs and removes its " +
 			"optimization worktrees through it, outside the session's sandbox. Start it in the background once, as a " +
-			"command of its own: " + program(plugin) + ". Then run the command again.";
+			"command of its own: " + program(plugin, platform) + ". Then run the command again.";
 	}
 
 	/**
@@ -541,10 +579,30 @@ public final class RequestServer
 	 */
 	public static String missingWorktreeServer(Path plugin, List<Path> installed) throws IOException
 	{
+		return missingWorktreeServer(plugin, installed, Platform.current());
+	}
+
+	/**
+	 * Returns why a command that a harness session runs outside a nested session cannot have its optimization worktree's
+	 * registration changed, because no request server serves the session. Only the installed plugin's request server
+	 * has the sandbox exception that lets it run outside the session's sandbox, so a command in any other copy of CAT
+	 * names the installed plugin's.
+	 *
+	 * @param plugin    the folder of the plugin that holds the command
+	 * @param installed the folders of the installed plugin
+	 * @param platform  the platform that runs the command, which decides the name of the server's launcher
+	 * @return the reason
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if a folder cannot be resolved
+	 */
+	public static String missingWorktreeServer(Path plugin, List<Path> installed, Platform platform)
+		throws IOException
+	{
 		requireThat(plugin, "plugin").isNotNull();
 		requireThat(installed, "installed").isNotNull();
+		requireThat(platform, "platform").isNotNull();
 		if (isInstalled(plugin, installed))
-			return ownWorktreeServer(plugin);
+			return ownWorktreeServer(plugin, platform);
 		String reason = "No request server serves this session, and the prompt optimizer adds, repairs and removes its " +
 			"optimization worktrees through it, outside the session's sandbox. Only the installed plugin's launchers " +
 			"start sessions, and ";
@@ -555,7 +613,7 @@ public final class RequestServer
 		}
 		return reason + "this copy of CAT, " + plugin + ", is not the installed plugin: its request server has no " +
 			"sandbox exception, so it would run inside the session's sandbox. Start the installed plugin's request " +
-			"server in the background once, as a command of its own: " + program(installed.getFirst()) +
+			"server in the background once, as a command of its own: " + program(installed.getFirst(), platform) +
 			". Then run the command again from the installed plugin.";
 	}
 
@@ -726,7 +784,7 @@ public final class RequestServer
 		if (args.length > 0)
 		{
 			return Optional.of("The request server takes no arguments, but it was given " + String.join(" ", args) +
-				". Run " + program(host.plugin()) + " as a command of its own.");
+				". Run " + program(host.plugin(), host.platform()) + " as a command of its own.");
 		}
 		if (host.refusal().isPresent())
 			return host.refusal();

@@ -96,7 +96,7 @@ public final class ClaudeRequestServerCli
 				RequestServer.LoginServices.system(environment),
 				variables -> starter(scope, plugin, environment, variables),
 				new ProcessHandleTable(HarnessProcesses.system()),
-				Pause.sleeping(POLL));
+				Pause.sleeping(POLL), Platform.current());
 			Optional<RequestServer.ComparisonHost> comparison = Optional.empty();
 			if (Platform.current().isLinux())
 				comparison = Optional.of(ClaudeCodexComparison.host(environment));

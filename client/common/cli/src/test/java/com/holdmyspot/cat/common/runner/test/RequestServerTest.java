@@ -1883,6 +1883,7 @@ public final class RequestServerTest
 		private final ProcessIdentity harness;
 		private FakeParentPolicySource policy;
 		private Optional<String> hostRefusal = Optional.empty();
+		private Platform platform = Platform.current();
 		private Set<String> running = Set.of("claude");
 		private Optional<PolicyRefusal> sessionRefusal = Optional.empty();
 		private Optional<String> askingThread = Optional.empty();
@@ -2039,7 +2040,7 @@ public final class RequestServerTest
 						artifact = peer.get();
 					}
 					return new RequestedRunner.Selection(artifact, artifact.resolve("bin/runner"), starter);
-				}, processes, pause);
+				}, processes, pause, platform);
 		}
 
 		/**

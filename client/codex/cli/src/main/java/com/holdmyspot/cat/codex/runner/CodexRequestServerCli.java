@@ -71,7 +71,7 @@ public final class CodexRequestServerCli
 				RequestServer.LoginServices.system(environment),
 				variables -> starter(scope, plugin, environment, variables),
 				new ProcessHandleTable(HarnessProcesses.system()),
-				Pause.sleeping(POLL));
+				Pause.sleeping(POLL), Platform.current());
 			status = RequestServer.serve(args, host, new PrintWriter(System.err, true, StandardCharsets.UTF_8));
 		}
 		System.exit(status);
