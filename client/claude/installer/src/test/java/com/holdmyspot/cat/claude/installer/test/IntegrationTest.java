@@ -1999,6 +1999,40 @@ public final class IntegrationTest
 	}
 
 	/**
+	 * Settings that never enable the sandbox give no grant to warn of, in the user's settings, the managed settings
+	 * and the project's settings alike, because with no sandbox nothing is protected to begin with.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void readsNoWritesWhenNoSandboxIsSet() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path userHome = cleanup.add(testDirectory()).toRealPath();
+			Path home = Files.createDirectories(userHome.resolve(".claude"));
+			Files.writeString(home.resolve("settings.json"), "{\"sandbox\":{\"filesystem\":{\"allowWrite\":[" +
+				json(userHome.resolve("tools")) + "]}},\"permissions\":{\"additionalDirectories\":[" +
+				json(userHome.resolve("extra")) + "]}}");
+			Path managed = Files.createDirectories(userHome.resolve("managed"));
+			Files.writeString(managed.resolve("managed-settings.json"), "{\"sandbox\":{\"filesystem\":" +
+				"{\"allowWrite\":[" + json(userHome.resolve("from-managed")) + "]}}}");
+			Path repository = Files.createDirectories(userHome.resolve("repository"));
+			Files.createDirectories(repository.resolve(".git"));
+			Path projectFile = repository.resolve(".claude/settings.json");
+			Files.createDirectories(projectFile.getParent());
+			Files.writeString(projectFile, "{\"sandbox\":{\"filesystem\":{\"allowWrite\":[" +
+				json(userHome.resolve("from-project")) + "]}}}");
+
+			SandboxWrites writes = new Integration(Platform.LINUX_X64, List.of(managed)).
+				sandboxWrites(home, userHome, repository);
+
+			requireThat(writes.grants(), "grants").isEmpty();
+			requireThat(writes.problems(), "problems").isEmpty();
+		}
+	}
+
+	/**
 	 * A home with no settings file gives no grants and no problem, and a settings file that is not JSON is a problem
 	 * that names the file, so that the user does not take a missing warning for a folder that is safe.
 	 *

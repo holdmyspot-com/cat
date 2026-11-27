@@ -1542,6 +1542,14 @@ public final class ClaudeSessionStartHookTest
 				case "not granted" -> write(project, ".claude/settings.json", "{\"sandbox\":{\"enabled\":true}}");
 				case "no sandbox" -> write(project, ".claude/settings.json", "{\"sandbox\":{\"enabled\":false," +
 					"\"filesystem\":{\"allowWrite\":[" + jsonString(tools) + "]}}}");
+				case "no sandbox setting" -> write(project, ".claude/settings.json", "{\"sandbox\":{\"filesystem\":" +
+					"{\"allowWrite\":[" + jsonString(tools) + "]}},\"permissions\":{\"additionalDirectories\":[" +
+					jsonString(tools) + "]}}");
+				case "no settings" ->
+				{
+					// The PATH folder lies in the project, which is writable only inside a sandbox
+					bin = Files.createDirectories(project.resolve("node_modules/.bin"));
+				}
 				default -> throw new AssertionError(condition);
 			}
 
@@ -1561,7 +1569,7 @@ public final class ClaudeSessionStartHookTest
 	@DataProvider
 	public static Object[][] quietSandboxes()
 	{
-		return new Object[][]{{"not granted"}, {"no sandbox"}};
+		return new Object[][]{{"not granted"}, {"no sandbox"}, {"no sandbox setting"}, {"no settings"}};
 	}
 
 	/**
@@ -1622,6 +1630,33 @@ public final class ClaudeSessionStartHookTest
 				CLAUDE_PROCESS_ID).contains(bin.toString()).contains("may be writable").
 				contains(WritablePathEntries.COVERAGE);
 			requireThat(result.error(), "error").contains("Claude Code process " + CLAUDE_PROCESS_ID);
+		}
+	}
+
+	/**
+	 * Verifies that a SessionStart of a session with no sandbox still tells the user that it could not check when a
+	 * settings file cannot be read, and reports no folder of {@code PATH}.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void tellsUserOfUnreadableFileWithoutSandbox() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-")).toRealPath();
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			copyBundledRules(plugin);
+			Path bin = Files.createDirectories(project.resolve("node_modules/.bin"));
+			Path settings = project.resolve(".claude/settings.json");
+			write(project, ".claude/settings.json", "{not json");
+
+			Map<String, String> environment = sandboxEnvironment(project, plugin, cleanup, bin);
+			HookResult result = invokeInSandbox(cwdInput(project), environment, project, runningClaude());
+
+			String message = scope.json().readTree(result.output()).path("systemMessage").asString();
+			requireThat(message, "systemMessage").contains("could not check").contains(settings.toString()).
+				doesNotContain(bin.toString());
 		}
 	}
 

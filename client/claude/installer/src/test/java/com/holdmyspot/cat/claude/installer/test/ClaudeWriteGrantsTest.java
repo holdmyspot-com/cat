@@ -78,6 +78,50 @@ public final class ClaudeWriteGrantsTest
 	}
 
 	/**
+	 * Settings that never mention the sandbox leave it off, so the grants that they give, and the project folder, are
+	 * not reported, while what CAT cannot read still is.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void reportsNothingWhenNoSandboxIsSet() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup);
+			Path tools = fixture.root.resolve("tools");
+			fixture.write(fixture.config.resolve("settings.json"), "{\"sandbox\":{\"filesystem\":" +
+				"{\"allowWrite\":[" + Fixture.json(tools) + "]}},\"permissions\":{\"additionalDirectories\":[" +
+				Fixture.json(tools) + "],\"allow\":[\"Edit(" + tools.toString().replace("\\", "\\\\") + "/**)\"]}}");
+			Path broken = fixture.write(fixture.project.resolve(".claude/settings.json"), "{not json");
+
+			SandboxWrites writes = ClaudeWriteGrants.read(fixture.known());
+
+			requireThat(writes.grants(), "grants").isEmpty();
+			requireThat(String.join("\n", writes.problems()), "problems").contains(broken.toString());
+		}
+	}
+
+	/**
+	 * A session with no settings at all has no sandbox, so it has no grant, not even for its project folder.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void reportsNothingWithoutSettings() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup);
+
+			SandboxWrites writes = ClaudeWriteGrants.read(fixture.known());
+
+			requireThat(writes.grants(), "grants").isEmpty();
+			requireThat(writes.problems(), "problems").isEmpty();
+		}
+	}
+
+	/**
 	 * Settings that disagree on whether the sandbox is on leave its state uncertain, so every grant that they give is
 	 * possible.
 	 *

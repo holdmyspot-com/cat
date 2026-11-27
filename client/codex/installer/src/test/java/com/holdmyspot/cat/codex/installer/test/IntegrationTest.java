@@ -1539,8 +1539,8 @@ public final class IntegrationTest
 			Path machineTools = userHome.resolve("machine-tools");
 			Path projectTools = userHome.resolve("project-tools");
 			Path configuration = home.resolve("config.toml");
-			Files.writeString(configuration, "[sandbox_workspace_write]\nwritable_roots = [" +
-				MAPPER.writeValueAsString(tools.toString()) + "]\n");
+			Files.writeString(configuration, "sandbox_mode = \"workspace-write\"\n[sandbox_workspace_write]\n" +
+				"writable_roots = [" + MAPPER.writeValueAsString(tools.toString()) + "]\n");
 			Files.writeString(system.resolve("config.toml"), "[sandbox_workspace_write]\nwritable_roots = [" +
 				MAPPER.writeValueAsString(machineTools.toString()) + "]\n");
 			Files.createDirectories(work.resolve(".codex"));
@@ -1559,6 +1559,46 @@ public final class IntegrationTest
 			requireThat(byPath.get(projectTools).setting(), "project").
 				contains(work.resolve(".codex/config.toml").toString());
 			requireThat(writes.problems(), "problems").isEmpty();
+		}
+	}
+
+	/**
+	 * Configurations that list writable roots but set no sandbox mode, and one that sets {@code danger-full-access}, give
+	 * no grant to warn of, because with no sandbox nothing is protected to begin with, and the working directory and the
+	 * temporary folders are not reported either.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void readsNoWritableRootsWhenNoSandboxIsSet() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path userHome = cleanup.add(Files.createTempDirectory(testRoot(), "integration-")).toRealPath();
+			Path home = Files.createDirectories(userHome.resolve(".codex"));
+			Path system = Files.createDirectories(userHome.resolve("etc-codex"));
+			Path work = Files.createDirectories(userHome.resolve("work"));
+			Files.writeString(home.resolve("config.toml"), "[sandbox_workspace_write]\nwritable_roots = [" +
+				MAPPER.writeValueAsString(userHome.resolve("tools").toString()) + "]\n");
+			Files.writeString(system.resolve("config.toml"), "[sandbox_workspace_write]\nwritable_roots = [" +
+				MAPPER.writeValueAsString(userHome.resolve("machine-tools").toString()) + "]\n");
+			Files.createDirectories(work.resolve(".codex"));
+			Files.writeString(work.resolve(".codex/config.toml"), "[sandbox_workspace_write]\nwritable_roots = [" +
+				MAPPER.writeValueAsString(userHome.resolve("project-tools").toString()) + "]\n");
+			CodexIntegration integration = new CodexIntegration(system);
+
+			SandboxWrites unset = integration.sandboxWrites(home, userHome, work);
+
+			requireThat(unset.grants(), "unsetGrants").isEmpty();
+			requireThat(unset.problems(), "unsetProblems").isEmpty();
+
+			Files.writeString(home.resolve("config.toml"), "sandbox_mode = \"danger-full-access\"\n" +
+				"[sandbox_workspace_write]\nwritable_roots = [" +
+				MAPPER.writeValueAsString(userHome.resolve("tools").toString()) + "]\n");
+			Files.delete(system.resolve("config.toml"));
+			Files.delete(work.resolve(".codex/config.toml"));
+
+			requireThat(integration.sandboxWrites(home, userHome, work).grants(), "unrestrictedGrants").isEmpty();
 		}
 	}
 

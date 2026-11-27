@@ -691,6 +691,60 @@ public final class InstallCommandTest
 	}
 
 	/**
+	 * A harness that reports no sandbox grant, which is what it does when it has no sandbox in effect, adds no
+	 * sandbox warning to the message, and neither does a coverage statement stand alone.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if install refuses
+	 */
+	@Test
+	public void replacementDoesNotWarnWithoutSandbox() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("install-replace-nosandbox-")));
+			fixture.recordProgram();
+			Path replacement = fixture.replacementProgram();
+			fixture.goneProgram("missing");
+			fixture.integration.allowingWrites(new SandboxWrites(List.of(), List.of()));
+
+			Install.Outcome outcome = fixture.install();
+
+			String notices = String.join(" ", outcome.entries().notices());
+			requireThat(notices, "notices").contains(replacement.toString()).doesNotContain("writable").
+				doesNotContain(WritablePathEntries.COVERAGE);
+		}
+	}
+
+	/**
+	 * A harness with no sandbox in effect that still cannot read one of its settings tells the user what it could not
+	 * read and names no folder as writable, so that the user does not take the missing warning for a checked folder.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if install refuses
+	 */
+	@Test
+	public void replacementReportsUnreadableSettings() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("install-replace-unreadable-")));
+			fixture.recordProgram();
+			fixture.replacementProgram();
+			fixture.goneProgram("missing");
+			fixture.integration.allowingWrites(new SandboxWrites(List.of(), List.of(),
+				List.of("the settings file settings.json cannot be parsed")));
+
+			Install.Outcome outcome = fixture.install();
+
+			String notices = String.join(" ", outcome.entries().notices());
+			requireThat(notices, "notices").contains("could not read everything").
+				contains("settings.json cannot be parsed").contains(WritablePathEntries.COVERAGE).
+				doesNotContain("Warning:");
+		}
+	}
+
+	/**
 	 * The installer asks each harness for the sandbox writes of the project that holds the folder that the user ran it
 	 * from.
 	 *

@@ -1046,21 +1046,22 @@ public final class CodexSessionStartHookTest
 
 	/**
 	 * Verifies that a SessionStart adds nothing for the user when no folder on {@code PATH} is writable by the
-	 * sandbox, and when the session has no sandbox.
+	 * sandbox, and when the session has no sandbox, including a session that no layer gives a sandbox mode.
 	 *
-	 * @param mode the session's sandbox mode
+	 * @param configuration the user's configuration, with the folder that grants the write in place of {@code %s}
 	 * @throws IOException if the test filesystem cannot be used
 	 */
-	@Test(dataProvider = "quietModes")
-	public void addsNothingWhenNoPathFolderIsWritable(String mode) throws IOException
+	@Test(dataProvider = "quietConfigurations")
+	public void addsNothingWhenNoPathFolderIsWritable(String configuration) throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			writeReadingGuidance(plugin);
 			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-hook")));
-			Path bin = Files.createDirectories(session.folder("other/tools").resolve("bin"));
-			session.write("home/.codex/config.toml", "sandbox_mode = \"" + mode + "\"\n");
+			Path tools = session.folder("other/tools");
+			Path bin = Files.createDirectories(tools.resolve("bin"));
+			session.write("home/.codex/config.toml", configuration.formatted(CodexParentSession.toml(tools)));
 
 			HookResult result = invokeInSandbox(event(session.project()), session, plugin, bin);
 
@@ -1070,19 +1071,48 @@ public final class CodexSessionStartHookTest
 	}
 
 	/**
-	 * Returns the sandbox modes whose session-start check tells the user nothing.
+	 * Returns the configurations whose session-start check tells the user nothing.
 	 *
-	 * @return each mode
+	 * @return each configuration, with the folder that it grants in place of {@code %s}
 	 */
 	@DataProvider
-	public static Object[][] quietModes()
+	public static Object[][] quietConfigurations()
 	{
-		return new Object[][]{{"read-only"}, {"danger-full-access"}};
+		String roots = "[sandbox_workspace_write]\nwritable_roots = [%s]\n";
+		return new Object[][]{{"sandbox_mode = \"read-only\"\n"}, {"sandbox_mode = \"danger-full-access\"\n"},
+			{"sandbox_mode = \"read-only\"\n" + roots}, {"sandbox_mode = \"danger-full-access\"\n" + roots},
+			{roots}, {""}};
 	}
 
 	/**
-	 * Verifies that a SessionStart whose configuration sets no sandbox mode tells the user that the folder on
-	 * {@code PATH} may be writable, because CAT cannot tell which mode the session runs in.
+	 * Verifies that a SessionStart whose configuration sets no sandbox mode, and so has no sandbox, adds nothing for
+	 * the user about a folder of {@code PATH} in the project, which the working directory's grant would cover in a
+	 * sandbox.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void addsNothingForUnsandboxedProject() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			writeReadingGuidance(plugin);
+			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-hook")));
+			session.write("home/.codex/config.toml", "[sandbox_workspace_write]\nwritable_roots = [" +
+				CodexParentSession.toml(session.folder("other/tools")) + "]\n");
+			Path bin = Files.createDirectories(session.project().resolve("node_modules/.bin"));
+
+			HookResult result = invokeInSandbox(event(session.project()), session, plugin, bin);
+
+			requireThat(readResponse(result).has("systemMessage"), "hasSystemMessage").isFalse();
+			requireThat(result.error(), "error").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that a SessionStart whose configuration layers disagree on whether the sandbox is on tells the user that
+	 * the folder on {@code PATH} may be writable, because CAT cannot tell which mode the session runs in.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
@@ -1095,7 +1125,8 @@ public final class CodexSessionStartHookTest
 			writeReadingGuidance(plugin);
 			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-hook")));
 			Path bin = Files.createDirectories(session.folder("other/tools").resolve("bin"));
-			session.write("home/.codex/config.toml", "[sandbox_workspace_write]\nwritable_roots = [" +
+			session.write("home/.codex/config.toml", "sandbox_mode = \"danger-full-access\"\n" +
+				"[profiles.dev]\nsandbox_mode = \"workspace-write\"\n[sandbox_workspace_write]\nwritable_roots = [" +
 				CodexParentSession.toml(session.folder("other/tools")) + "]\n");
 
 			HookResult result = invokeInSandbox(event(session.project()), session, plugin, bin);

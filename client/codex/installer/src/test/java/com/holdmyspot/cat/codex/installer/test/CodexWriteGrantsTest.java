@@ -109,12 +109,14 @@ public final class CodexWriteGrantsTest
 	}
 
 	/**
-	 * A session whose configuration sets no mode may run in workspace-write mode, so its grants are possible.
+	 * A session that no layer and no flag gives a sandbox mode has no sandbox, so none of its configured roots, and
+	 * neither the working directory nor the temporary folders, are reported, whether or not CAT can read its command
+	 * line, while what CAT cannot read still is.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
 	@Test
-	public void marksGrantsPossibleWhenNoModeIsSet() throws IOException
+	public void reportsNothingWhenNoModeIsSet() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -122,10 +124,86 @@ public final class CodexWriteGrantsTest
 			Path tools = fixture.root.resolve("tools");
 			fixture.write(fixture.codexHome.resolve("config.toml"), "[sandbox_workspace_write]\n" +
 				"writable_roots = [" + Fixture.toml(tools) + "]\n");
+			Path broken = fixture.write(fixture.project.resolve(".codex/config.toml"), "writable_roots = [");
+
+			SandboxWrites known = CodexWriteGrants.read(fixture.known());
+			SandboxWrites unknown = CodexWriteGrants.read(fixture.session(Optional.empty(), List.of()));
+
+			requireThat(known.grants(), "knownGrants").isEmpty();
+			requireThat(unknown.grants(), "unknownGrants").isEmpty();
+			requireThat(String.join("\n", known.problems()), "knownProblems").contains(broken.toString());
+			requireThat(String.join("\n", unknown.problems()), "unknownProblems").contains(broken.toString());
+		}
+	}
+
+	/**
+	 * The sandbox-free mode gives no grant even when CAT cannot read the session's command line, because the setting
+	 * says that the session has no sandbox.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void reportsNothingForUnrestrictedMode() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup);
+			Path tools = fixture.root.resolve("tools");
+			fixture.write(fixture.codexHome.resolve("config.toml"), "sandbox_mode = \"danger-full-access\"\n" +
+				"[sandbox_workspace_write]\nwritable_roots = [" + Fixture.toml(tools) + "]\n");
+
+			SandboxWrites writes = CodexWriteGrants.read(fixture.session(Optional.empty(), List.of()));
+
+			requireThat(writes.grants(), "grants").isEmpty();
+		}
+	}
+
+	/**
+	 * A mode that a command line option gives is a sandbox, so a session with no mode in its configuration but a
+	 * {@code --sandbox workspace-write} option reports its grants.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void readsModeOfCommandLine() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup);
+			Path tools = fixture.root.resolve("tools");
+			fixture.write(fixture.codexHome.resolve("config.toml"), "[sandbox_workspace_write]\n" +
+				"writable_roots = [" + Fixture.toml(tools) + "]\n");
+			Launch launch = new Launch(List.of(), Optional.empty(), Optional.of("workspace-write"), false, List.of(),
+				false);
+
+			SandboxWrites writes = CodexWriteGrants.read(fixture.known(launch));
+
+			requireThat(fixture.grantAt(writes, tools).possible(), "tools").isFalse();
+			requireThat(fixture.grantAt(writes, fixture.project).possible(), "project").isFalse();
+		}
+	}
+
+	/**
+	 * Layers that disagree on whether the sandbox is on leave the session possibly sandboxed, so the grants stay
+	 * possible: one layer gives the sandbox-free mode and another gives workspace-write.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void marksGrantsPossibleOnSandboxSplit() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup);
+			Path tools = fixture.root.resolve("tools");
+			fixture.write(fixture.codexHome.resolve("config.toml"), "sandbox_mode = \"danger-full-access\"\n" +
+				"[sandbox_workspace_write]\nwritable_roots = [" + Fixture.toml(tools) + "]\n");
+			fixture.write(fixture.project.resolve(".codex/config.toml"), "sandbox_mode = \"workspace-write\"\n");
 
 			SandboxWrites writes = CodexWriteGrants.read(fixture.known());
 
 			requireThat(fixture.grantAt(writes, tools).possible(), "tools").isTrue();
+			requireThat(fixture.grantAt(writes, fixture.project).possible(), "project").isTrue();
 		}
 	}
 
