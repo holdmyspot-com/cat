@@ -7,7 +7,6 @@ import com.holdmyspot.cat.codex.layout.CodexInstallation;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SandboxWrites;
-import com.holdmyspot.cat.common.WriteGrant;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
@@ -134,10 +133,30 @@ public final class CodexIntegration implements HarnessIntegration
 	private static final JsonMapper MAPPER = JsonMapper.builder().build();
 
 	/**
+	 * The folder of Codex's machine-wide configuration.
+	 */
+	private final Path systemFolder;
+
+	/**
 	 * Creates the integration used by service discovery.
 	 */
 	public CodexIntegration()
 	{
+		this(Path.of("/etc/codex"));
+	}
+
+	/**
+	 * Creates an integration whose machine-wide configuration is in another folder.
+	 *
+	 * @param systemFolder the absolute folder that holds the machine-wide {@code config.toml} and
+	 *                     {@code managed_config.toml}
+	 * @throws NullPointerException     if {@code systemFolder} is null
+	 * @throws IllegalArgumentException if {@code systemFolder} is relative
+	 */
+	public CodexIntegration(Path systemFolder)
+	{
+		requireThat(systemFolder, "systemFolder").isAbsolute();
+		this.systemFolder = systemFolder;
 	}
 
 	@Override
@@ -321,42 +340,31 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Reads where the user's {@code config.toml} lets the sandbox's commands write: each entry of
-	 * {@code sandbox_workspace_write.writable_roots} is a grant. An entry that is not an absolute path is left out, and
-	 * so is a configuration that is missing or cannot be read.
+	 * Reads where Codex's sandbox may let commands write, with an overestimating reading of the machine-wide, user and
+	 * profile configuration, the working directory's project configuration, and the sandbox's implicit grants. The
+	 * installer cannot tell which session a grant will apply to, so it reads every grant as possible, and lists in the
+	 * problems each file that it cannot read.
 	 *
-	 * @param home     the absolute Codex home
-	 * @param userHome the user's absolute home directory
-	 * @return the grants, and no denials
+	 * @param home             the absolute Codex home
+	 * @param userHome         the user's absolute home directory
+	 * @param workingDirectory the absolute folder that the project configuration is read from
+	 * @return the grants, the denials that CAT is sure of, and the problems
 	 * @throws NullPointerException     if any argument is null
-	 * @throws IllegalArgumentException if {@code home} or {@code userHome} are relative
+	 * @throws IllegalArgumentException if any argument is relative
 	 */
 	@Override
-	public SandboxWrites sandboxWrites(Path home, Path userHome)
+	public SandboxWrites sandboxWrites(Path home, Path userHome, Path workingDirectory)
 	{
 		requireThat(home, "home").isAbsolute();
 		requireThat(userHome, "userHome").isAbsolute();
-		Path file = new CodexInstallation(home).configuration();
-		if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
-			return SandboxWrites.NONE;
-		List<WriteGrant> grants = new ArrayList<>();
-		try
-		{
-			ObjectNode document = TomlText.parse(read(file), file);
-			for (JsonNode root : document.path("sandbox_workspace_write").path("writable_roots"))
-			{
-				if (!root.isString())
-					continue;
-				Path folder = Path.of(root.stringValue());
-				if (folder.isAbsolute())
-					grants.add(new WriteGrant(folder.normalize(), "sandbox_workspace_write.writable_roots in " + file));
-			}
-		}
-		catch (IOException | InvalidPathException _)
-		{
-			return SandboxWrites.NONE;
-		}
-		return new SandboxWrites(grants, List.of());
+		requireThat(workingDirectory, "workingDirectory").isAbsolute();
+		Optional<Path> slashTmp = Optional.empty();
+		Path folder = Path.of("/tmp");
+		if (folder.isAbsolute())
+			slashTmp = Optional.of(folder);
+		return CodexWriteGrants.read(new CodexWriteGrants.Session(systemFolder,
+			CodexWriteGrants.managedPreferences(System.getProperty("user.name", "")), home, userHome, workingDirectory,
+			System.getenv(), slashTmp, Optional.empty(), List.of()));
 	}
 
 	/**

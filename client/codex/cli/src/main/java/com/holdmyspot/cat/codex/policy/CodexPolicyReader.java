@@ -2,6 +2,7 @@ package com.holdmyspot.cat.codex.policy;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.codex.installer.CodexWriteGrants;
 import com.holdmyspot.cat.codex.layout.CodexInstallation;
 import com.holdmyspot.cat.codex.optimizer.RolloutInterruptSignal;
 import com.holdmyspot.cat.common.SandboxWrites;
@@ -14,7 +15,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
@@ -87,51 +87,101 @@ public final class CodexPolicyReader
 	{
 		requireThat(session, "session").isNotNull();
 		requireThat(threadId, "threadId").isNotNull();
-		return readWithSettings(session, threadId, true).policy();
+		return readPolicy(session, threadId);
 	}
 
 	/**
-	 * Reads where the session's commands may write, with the setting that grants each folder. A session whose network
-	 * is off is read all the same, because its writes do not depend on its network.
+	 * Reads where the session's sandbox may let commands write, with the overestimating reading that the folders-on-PATH
+	 * check needs: it reports every grant that CAT cannot rule out, marks a grant possible when it cannot be sure that
+	 * the sandbox applies it, and lists in the problems everything that it could not read. Unlike the reading that
+	 * bounds a child session, a part of the policy that cannot be read never hides a grant: it becomes a problem, and
+	 * the grants that it might have given are reported as possible.
 	 *
 	 * @param session  the session
-	 * @param threadId the {@code CODEX_THREAD_ID} of the thread that asks, or empty for the session's main thread
-	 * @return the writes
+	 * @param threadId the thread that asks, or empty for the session's main thread
+	 * @return the grants, the denials that CAT is sure of, and the problems
 	 * @throws NullPointerException if any argument is null
-	 * @throws IOException          if a file cannot be read
-	 * @throws PolicyRefusal        if the policy cannot be read safely, or the session's network is off
 	 */
-	public SandboxWrites readWrites(CodexSession session, Optional<String> threadId)
-		throws IOException, PolicyRefusal
+	public SandboxWrites readWideWrites(CodexSession session, Optional<String> threadId)
 	{
 		requireThat(session, "session").isNotNull();
 		requireThat(threadId, "threadId").isNotNull();
-		Reading reading = readWithSettings(session, threadId, false);
-		return reading.policy().writes(reading.writeSettings());
+		List<String> problems = new ArrayList<>();
+		Optional<CodexWriteGrants.Launch> launch = Optional.empty();
+		try
+		{
+			List<String> arguments = codexArguments(session);
+			if (!CodexCommandLine.runsSharedServer(arguments))
+			{
+				CodexLaunch parsed = CodexCommandLine.parse(arguments);
+				launch = Optional.of(new CodexWriteGrants.Launch(parsed.overrides(), parsed.profile(),
+					parsed.sandboxMode(), parsed.bypassSandbox(), parsed.addDirs(), parsed.ignoreUserConfig()));
+			}
+		}
+		catch (PolicyRefusal e)
+		{
+			problems.add("CAT could not read this session's command line: " + e.reason() + ", so every grant that " +
+				"the configuration could give is reported as possible");
+		}
+		Path codexHome = session.accountHome().resolve(".codex");
+		try
+		{
+			codexHome = CodexInstallation.resolveHome(session.environment(), session.accountHome(), session.cwd());
+		}
+		catch (IOException | IllegalArgumentException e)
+		{
+			problems.add("CAT could not find Codex's home, so it read " + codexHome + ": " + e.getMessage());
+		}
+		List<CodexWriteGrants.Recorded> recorded = new ArrayList<>();
+		List<Path> rollouts = new ArrayList<>();
+		session.transcript().filter(Files::isRegularFile).ifPresent(rollouts::add);
+		try
+		{
+			threadRollout(codexHome, session, threadId).ifPresent(rollouts::add);
+		}
+		catch (IOException e)
+		{
+			problems.add("CAT could not find the rollout of the asking thread: " + e.getMessage());
+		}
+		for (Path rollout : rollouts)
+		{
+			try
+			{
+				Optional<CodexSandbox> turn = CodexRollout.latestTurn(rollout, session.environment(),
+					systemFiles.slashTmp());
+				if (turn.isPresent())
+				{
+					ParentPolicy policy = turn.get().toParentPolicy();
+					recorded.add(new CodexWriteGrants.Recorded(policy.sandboxed(), policy.writeRoots()));
+				}
+			}
+			catch (IOException e)
+			{
+				problems.add("CAT could not read the policy that " + rollout + " records: " + e.getMessage());
+			}
+			catch (PolicyRefusal e)
+			{
+				problems.add("CAT could not read the policy that " + rollout + " records: " + e.reason());
+			}
+		}
+		Optional<Path> slashTmp = Optional.ofNullable(systemFiles.slashTmp());
+		SandboxWrites writes = CodexWriteGrants.read(new CodexWriteGrants.Session(systemFiles.folder(),
+			systemFiles.managedPreferences(), codexHome, session.accountHome(), session.cwd(), session.environment(),
+			slashTmp, launch, recorded));
+		problems.addAll(writes.problems());
+		return new SandboxWrites(writes.grants(), writes.denials(), problems);
 	}
 
 	/**
-	 * A policy, with the setting that grants each of its write roots.
-	 *
-	 * @param policy        the policy
-	 * @param writeSettings the setting of each write root, by a path that reaches the root
-	 */
-	private record Reading(ParentPolicy policy, Map<Path, String> writeSettings)
-	{
-	}
-
-	/**
-	 * Reads the policy, with the setting that grants each of its write roots.
+	 * Reads the policy.
 	 *
 	 * @param session  the session
 	 * @param threadId the thread that asks
-	 * @param requireNetwork {@code true} to refuse a session whose network is off
-	 * @return the reading
+	 * @return the policy
 	 * @throws IOException   if a file cannot be read
-	 * @throws PolicyRefusal if the policy cannot be read safely, or {@code requireNetwork} and the session's network
-	 *                       is off
+	 * @throws PolicyRefusal if the policy cannot be read safely, or the session's network is off
 	 */
-	private Reading readWithSettings(CodexSession session, Optional<String> threadId, boolean requireNetwork)
+	private ParentPolicy readPolicy(CodexSession session, Optional<String> threadId)
 		throws IOException, PolicyRefusal
 	{
 		CodexLaunch launch = CodexCommandLine.parse(codexArguments(session));
@@ -186,9 +236,9 @@ public final class CodexPolicyReader
 			for (Path source : sources)
 				claim.requireTrusted(source);
 		}
-		if (requireNetwork && policy.sandboxed() && reachesNoHost(policy.hosts()))
+		if (policy.sandboxed() && reachesNoHost(policy.hosts()))
 			throw networkOff(resolved.profile());
-		return new Reading(policy, resolved.sandbox().writeSettings());
+		return policy;
 	}
 
 	/**

@@ -128,23 +128,6 @@ public record CodexSandbox(boolean sandboxed, List<PermissionEntry> entries, Hos
 	}
 
 	/**
-	 * Returns the setting that gives each path that the commands may write.
-	 *
-	 * @return the setting of each {@code write} entry, by the entry's real path; the first entry of a path names it
-	 * @throws IOException if a symbolic link in a path cannot be read
-	 */
-	public Map<Path, String> writeSettings() throws IOException
-	{
-		Map<Path, String> settings = new LinkedHashMap<>();
-		for (PermissionEntry entry : entries)
-		{
-			if (entry.access() == Access.WRITE)
-				settings.putIfAbsent(realPath(entry.path()), entry.setting());
-		}
-		return settings;
-	}
-
-	/**
 	 * Indicates whether a path lies strictly inside one of some folders.
 	 *
 	 * @param path    the path

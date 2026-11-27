@@ -4,7 +4,9 @@ import static com.holdmyspot.cat.codex.policy.test.CodexParentSession.toml;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.codex.policy.CodexPolicyReader;
+import com.holdmyspot.cat.common.SandboxWrites;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.WriteGrant;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import java.io.IOException;
@@ -52,6 +54,33 @@ public final class CodexRolloutPolicyTest
 			ParentPolicy policy = session.read("exec", "summarize");
 
 			requireThat(policy.writeRoots(), "writeRoots").contains(session.project()).doesNotContain(extra);
+		}
+	}
+
+	/**
+	 * Verifies that the overestimating reading reports a folder that the configuration grants and the recorded policy
+	 * leaves out as possible, because the intersection of the two might hide a grant, and reports the folders that the
+	 * recorded policy grants as certain.
+	 */
+	@Test
+	public void rolloutCannotHideConfiguredGrant() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
+			Path extra = configureExtraRoot(session);
+			session.transcript(writeRollout(session, CodexParentSession.SESSION_ID, CodexParentSession.SESSION_ID,
+				projectOnlyEntries(session)));
+
+			SandboxWrites writes = session.readWideWrites("exec", "summarize");
+
+			requireThat(writes.grants().stream().filter(grant -> grant.path().equals(extra)).
+				allMatch(WriteGrant::possible), "extraPossible").isTrue();
+			requireThat(writes.grants().stream().anyMatch(grant -> grant.path().equals(extra)), "extraReported").
+				isTrue();
+			requireThat(writes.grants().stream().filter(grant -> grant.path().equals(session.project())).
+				anyMatch(grant -> !grant.possible()), "projectCertain").isTrue();
+			requireThat(writes.problems(), "problems").isEmpty();
 		}
 	}
 

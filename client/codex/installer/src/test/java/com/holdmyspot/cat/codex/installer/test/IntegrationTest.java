@@ -1520,8 +1520,9 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * The {@code writable_roots} of the user's {@code config.toml} are the folders that the installer warns of, each
-	 * with the setting and the file that hold it.
+	 * The installer reads the writable roots of the user's configuration, the machine-wide configuration and the
+	 * working directory's project configuration, and marks each grant possible, because it cannot tell which session
+	 * the grant will apply to.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -1532,40 +1533,58 @@ public final class IntegrationTest
 		{
 			Path userHome = cleanup.add(Files.createTempDirectory(testRoot(), "integration-")).toRealPath();
 			Path home = Files.createDirectories(userHome.resolve(".codex"));
+			Path system = Files.createDirectories(userHome.resolve("etc-codex"));
+			Path work = Files.createDirectories(userHome.resolve("work"));
 			Path tools = userHome.resolve("tools");
+			Path machineTools = userHome.resolve("machine-tools");
+			Path projectTools = userHome.resolve("project-tools");
 			Path configuration = home.resolve("config.toml");
 			Files.writeString(configuration, "[sandbox_workspace_write]\nwritable_roots = [" +
 				MAPPER.writeValueAsString(tools.toString()) + "]\n");
+			Files.writeString(system.resolve("config.toml"), "[sandbox_workspace_write]\nwritable_roots = [" +
+				MAPPER.writeValueAsString(machineTools.toString()) + "]\n");
+			Files.createDirectories(work.resolve(".codex"));
+			Files.writeString(work.resolve(".codex/config.toml"), "[sandbox_workspace_write]\nwritable_roots = [" +
+				MAPPER.writeValueAsString(projectTools.toString()) + "]\n");
 
-			SandboxWrites writes = provider().sandboxWrites(home, userHome);
+			SandboxWrites writes = new CodexIntegration(system).sandboxWrites(home, userHome, work);
 
-			requireThat(writes.grants().stream().map(WriteGrant::path).toList(), "grantPaths").
-				containsExactly(List.of(tools));
-			requireThat(writes.grants().get(0).setting(), "setting").
+			Map<Path, WriteGrant> byPath = new TreeMap<>();
+			for (WriteGrant grant : writes.grants())
+				byPath.putIfAbsent(grant.path(), grant);
+			requireThat(byPath.get(tools).setting(), "setting").
 				contains("sandbox_workspace_write.writable_roots").contains(configuration.toString());
-			requireThat(writes.denials(), "denials").isEmpty();
+			requireThat(byPath.get(tools).possible(), "possible").isTrue();
+			requireThat(byPath.get(machineTools).setting(), "machine").contains(system.resolve("config.toml").toString());
+			requireThat(byPath.get(projectTools).setting(), "project").
+				contains(work.resolve(".codex/config.toml").toString());
+			requireThat(writes.problems(), "problems").isEmpty();
 		}
 	}
 
 	/**
-	 * A home with no {@code config.toml}, or one that is not TOML, gives no grants, because the reading leaves out
-	 * what it cannot read.
+	 * A home with no {@code config.toml} gives no configured grant and no problem, and one that is not TOML gives a
+	 * problem that names the file, because the reading must not leave out what it cannot read without saying so.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void readsNothingFromBadConfiguration() throws IOException
+	public void listsBadConfigurationAsProblem() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path userHome = cleanup.add(Files.createTempDirectory(testRoot(), "integration-")).toRealPath();
 			Path home = Files.createDirectories(userHome.resolve(".codex"));
+			Path system = Files.createDirectories(userHome.resolve("etc-codex"));
+			CodexIntegration integration = new CodexIntegration(system);
 
-			requireThat(provider().sandboxWrites(home, userHome), "missing").isEqualTo(SandboxWrites.NONE);
+			requireThat(integration.sandboxWrites(home, userHome, userHome).problems(), "missing").isEmpty();
 
 			Files.writeString(home.resolve("config.toml"), "writable_roots = [");
 
-			requireThat(provider().sandboxWrites(home, userHome), "malformed").isEqualTo(SandboxWrites.NONE);
+			SandboxWrites malformed = integration.sandboxWrites(home, userHome, userHome);
+			requireThat(malformed.problems().size(), "problems").isEqualTo(1);
+			requireThat(malformed.problems().get(0), "problem").contains(home.resolve("config.toml").toString());
 		}
 	}
 

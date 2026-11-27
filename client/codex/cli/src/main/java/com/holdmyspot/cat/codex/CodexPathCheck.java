@@ -4,12 +4,14 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.codex.policy.CodexHookSandbox;
 import com.holdmyspot.cat.codex.policy.CodexSession;
+import com.holdmyspot.cat.common.SandboxWrites;
 import com.holdmyspot.cat.common.WritablePathEntries;
 import com.holdmyspot.cat.common.WritablePathEntries.Writable;
-import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -33,17 +35,17 @@ final class CodexPathCheck
 	}
 
 	/**
-	 * Returns the notice that names the folders on {@code PATH} that the session's sandbox lets its commands write.
-	 * A policy that CAT cannot read safely gives no notice for the user: the reason goes to {@code error}, because the
-	 * session's rules do not depend on it.
+	 * Returns the notice that names the folders on {@code PATH} that the session's sandbox lets, or may let, its
+	 * commands write. The reading overestimates: a grant that CAT cannot rule out is reported as possible. A part of the
+	 * policy that CAT cannot read becomes a line of the notice that names what failed, and goes to {@code error} too,
+	 * because the session's rules do not depend on it.
 	 *
 	 * @param event       the SessionStart input
 	 * @param environment the hook's environment variables
 	 * @param projectDir  the session's working directory
 	 * @param sandbox     reads the session's sandbox
 	 * @param error       the hook's diagnostic output
-	 * @return the notice, or empty if no folder on {@code PATH} is writable, the session has no sandbox, or the policy
-	 *   cannot be read
+	 * @return the notice, or empty if no folder on {@code PATH} is writable and nothing could not be read
 	 * @throws NullPointerException if any argument is null
 	 */
 	static Optional<String> notice(JsonNode event, Map<String, String> environment, Path projectDir,
@@ -54,31 +56,47 @@ final class CodexPathCheck
 		requireThat(projectDir, "projectDir").isNotNull();
 		requireThat(sandbox, "sandbox").isNotNull();
 		requireThat(error, "error").isNotNull();
+		Optional<Path> transcript = Optional.empty();
+		String transcriptPath = event.path("transcript_path").asString("");
+		if (!transcriptPath.isBlank())
+		{
+			try
+			{
+				transcript = Optional.of(Path.of(transcriptPath));
+			}
+			catch (InvalidPathException _)
+			{
+				// The session's rollout is then unknown, which the reading treats as no recorded policy
+			}
+		}
+		List<String> problems = new ArrayList<>();
+		SandboxWrites writes;
 		try
 		{
-			Optional<Path> transcript = Optional.empty();
-			String transcriptPath = event.path("transcript_path").asString("");
-			if (!transcriptPath.isBlank())
-				transcript = Optional.of(Path.of(transcriptPath));
 			CodexSession session = new CodexSession(sandbox.ancestors(), environment, sandbox.accountHome(),
 				projectDir, transcript, event.path("session_id").asString(""));
-			List<Writable> writable = WritablePathEntries.find(WritablePathEntries.searchPath(environment),
-				projectDir, sandbox.reader().readWrites(session, Optional.empty()));
-			if (writable.isEmpty())
-				return Optional.empty();
-			return Optional.of(WritablePathEntries.notice(HARNESS_NAME, writable));
+			writes = sandbox.reader().readWideWrites(session, Optional.empty());
 		}
-		catch (PolicyRefusal e)
+		catch (IllegalArgumentException e)
 		{
-			error.println("CAT SessionStart: could not check the folders on PATH against the sandbox: " +
-				e.messageFor(HARNESS_NAME));
-			return Optional.empty();
+			problems.add("CAT could not describe this session: " + e.getMessage());
+			writes = SandboxWrites.NONE;
 		}
-		catch (IOException | IllegalArgumentException e)
+		problems.addAll(writes.problems());
+		List<Writable> writable;
+		try
 		{
-			error.println("CAT SessionStart: could not check the folders on PATH against the sandbox: " +
-				e.getMessage());
-			return Optional.empty();
+			writable = WritablePathEntries.find(WritablePathEntries.searchPath(environment), projectDir, writes);
 		}
+		catch (IOException e)
+		{
+			problems.add("CAT could not resolve the folders on PATH: " + e.getMessage());
+			writable = List.of();
+		}
+		if (writable.isEmpty() && problems.isEmpty())
+			return Optional.empty();
+		for (String problem : problems)
+			error.println("CAT SessionStart: could not check the folders on PATH against the sandbox: " + problem);
+		return Optional.of(WritablePathEntries.notice(HARNESS_NAME, writable, problems));
 	}
 }

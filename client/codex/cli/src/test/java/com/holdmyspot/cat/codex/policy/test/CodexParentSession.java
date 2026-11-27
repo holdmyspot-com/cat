@@ -4,6 +4,7 @@ import com.holdmyspot.cat.codex.policy.CodexHookSandbox;
 import com.holdmyspot.cat.codex.policy.CodexPolicyReader;
 import com.holdmyspot.cat.codex.policy.CodexSession;
 import com.holdmyspot.cat.codex.policy.CodexSystemFiles;
+import com.holdmyspot.cat.common.SandboxWrites;
 import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
@@ -209,6 +210,31 @@ public final class CodexParentSession
 	public CodexHookSandbox sandbox(String... arguments)
 	{
 		return new CodexHookSandbox(session(arguments).ancestors(), reader(), home);
+	}
+
+	/**
+	 * Returns what a hook of the session needs to read the session's sandbox, when no ancestor process is Codex.
+	 *
+	 * @return the sandbox source
+	 */
+	public CodexHookSandbox sandboxWithoutCodex()
+	{
+		List<ProcessDescription> ancestors = List.of(
+			new ProcessDescription(101, Optional.empty(), Optional.of("/bin/sh"), Optional.empty(),
+				Optional.of(List.of("-c", "hook"))));
+		return new CodexHookSandbox(ancestors, reader(), home);
+	}
+
+	/**
+	 * Reads where the session's sandbox may let commands write, with the overestimating reading, when Codex runs with
+	 * some arguments.
+	 *
+	 * @param arguments the arguments of the Codex process after its executable
+	 * @return the writes
+	 */
+	public SandboxWrites readWideWrites(String... arguments)
+	{
+		return reader().readWideWrites(session(arguments), Optional.empty());
 	}
 
 	/**

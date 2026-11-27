@@ -16,6 +16,7 @@ import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
+import com.holdmyspot.cat.common.WritablePathEntries;
 import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.TestToolScope;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
@@ -1002,7 +1003,7 @@ public final class CodexSessionStartHookTest
 			requireThat(response.path("systemMessage").asString(), "systemMessage").contains(bin.toString()).
 				contains(setting);
 			requireThat(response.path("systemMessage").asString(), "systemMessage").
-				contains(configuration.toString());
+				contains(configuration.toString()).contains(WritablePathEntries.COVERAGE);
 			requireThat(context(result), "context").doesNotContain(bin.toString());
 		}
 	}
@@ -1079,13 +1080,13 @@ public final class CodexSessionStartHookTest
 	}
 
 	/**
-	 * Verifies that a SessionStart whose sandbox policy cannot be read adds no notice for the user and reports the
-	 * reason on its diagnostic output only.
+	 * Verifies that a SessionStart whose configuration sets no sandbox mode tells the user that the folder on
+	 * {@code PATH} may be writable, because CAT cannot tell which mode the session runs in.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
 	@Test
-	public void reportsUnreadablePolicyToStderr() throws IOException
+	public void warnsOfPossiblyWritablePathFolder() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -1093,12 +1094,67 @@ public final class CodexSessionStartHookTest
 			writeReadingGuidance(plugin);
 			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-hook")));
 			Path bin = Files.createDirectories(session.folder("other/tools").resolve("bin"));
-			session.write("home/.codex/config.toml", "sandbox_mode = [\"not a mode\"\n");
+			session.write("home/.codex/config.toml", "[sandbox_workspace_write]\nwritable_roots = [" +
+				CodexParentSession.toml(session.folder("other/tools")) + "]\n");
 
 			HookResult result = invokeInSandbox(event(session.project()), session, plugin, bin);
 
-			requireThat(readResponse(result).has("systemMessage"), "hasSystemMessage").isFalse();
-			requireThat(result.error(), "error").isNotBlank();
+			requireThat(readResponse(result).path("systemMessage").asString(), "systemMessage").contains(bin.toString()).
+				contains("may be writable").contains(WritablePathEntries.COVERAGE);
+		}
+	}
+
+	/**
+	 * Verifies that a SessionStart whose configuration cannot be read tells the user, in {@code systemMessage}, which
+	 * file CAT could not read, and writes the same reason to its diagnostic output.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void tellsUserOfUnreadableConfiguration() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			writeReadingGuidance(plugin);
+			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-hook")));
+			Path bin = Files.createDirectories(session.folder("other/tools").resolve("bin"));
+			Path configuration = session.write("home/.codex/config.toml", "sandbox_mode = [\"not a mode\"\n");
+
+			HookResult result = invokeInSandbox(event(session.project()), session, plugin, bin);
+
+			requireThat(readResponse(result).path("systemMessage").asString(), "systemMessage").
+				contains("could not check").contains(configuration.toString()).contains(WritablePathEntries.COVERAGE);
+			requireThat(result.error(), "error").contains(configuration.toString());
+		}
+	}
+
+	/**
+	 * Verifies that a SessionStart that cannot find the Codex process that runs it tells the user so, and still
+	 * reports the folders that the configuration might make writable.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void tellsUserWhenProcessCannotBeRead() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			writeReadingGuidance(plugin);
+			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-hook")));
+			Path tools = session.folder("other/tools");
+			Path bin = Files.createDirectories(tools.resolve("bin"));
+			session.write("home/.codex/config.toml", "sandbox_mode = \"read-only\"\n" +
+				"[sandbox_workspace_write]\nwritable_roots = [" + CodexParentSession.toml(tools) + "]\n");
+
+			HookResult result = invokeInSandbox(event(session.project()), session, plugin, bin,
+				session.sandboxWithoutCodex());
+
+			String message = readResponse(result).path("systemMessage").asString();
+			requireThat(message, "systemMessage").contains("Codex process").contains(bin.toString()).
+				contains("may be writable");
+			requireThat(result.error(), "error").contains("Codex process");
 		}
 	}
 
@@ -1116,11 +1172,28 @@ public final class CodexSessionStartHookTest
 	private static HookResult invokeInSandbox(String input, CodexParentSession session, Path plugin, Path bin)
 		throws IOException
 	{
+		return invokeInSandbox(input, session, plugin, bin, session.sandbox("exec", "--skip-git-repo-check", "summarize"));
+	}
+
+	/**
+	 * Runs the SessionStart hook in the Codex session of a fixture, with a folder on {@code PATH} and a given source of
+	 * the session's sandbox, and captures its standard streams.
+	 *
+	 * @param input the hook input
+	 * @param session the Codex session
+	 * @param plugin the plugin directory
+	 * @param bin the folder that {@code PATH} names
+	 * @param sandbox the source of the session's sandbox
+	 * @return the captured standard streams
+	 * @throws IOException if the session's temporary folder cannot be created
+	 */
+	private static HookResult invokeInSandbox(String input, CodexParentSession session, Path plugin, Path bin,
+		CodexHookSandbox sandbox) throws IOException
+	{
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
 		Map<String, String> environment = Map.of("PLUGIN_ROOT", plugin.toString(), "PATH", bin.toString(),
 			Platform.current().homeVariable(), session.home().toString(), "TMPDIR", session.folder("tmp").toString());
-		CodexHookSandbox sandbox = session.sandbox("exec", "--skip-git-repo-check", "summarize");
 		CodexSessionStartHookSecrets.getCodexSessionStartHookAccess().run(new String[0],
 			new ByteArrayInputStream(input.getBytes(UTF_8)), output, new PrintStream(error, true, UTF_8), environment,
 			session.project(), Yielding.waiting(), GitProjects.IGNORING, Optional.of(sandbox));
