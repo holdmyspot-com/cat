@@ -1193,9 +1193,10 @@ public final class CodexIntegration implements HarnessIntegration
 	 * that {@code config.toml} trusts. Codex's other hooks, and the hooks of projects, of the user and of other
 	 * plugins, keep their state. The file is replaced atomically, with no other part of it changed.
 	 *
-	 * @return a sentence naming the file and the number of hooks whose content hash this call recorded, if any, and a
-	 * 	sentence that Codex may ask the user to review CAT's hooks if Codex did not list one of them as CAT's or could
-	 * 	not be asked
+	 * @return a sentence naming the file and the number of hooks whose content hash this call recorded, if any; a
+	 * 	sentence naming the Codex program and its version, if it lists one of CAT's hooks with its declaration hash
+	 * 	alone, that a newer Codex may ask the user to review them; and a sentence that Codex may ask the user to review
+	 * 	CAT's hooks if Codex did not list one of them as CAT's or could not be asked
 	 * @throws IllegalArgumentException if {@code home} or {@code installer} are relative
 	 */
 	@Override
@@ -1219,30 +1220,44 @@ public final class CodexIntegration implements HarnessIntegration
 			ObjectNode document = TomlText.parse(content, file);
 			String edited = content;
 			int recorded = 0;
+			int declarationOnly = 0;
 			int unconfirmed = 0;
 			for (Map.Entry<String, String> hook : hashes.entrySet())
 			{
-				Optional<String> contentHash = Optional.empty();
+				AppServerHooks.Hook found = null;
 				if (HookTrust.trusted(document, hook.getKey()).equals(Optional.of(hook.getValue())))
-					contentHash = listedContentHash(listed, hook.getKey(), hook.getValue(), versionFolder);
-				if (contentHash.isEmpty())
+					found = listedHook(listed, hook.getKey(), hook.getValue(), versionFolder).orElse(null);
+				if (found == null)
 				{
 					++unconfirmed;
 					continue;
 				}
-				String trusted = HookTrust.trustContent(edited, hook.getKey(), contentHash.get(), file);
+				String contentHash = found.contentHash();
+				if (contentHash == null)
+				{
+					// This Codex keeps no content hash, so it runs the hook by the declaration hash that CAT recorded
+					++declarationOnly;
+					continue;
+				}
+				String trusted = HookTrust.trustContent(edited, hook.getKey(), contentHash, file);
 				if (!trusted.equals(edited))
 					++recorded;
 				edited = trusted;
 			}
 			if (!edited.equals(content))
 				write(file, edited, replacer);
-			List<String> sentences = new ArrayList<>(2);
+			List<String> sentences = new ArrayList<>(3);
 			if (recorded > 0)
 			{
 				sentences.add("CAT recorded in " + file + " the hash that Codex lists for the content of " +
 					hooks(recorded) + ", so Codex runs them without asking you to review them again; uninstalling CAT " +
 					"removes these hashes with the hook hashes that CAT recorded.");
+			}
+			if (declarationOnly > 0)
+			{
+				sentences.add(describeProgram(cli) + ", the program that CAT runs, lists no content hash for " +
+					hooks(declarationOnly) + ", so it runs them by their declaration hash alone, which CAT recorded; a " +
+					"newer Codex, which keeps a content hash, may ask you to review them before it runs them.");
 			}
 			if (unconfirmed > 0)
 			{
@@ -1260,6 +1275,34 @@ public final class CodexIntegration implements HarnessIntegration
 		{
 			return List.of(couldNotAsk(e));
 		}
+	}
+
+	/**
+	 * Names the Codex program that a runner runs, with the version that its {@code --version} prints.
+	 *
+	 * @param cli runs the program
+	 * @return {@code Codex at <path>}, followed by the first line that {@code --version} prints, in parentheses, unless
+	 * 	it fails or prints nothing
+	 */
+	private static String describeProgram(HarnessCli cli)
+	{
+		String program = "Codex at " + cli.program();
+		try
+		{
+			CommandResult version = cli.run(List.of("--version"));
+			String output = version.output().strip();
+			if (version.exitCode() == 0 && !output.isEmpty())
+				return program + " (" + output.lines().findFirst().orElseThrow().strip() + ")";
+		}
+		catch (InterruptedIOException _)
+		{
+			Thread.currentThread().interrupt();
+		}
+		catch (IOException _)
+		{
+			// The sentence names the program without its version
+		}
+		return program;
 	}
 
 	/**
@@ -1288,16 +1331,16 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Returns the content hash that Codex lists for one of CAT's hooks in a version folder.
+	 * Returns the record in which Codex lists one of CAT's hooks in a version folder.
 	 *
 	 * @param listed          the hooks that Codex lists
 	 * @param key             the hook's key in {@code config.toml}
 	 * @param declarationHash the hash that CAT computes for the hook's declaration
 	 * @param versionFolder   the real path of the version folder
-	 * @return the content hash, or empty if Codex does not list the hook from CAT's plugin in the version folder with
-	 * 	that declaration hash
+	 * @return the record, or empty if Codex does not list the hook from CAT's plugin in the version folder with that
+	 * 	declaration hash
 	 */
-	private static Optional<String> listedContentHash(List<AppServerHooks.Hook> listed, String key,
+	private static Optional<AppServerHooks.Hook> listedHook(List<AppServerHooks.Hook> listed, String key,
 		String declarationHash, Path versionFolder)
 	{
 		for (AppServerHooks.Hook hook : listed)
@@ -1306,7 +1349,7 @@ public final class CodexIntegration implements HarnessIntegration
 				hook.pluginId().equals(CodexPluginCommand.PLUGIN_ID) && hook.declarationHash().equals(declarationHash) &&
 				isInside(hook.sourcePath(), versionFolder))
 			{
-				return Optional.of(hook.contentHash());
+				return Optional.of(hook);
 			}
 		}
 		return Optional.empty();

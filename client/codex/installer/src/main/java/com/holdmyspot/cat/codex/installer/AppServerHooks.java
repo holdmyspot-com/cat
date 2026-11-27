@@ -35,7 +35,8 @@ import tools.jackson.databind.node.ObjectNode;
  * {@code hooks/list} for the folder, skipping the notifications that the server sends meanwhile. It then closes the
  * server's input, on which the server exits. Codex 0.172.0 answers as the schema's {@code HooksListResponse}: for each
  * folder, the hooks with their key, source, plugin, declaring file and {@code currentHash}, which joins the hash of the
- * hook's declaration and the hash of the plugin's content with a slash.
+ * hook's declaration and the hash of the plugin's content with a slash. A Codex that keeps no content hash, such as
+ * codex-cli 0.160.0+41, lists the hash of the hook's declaration alone.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -62,9 +63,9 @@ final class AppServerHooks
 	 */
 	private static final int LIST = 2;
 	/**
-	 * A {@code currentHash}: the declaration hash and the content hash, joined by a slash.
+	 * A {@code currentHash}: the declaration hash, followed by a slash and the content hash unless Codex keeps none.
 	 */
-	private static final Pattern CURRENT_HASH = Pattern.compile("(sha256:[0-9a-f]{64})/(sha256:[0-9a-f]{64})");
+	private static final Pattern CURRENT_HASH = Pattern.compile("(sha256:[0-9a-f]{64})(?:/(sha256:[0-9a-f]{64}))?");
 	/**
 	 * Writes the client's messages and reads the server's.
 	 */
@@ -354,7 +355,8 @@ final class AppServerHooks
 	 * @param pluginId        the plugin that declares the hook
 	 * @param sourcePath      the file that declares the hook, as Codex names it
 	 * @param declarationHash the hash that Codex computes for the hook's declaration
-	 * @param contentHash     the hash that Codex computes for the content of the plugin that declares the hook
+	 * @param contentHash     the hash that Codex computes for the content of the plugin that declares the hook, or
+	 *                        null if Codex lists none
 	 */
 	record Hook(String key, String source, String pluginId, String sourcePath, String declarationHash,
 		String contentHash)
