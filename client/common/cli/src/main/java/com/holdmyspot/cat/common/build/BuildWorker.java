@@ -329,10 +329,11 @@ public final class BuildWorker
 			if (claim.kind() == BuildReservations.Claim.Kind.CALIBRATION && exit != null && exit == 0)
 				writePeakRows(evidence.resolve(calibrationRowsPath), peakProcesses);
 			Map<String, Object> calibrationResult = null;
-			if (claim.kind() == BuildReservations.Claim.Kind.CALIBRATION)
+			boolean calibrationComplete = calibration && exit != null && exit == 0 && peak > 0;
+			if (calibration)
 			{
 				String coverageResult;
-				if (exit != null && exit == 0 && peak > 0)
+				if (calibrationComplete)
 					coverageResult = "complete";
 				else
 					coverageResult = "failed";
@@ -347,28 +348,9 @@ public final class BuildWorker
 			}
 			BuildAdmission.JobResult result = writeTerminal(job, claim, reservations, evidence, mavenLog,
 				status, exit, retained, calibrationResult, "reaped");
-			if (claim.kind() == BuildReservations.Claim.Kind.CALIBRATION && exit != null && exit == 0)
-			{
-				try
-				{
-					reservations.calibrated(claim, peak, samples, maximumGapMillis, observedProcessCount, job,
-						result.terminalReceiptPath());
-				}
-				catch (IOException calibrationFailure)
-				{
-					// The worker is reaped and its receipt is published, so the reservation is released even though
-					// no calibration was recorded: the next build of the family calibrates again.
-					try
-					{
-						reservations.terminal(claim, result);
-					}
-					catch (IOException releaseFailure)
-					{
-						calibrationFailure.addSuppressed(releaseFailure);
-					}
-					throw calibrationFailure;
-				}
-			}
+			if (calibrationComplete)
+				reservations.calibrated(claim, peak, samples, maximumGapMillis, observedProcessCount, job,
+					result.terminalReceiptPath());
 			reservations.terminal(claim, result);
 			if (ioFailure != null)
 				throw new BuildAdmission.Failure(BuildAdmission.Failure.Kind.PROCESS_IO_FAILED, wrapperLog, job.jobId(),

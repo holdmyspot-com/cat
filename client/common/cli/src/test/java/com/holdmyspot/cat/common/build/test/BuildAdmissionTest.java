@@ -536,9 +536,9 @@ public final class BuildAdmissionTest
 	}
 
 	/**
-	 * Verifies a calibration that exits successfully before any of its processes is sampled records no calibration
-	 * and releases its reservation, so the next build of the family is admitted and calibrates instead of waiting
-	 * for a reservation that never ends.
+	 * Verifies a calibration whose Maven run passes but whose processes are never sampled returns the passed result,
+	 * records no calibration and releases its reservation, so the next build of the family is admitted and
+	 * calibrates instead of waiting for a reservation that never ends.
 	 *
 	 * @throws IOException if fixture setup or the ledger read fails
 	 * @throws InterruptedException if fixture synchronization is interrupted
@@ -556,7 +556,13 @@ public final class BuildAdmissionTest
 
 			ControllerCall unsampledCall = fixture.start(() -> fixture.admission.run(unsampled, fixture.evidence));
 			IOException failure = fixture.awaitCall(unsampledCall);
-			requireThat(failure, "unsampledCalibrationFailure").isNotNull();
+			requireThat(failure, "unsampledCalibrationFailure").isNull();
+			JobResult unsampledResult = (JobResult) unsampledCall.result.get();
+			requireThat(unsampledResult.passed(), "unsampledCalibrationPassed").isTrue();
+			JsonNode receipt = fixture.scope.json().readTree(
+				fixture.evidence.resolve(unsampledResult.terminalReceiptPath()).toFile());
+			requireThat(receipt.path("calibration_result").path("coverage_result").stringValue(),
+				"unsampledCoverageResult").isEqualTo("failed");
 			JsonNode ledger = fixture.ledger();
 			requireThat(ledger.path("reservations").size(), "unsampledReservationReleased").isEqualTo(0);
 			requireThat(ledger.path("calibrations").size(), "unsampledCalibrationNotRecorded").isEqualTo(0);
