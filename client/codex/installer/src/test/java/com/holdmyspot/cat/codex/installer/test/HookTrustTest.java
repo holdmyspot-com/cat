@@ -634,7 +634,8 @@ public final class HookTrustTest
 	}
 
 	/**
-	 * A plugin without hooks needs no trust, and an install of it leaves the configuration alone.
+	 * A plugin whose manifest names no hooks file and that ships none needs no trust, and an install of it leaves the
+	 * configuration alone.
 	 *
 	 * @throws IOException if a fixture cannot be written or read
 	 */
@@ -644,7 +645,10 @@ public final class HookTrustTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
-			Path installer = home.resolve("plugins/cache/cat/cat").resolve(VERSION).resolve("bin/installer");
+			Path folder = home.resolve("plugins/cache/cat/cat").resolve(VERSION);
+			Files.createDirectories(folder.resolve(".codex-plugin"));
+			Files.writeString(folder.resolve(".codex-plugin/plugin.json"), "{\"name\": \"cat\"}");
+			Path installer = folder.resolve("bin/installer");
 			if (Platform.current().isWindows())
 				installer = installer.resolveSibling("installer.ps1");
 
