@@ -151,15 +151,16 @@ public final class CheckProgramStartupTest
 	}
 
 	/**
-	 * A time limit that ends before the launcher is ready is an infrastructure failure that gives the limit, the time
-	 * taken and the last stage that CAT saw, and, once an earlier run on the same launcher has reached ready, how long
-	 * that took.
+	 * A time limit that ends before the launcher is ready is an infrastructure failure, and a report that follows a run
+	 * that reached ready draws on that run's time. The Java runtime of the sandbox is replaced by a program that keeps
+	 * the processor busy and never prints the ready line, so that the limit always ends first, whatever the speed of the
+	 * host. {@code StartupDiagnosisTest} verifies the rest of the wording.
 	 *
 	 * @throws IOException          if a fixture or process cannot be used
 	 * @throws InterruptedException if a process wait is interrupted
 	 */
 	@Test
-	public void reportsLimitElapsedStageAndNormalTime() throws IOException,
+	public void reportsLimitEndedBeforeReady() throws IOException,
 		InterruptedException
 	{
 		// Requirement: R-L23
@@ -168,23 +169,40 @@ public final class CheckProgramStartupTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "check-limit-"));
 			Fixture fixture = CheckProgramTest.fixture(root, PRINTS_AND_EXITS);
-			Launch launch = new Launch(real.sandbox(), real.javaExecutable(), ParentPolicy.UNSANDBOXED, List.of(),
-				new StartupHistory());
-			Duration tooShort = Duration.ofMillis(500);
+			StartupHistory history = new StartupHistory();
+			// Stands for a Java runtime that is slow from load: it starts, then keeps working and never gets ready
+			String busy = "#!" + real.javaExecutable() + " --source " + Runtime.version().feature() + """
 
-			CheckProgramStartFailure withoutHistory = expectThrows(CheckProgramStartFailure.class, () -> run(launch,
-				fixture, tooShort));
-			Result earlier = run(launch, fixture, CheckProgramTest.NORMAL_TIMEOUT);
-			CheckProgramStartFailure withHistory = expectThrows(CheckProgramStartFailure.class, () -> run(launch,
-				fixture, tooShort));
+				final class Busy
+				{
+					public static void main(String[] args)
+					{
+						long total = 0;
+						while (true)
+							++total;
+					}
+				}
+				""";
+			Path java = runtime(root, busy);
+			Launch slow = new Launch(real.sandbox(), java, ParentPolicy.UNSANDBOXED, List.of(), history);
+			Launch normal = new Launch(real.sandbox(), real.javaExecutable(), ParentPolicy.UNSANDBOXED, List.of(),
+				history);
+			Duration limit = Duration.ofSeconds(3);
+
+			CheckProgramStartFailure withoutHistory = expectThrows(CheckProgramStartFailure.class, () -> run(slow,
+				fixture, limit));
+			Result earlier = run(normal, fixture, CheckProgramTest.NORMAL_TIMEOUT);
+			CheckProgramStartFailure withHistory = expectThrows(CheckProgramStartFailure.class, () -> run(slow,
+				fixture, limit));
 
 			requireThat(earlier.outcome(), "earlierOutcome").isEqualTo(Outcome.PASS);
-			requireThat(withoutHistory.reason(), "reason").isEqualTo(Reason.NOT_READY);
-			requireThat(withoutHistory.isInfrastructure(), "isInfrastructure").isTrue();
-			requireThat(withoutHistory.getMessage(), "withoutHistoryMessage").contains("time limit of 0.5 s").
-				contains("Last start-up stage reached: ").contains("normal start time is not known");
-			requireThat(withHistory.getMessage(), "withHistoryMessage").contains("time limit of 0.5 s").
-				contains("median").contains("(1 run)").contains("shorter than the longest");
+			requireThat(history.summary().orElseThrow().runs(), "runs").isEqualTo(1);
+			requireThat(withoutHistory.reason(), "withoutHistoryReason").isEqualTo(Reason.NOT_READY);
+			requireThat(withoutHistory.isInfrastructure(), "withoutHistoryIsInfrastructure").isTrue();
+			requireThat(withoutHistory.getMessage(), "withoutHistoryMessage").contains("not known");
+			requireThat(withHistory.getMessage(), "withHistoryMessage").contains("(1 run)");
+			requireThat(withHistory.reason(), "withHistoryReason").isEqualTo(Reason.NOT_READY);
+			requireThat(withHistory.isInfrastructure(), "withHistoryIsInfrastructure").isTrue();
 			CheckProgramTest.requireScratchClean(fixture.scratchParent());
 		}
 	}
