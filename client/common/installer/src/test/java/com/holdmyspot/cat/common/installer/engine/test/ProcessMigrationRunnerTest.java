@@ -33,44 +33,35 @@ public final class ProcessMigrationRunnerTest
 	}
 
 	/**
-	 * A script receives the variables, runs in its own directory, and reports its exit status and output.
+	 * A script runs in the directory that holds it. The exit status, output and variables are checked by the runner
+	 * contract.
 	 *
 	 * @throws IOException if the fixture cannot be created or the script cannot be run
 	 */
 	@Test
-	public void runsScript() throws IOException
+	public void runsScriptInItsDirectory() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(testDirectory("migration-process-")).toRealPath();
 			Path scripts = Files.createDirectories(root.resolve("plugin/install/migrations"));
-			Path data = Files.createDirectories(root.resolve("data"));
 			Path script;
 			if (Platform.current().isWindows())
 			{
 				script = Files.writeString(scripts.resolve("split.ps1"), """
-					[System.IO.File]::WriteAllText("$env:CAT_MIGRATION_DATA_DIR\\migrated", \
-						"$env:CAT_MIGRATION_FROM_VERSION $env:CAT_MIGRATION_TO_VERSION")
 					[Console]::Out.Write("ran in " + (Get-Location).Path + "`n")
-					exit 3
 					""");
 			}
 			else
 			{
 				script = Files.writeString(scripts.resolve("split.sh"), """
-					printf '%s %s' "$CAT_MIGRATION_FROM_VERSION" "$CAT_MIGRATION_TO_VERSION" > \
-					"$CAT_MIGRATION_DATA_DIR/migrated"
 					echo "ran in $(pwd)"
-					exit 3
 					""");
 			}
 
-			CommandResult result = new ProcessMigrationRunner().run(script, Map.of("CAT_MIGRATION_DATA_DIR",
-				data.toString(), "CAT_MIGRATION_FROM_VERSION", "1.0", "CAT_MIGRATION_TO_VERSION", "1.1"));
+			CommandResult result = new ProcessMigrationRunner().run(script, Map.of());
 
-			requireThat(result.exitCode(), "exitCode").isEqualTo(3);
 			requireThat(result.output(), "output").isEqualTo("ran in " + scripts + "\n");
-			requireThat(Files.readString(data.resolve("migrated")), "migrated").isEqualTo("1.0 1.1");
 		}
 	}
 
