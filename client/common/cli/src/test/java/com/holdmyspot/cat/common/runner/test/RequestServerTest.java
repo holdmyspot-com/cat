@@ -201,17 +201,19 @@ public final class RequestServerTest
 	}
 
 	/**
-	 * Verifies that the server refuses on a platform that runs no sandboxed session, such as native Windows.
+	 * Verifies that the server refuses with the reason that its plugin's host gives, such as that its process belongs
+	 * to a nested session's harness session.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
 	@Test
-	public void refusesPlatform() throws IOException
+	public void refusesWhenHostRefuses() throws IOException
 	{
 		try (Fixture fixture = new Fixture())
 		{
-			fixture.hostRefusal = Optional.of("CAT does not start sessions on native Windows");
-			requireThat(fixture.refusal(), "refusal").isEqualTo("CAT does not start sessions on native Windows\n");
+			String reason = "this command runs in a nested session, and no request server serves such a session";
+			fixture.hostRefusal = Optional.of(reason);
+			requireThat(fixture.refusal(), "refusal").isEqualTo(reason + "\n");
 		}
 	}
 

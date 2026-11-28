@@ -100,8 +100,8 @@ public final class RunnerRelayTest
 
 	/**
 	 * Verifies that on native Windows a launch from a command of the plugin's own harness is bounded by nothing here,
-	 * but runs the selected artifact's runner, which refuses it on its own platform, with only the caller's options
-	 * and environment, and exits with the runner's status.
+	 * but runs the selected artifact's runner, which serves the launch itself, with only the caller's options and
+	 * environment, and exits with the runner's status.
 	 *
 	 * @throws IOException if the relay fails
 	 */
