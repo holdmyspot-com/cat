@@ -203,8 +203,10 @@ public final class CodexLoginSourceTest
 	}
 
 	/**
-	 * Verifies that the Windows keyring reads the passphrase from the credential of Codex's target name and decrypts
-	 * the age file with it, and that a failing store is a refusal naming the keyring and the folder.
+	 * Verifies that the Windows keyring reads the passphrase from the credential of Codex's target name, decrypts the
+	 * age file with it and reads the login from the secrets file that the age file holds, as Codex writes it, that a
+	 * secrets file of a newer version is a refusal, and that a failing store is a refusal naming the keyring and the
+	 * folder.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
@@ -247,6 +249,11 @@ public final class CodexLoginSourceTest
 				_ -> Optional.of("other".getBytes(UTF_16LE)));
 			LoginRefusal wrongPassphrase = expectThrows(LoginRefusal.class, () -> wrong.read(codex));
 			requireThat(wrongPassphrase.getMessage(), "wrongPassphrase").contains(age.toString()).
+				doesNotContain("fixture-windows");
+
+			Files.write(age, LoginFixtures.resource("windows-login-newer.age"));
+			LoginRefusal newer = expectThrows(LoginRefusal.class, () -> keyring.read(codex));
+			requireThat(newer.getMessage(), "newer").contains(age.toString()).contains("version 2").
 				doesNotContain("fixture-windows");
 		}
 	}

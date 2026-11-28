@@ -21,12 +21,16 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Optional;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * The Windows keyring, in which the secrets backend of Codex keeps a login: the Windows credential of the service
  * {@code codex} and the account {@code secrets|<h>}, {@code <h>} being the hash of the Codex folder's canonical path,
  * holds the passphrase of the age file {@code secrets/codex_auth.age} in the Codex folder, whose plaintext is the
- * login.
+ * secrets file of Codex: a JSON object of a version and the secrets by key, of which {@code global/CODEX_AUTH} holds
+ * the login as the text that {@code auth.json} would hold.
  * <p>
  * It reads the credential with {@code CredReadW}, which needs no prompt in the user's own session, and changes neither
  * the credential nor the file.
@@ -44,6 +48,14 @@ public final class WindowsCredentials implements CodexKeyring
 	 */
 	public static final String AGE_FILE = "secrets/codex_auth.age";
 	private static final int MAXIMUM_FILE_BYTES = 1_048_576;
+	/**
+	 * The newest version of the secrets file that the reader reads, which is the version that Codex writes.
+	 */
+	private static final int SECRETS_VERSION = 1;
+	/**
+	 * The key of the login in the secrets file.
+	 */
+	private static final String LOGIN_KEY = "global/CODEX_AUTH";
 
 	/**
 	 * Reads a Windows credential's secret.
@@ -166,14 +178,57 @@ public final class WindowsCredentials implements CodexKeyring
 		{
 			Arrays.fill(passphrase.get(), (byte) 0);
 		}
+		String login;
 		try
 		{
-			return CodexStoredLogin.parse(new String(plaintext, UTF_8), file.toString());
+			login = secretsLogin(new String(plaintext, UTF_8), file);
 		}
 		finally
 		{
 			Arrays.fill(plaintext, (byte) 0);
 		}
+		return CodexStoredLogin.parse(login, file.toString());
+	}
+
+	/**
+	 * Returns the login that a secrets file of Codex holds.
+	 *
+	 * @param text the secrets file's JSON text
+	 * @param file the age file, which a refusal names
+	 * @return the login's JSON text
+	 * @throws LoginRefusal if the text cannot be parsed, is of a newer version than the reader reads or holds no
+	 *                      login; the reason names {@code file} and quotes nothing of the text
+	 */
+	private static String secretsLogin(String text, Path file) throws LoginRefusal
+	{
+		JsonNode document;
+		try
+		{
+			document = JsonMapper.builder().build().readTree(text);
+		}
+		catch (JacksonException _)
+		{
+			document = null;
+		}
+		if (document == null || !document.path("version").isIntegralNumber() ||
+			document.path("version").asLong() < 0 || !document.path("secrets").isObject())
+		{
+			throw new LoginRefusal("The Codex secrets file " + file + " cannot be parsed, so CAT cannot tell which " +
+				"login it holds. Sign in to Codex again.");
+		}
+		long version = document.path("version").asLong();
+		if (version > SECRETS_VERSION)
+		{
+			throw new LoginRefusal("The Codex secrets file " + file + " is of version " + version + ", which is " +
+				"newer than the version " + SECRETS_VERSION + " that CAT reads. Update CAT.");
+		}
+		JsonNode login = document.path("secrets").path(LOGIN_KEY);
+		if (!login.isString())
+		{
+			throw new LoginRefusal("The Codex secrets file " + file + " holds no Codex login. Sign in to Codex on " +
+				"that source home again.");
+		}
+		return login.asString();
 	}
 
 	/**
