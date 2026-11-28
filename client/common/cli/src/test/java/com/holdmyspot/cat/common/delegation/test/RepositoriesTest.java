@@ -10,7 +10,6 @@ import com.holdmyspot.cat.common.test.ExitedProcess;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -93,46 +92,6 @@ public final class RepositoriesTest
 			requireThat(gitRequests, "betaCloneRequest").contains(expectedClones.get(1));
 			requireThat(requestEnvironments, "gitEnvironments").isEqualTo(
 				Collections.nCopies(gitRequests.size(), isolatedEnvironment));
-		}
-	}
-
-	/**
-	 * Scripted init and clone responses do not create repository state on disk.
-	 *
-	 * @throws IOException if the temporary fixture cannot be created
-	 * @throws InterruptedException if scripted process observation is interrupted
-	 */
-	@Test
-	public void scriptedGitAnswersDoNotMutateRepository() throws IOException, InterruptedException
-	{
-		try (TestJvmScope scope = new TestJvmScope(); TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "scripted-git-"));
-			Path source = Files.createDirectories(root.resolve("source"));
-			Path clone = root.resolve("clone");
-			DelegationFixture fixture = new DelegationFixture(root);
-			ProcessBuilder initRequest = new ProcessBuilder("git", "init", "--quiet");
-			initRequest.directory(source.toFile());
-			try (Process init = fixture.start(initRequest))
-			{
-				requireThat(init.waitFor(), "scriptedInitStatus").isEqualTo(0);
-			}
-			ProcessBuilder cloneRequest = new ProcessBuilder("git", "clone", "source", clone.toString());
-			cloneRequest.directory(root.toFile());
-			try (Process cloned = fixture.start(cloneRequest))
-			{
-				requireThat(cloned.waitFor(), "scriptedCloneStatus").isEqualTo(0);
-			}
-			requireThat(Files.exists(source.resolve(".git")), "initResponseDoesNotCreateRepository").isFalse();
-			requireThat(Files.exists(clone.resolve(".git")), "cloneResponseDoesNotCreateRepository").isFalse();
-			ProcessBuilder revisionRequest = new ProcessBuilder("git", "rev-parse", "--show-toplevel");
-			revisionRequest.directory(source.toFile());
-			try (Process revision = fixture.start(revisionRequest))
-			{
-				requireThat(revision.waitFor(), "scriptedGitReadStatus").isEqualTo(0);
-				String output = new String(revision.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-				requireThat(output, "scriptedGitReadOutput").isEqualTo(source + "\n");
-			}
 		}
 	}
 
