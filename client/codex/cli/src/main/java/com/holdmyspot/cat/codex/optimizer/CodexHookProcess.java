@@ -39,6 +39,23 @@ public final class CodexHookProcess
 	}
 
 	/**
+	 * Refuses a host on which CAT cannot confine a startup hook.
+	 *
+	 * @param platform the host platform
+	 * @throws NullPointerException if {@code platform} is null
+	 * @throws IOException if {@code platform} is native Windows
+	 */
+	public static void requireConfinableHost(Platform platform) throws IOException
+	{
+		if (platform.isWindows())
+		{
+			throw new IOException("CAT refuses to run a startup hook of the Codex optimizer on native Windows because " +
+				"it confines the hook through /usr/bin/env under the search path /usr/bin:/bin, which Windows lacks, " +
+				"and has no Windows way to confine it. Run the prompt optimizer inside WSL2.");
+		}
+	}
+
+	/**
 	 * Configures the hook builder to start the native sandbox before the hook, leaving its stream redirects intact.
 	 *
 	 * @param builder the original hook's command, environment, working directory and redirects
@@ -73,8 +90,7 @@ public final class CodexHookProcess
 		ParentPolicy policy, JsonMapper json) throws IOException, PolicyRefusal
 	{
 		Platform platform = Platform.current();
-		if (platform.isWindows())
-			throw new IOException("The Codex optimizer cannot confine startup hooks on native Windows. Use WSL2.");
+		requireConfinableHost(platform);
 
 		Path workspace = builder.directory().toPath().toRealPath();
 		Path comparison = scratch.toRealPath();
