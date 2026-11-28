@@ -139,7 +139,9 @@ public final class ReleaseBuildTest
 		command.addAll(List.of(arguments));
 		ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
 		// Ignore the machine's Git configuration, such as commit signing or hooks, so that every machine runs the same Git
-		String nullDevice = Platform.current().isWindows() ? "NUL" : "/dev/null";
+		String nullDevice = "/dev/null";
+		if (Platform.current().isWindows())
+			nullDevice = "NUL";
 		builder.environment().put("GIT_CONFIG_NOSYSTEM", "1");
 		builder.environment().put("GIT_CONFIG_GLOBAL", nullDevice);
 		builder.environment().put("GIT_CEILING_DIRECTORIES", directory.toAbsolutePath().getParent().toString());
