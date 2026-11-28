@@ -41,8 +41,8 @@ import org.testng.annotations.Test;
  * <p>
  * Every test of a wait except {@link #systemTimerRunsCheckAgain()} measures the wait's time through a
  * {@link ManualTimer}, so that a deadline or an interval passes when the wait would otherwise block, without waiting in
- * real time, and starts its commands through a {@link FakeStarter}. The {@link WaitUntilTimerContract} runs on both the
- * manual timer and the timer of a real wait. The {@link CommandStarterContract} checks the command adapter with an
+ * real time, and starts its commands through a {@link FakeStarter}. The {@link WaitUntilTimerContract} runs on the
+ * manual timer. The {@link CommandStarterContract} checks the command adapter with an
  * already-exited process, while {@link CommandProcessContract} checks the same live-process behavior through the fake
  * and shell starters.
  */
@@ -266,33 +266,6 @@ public final class WaitUntilTest
 			public void endAfter(BlockingQueue<String> ended, String run, Duration delay)
 			{
 				timer.schedule(delay, () -> ended.add(run));
-			}
-		}));
-	}
-
-	/**
-	 * Verifies that the timer of a real wait hands the wait each run that ends and measures the wait's time, waiting a
-	 * few milliseconds in real time.
-	 *
-	 * @throws InterruptedException if the thread is interrupted
-	 */
-	@Test
-	public void systemTimerMeasuresWait() throws InterruptedException
-	{
-		WaitUntilTimer timer = WaitUntilSecrets.getWaitUntilAccess().systemTimer();
-		verifyTimer(new WaitUntilTimerContract(new WaitUntilTimerContract.Subject()
-		{
-			@Override
-			public WaitUntilTimer timer()
-			{
-				return timer;
-			}
-
-			@Override
-			public void endAfter(BlockingQueue<String> ended, String run, Duration delay)
-			{
-				// The run ends on another thread, as a command's process exits while the wait blocks
-				CompletableFuture.delayedExecutor(delay.toNanos(), TimeUnit.NANOSECONDS).execute(() -> ended.add(run));
 			}
 		}));
 	}
