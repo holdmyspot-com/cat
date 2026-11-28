@@ -21,12 +21,15 @@ import com.holdmyspot.cat.common.secrets.ForkTreeSecrets;
 import com.holdmyspot.cat.common.test.ProgramFixture;
 
 import java.io.IOException;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Stream;
 
+import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 /**
@@ -187,6 +190,17 @@ public final class ForkTreeTest
 			denyListing(hidden);
 			try
 			{
+				boolean listable;
+				try (Stream<Path> _ = Files.list(hidden))
+				{
+					listable = true;
+				}
+				catch (AccessDeniedException _)
+				{
+					listable = false;
+				}
+				if (listable)
+					throw new SkipException("The process can list a directory whose listing was denied");
 				ForkTree tree = ForkTree.record(base, root.resolve("campaign"), paths);
 
 				requireThat(tree.inventory().entries().get(participant), "participant").isEqualTo(file("shared"));
