@@ -131,16 +131,30 @@ public final class GeneratorTest
 	{
 		// Requirement: R-C4
 		Generator generator = new Generator(ContractFixtures.contract());
-		DrawStream stream = DrawStream.create(DrawStream.Kind.DEVELOPMENT, SEED);
+		DrawStream safetyStream = DrawStream.create(DrawStream.Kind.DEVELOPMENT, SEED);
 		List<List<String>> turnSequences = new ArrayList<>();
 		for (int i = 0; i < 50; ++i)
-			turnSequences.add(generator.draw("safety", stream).turns());
+			turnSequences.add(generator.draw("safety", safetyStream).turns());
 		requireThat(turnSequences.stream().distinct().count(), "distinctTurnSequences").
 			isLessThan((long) turnSequences.size());
 
-		DrawStream first = DrawStream.create(DrawStream.Kind.DEVELOPMENT, SEED);
-		DrawStream second = DrawStream.create(DrawStream.Kind.DEVELOPMENT, SEED);
-		requireThat(generator.draw("safety", second), "second").isEqualTo(generator.draw("safety", first));
+		// A test with many test cases, so that a stream resumed at the wrong position draws different test cases
+		generator = new Generator(capitalContract(40));
+		DrawStream stream = DrawStream.create(DrawStream.Kind.DEVELOPMENT, SEED);
+		List<DrawStream.State> states = new ArrayList<>();
+		List<DrawnTestCase> draws = new ArrayList<>();
+		for (int i = 0; i < 50; ++i)
+		{
+			states.add(stream.state());
+			draws.add(generator.draw(CAPITAL_CELL, stream));
+		}
+		requireThat(draws.stream().map(DrawnTestCase::testCase).distinct().count(), "distinctTestCases").
+			isGreaterThan(10L);
+
+		int resumeAt = 20;
+		DrawStream resumed = DrawStream.resume(states.get(resumeAt));
+		for (int i = resumeAt; i < draws.size(); ++i)
+			requireThat(generator.draw(CAPITAL_CELL, resumed), "redraw" + i).isEqualTo(draws.get(i));
 	}
 
 	/**
