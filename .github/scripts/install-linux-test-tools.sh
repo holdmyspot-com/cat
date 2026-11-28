@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Installs the Linux test tools (bats, bubblewrap, jq and shellcheck) with apt. It uses the runner's configured Ubuntu
-# sources first. When the update or the install fails, for example because Canonical's servers are unreachable, it points the
-# Ubuntu sources at a third-party mirror for the machine's architecture and retries, one mirror after another. Package
-# signatures stay verified: only the host in each source's URI changes.
+# sources first. When the update or the install fails, for example because Canonical's servers are unreachable, it
+# points the Ubuntu sources at a third-party mirror for the machine's architecture and retries, one mirror after
+# another. Package signatures stay verified: only the host in each source's URI changes.
 #
 # Environment (all optional, for testing): APT_SOURCES_LIST, APT_SOURCES_DIRECTORY, ARCHITECTURE.
 
