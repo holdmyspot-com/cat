@@ -240,6 +240,12 @@ public final class SystemBuildProcessStopsContractTest extends BuildProcessStops
 		}
 
 		@Override
+		public boolean selectedPidReused()
+		{
+			return ProcessHandle.of(selected.process.pid()).isPresent();
+		}
+
+		@Override
 		public boolean peerAlive()
 		{
 			return peer.process.isAlive();

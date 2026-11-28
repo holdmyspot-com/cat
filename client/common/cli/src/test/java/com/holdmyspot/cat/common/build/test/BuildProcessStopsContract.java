@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import java.io.IOException;
 import java.util.function.LongConsumer;
+import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 /**
@@ -59,6 +60,8 @@ public abstract class BuildProcessStopsContract
 		{
 			fixture.finishSelected();
 			requireThat(fixture.selectedAlive(), "selectedActorFinished").isFalse();
+			if (fixture.selectedPidReused())
+				throw new SkipException("The ended actor's process identifier now belongs to another process");
 			fixture.forceStop().accept(fixture.selectedPid());
 			requireThat(fixture.peerAlive(), "endedActorRequestPreservesPeer").isTrue();
 		}
@@ -96,6 +99,18 @@ public abstract class BuildProcessStopsContract
 		 * @return true while selected actor is live
 		 */
 		boolean selectedAlive();
+
+		/**
+		 * Reports whether the selected actor's process identifier now belongs to a live process, such as one that the
+		 * operating system started after reusing the identifier of the ended actor. A stop request for that identifier
+		 * would stop an unrelated process.
+		 *
+		 * @return true if a process other than the ended selected actor holds the identifier
+		 */
+		default boolean selectedPidReused()
+		{
+			return false;
+		}
 
 		/**
 		 * Reports whether the unrelated peer is still live.
