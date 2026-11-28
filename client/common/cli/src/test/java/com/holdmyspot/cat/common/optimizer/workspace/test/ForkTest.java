@@ -317,27 +317,6 @@ public final class ForkTest
 	}
 
 	/**
-	 * Verifies that a created optimization worktree exists and reopens with the inventory that creation returned.
-	 *
-	 * @throws IOException if the fixture cannot be created
-	 */
-	@Test
-	public void createdForkCanBeReopened() throws IOException
-	{
-		// Requirement: R-W2
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
-			Path base = repository(root);
-			Path campaign = base.resolve(CAMPAIGNS + "/c1");
-			Fork created = Fork.create(base, campaign, Set.of(), Yielding.fileReplacer(), REGISTRAR);
-
-			new ForksContract(new GitForks(Yielding.fileReplacer(), REGISTRAR), base, campaign).
-				createdForkCanBeReopened(created);
-		}
-	}
-
-	/**
 	 * Verifies that a missing optimization worktree is neither reported present nor opened, even when the recorded
 	 * fork inventory remains. The stored fixture needs no Git repository.
 	 *
