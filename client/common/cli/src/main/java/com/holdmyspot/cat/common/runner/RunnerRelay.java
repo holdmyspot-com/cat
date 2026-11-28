@@ -26,7 +26,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * nested session whose runner lets its session request sessions, it requests a session of its harness from the nested
  * session's runner. From a command that a session of the plugin's own harness runs outside a nested session, it
  * requests the session from that session's {@link RequestServer}, except on native Windows, where the selected runner
- * refuses it. A launch that CAT's own starter bounds runs the runner of the other harness's CAT artifact that the
+ * serves it. A launch that CAT's own starter bounds runs the runner of the other harness's CAT artifact that the
  * plugin selects, with the caller's options. The launcher refuses a launch from a nested session that lets its session
  * request no sessions, a launch from a command that only the other harness runs or that no harness session runs, and
  * any launch from a Codex sandbox that has network off.
@@ -114,8 +114,8 @@ public final class RunnerRelay
 	 * Runs one launch along the route that {@link LaunchRoute#decide(String, String, Set, String[], Map)} gives it.
 	 * When a session of the plugin's own harness runs the command outside a nested session, other than on native
 	 * Windows, the launch is a request to that session's request server. Otherwise, the selected artifact's runner runs
-	 * with the caller's options and serves the launch along the same route; on native Windows, it refuses every launch
-	 * from a harness session.
+	 * with the caller's options and serves the launch along the same route; on native Windows, which has no request
+	 * server route, that runner serves every launch from a harness session itself.
 	 *
 	 * @param harness     the harness whose runner the launcher stands for
 	 * @param plugin      the harness whose CAT plugin holds the launcher

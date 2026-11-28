@@ -203,9 +203,8 @@ public final class RequestServer
 	 *
 	 * @param harness           the identifier of the plugin's harness
 	 * @param running           the identifiers of the harnesses whose markers the server's environment holds
-	 * @param refusal           why this server must not run in its process, such as that the platform cannot run
-	 *                          sandboxed sessions or that the process belongs to a nested session's harness session, or
-	 *                          empty if it can
+	 * @param refusal           why this server must not run in its process, such as that the process belongs to a
+	 *                          nested session's harness session, or empty if it can
 	 * @param plugin            the absolute folder of the plugin, which the session's commands must not be able to
 	 *                          write
 	 * @param installed         finds the folders of the installed plugin of the server's harness
