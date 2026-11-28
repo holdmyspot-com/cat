@@ -348,6 +348,7 @@ public final class JudgePromptTest
 	public void rejectsNoAssertions()
 	{
 		// Requirement: R-E21
+		// Requirement: R-C5
 		// Requirement: R-E13
 		prompt.request(profile(), testCase(), completed(List.of(List.of("Should I delete?"))), List.of(), List.of(),
 			SECTION);
