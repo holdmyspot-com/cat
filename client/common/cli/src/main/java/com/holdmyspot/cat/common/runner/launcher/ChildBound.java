@@ -239,7 +239,12 @@ public final class ChildBound
 		{
 			check.requireTrusted(policies);
 			ParentPolicy policy = intersect(policies);
-			return ChildPolicy.intersect(policy, needs.needs(harness, resultsFolder, deniedReads, policy).with(extra));
+			ChildPolicy child = ChildPolicy.intersect(policy, needs.needs(harness, resultsFolder, deniedReads, policy).
+				with(extra));
+			// The child gets the same type of sandbox as its parent
+			if (!policy.sandboxed())
+				return child.unsandboxed();
+			return child.withSandboxSelection(parent.sandboxSelection(askingThread));
 		}
 		catch (PolicyRefusal e)
 		{
@@ -251,6 +256,38 @@ public final class ChildBound
 			if (!e.writes().isEmpty() || !e.hosts().isEmpty())
 				entries = parent.permissionEntries(e.writes(), e.hosts());
 			throw new SessionRefusedException(e.messageFor(parent.harnessName(), entries), e);
+		}
+	}
+
+	/**
+	 * Returns why the parent cannot run prompt optimization, which requires a sandbox: its harness's message for a
+	 * session without a sandbox, or, for a session whose settings turn the sandbox on, its harness's report that the
+	 * sandbox failed to start.
+	 *
+	 * @param askingThread the identifier that the parent's harness gives the thread that asks, or empty for the
+	 *                     parent's main thread
+	 * @return the reason, or empty if every reading of the parent's policy, its snapshots' and the current one, says
+	 *   that a sandbox confines its commands, and its harness reports no failure of that sandbox
+	 * @throws NullPointerException    if {@code askingThread} is null
+	 * @throws SessionRefusedException if the parent's policy cannot be read safely; the message says how to fix it
+	 */
+	public Optional<String> sandboxRefusal(Optional<String> askingThread) throws SessionRefusedException
+	{
+		requireThat(askingThread, "askingThread").isNotNull();
+		// A snapshot keeps the bound sandboxed after the parent loses its sandbox, while the parent's own commands, the
+		// optimizer's among them, run without one as soon as any reading says so
+		for (ParentPolicy reading : readings(askingThread))
+		{
+			if (!reading.sandboxed())
+				return Optional.of(parent.sandboxAbsence());
+		}
+		try
+		{
+			return parent.sandboxFailure();
+		}
+		catch (IOException e)
+		{
+			throw new SessionRefusedException(unreadablePolicy(parent.harnessName(), e), e);
 		}
 	}
 

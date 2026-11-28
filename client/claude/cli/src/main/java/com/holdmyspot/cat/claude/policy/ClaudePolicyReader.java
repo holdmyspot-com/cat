@@ -2,6 +2,7 @@ package com.holdmyspot.cat.claude.policy;
 
 import com.holdmyspot.cat.claude.installer.ClaudeWriteGrants;
 import com.holdmyspot.cat.common.BoundedInput;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
@@ -59,6 +60,10 @@ public final class ClaudePolicyReader
 	 */
 	private final HarnessProcesses processes;
 	/**
+	 * The platform that the sessions run on.
+	 */
+	private final Platform platform;
+	/**
 	 * The JSON parser.
 	 */
 	private final JsonMapper json = JsonMapper.builder().build();
@@ -67,12 +72,25 @@ public final class ClaudePolicyReader
 	 * Creates a reader.
 	 *
 	 * @param processes the running processes
-	 * @throws NullPointerException if {@code processes} is null
+	 * @param platform  the platform that the sessions run on
+	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public ClaudePolicyReader(HarnessProcesses processes)
+	public ClaudePolicyReader(HarnessProcesses processes, Platform platform)
 	{
 		requireThat(processes, "processes").isNotNull();
+		requireThat(platform, "platform").isNotNull();
 		this.processes = processes;
+		this.platform = platform;
+	}
+
+	/**
+	 * Returns the platform that the sessions run on.
+	 *
+	 * @return the platform
+	 */
+	public Platform platform()
+	{
+		return platform;
 	}
 
 	/**
@@ -266,7 +284,8 @@ public final class ClaudePolicyReader
 			}
 			// A stable sort keeps the order of the layers within a scope
 			layers.sort(Comparator.comparing(SettingsLayer::scope));
-			ClaudePolicyComputation.Computed computed = ClaudePolicyComputation.compute(layers, commandLine, session);
+			ClaudePolicyComputation.Computed computed = ClaudePolicyComputation.compute(layers, commandLine, session,
+				platform);
 			portLimitedDomains.addAll(computed.portLimitedDomains());
 			if (policy == null)
 				policy = computed.policy();

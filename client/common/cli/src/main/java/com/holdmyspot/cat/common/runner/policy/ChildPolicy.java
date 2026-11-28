@@ -21,28 +21,42 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * The sandbox policy that a child session's harness enforces on the child's commands: its needs, which its parent's
  * policy allows. Its paths are resolved as {@link ParentPolicy} describes, and the commands may write, read and
  * reach what {@link ParentPolicy} describes for the same components.
+ * <p>
+ * The child gets the same type of sandbox as its parent: none when the parent has none, in which case the other
+ * components say what the child's harness is configured to allow but no sandbox enforces them, and otherwise its
+ * harness's sandbox, in the implementation that {@code sandboxSelection} names where the harness has more than one on
+ * the platform.
  *
+ * @param sandboxed         {@code true} if the child's commands run in its harness's sandbox, {@code false} if they
+ *                          run without one, as its parent's do
  * @param writeRoots        the folders that the commands may write; the first is the child's session folder
  * @param writeDenials      the paths inside the write roots that the commands may not write
  * @param readDenials       the paths that the commands may not read
  * @param readReallowances  the paths inside read denials that the commands may read nonetheless
  * @param hosts             the network hosts that the commands may reach, as host names or literal IP addresses
  * @param allowLocalBinding {@code true} if the commands may listen on local network addresses
+ * @param sandboxSelection  the parent's settings that select which of its harness's sandbox implementations runs the
+ *                          commands, by dotted setting name, which the child's harness applies as they are; empty
+ *                          if the parent's harness has a single sandbox on the platform, or selects none, and always
+ *                          empty when the child has no sandbox
  */
-public record ChildPolicy(List<Path> writeRoots, List<Path> writeDenials, List<Path> readDenials,
-	List<Path> readReallowances, Set<String> hosts, boolean allowLocalBinding)
+public record ChildPolicy(boolean sandboxed, List<Path> writeRoots, List<Path> writeDenials, List<Path> readDenials,
+	List<Path> readReallowances, Set<String> hosts, boolean allowLocalBinding, Map<String, String> sandboxSelection)
 {
 	/**
 	 * Creates a policy.
 	 *
+	 * @param sandboxed         {@code true} if the child's commands run in its harness's sandbox
 	 * @param writeRoots        the folders that the commands may write; the first is the child's session folder
 	 * @param writeDenials      the paths inside the write roots that the commands may not write
 	 * @param readDenials       the paths that the commands may not read
 	 * @param readReallowances  the paths inside read denials that the commands may read nonetheless
 	 * @param hosts             the network hosts that the commands may reach, as host names or literal IP addresses
 	 * @param allowLocalBinding {@code true} if the commands may listen on local network addresses
+	 * @param sandboxSelection  the parent's settings that select its harness's sandbox implementation
 	 * @throws NullPointerException     if any of the arguments are null, or a collection contains null
-	 * @throws IllegalArgumentException if a path is not absolute, or {@code writeRoots} is empty
+	 * @throws IllegalArgumentException if a path is not absolute, {@code writeRoots} is empty, or a policy without a
+	 *                                  sandbox has a selection
 	 */
 	public ChildPolicy
 	{
@@ -53,6 +67,58 @@ public record ChildPolicy(List<Path> writeRoots, List<Path> writeDenials, List<P
 		readReallowances = ParentPolicy.absolutePaths(readReallowances, "readReallowances");
 		requireThat(hosts, "hosts").isNotNull();
 		hosts = Set.copyOf(hosts);
+		requireThat(sandboxSelection, "sandboxSelection").isNotNull();
+		sandboxSelection = Map.copyOf(sandboxSelection);
+		if (!sandboxed)
+			requireThat(sandboxSelection, "sandboxSelection").isEmpty();
+	}
+
+	/**
+	 * Creates a sandboxed policy that selects no implementation.
+	 *
+	 * @param writeRoots        the folders that the commands may write; the first is the child's session folder
+	 * @param writeDenials      the paths inside the write roots that the commands may not write
+	 * @param readDenials       the paths that the commands may not read
+	 * @param readReallowances  the paths inside read denials that the commands may read nonetheless
+	 * @param hosts             the network hosts that the commands may reach, as host names or literal IP addresses
+	 * @param allowLocalBinding {@code true} if the commands may listen on local network addresses
+	 * @throws NullPointerException     if any of the arguments are null, or a collection contains null
+	 * @throws IllegalArgumentException if a path is not absolute, or {@code writeRoots} is empty
+	 */
+	public ChildPolicy(List<Path> writeRoots, List<Path> writeDenials, List<Path> readDenials,
+		List<Path> readReallowances, Set<String> hosts, boolean allowLocalBinding)
+	{
+		this(true, writeRoots, writeDenials, readDenials, readReallowances, hosts, allowLocalBinding, Map.of());
+	}
+
+	/**
+	 * Returns this policy for a child whose parent has no sandbox, so that the child's commands run without one too.
+	 *
+	 * @return a policy with the same components, no sandbox and no selection
+	 */
+	public ChildPolicy unsandboxed()
+	{
+		if (!sandboxed)
+			return this;
+		return new ChildPolicy(false, writeRoots, writeDenials, readDenials, readReallowances, hosts,
+			allowLocalBinding, Map.of());
+	}
+
+	/**
+	 * Returns this policy with the parent's settings that select its harness's sandbox implementation.
+	 *
+	 * @param selection the settings, by dotted setting name
+	 * @return a policy that differs from this one only in its selection
+	 * @throws NullPointerException  if {@code selection} is null
+	 * @throws IllegalStateException if this policy has no sandbox and {@code selection} is not empty
+	 */
+	public ChildPolicy withSandboxSelection(Map<String, String> selection)
+	{
+		requireThat(selection, "selection").isNotNull();
+		if (!sandboxed && !selection.isEmpty())
+			throw new IllegalStateException("A policy without a sandbox selects no sandbox implementation");
+		return new ChildPolicy(sandboxed, writeRoots, writeDenials, readDenials, readReallowances, hosts,
+			allowLocalBinding, selection);
 	}
 
 	/**
@@ -173,8 +239,8 @@ public record ChildPolicy(List<Path> writeRoots, List<Path> writeDenials, List<P
 			}
 			carveAround(denial, inside, carved);
 		}
-		return new ChildPolicy(writeRoots, writeDenials, List.copyOf(carved), readReallowances, hosts,
-			allowLocalBinding);
+		return new ChildPolicy(sandboxed, writeRoots, writeDenials, List.copyOf(carved), readReallowances, hosts,
+			allowLocalBinding, sandboxSelection);
 	}
 
 	/**
@@ -254,7 +320,8 @@ public record ChildPolicy(List<Path> writeRoots, List<Path> writeDenials, List<P
 		}
 		if (denials.size() == writeDenials.size())
 			return this;
-		return new ChildPolicy(writeRoots, List.copyOf(denials), readDenials, readReallowances, hosts, allowLocalBinding);
+		return new ChildPolicy(sandboxed, writeRoots, List.copyOf(denials), readDenials, readReallowances, hosts,
+			allowLocalBinding, sandboxSelection);
 	}
 
 	/**
@@ -262,10 +329,13 @@ public record ChildPolicy(List<Path> writeRoots, List<Path> writeDenials, List<P
 	 * that this policy does not give: {@link #intersect(ParentPolicy, ChildNeeds) intersecting} the requested
 	 * session's needs with it refuses a need that this policy does not allow.
 	 *
-	 * @return a sandboxed parent policy with exactly this policy's accesses, which protects no source of its own
+	 * @return a sandboxed parent policy with exactly this policy's accesses, which protects no source of its own, or
+	 *         {@link ParentPolicy#UNSANDBOXED} if this policy has no sandbox
 	 */
 	public ParentPolicy asParentPolicy()
 	{
+		if (!sandboxed)
+			return ParentPolicy.UNSANDBOXED;
 		HostAccess access;
 		if (hosts.isEmpty())
 			access = HostAccess.NONE;

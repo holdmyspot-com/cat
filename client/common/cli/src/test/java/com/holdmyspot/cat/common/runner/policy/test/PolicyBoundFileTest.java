@@ -106,7 +106,7 @@ public final class PolicyBoundFileTest
 				{VALID.replace("\"sandbox_selection\":{}", "\"sandbox_selection\":{\"windows.sandbox\":1}"),
 					"sandbox_selection"},
 				{VALID.replace(",\"allow_local_binding\":false", ""), "allow_local_binding"},
-				{VALID.replace("}", ",\"extra\":1}"), "extra"},
+				{VALID.substring(0, VALID.length() - 1) + ",\"extra\":1}", "extra"},
 				{VALID.replace("\"/session\"", "\"session\""), "absolute"},
 				{VALID.replace("[\"model.example\"]", "[1]"), "hosts"},
 				{VALID.replace("\"write_roots\":[\"/session\"]", "\"write_roots\":[]"), "writeRoots"},

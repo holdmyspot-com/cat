@@ -352,6 +352,15 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 	protected abstract HarnessSandbox trialSandbox();
 
 	/**
+	 * Returns what says whether the session that runs this command runs its commands in a sandbox, which every
+	 * command that can start a trial needs.
+	 *
+	 * @return what says why the session cannot start trials
+	 * @throws IllegalStateException if this scope is closed
+	 */
+	protected abstract OwnerSandbox ownerSandbox();
+
+	/**
 	 * Returns why the request server that starts this command's nested sessions would refuse every session, found
 	 * without sending a request or starting a session. Only sessions that go to the session's request server need one.
 	 *

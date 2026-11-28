@@ -108,7 +108,8 @@ final class CodexRuleInjectionHook
 	/**
 	 * Loads rules for one Codex hook event and emits its harness JSON response, as
 	 * {@code run} without a sandbox source does, and, at SessionStart, checks the folders on {@code PATH} against
-	 * the session's sandbox.
+	 * the session's sandbox and, on native Windows, recommends Codex's {@code mxc} sandbox implementation when the
+	 * session runs in another one, in none, or in one that CAT cannot tell.
 	 *
 	 * @param eventName the Codex hook event name
 	 * @param args the hook command-line arguments
@@ -119,7 +120,8 @@ final class CodexRuleInjectionHook
 	 * @param workingDirectory the hook process directory
 	 * @param waiting how the hook waits between the attempts of a retried operation
 	 * @param git answers what Git ignores in the project when the event creates a CAT session directory
-	 * @param sandbox reads the session's sandbox, for the check of the folders on {@code PATH}; empty to skip the check
+	 * @param sandbox reads the session's sandbox, for the check of the folders on {@code PATH} and the recommendation;
+	 *   empty to skip both
 	 */
 	static void run(String eventName, String[] args, InputStream input, OutputStream output, PrintStream error,
 		Map<String, String> environment, Path workingDirectory, Waiting waiting, SessionIgnore.GitQueries git,
@@ -183,6 +185,8 @@ final class CodexRuleInjectionHook
 				if (eventName.equals("SessionStart") && sandbox.isPresent())
 				{
 					CodexPathCheck.notice(event, environment, projectDir, sandbox.get(), error).
+						ifPresent(notices::add);
+					CodexPathCheck.sandboxRecommendation(event, environment, projectDir, sandbox.get()).
 						ifPresent(notices::add);
 				}
 				if (!notices.isEmpty())

@@ -36,7 +36,6 @@ import com.holdmyspot.cat.codex.runner.CodexStartupHookComparison;
 import com.holdmyspot.cat.codex.secrets.CodexOptimizerCommandScopeSecrets;
 import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
-import com.holdmyspot.cat.codex.runner.CodexSessionSandbox;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -120,7 +119,7 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 		requireThat(home, "home").isNotNull();
 		requireThat(artifact, "artifact").isNotNull();
 		Path configurationDirectory = CodexInstallation.resolveHome(environment, home, directory.toAbsolutePath());
-		super(Harness.CODEX, CodexSessionSandbox::refusal, CodexSessionHarness.HARNESS, CodexRunnerCli.MARKERS,
+		super(Harness.CODEX, _ -> Optional.empty(), CodexSessionHarness.HARNESS, CodexRunnerCli.MARKERS,
 			environment, configurationDirectory, directory, LOADER_CONFIGURATION, waiting, authentication);
 		this.environment = Map.copyOf(environment);
 		this.artifact = artifact;

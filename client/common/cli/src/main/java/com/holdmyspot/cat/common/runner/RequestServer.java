@@ -1076,6 +1076,12 @@ public final class RequestServer
 		@Override
 		public RequestedRunner.Start prepare(LaunchRequest request, Path resultsFolder) throws IOException
 		{
+			if (request.optimizerSession())
+			{
+				Optional<String> refusal = sandboxRefusal();
+				if (refusal.isPresent())
+					throw new SessionRefusedException(refusal.get());
+			}
 			RequestedRunner.Selection selected = runners.select(request.harness());
 			List<String> options = new ArrayList<>();
 			request.capacityWait().ifPresent(seconds ->
@@ -1102,6 +1108,18 @@ public final class RequestServer
 				arguments.addAll(added);
 				return selected.start().run(arguments, directory);
 			};
+		}
+
+		/**
+		 * Returns why the session cannot run what needs a sandbox, from the session's own policy.
+		 *
+		 * @return the reason, or empty if the session's commands run in a sandbox
+		 * @throws SessionRefusedException if the session's policy cannot be read safely
+		 */
+		@Override
+		public Optional<String> sandboxRefusal() throws SessionRefusedException
+		{
+			return bound.sandboxRefusal(askingThread);
 		}
 
 		@Override

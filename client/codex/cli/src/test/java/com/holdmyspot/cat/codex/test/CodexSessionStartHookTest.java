@@ -1147,7 +1147,7 @@ public final class CodexSessionStartHookTest
 			requireThat(readResponse(result).path("systemMessage").asString(), "systemMessage").
 				contains("[windows] sandbox = \"mxc\"").contains("26100.9278").contains("26200.9278").
 				contains("Windows Server");
-			requireThat(sessionRules(result), "rules").isNotEmpty();
+			requireThat(context(result), "context").contains("CAT's rules for this session are in");
 		}
 	}
 

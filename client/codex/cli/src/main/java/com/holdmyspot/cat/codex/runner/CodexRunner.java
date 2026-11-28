@@ -158,7 +158,8 @@ public final class CodexRunner
 	 * @param sessionRequests how many sessions the session may request over its nested session, or {@code 0} if it may
 	 *   request none
 	 * @param bound the policy that bounds the session's sandbox: the session gets its session folder, the dependency
-	 *   caches and its model host only within it
+	 *   caches and its model host only within it. The session runs in its sandbox type: without a sandbox if the bound
+	 *   has none, otherwise, on Windows, in the Windows sandbox implementation that the bound's selection names
 	 * @param policyListener receives the session's sandbox policy before its Codex process starts
 	 * @param extraPermissions the writes and hosts that the session's commands need beyond what Codex needs
 	 * @param resumedSession the thread that the nested session of {@code manager}'s slot records and that the runner
@@ -172,15 +173,15 @@ public final class CodexRunner
 	 *   ends.
 	 * @return the live owned Codex run session
 	 * @throws SessionRefusedException if the session's sandbox would be wider than its policy or cannot confine it,
-	 *                                 or on Windows would run in a sandbox implementation that CAT has not verified,
-	 *                                 or in none
+	 *                                 or on Windows would run in no sandbox implementation that the bound's
+	 *                                 selection or the machine-wide configuration names
 	 * @throws IOException             if validation, copying, or process startup fails
 	 */
 	@SuppressWarnings("PMD.CloseResource")
 	LiveNestedSession start(Path artifact, Path project, Path workspace, List<TrialPluginInput> trialPlugins,
 		NestedSessionManager manager, String executable, Map<String, String> environment, String model, String effort,
 		boolean installCat, CodexAgentDefinition agent, List<Path> readOnlyEvidence, List<Path> deniedReads,
-		int toolOutputTokenLimit, boolean sessionTranscripts, int sessionRequests, ParentPolicy bound,
+		int toolOutputTokenLimit, boolean sessionTranscripts, int sessionRequests, ChildPolicy bound,
 		Consumer<ChildPolicy> policyListener, ExtraPermissions extraPermissions,
 		String resumedSession, CodexSessionLogin login) throws IOException
 	{
@@ -247,9 +248,14 @@ public final class CodexRunner
 				environment.get(THREAD_ID));
 			// The session's commands may reach only the host that its own Codex sends model requests to
 			String modelHost = login.modelHost();
-			ChildPolicy policy = sessionPolicy(bound, new ChildNeeds(nestedSession.directory().toAbsolutePath(),
-				caches.directories(), List.of(), Set.of(modelHost)).with(extraPermissions), requestAccess,
-				codexFolder);
+			ChildPolicy policy = sessionPolicy(bound.asParentPolicy(),
+				new ChildNeeds(nestedSession.directory().toAbsolutePath(), caches.directories(), List.of(),
+					Set.of(modelHost)).with(extraPermissions), requestAccess, codexFolder);
+			// The session gets its parent's type of sandbox
+			if (bound.sandboxed())
+				policy = policy.withSandboxSelection(bound.sandboxSelection());
+			else
+				policy = policy.unsandboxed();
 			boolean pluginsInstalled = installCat || !trialPlugins.isEmpty();
 			List<String> appServer = appServerCommand(executable, pluginsInstalled);
 			Path worktree = nestedSession.directory().resolve("project");
@@ -265,13 +271,22 @@ public final class CodexRunner
 				CodexConnectionConfiguration.copy(configuration(hostHome), stagedConfiguration, isolatedHome,
 					login.settings(codexFolder), worktree, caches, temporaryDirectory, toolOutputTokenLimit,
 					requestAccess, Platform.current(), parentState, policy, extraPermissions, retainedConfiguration);
-				CodexSystemFolder system = CodexSystemFolder.ofThisMachine();
-				CodexConnectionConfiguration.requireNarrowingLayers(system, policy);
-				if (Platform.current().isWindows())
-					CodexSessionSandbox.requireVerifiedImplementation(configuration(hostHome), system);
-				policyListener.accept(policy);
-				sandbox = sessionSandbox(stagedConfiguration, manager, nestedSession, readOnlyEvidence, deniedReads,
-					Platform.current(), environment, requestAccess, appServer, policy);
+				if (policy.sandboxed())
+				{
+					CodexSystemFolder system = CodexSystemFolder.ofThisMachine();
+					CodexConnectionConfiguration.requireNarrowingLayers(system, policy);
+					if (Platform.current().isWindows())
+						CodexSessionSandbox.requireSelectedImplementation(stagedConfiguration, system);
+					policyListener.accept(policy);
+					sandbox = sessionSandbox(stagedConfiguration, manager, nestedSession, readOnlyEvidence, deniedReads,
+						Platform.current(), environment, requestAccess, appServer, policy);
+				}
+				else
+				{
+					// Codex has no sandbox for a session whose parent runs without one
+					policyListener.accept(policy);
+					sandbox = new SessionSandbox(CodexAppServerProtocol.FULL_ACCESS, appServer);
+				}
 				replacer.replace(stagedConfiguration, isolatedConfiguration);
 			}
 			finally
@@ -280,8 +295,11 @@ public final class CodexRunner
 			}
 			Map<String, String> isolatedEnvironment = processEnvironment(environment, caches, isolatedHome,
 				nestedSession.directory(), temporaryDirectory, Platform.current(), login);
-			requireNetworkProxy(arguments -> commandOutput(executable, arguments, worktree, isolatedEnvironment,
-				executables, manager, nestedSession), featureFlags(pluginsInstalled), policy.hosts());
+			if (policy.sandboxed())
+			{
+				requireNetworkProxy(arguments -> commandOutput(executable, arguments, worktree, isolatedEnvironment,
+					executables, manager, nestedSession), featureFlags(pluginsInstalled), policy.hosts());
+			}
 			// A resumed nested session keeps the plugins that its start installed in its home
 			Path hookBindings = nestedSession.directory().resolve(CodexPluginHooks.BINDINGS_FILE);
 			Map<String, String> boundHooks;
@@ -297,7 +315,7 @@ public final class CodexRunner
 					isolatedEnvironment, executables, replacer, (setup, step) ->
 						HarnessCommand.execute(setup, worktree, isolatedEnvironment, executables, manager, nestedSession, step));
 				boundHooks = copyBoundTrialHooks(trialPlugins, hostHome, codexFolder, project, worktree, temporaryDirectory,
-					executable, bound, environment, scope);
+					executable, bound.asParentPolicy(), environment, scope);
 				if (!boundHooks.isEmpty())
 					CodexPluginHooks.saveBindings(scope.json(), hookBindings, boundHooks);
 			}
@@ -308,7 +326,7 @@ public final class CodexRunner
 				catPlugin = installedCat(codexFolder);
 			List<String> command = sandbox.command();
 			if (!boundHooks.isEmpty())
-				command = protectHookBindings(command, hookBindings, bound, environment);
+				command = protectHookBindings(command, hookBindings, bound.asParentPolicy(), environment);
 			manager.initialize(nestedSession, artifact, project, "codex_app_server", command,
 				login.evidence());
 			lock = manager.acquireLock(nestedSession);
@@ -1942,8 +1960,8 @@ public final class CodexRunner
 	 * The sandbox of a session: the permission profile that its thread names and the command that starts its
 	 * app-server.
 	 *
-	 * @param profile the profile that the thread names, or an empty string if the thread uses the workspace-write
-	 *                sandbox
+	 * @param profile the profile that the thread names, an empty string if the thread uses the workspace-write
+	 *                sandbox, or {@link CodexAppServerProtocol#FULL_ACCESS} if the thread runs without a sandbox
 	 * @param command the command that starts the app-server
 	 */
 	public record SessionSandbox(String profile, List<String> command)

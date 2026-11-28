@@ -108,15 +108,18 @@ public final class ClaudeConnectionSettings
 	 * The permission rules that the isolated settings of a sandboxed session allow, whatever the parent's settings say.
 	 * Claude Code asks the user before using the {@code Skill} tool, and a nested instance has no user to answer, so
 	 * without this rule a trial could use none of the skills of the prompt system it measures. The rule for editing
-	 * tools grants edits inside the project, and nowhere else. A session without a sandbox is offered neither tool.
+	 * tools grants edits inside the project, and nowhere else. A session that runs without a sandbox because its
+	 * parent has none gets them too; a session that runs without one because its role offers only reading tools is
+	 * offered neither tool.
 	 */
 	private static final List<String> PERMISSION_GRANTS = List.of("Skill", "Edit(./**)");
 	/**
 	 * The permission rule that lets the isolated instance run every Bash command without asking the user, which a
 	 * nested instance has no user to answer. The rule does not depend on Claude Code's
 	 * {@code sandbox.autoAllowBashIfSandboxed}, and the settings require the sandbox that confines the commands. The
-	 * parent's rules that deny a command or ask before running it still take precedence over it. A session without a
-	 * sandbox is offered no tool that runs a command, so its settings omit the rule.
+	 * parent's rules that deny a command or ask before running it still take precedence over it. A session whose
+	 * parent has no sandbox gets the rule too, since its parent's commands run without one; a session whose role offers
+	 * only reading tools has no tool that runs a command, so its settings omit the rule.
 	 */
 	private static final String SANDBOXED_COMMAND_GRANT = "Bash";
 	/**
@@ -516,6 +519,12 @@ public final class ClaudeConnectionSettings
 	 * denials are the same either way. The session is refused when {@code tools} is empty, which offers every tool, or
 	 * names a tool that {@link ClaudeSessionSandbox#READ_ONLY_TOOLS} does not list.
 	 * <p>
+	 * When {@code bound} says that the instance's parent has no sandbox, the instance runs without one too, whatever
+	 * {@code sandboxed} says: its settings turn Claude Code's sandbox off, a session that {@code sandboxed} would confine
+	 * keeps every tool and the rules that let it run commands and edit without asking, and the returned policy says
+	 * that it has no sandbox. Nothing in {@code bound} limits its writes or hosts, since its parent's commands reach
+	 * every path and host that the user's do.
+	 * <p>
 	 * A read denial of a directory that holds the instance's files, such as the host project that holds its session
 	 * folder, becomes a denial of every file and directory in it except the paths that the instance reads: its
 	 * commands' write roots, {@code readOnlyEvidence}, the link-targets directory and, when the instance may request
@@ -578,6 +587,11 @@ public final class ClaudeConnectionSettings
 		requireThat(extraPermissions, "extraPermissions").isNotNull();
 		requireThat(modelHost, "modelHost").isNotBlank();
 		requireThat(tools, "tools").isNotNull();
+		// A session whose parent has no sandbox gets none, as its parent's commands have none
+		boolean parentSandboxed = bound == null || bound.sandboxed();
+		ChildPolicy sandboxBound = bound;
+		if (!parentSandboxed)
+			sandboxBound = null;
 		if (!sandboxed)
 		{
 			Optional<String> refusal = ClaudeSessionSandbox.unsandboxedRefusal(tools);
@@ -591,9 +605,10 @@ public final class ClaudeConnectionSettings
 		implicitWrites.add(claudeTemporaryDirectory);
 		if (project != null)
 			implicitWrites.add(project);
-		ChildPolicy policy = childPolicy(bound, sessionFolder, claudeHome, sessionWrites, implicitWrites, deniedReads,
-			extraPermissions, modelHost);
-		if (sandboxed)
+		ChildPolicy policy = childPolicy(sandboxBound, sessionFolder, claudeHome, sessionWrites, implicitWrites,
+			deniedReads, extraPermissions, modelHost);
+		boolean confined = sandboxed && parentSandboxed;
+		if (confined)
 		{
 			// The commands of a sandboxed session may not change the plugins that the runner installs into its
 			// configuration directory: Claude Code keeps the directory read-only to them, and the settings and the
@@ -620,8 +635,10 @@ public final class ClaudeConnectionSettings
 		ChildPolicy sandboxPolicy = policy;
 		if (requestAccess != null)
 			sandboxPolicy = policy.leavingReadable(List.of(requestAccess.responses()));
-		if (sandboxed)
+		if (confined)
 			putSandbox(settings, sandboxPolicy, implicitWrites);
+		else if (sandboxed)
+			settings.putObject("sandbox").put("enabled", false);
 		if (!promptCacheTtl.isEmpty())
 			settings.put("promptCacheTtl", promptCacheTtl);
 		if (authentication != null)
@@ -640,7 +657,7 @@ public final class ClaudeConnectionSettings
 		// The project's links to targets outside it lead to the copies in the nested session's link-targets directory,
 		// which the file tools read through the links; no rule or sandbox path lets the session write there
 		grants.add("Read(" + rulePattern(NestedSessionManager.linkTargets(sessionFolder)) + "/**)");
-		// A session without a sandbox has no command to run and requests no session
+		// A session whose role offers only reading tools has no command to run and requests no session
 		if (sandboxed && requestAccess != null)
 		{
 			grants.add("Bash(" + requestAccess.launcher() + ":*)");
@@ -664,13 +681,15 @@ public final class ClaudeConnectionSettings
 			denyMcpTools(settings);
 		excludeInstructionsAbove(settings, isolationRoot);
 		// The limit is on the command line that starts a sandboxed command, and a session without a sandbox has none
-		if (sandboxed)
+		if (confined)
 			requireApplicableDenials(settings);
 
 		Files.createDirectories(claudeTemporaryDirectory);
 		Files.createDirectories(claudeHome);
 		Files.createDirectories(destination.getParent());
 		Files.writeString(destination, mapper.writeValueAsString(settings));
+		if (!parentSandboxed)
+			return sandboxPolicy.unsandboxed();
 		return sandboxPolicy;
 	}
 

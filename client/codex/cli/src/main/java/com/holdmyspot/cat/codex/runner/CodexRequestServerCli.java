@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -91,7 +92,7 @@ public final class CodexRequestServerCli
 		requireThat(platform, "platform").isNotNull();
 		requireThat(pause, "pause").isNotNull();
 		return new RequestServer.Host(HARNESS_ID, CodexRunnerCli.MARKERS.running(environment),
-			CodexSessionSandbox.refusal(platform), plugin,
+			Optional.empty(), plugin,
 			CodexRunnerCli.installedCopies(environment),
 			() -> CodexServedSession.sandboxed(RequestServer.program(plugin, platform), environment),
 			CodexServedSession.sessions(environment),

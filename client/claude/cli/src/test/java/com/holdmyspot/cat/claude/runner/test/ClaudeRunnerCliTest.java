@@ -468,8 +468,8 @@ public final class ClaudeRunnerCliTest
 				boolean refused = ClaudeRunnerCli.refusesLaunch(args.toArray(String[]::new), WORKING_DIRECTORY,
 					environment, platform, new PrintWriter(errors, true));
 
-				requireThat(refused, "refused" + role).isFalse();
-				requireThat(errors.toString(), "errors" + role).isEmpty();
+				requireThat(refused, "refused" + String.join("-", role)).isFalse();
+				requireThat(errors.toString(), "errors" + String.join("-", role)).isEmpty();
 			}
 		}
 	}

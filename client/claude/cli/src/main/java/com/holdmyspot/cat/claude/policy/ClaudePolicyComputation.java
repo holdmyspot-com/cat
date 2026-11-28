@@ -88,20 +88,24 @@ final class ClaudePolicyComputation
 	}
 
 	/**
-	 * Computes the policy of a session.
+	 * Computes the policy of a session. Claude Code has no sandbox on native Windows, so a session there runs its
+	 * commands without one whatever its settings say.
 	 *
 	 * @param layers      the settings, from the highest precedence to the lowest
 	 * @param commandLine the command line
 	 * @param session     the session
+	 * @param platform    the platform that the session runs on
 	 * @return the policy, and the allowed domains that it leaves out because they limit a host to one port
 	 * @throws IOException   if a folder cannot be listed while matching a denied pattern
 	 * @throws PolicyRefusal if a setting has a value that CAT cannot read safely
 	 */
-	static Computed compute(List<SettingsLayer> layers, ClaudeCommandLine commandLine, ClaudeSession session)
-		throws IOException, PolicyRefusal
+	static Computed compute(List<SettingsLayer> layers, ClaudeCommandLine commandLine, ClaudeSession session,
+		Platform platform) throws IOException, PolicyRefusal
 	{
 		ClaudePolicyComputation computation = new ClaudePolicyComputation(List.copyOf(layers), commandLine, session);
 		ParentPolicy policy = computation.compute();
+		if (platform.isWindows())
+			return new Computed(ParentPolicy.UNSANDBOXED, Set.of());
 		return new Computed(policy, Set.copyOf(computation.portLimitedDomains));
 	}
 

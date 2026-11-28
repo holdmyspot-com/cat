@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.installer.activation;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.FileReplacer;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SandboxWrites;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
@@ -149,6 +150,21 @@ public interface HarnessIntegration
 	default SandboxWrites sandboxWrites(Path home, Path userHome, Path workingDirectory)
 	{
 		return SandboxWrites.NONE;
+	}
+
+	/**
+	 * Returns the harness's recommendation on the sandbox that its settings select on a platform, which the install's
+	 * message carries, such as a sandbox implementation with fewer known weaknesses than the selected one. The install
+	 * continues whatever it returns.
+	 *
+	 * @param platform the platform that the harness runs on
+	 * @param home     the absolute, normalized harness home
+	 * @return the recommendation, or empty if the harness has none for its settings on the platform
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	default Optional<String> sandboxRecommendation(Platform platform, Path home)
+	{
+		return Optional.empty();
 	}
 
 	/**

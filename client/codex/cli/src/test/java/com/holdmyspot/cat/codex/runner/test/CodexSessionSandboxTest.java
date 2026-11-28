@@ -1,7 +1,5 @@
 package com.holdmyspot.cat.codex.runner.test;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-
 import com.holdmyspot.cat.codex.layout.CodexSystemFolder;
 import com.holdmyspot.cat.codex.runner.CodexSessionSandbox;
 import com.holdmyspot.cat.common.TemporaryDirectories;

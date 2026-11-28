@@ -496,6 +496,8 @@ public final class ChildBoundTest
 	 * Verifies that the bound says why prompt optimization cannot run from a parent: none for a sandboxed parent, the
 	 * harness's message for a parent without a sandbox, and the harness's report for a parent whose sandbox failed to
 	 * start.
+	 *
+	 * @throws SessionRefusedException if the parent's policy cannot be read
 	 */
 	@Test
 	public void saysWhetherParentHasSandbox() throws SessionRefusedException

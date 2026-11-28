@@ -172,7 +172,7 @@ public final class CodexWindowsSandboxTest
 	 * @throws IOException if the test filesystem cannot be used
 	 */
 	@Test
-	public void ignoresUserConfigurationThatLaunchIgnores() throws IOException
+	public void skipsUserConfigurationLaunchIgnores() throws IOException
 	{
 		// Requirement: R-I47
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())

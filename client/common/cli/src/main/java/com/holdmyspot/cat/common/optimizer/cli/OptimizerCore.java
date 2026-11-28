@@ -265,7 +265,7 @@ public final class OptimizerCore implements Core
 			for (String id : backgroundDrivers.keySet())
 			{
 				String text = new Commands(this, scope.json(), ZoneOffset.UTC, scope.trialSandbox(),
-					Platform.current()).render(result);
+					scope.ownerSandbox(), Platform.current()).render(result);
 				BackgroundDriver.write(lockFile(id).resolveSibling("background-result.json"), text, scope.fileReplacer());
 				if (Cleanup.isRemovable(require(scope.store(), id, true), backgroundDeliveries.get(id)))
 					BackgroundDriver.write(backgroundArchive(id), text, scope.fileReplacer());

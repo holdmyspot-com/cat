@@ -37,6 +37,7 @@ import com.holdmyspot.cat.common.runner.RequestServer;
 import com.holdmyspot.cat.common.runner.RetainedNestedSessionClient;
 import com.holdmyspot.cat.common.runner.RetainedTrialRequest;
 import com.holdmyspot.cat.common.runner.RetainedTrialResponse;
+import com.holdmyspot.cat.common.runner.SandboxCheckClient;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
 import com.holdmyspot.cat.common.runner.WorktreeRequestClient;
@@ -395,6 +396,31 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	{
 		ensureOpen();
 		return trialSandbox;
+	}
+
+	/**
+	 * Returns what asks the session that runs this command, by the route that carries its worktree requests, whether
+	 * it runs its commands in a sandbox. A route that refuses the command's requests, or a session that no request
+	 * server serves, refuses every launch on its own, so it adds no reason here.
+	 *
+	 * @return what says why the session cannot start trials
+	 */
+	@Override
+	protected final OwnerSandbox ownerSandbox()
+	{
+		ensureOpen();
+		return () ->
+		{
+			try
+			{
+				return new SandboxCheckClient(this::worktreeChannel, json(),
+					waiting().every(SessionRequestForwarder.RESPONSE_POLL)).refusal();
+			}
+			catch (WorktreeRefusedException _)
+			{
+				return Optional.empty();
+			}
+		};
 	}
 
 	/**

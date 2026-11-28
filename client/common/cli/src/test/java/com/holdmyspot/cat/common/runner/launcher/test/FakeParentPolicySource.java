@@ -31,6 +31,14 @@ public final class FakeParentPolicySource implements ParentPolicySource
 	 * The {@link PolicyRefusal} or {@link IOException} that every reading throws, or {@code null} if readings succeed.
 	 */
 	private Exception failure;
+	/**
+	 * The parent's selection of its harness's sandbox.
+	 */
+	private Map<String, String> selection = Map.of();
+	/**
+	 * The harness's report that the parent's sandbox failed to start, or empty if it reported none.
+	 */
+	private Optional<String> sandboxFailure = Optional.empty();
 
 	/**
 	 * Creates a source.
@@ -82,13 +90,6 @@ public final class FakeParentPolicySource implements ParentPolicySource
 	}
 
 	/**
-	 * Makes every later reading refused, as it is once the session's harness process has ended or its settings cannot
-	 * be parsed.
-	 *
-	 * @param refusal the refusal
-	 * @throws NullPointerException if {@code refusal} is null
-	 */
-	/**
 	 * Sets the parent's selection of its harness's sandbox.
 	 *
 	 * @param selection the settings that select the sandbox
@@ -118,6 +119,13 @@ public final class FakeParentPolicySource implements ParentPolicySource
 		}
 	}
 
+	/**
+	 * Makes every later reading refused, as it is once the session's harness process has ended or its settings cannot
+	 * be parsed.
+	 *
+	 * @param refusal the refusal
+	 * @throws NullPointerException if {@code refusal} is null
+	 */
 	public void refuse(PolicyRefusal refusal)
 	{
 		requireThat(refusal, "refusal").isNotNull();

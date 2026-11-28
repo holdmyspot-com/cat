@@ -12,6 +12,13 @@ import java.nio.file.Path;
 public final class CodexAppServerProtocol
 {
 	/**
+	 * The permission profile argument under which a thread runs its commands without a sandbox, as the commands of a
+	 * session whose parent has no sandbox run: the name of Codex's built-in profile without a sandbox, which the thread
+	 * asks for as the {@code danger-full-access} sandbox.
+	 */
+	public static final String FULL_ACCESS = ":danger-full-access";
+
+	/**
 	 * Frames the mandatory app-server initialization request.
 	 *
 	 * @return the JSON-RPC request line
@@ -40,7 +47,7 @@ public final class CodexAppServerProtocol
 	 * @param workingDirectory the absolute copied-project directory
 	 * @param model the optional model name
 	 * @param developerInstructions the optional direct developer contract
-	 * @param permissionProfile the optional named Codex permission profile
+	 * @param permissionProfile the optional named Codex permission profile, or {@link #FULL_ACCESS} for no sandbox
 	 * @return the JSON-RPC request line
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code workingDirectory} is not absolute
@@ -61,7 +68,8 @@ public final class CodexAppServerProtocol
 	 * @param threadId              the recorded thread
 	 * @param model                 the model name, or empty to keep the thread's
 	 * @param developerInstructions the direct developer contract, or empty for none
-	 * @param permissionProfile     the named Codex permission profile, or empty for the workspace-write sandbox
+	 * @param permissionProfile     the named Codex permission profile, empty for the workspace-write sandbox, or
+	 *                              {@link #FULL_ACCESS} for no sandbox
 	 * @return the JSON-RPC request line
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code workingDirectory} is not absolute or {@code threadId} is blank
@@ -84,7 +92,8 @@ public final class CodexAppServerProtocol
 	 * @param workingDirectory      the absolute copied-project directory
 	 * @param model                 the model name, or empty for the default
 	 * @param developerInstructions the direct developer contract, or empty for none
-	 * @param permissionProfile     the named Codex permission profile, or empty for the workspace-write sandbox
+	 * @param permissionProfile     the named Codex permission profile, empty for the workspace-write sandbox, or
+	 *                              {@link #FULL_ACCESS} for no sandbox
 	 * @return the JSON-RPC request line
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code workingDirectory} is not absolute
@@ -105,7 +114,9 @@ public final class CodexAppServerProtocol
 		if (!developerInstructions.isBlank())
 			developerInstructionsParameter = ",\"developerInstructions\":\"" + escape(developerInstructions) + "\"";
 		String permissionParameter = "\"sandbox\":\"workspace-write\"";
-		if (!permissionProfile.isBlank())
+		if (permissionProfile.equals(FULL_ACCESS))
+			permissionParameter = "\"sandbox\":\"danger-full-access\"";
+		else if (!permissionProfile.isBlank())
 		{
 			// Validators must inspect executor evidence without being able to alter the evidence used to justify a verdict.
 			permissionParameter = "\"permissions\":\"" + escape(permissionProfile) +

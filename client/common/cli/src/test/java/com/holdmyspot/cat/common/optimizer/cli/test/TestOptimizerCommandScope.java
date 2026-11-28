@@ -13,6 +13,7 @@ import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.cli.HarnessVersion;
 import com.holdmyspot.cat.common.optimizer.cli.OptimizerCommandScope;
+import com.holdmyspot.cat.common.optimizer.cli.OwnerSandbox;
 import com.holdmyspot.cat.common.optimizer.cli.AbstractOptimizerCommandScope;
 import com.holdmyspot.cat.common.optimizer.cli.EvaluatorMetadata;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
@@ -459,6 +460,13 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	{
 		ensureOpen();
 		return _ -> Optional.ofNullable(sandboxRefusal);
+	}
+
+	@Override
+	protected OwnerSandbox ownerSandbox()
+	{
+		ensureOpen();
+		return Optional::empty;
 	}
 
 	@Override

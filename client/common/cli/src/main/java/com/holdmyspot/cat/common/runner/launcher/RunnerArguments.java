@@ -40,6 +40,12 @@ public final class RunnerArguments
 	 */
 	public static final String HELD_OUT_OPTION = "--held-out";
 	/**
+	 * The launch option that states that a prompt optimizer requests the session as a trial, judge or other session of
+	 * a campaign, which a request server or a nested session's runner refuses while the requesting session has no
+	 * sandbox.
+	 */
+	public static final String OPTIMIZER_SESSION_OPTION = "--optimizer-session";
+	/**
 	 * The launch option that selects one project directory whose link declarations are returned as result data.
 	 */
 	public static final String RESULT_PROJECT_LINKS_OPTION = "--result-project-links";

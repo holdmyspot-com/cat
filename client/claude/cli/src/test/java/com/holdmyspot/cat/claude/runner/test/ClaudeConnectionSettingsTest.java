@@ -932,7 +932,7 @@ public final class ClaudeConnectionSettingsTest
 	 * @throws IOException if fixture I/O fails
 	 */
 	@Test
-	public void unsandboxedParentsChildRunsWithoutSandbox() throws IOException
+	public void unsandboxedParentChildRunsUnsandboxed() throws IOException
 	{
 		// Requirement: R-I43
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();

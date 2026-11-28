@@ -128,11 +128,15 @@ public final class RequestArchive
 	 * The manifest field that binds a streamed trial resume to a previously inspected retained checkpoint.
 	 */
 	static final String RETAINED_TRIAL_CLAIM = "retained_trial_claim";
+	/**
+	 * The manifest field that states that a prompt optimizer requests the session.
+	 */
+	static final String OPTIMIZER_SESSION = "optimizer_session";
 	private static final Set<String> LAUNCH_FIELDS = Set.of("format_version", "harness", "project", "prompts",
 		"plugins", "model", "effort", "session_transcripts", "install_cat", EXTRA_PERMISSIONS,
 		StreamedRequest.INPUT_FIELD, "workspace", "read_only_evidence", "deny_read", "instruction_files",
 		"session_role", "tool_output_token_limit", "turn_copy", "held_out", RESUME, RETAINED_TRIAL_CLAIM,
-		TrialPluginInput.PROVENANCE_FIELD, ResultProjectLinks.FIELD);
+		TrialPluginInput.PROVENANCE_FIELD, ResultProjectLinks.FIELD, OPTIMIZER_SESSION);
 	/**
 	 * The manifest fields that a nested session fixed at its start, which a request that resumes the nested session's
 	 * harness session may not name.
@@ -1417,7 +1421,7 @@ public final class RequestArchive
 			toolOutputTokenLimit, turnCopy, agent,
 			nonNegative(value, "session_requests").orElse(0), nonNegative(value, "request_depth").orElse(0),
 			nonNegative(value, "capacity_wait"), positive(value, "max_concurrency"), flag(value, "held_out"), resume,
-			claim, resultProjectLinks.map(Path::of), authentication);
+			claim, resultProjectLinks.map(Path::of), authentication, flag(value, OPTIMIZER_SESSION));
 	}
 
 	/**
@@ -1763,6 +1767,8 @@ public final class RequestArchive
 	 * @param authentication     the requester's choice of the source home and gateway login class; only a request to a
 	 *                           session's request server makes one, and a request that makes none chooses the
 	 *                           runner's own home folder
+	 * @param optimizerSession   indicates whether a prompt optimizer requests the session, which requires the
+	 *                           requester to have a sandbox
 	 */
 	record LaunchRequest(String harness, Path project, List<TrialPluginInput> plugins, List<String> prompts, String model,
 		String effort, boolean sessionTranscripts, boolean installCat, ExtraPermissions extraPermissions,
@@ -1772,7 +1778,7 @@ public final class RequestArchive
 		int requestDepth,
 		Optional<Integer> capacityWait, Optional<Integer> maximumConcurrency, boolean heldOut, Optional<String> resume,
 		Optional<RetainedTrialClaim> retainedTrialClaim, Optional<Path> resultProjectLinks,
-		AuthenticationOptions authentication)
+		AuthenticationOptions authentication, boolean optimizerSession)
 	{
 	}
 

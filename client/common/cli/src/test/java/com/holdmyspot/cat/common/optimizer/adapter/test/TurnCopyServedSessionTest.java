@@ -85,7 +85,8 @@ public final class TurnCopyServedSessionTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-turn-copy-")).toRealPath();
 			Path source = Files.createDirectories(root.resolve("source"));
-			try (RequestingNestedSession parent = new RequestingNestedSession(root.resolve("parent"), jvm.fileLocks(), 1))
+			try (RequestingNestedSession parent = RequestingNestedSession.sandboxed(root.resolve("parent"),
+				jvm.fileLocks(), 1))
 			{
 				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("results"),
 					List::of, false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(),

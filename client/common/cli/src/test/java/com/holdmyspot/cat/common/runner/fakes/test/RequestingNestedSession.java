@@ -11,6 +11,7 @@ import com.holdmyspot.cat.common.runner.NestedSessionReceipt;
 import com.holdmyspot.cat.common.runner.ResultsCopy;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestBroker;
+import com.holdmyspot.cat.common.runner.policy.HostAccess;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.secrets.MainHarnessRunnerScopeSecrets;
 import java.io.IOException;
@@ -110,6 +111,24 @@ public final class RequestingNestedSession implements AutoCloseable
 	public RequestingNestedSession(Path root, FileLocks fileLocks, int sessionRequests) throws IOException
 	{
 		this(root, fileLocks, sessionRequests, turn -> "reply " + turn);
+	}
+
+	/**
+	 * Creates the nested session and starts its broker, whose runner states that a sandbox confines its session's
+	 * commands to the session's folder, as the runner of a sandboxed parent does, so that the session may request a
+	 * prompt optimizer's trials.
+	 *
+	 * @param root            the folder that holds the nested session and its artifact
+	 * @param fileLocks       the file locks of the nested sessions
+	 * @param sessionRequests how many sessions the nested session allows
+	 * @return the nested session
+	 * @throws IOException if the nested session cannot be created or its broker cannot start
+	 */
+	public static RequestingNestedSession sandboxed(Path root, FileLocks fileLocks, int sessionRequests)
+		throws IOException
+	{
+		return new RequestingNestedSession(root, fileLocks, sessionRequests, new ParentPolicy(true,
+			List.of(root.toAbsolutePath()), List.of(), List.of(), List.of(), HostAccess.NONE, false, List.of()));
 	}
 
 	/**

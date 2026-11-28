@@ -19,10 +19,10 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Decides where CAT starts a Claude session, as {@link HarnessSandbox} describes, and which sessions it starts without
- * a sandbox. Claude Code confines a session's commands in a sandbox on Linux and macOS, and has none on native Windows.
- * A session whose model is offered only {@link #READ_ONLY_TOOLS} has no command to confine, so it runs without a
- * sandbox, and the platform decision does not apply to it.
+ * Decides which Claude sessions CAT starts in a sandbox, and why one would not start. Claude Code confines a session's
+ * commands in a sandbox on Linux and macOS, and has none on native Windows. A session takes its parent's type of
+ * sandbox: a session whose parent has none runs without one on every platform. A session whose model is offered only
+ * {@link #READ_ONLY_TOOLS} has no command to confine, so it runs without a sandbox too.
  */
 public final class ClaudeSessionSandbox
 {
@@ -46,23 +46,38 @@ public final class ClaudeSessionSandbox
 	 * without a sandbox, are the whole of what keeps them out of the paths that the session must not read.
 	 */
 	public static final List<String> READ_ONLY_TOOLS = List.of("Read", "Grep", "Glob");
-
 	/**
-	 * Returns why CAT refuses to start a session that runs inside a sandbox on a platform.
-	 *
-	 * @param platform the platform that the session would run on
-	 * @return the reason, or empty if CAT starts sandboxed Claude sessions on {@code platform}
-	 * @throws NullPointerException if {@code platform} is null
+	 * What native Windows lacks for a Claude session that runs inside a sandbox.
 	 */
-	public static Optional<String> refusal(Platform platform)
+	private static final String NO_WINDOWS_SANDBOX = "Claude Code has no sandbox on native Windows";
+	/**
+	 * How to get a Claude Code that has a sandbox on a Windows computer.
+	 */
+	private static final String WSL_INSTALL = "To install WSL2, run `wsl --install` in PowerShell as an " +
+		"administrator; see https://learn.microsoft.com/windows/wsl/install.";
+	/**
+	 * Decides whether Claude Code can run a prompt optimizer's trials, which run in a sandbox: everywhere except on
+	 * native Windows.
+	 */
+	public static final HarnessSandbox TRIALS = platform ->
 	{
 		requireThat(platform, "platform").isNotNull();
 		if (platform.isWindows())
-		{
-			return Optional.of(HarnessSandbox.nativeWindowsRefusal("Claude Code",
-				"Claude Code has no sandbox on native Windows"));
-		}
+			return Optional.of(trialRefusal());
 		return Optional.empty();
+	};
+
+	/**
+	 * Returns why Claude Code cannot run a prompt optimizer, or its trials, on native Windows.
+	 *
+	 * @return the reason, which names what is missing and where to run the prompt optimizer instead
+	 */
+	public static String trialRefusal()
+	{
+		return "Prompt optimization runs its trials in a sandbox, so that a trial cannot read the held-out test cases " +
+			"or change files outside its workspace, and " + NO_WINDOWS_SANDBOX + ". Install Claude Code and CAT inside " +
+			"WSL2 and run the prompt optimizer there, or run it from Codex, whose Windows sandbox confines its trials. " +
+			WSL_INSTALL;
 	}
 
 	/**
@@ -117,7 +132,8 @@ public final class ClaudeSessionSandbox
 	/**
 	 * Returns why CAT refuses to start a session whose Claude Code sandbox would not start. A launch is refused, with a
 	 * message that names the check, the value found and the fix, for the first of these causes, in this order. On native
-	 * Windows, which has no sandbox, it is refused as {@link #refusal} says. On Linux, WSL2 included, and on macOS: a
+	 * Windows, which has no sandbox, it is refused, since only a session whose parent has a sandbox runs inside one,
+	 * and a session without one would reach further than its parent. On Linux, WSL2 included, and on macOS: a
 	 * temporary folder, or a {@code TMPDIR} of a settings file, longer than the sandbox's bridge sockets allow. On Linux:
 	 * no executable {@code bwrap}, or a {@code sandbox.bwrapPath} that names no executable file; no executable
 	 * {@code socat} in a directory of the {@code PATH}; a temporary folder in which no file could be created; and a
@@ -147,7 +163,11 @@ public final class ClaudeSessionSandbox
 		requireThat(temporaryFolder, "temporaryFolder").isNotNull();
 		requireThat(sandboxExecutable, "sandboxExecutable").isNotNull();
 		if (platform.isWindows())
-			return refusal(platform);
+		{
+			return Optional.of(START_PREFIX + "its parent runs in a sandbox, and " + NO_WINDOWS_SANDBOX + ", so the " +
+				"session's commands would reach further than its parent's. Start the session from Claude Code or Codex " +
+				"inside WSL2, or start a Codex session instead. " + WSL_INSTALL);
+		}
 		int limit = MACOS_FOLDER_LIMIT;
 		if (platform.isLinux())
 			limit = LINUX_FOLDER_LIMIT;

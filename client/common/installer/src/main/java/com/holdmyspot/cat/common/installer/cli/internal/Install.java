@@ -233,6 +233,9 @@ public final class Install
 			entries = entries.withNotice(HarnessProgram.replacementNotice(recorded, command, policyFile, integration,
 				home, others, environment, userHome, workingDirectory));
 		}
+		Optional<String> recommendation = integration.sandboxRecommendation(platform, home);
+		if (recommendation.isPresent())
+			entries = entries.withNotice(recommendation.get());
 		return new Outcome(version, before, versionFolder, installer, startupCache, entries, policy);
 	}
 

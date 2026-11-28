@@ -81,7 +81,8 @@ public final class DraftLinksServedSessionTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-no-draft-")).toRealPath();
 			Path source = Files.createDirectories(root.resolve("source"));
-			try (RequestingNestedSession parent = new RequestingNestedSession(root.resolve("parent"), jvm.fileLocks(), 1))
+			try (RequestingNestedSession parent = RequestingNestedSession.sandboxed(root.resolve("parent"),
+				jvm.fileLocks(), 1))
 			{
 				TestSessions sessions = sessions(harness, jvm, root, parent);
 				SessionRequest request = new SessionRequest(SessionRole.CONTRACT_AUTHOR,
@@ -117,7 +118,8 @@ public final class DraftLinksServedSessionTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-draft-links-")).toRealPath();
 			Path source = Files.createDirectories(root.resolve("source"));
-			try (RequestingNestedSession parent = new RequestingNestedSession(root.resolve("parent"), jvm.fileLocks(), 1))
+			try (RequestingNestedSession parent = RequestingNestedSession.sandboxed(root.resolve("parent"),
+				jvm.fileLocks(), 1))
 			{
 				TestSessions sessions = sessions(harness, jvm, root, parent);
 				String seed = RequestingNestedSession.DRAFT + "/seed.md";
@@ -157,7 +159,8 @@ public final class DraftLinksServedSessionTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-lost-draft-")).toRealPath();
 			Path source = Files.createDirectories(root.resolve("source"));
-			try (RequestingNestedSession parent = new RequestingNestedSession(root.resolve("parent"), jvm.fileLocks(), 1))
+			try (RequestingNestedSession parent = RequestingNestedSession.sandboxed(root.resolve("parent"),
+				jvm.fileLocks(), 1))
 			{
 				TestSessions sessions = sessions(harness, jvm, root, parent);
 				String seed = RequestingNestedSession.DRAFT + "/seed.md";

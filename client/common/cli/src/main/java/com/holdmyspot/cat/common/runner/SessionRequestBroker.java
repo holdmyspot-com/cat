@@ -126,6 +126,13 @@ public final class SessionRequestBroker implements Closeable
 	 * The reason of a request whose requesting session ended before the request was answered.
 	 */
 	private static final String ENDED = "ended";
+	/**
+	 * Why a session whose commands run without a sandbox cannot run what needs one, such as a prompt optimizer's trials.
+	 */
+	static final String NESTED_SANDBOX_ABSENCE = "Prompt optimization needs a sandbox, and the session that asked runs " +
+		"its commands without one. Trials run in the same type of sandbox as the session that starts them, so that a " +
+		"trial cannot read the held-out test cases or change files outside its workspace. Start the prompt optimizer " +
+		"from a session that runs in a sandbox.";
 
 	/**
 	 * Returns the read denials that keep a requested session from reading the results folder that holds its requesting
@@ -527,6 +534,8 @@ public final class SessionRequestBroker implements Closeable
 			return takeDiscard(id, file, directory);
 		if (id.startsWith(CheckProgramRequest.PREFIX))
 			return takeCheckProgram(id, file, directory);
+		if (id.startsWith(SandboxCheckRequest.PREFIX))
+			return takeSandboxCheck(id, file, directory);
 		if (id.startsWith(RetainedTrialRequest.PREFIX))
 			return takeRetainedTrial(id, file, directory);
 		if (id.startsWith(HookComparisonRequest.PREFIX))
@@ -838,6 +847,87 @@ public final class SessionRequestBroker implements Closeable
 			{
 				Thread.currentThread().interrupt();
 				response = WorktreeResponse.failed(site.closedReason());
+			}
+			response.write(json, id, directory);
+		}
+		catch (IOException e)
+		{
+			synchronized (this)
+			{
+				recordFailure(e);
+			}
+		}
+	}
+
+	/**
+	 * Takes a sandbox check request, which takes no slot, no permit and no count of the requests that the site allows,
+	 * and answers it on the broker's worktree thread.
+	 *
+	 * @param id        the request ID
+	 * @param file      the request archive
+	 * @param directory the request's response directory
+	 * @return {@code true} if the request was answered or started, or {@code false} if its archive is busy
+	 * @throws IOException if a response cannot be published
+	 */
+	private boolean takeSandboxCheck(String id, Path file, Path directory) throws IOException
+	{
+		if (stopped)
+		{
+			WorktreeResponse.failed(site.closedReason()).write(json, id, directory);
+			return true;
+		}
+		Path inputs = directory.resolve(INPUTS);
+		try
+		{
+			unpack(file, directory, inputs);
+			SandboxCheckRequest.read(json, inputs);
+		}
+		catch (RequestArchiveBusyException _)
+		{
+			Files.delete(directory);
+			return false;
+		}
+		catch (IOException | IllegalArgumentException | JacksonException e)
+		{
+			WorktreeResponse.refused(String.valueOf(e.getMessage())).write(json, id, directory);
+			return true;
+		}
+		finally
+		{
+			if (Files.exists(inputs, LinkOption.NOFOLLOW_LINKS))
+				TemporaryDirectories.deleteRecursively(inputs);
+		}
+		worktrees.submit(() -> serveSandboxCheck(id, directory));
+		return true;
+	}
+
+	/**
+	 * Answers a sandbox check request on the broker's worktree thread: done when the site's session has a sandbox, and
+	 * refused with the reason when it has none.
+	 *
+	 * @param id        the request ID
+	 * @param directory the request's response directory
+	 */
+	private void serveSandboxCheck(String id, Path directory)
+	{
+		try
+		{
+			WorktreeResponse response;
+			try
+			{
+				Optional<String> refusal = site.sandboxRefusal();
+				if (refusal.isPresent())
+					response = WorktreeResponse.refused(refusal.get());
+				else
+					response = WorktreeResponse.done();
+			}
+			catch (SessionRefusedException e)
+			{
+				response = WorktreeResponse.refused(String.valueOf(e.getMessage()));
+			}
+			catch (IOException e)
+			{
+				response = WorktreeResponse.failed(String.valueOf(e.getMessage()));
 			}
 			response.write(json, id, directory);
 		}
@@ -1822,7 +1912,7 @@ public final class SessionRequestBroker implements Closeable
 			String id = directory.getFileName().toString();
 			if (id.startsWith(WorktreeRequest.PREFIX) || id.startsWith(DiscardRequest.PREFIX) ||
 				id.startsWith(CheckProgramRequest.PREFIX) || id.startsWith(RetainedTrialRequest.PREFIX) ||
-				id.startsWith(HookComparisonRequest.PREFIX))
+				id.startsWith(HookComparisonRequest.PREFIX) || id.startsWith(SandboxCheckRequest.PREFIX))
 				WorktreeResponse.failed(ENDED).write(json, id, directory);
 			else
 				respond(id, "", "failed", ENDED, "", directory);
@@ -2147,6 +2237,25 @@ public final class SessionRequestBroker implements Closeable
 		}
 
 		/**
+		 * Returns why the session that the site serves cannot run what needs a sandbox, such as a prompt optimizer's
+		 * trials: its commands run without one.
+		 *
+		 * @return the reason, which names the cause and the fix, or empty if the session's commands run in a sandbox
+		 * @throws SessionRefusedException if the session's policy cannot be read safely, or the site states none; the
+		 *                                 message says why
+		 * @throws IOException             if the policy cannot be read
+		 */
+		default Optional<String> sandboxRefusal() throws IOException
+		{
+			for (ParentPolicy policy : ownerPolicies())
+			{
+				if (policy.sandboxed())
+					return Optional.empty();
+			}
+			return Optional.of(NESTED_SANDBOX_ABSENCE);
+		}
+
+		/**
 		 * Returns the site's authenticated Codex comparison service, if it has one.
 		 *
 		 * @return the service, or empty when execution is unsupported
@@ -2329,6 +2438,12 @@ public final class SessionRequestBroker implements Closeable
 		@Override
 		public RequestedRunner.Start prepare(LaunchRequest request, Path resultsFolder) throws IOException
 		{
+			if (request.optimizerSession())
+			{
+				Optional<String> refusal = sandboxRefusal();
+				if (refusal.isPresent())
+					throw new SessionRefusedException(refusal.get());
+			}
 			List<String> arguments = new ArrayList<>(List.of("--capacity-wait", "600", "--max-concurrency",
 				String.valueOf(options.maximumConcurrency())));
 			String denialOption = "--deny-read";

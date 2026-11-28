@@ -610,6 +610,11 @@ public final class SessionRequestForwarder
 					request.put("held_out", true);
 					continue;
 				}
+				case RunnerArguments.OPTIMIZER_SESSION_OPTION ->
+				{
+					request.put(RequestArchive.OPTIMIZER_SESSION, true);
+					continue;
+				}
 				case "--install-cat" ->
 				{
 					request.put("install_cat", true);

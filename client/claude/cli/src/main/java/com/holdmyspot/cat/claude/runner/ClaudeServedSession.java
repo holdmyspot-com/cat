@@ -6,6 +6,7 @@ import com.holdmyspot.cat.claude.policy.ClaudeSession;
 import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.runner.RequestServer;
+import com.holdmyspot.cat.common.runner.launcher.ParentPolicySource;
 import com.holdmyspot.cat.common.runner.LauncherSpelling;
 import com.holdmyspot.cat.common.runner.launcher.ProcessIdentity;
 import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
@@ -95,8 +96,10 @@ public final class ClaudeServedSession
 		{
 			ClaudeCommandSession found = ClaudeCommandSession.find(copy, userHome, userName, chain, json);
 			ProcessIdentity harness = RequestServer.harnessIdentity(found.session().processId(), chain);
-			return new RequestServer.Session(ClaudeRequestServerCli.policySource(new ClaudePolicyReader(processes),
-				found::session), found.transcript(), found.session().projectDirectory(), Optional.empty(), harness);
+			ParentPolicySource policy = ClaudeRequestServerCli.policySource(new ClaudePolicyReader(processes,
+				Platform.current()), found::session, found.transcript());
+			return new RequestServer.Session(policy, found.transcript(), found.session().projectDirectory(),
+				Optional.empty(), harness);
 		};
 	}
 

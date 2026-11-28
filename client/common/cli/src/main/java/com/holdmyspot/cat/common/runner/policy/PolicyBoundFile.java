@@ -7,9 +7,12 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -21,9 +24,11 @@ import tools.jackson.databind.node.ObjectNode;
  * The file that a request server gives a child's runner with {@link #OPTION}: the child's {@link ChildPolicy}, which
  * the runner renders into the child harness's sandbox settings and which bounds every session that the child requests
  * in turn. The server writes it and the runner reads it. It is a JSON object whose {@code format_version} is
- * {@value #VERSION}, whose {@code write_roots}, {@code write_denials}, {@code read_denials} and
- * {@code read_reallowances} are arrays of absolute paths, whose {@code hosts} is an array of host names in ascending
- * order, and whose {@code allow_local_binding} is a boolean. It has no other field.
+ * {@value #VERSION}, whose {@code sandboxed} is a boolean that says whether the parent, and so the child, has a
+ * sandbox, whose {@code write_roots}, {@code write_denials}, {@code read_denials} and {@code read_reallowances} are
+ * arrays of absolute paths, whose {@code hosts} is an array of host names in ascending order, whose
+ * {@code allow_local_binding} is a boolean, and whose {@code sandbox_selection} is an object of string values, the
+ * parent's settings that select its harness's sandbox implementation. It has no other field.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -40,13 +45,13 @@ public final class PolicyBoundFile
 	/**
 	 * The version of the file's format.
 	 */
-	public static final int VERSION = 1;
+	public static final int VERSION = 2;
 	/**
 	 * The size of the largest file that is read.
 	 */
 	public static final int MAXIMUM_BYTES = 1_048_576;
-	private static final Set<String> FIELDS = Set.of("format_version", "write_roots", "write_denials",
-		"read_denials", "read_reallowances", "hosts", "allow_local_binding");
+	private static final Set<String> FIELDS = Set.of("format_version", "sandboxed", "write_roots",
+		"write_denials", "read_denials", "read_reallowances", "hosts", "allow_local_binding", "sandbox_selection");
 
 	/**
 	 * Prevents construction.
@@ -69,7 +74,8 @@ public final class PolicyBoundFile
 		requireThat(json, "json").isNotNull();
 		requireThat(destination, "destination").isNotNull();
 		requireThat(policy, "policy").isNotNull();
-		ObjectNode document = json.createObjectNode().put("format_version", VERSION);
+		ObjectNode document = json.createObjectNode().put("format_version", VERSION).
+			put("sandboxed", policy.sandboxed());
 		putPaths(document, "write_roots", policy.writeRoots());
 		putPaths(document, "write_denials", policy.writeDenials());
 		putPaths(document, "read_denials", policy.readDenials());
@@ -78,6 +84,9 @@ public final class PolicyBoundFile
 		for (String host : new TreeSet<>(policy.hosts()))
 			hosts.add(host);
 		document.put("allow_local_binding", policy.allowLocalBinding());
+		ObjectNode selection = document.putObject("sandbox_selection");
+		for (Map.Entry<String, String> setting : new TreeMap<>(policy.sandboxSelection()).entrySet())
+			selection.put(setting.getKey(), setting.getValue());
 		Files.writeString(destination, json.writeValueAsString(document));
 	}
 
@@ -119,14 +128,29 @@ public final class PolicyBoundFile
 		JsonNode version = document.path("format_version");
 		if (!version.isInt() || version.intValue() != VERSION)
 			throw new IOException("The policy bound " + source + " has an unsupported format_version: " + version);
+		if (!document.path("sandboxed").isBoolean())
+			throw new IOException("The policy bound " + source + " has a non-boolean sandboxed");
 		if (!document.path("allow_local_binding").isBoolean())
 			throw new IOException("The policy bound " + source + " has a non-boolean allow_local_binding");
+		JsonNode selectionNode = document.path("sandbox_selection");
+		if (!selectionNode.isObject())
+			throw new IOException("The policy bound " + source + " has a sandbox_selection that is not an object");
+		Map<String, String> selection = new LinkedHashMap<>();
+		for (Map.Entry<String, JsonNode> setting : selectionNode.properties())
+		{
+			if (!setting.getValue().isString())
+			{
+				throw new IOException("The policy bound " + source + " has a sandbox_selection whose " +
+					setting.getKey() + " is not a string");
+			}
+			selection.put(setting.getKey(), setting.getValue().stringValue());
+		}
 		try
 		{
-			return new ChildPolicy(paths(document, "write_roots", source), paths(document, "write_denials", source),
-				paths(document, "read_denials", source), paths(document, "read_reallowances", source),
-				new LinkedHashSet<>(strings(document, "hosts", source)),
-				document.path("allow_local_binding").booleanValue());
+			return new ChildPolicy(document.path("sandboxed").booleanValue(), paths(document, "write_roots", source),
+				paths(document, "write_denials", source), paths(document, "read_denials", source),
+				paths(document, "read_reallowances", source), new LinkedHashSet<>(strings(document, "hosts", source)),
+				document.path("allow_local_binding").booleanValue(), selection);
 		}
 		catch (IllegalArgumentException e)
 		{

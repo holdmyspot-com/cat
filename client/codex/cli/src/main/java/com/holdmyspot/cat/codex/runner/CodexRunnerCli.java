@@ -456,11 +456,10 @@ public final class CodexRunnerCli
 
 	/**
 	 * Refuses a launch that would start a session, but must not or cannot. That is a launch that names
-	 * {@code --artifact}, as {@link #refusesOverride} refuses it, any launch on a platform where CAT does not let Codex
-	 * confine the session in a sandbox, as {@link CodexSessionSandbox} decides, any launch whose project is the user's
-	 * home folder or contains it, as {@link HarnessRunnerOptions#refusesHomeProject} decides, and any launch from a
-	 * Codex sandbox that has network off, whose session could not reach its model. Printing the usage and verifying an
-	 * artifact start no session, so they are never refused for the platform, the project or the sandbox.
+	 * {@code --artifact}, as {@link #refusesOverride} refuses it, any launch whose project is the user's home folder or
+	 * contains it, as {@link HarnessRunnerOptions#refusesHomeProject} decides, and any launch from a Codex sandbox that
+	 * has network off, whose session could not reach its model. No launch is refused for its platform. Printing the
+	 * usage and verifying an artifact start no session, so they are never refused for the project or the sandbox.
 	 *
 	 * @param args             the command and its options
 	 * @param workingDirectory the directory from which the launcher was started
@@ -486,12 +485,6 @@ public final class CodexRunnerCli
 			args.length == 2 && args[0].equals("--verify-artifact");
 		if (startsNothing)
 			return false;
-		Optional<String> refusal = CodexSessionSandbox.refusal(platform);
-		if (refusal.isPresent())
-		{
-			errors.println(refusal.get());
-			return true;
-		}
 		return HarnessRunnerOptions.refusesHomeProject(args, workingDirectory, environment, platform, errors) ||
 			ParentSandbox.refusesNetworkOff(HARNESS_ID, environment, errors);
 	}
@@ -605,11 +598,11 @@ public final class CodexRunnerCli
 				HarnessTemporaryRoot.from(scope)));
 			Path cat = options.catArtifact(CodexRunner.MANIFEST);
 			CodexAgentDefinition agent = loadAgent(cat, agentName);
-			ParentPolicy bound = policyBound(scope.json(), options);
+			ChildPolicy bound = policyBound(scope.json(), options);
 			// A nested session's runner passes on its own launch's source home, whose secret files the nested session's
 			// policy, and so the bound, denies by design
 			if (!authenticationOptions.inherited())
-				authentication.requireReadable(bound);
+				authentication.requireReadable(bound.asParentPolicy());
 			// The login opens before the launch reads a nested session or takes a slot, so that a refused login changes
 			// nothing; the login service checks it and issues the session's credential, which ends with the runner
 			try (CodexSessionLogin login = authentication.open(environment))
@@ -708,7 +701,7 @@ public final class CodexRunnerCli
 	}
 
 	/**
-	 * Reads the policy that bounds the session's sandbox policy, as the policy of the session's parent.
+	 * Reads the policy that bounds the session's sandbox policy, with its parent's type of sandbox.
 	 *
 	 * @param json    the JSON mapper
 	 * @param options the launch's options
@@ -716,7 +709,7 @@ public final class CodexRunnerCli
 	 * @throws SessionRefusedException if the launch names no bound
 	 * @throws IOException             if the bound's file cannot be read or is not a bound
 	 */
-	private static ParentPolicy policyBound(JsonMapper json, HarnessRunnerOptions options) throws IOException
+	private static ChildPolicy policyBound(JsonMapper json, HarnessRunnerOptions options) throws IOException
 	{
 		if (options.policyBound() == null)
 		{
@@ -725,7 +718,7 @@ public final class CodexRunnerCli
 				"this launch names none, so CAT does not start the session. Start the session from a Claude Code or " +
 				"Codex session in which CAT is installed");
 		}
-		return PolicyBoundFile.read(json, options.policyBound().toAbsolutePath()).asParentPolicy();
+		return PolicyBoundFile.read(json, options.policyBound().toAbsolutePath());
 	}
 
 	/**

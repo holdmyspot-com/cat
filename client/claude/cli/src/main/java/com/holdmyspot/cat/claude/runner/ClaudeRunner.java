@@ -188,8 +188,10 @@ public final class ClaudeRunner
 		requireThat(instructionFilesMode, "instructionFilesMode").isNotNull();
 		if (agent != null && !installCat)
 			throw new IOException("A direct CAT agent requires --install-cat");
+		// A session whose parent has no sandbox runs without one, whatever its role
+		boolean confined = sandboxed(role) && (bound == null || bound.sandboxed());
 		// Before the nested session is created or resumed, so that a refused launch leaves nothing behind
-		if (sandboxed(role))
+		if (confined)
 			requireSandboxStart(project, environment);
 		Path artifactRoot = HarnessArtifact.validate(artifact, MANIFEST);
 		boolean resumes = resumedSession != null;
@@ -204,7 +206,7 @@ public final class ClaudeRunner
 		try
 		{
 			// The empty files keep Claude Code's sandbox from mounting a file that the session's tools could not find
-			if (sandboxed(role))
+			if (confined)
 				ClaudeMarketplace.writeEmptyMcpConfiguration(nestedSession.directory().getParent().getParent());
 			// A resumed nested session keeps the project that its start copied, as its session left it
 			if (!resumes)
@@ -218,7 +220,7 @@ public final class ClaudeRunner
 			}
 			Path hostConfiguration = claudeConfigDirectory(environment, Platform.current());
 			Path claudeTemporaryDirectory = nestedSession.directory().resolve("claude");
-			if (sandboxed(role))
+			if (confined)
 				ClaudeMarketplace.writeEmptyLaunchConfiguration(launchConfigurationPath(claudeTemporaryDirectory));
 			// The nested-session manager places every project, home, and Claude temporary directory beneath CAT's isolated
 			// work root. This keeps concurrent nested sessions separate without diverting CAT-owned state to the shared
@@ -306,7 +308,7 @@ public final class ClaudeRunner
 				// Written last, so that the token rests in the slot only while the Claude process can need it
 				authentication.writeKeyFile(isolatedConfiguration);
 				child.start(command, worktree, isolatedEnvironment, executables);
-				if (sandboxed(role))
+				if (confined)
 				{
 					watch = new SandboxWatch(child.process(), scope.json());
 					process = new ClaudeProcess(scope, watch.process(), projectDirectory, transcripts);

@@ -81,7 +81,7 @@ final class ClaudePathCheck
 			{
 				ClaudeSession session = ClaudeSession.fromHookEnvironment(environment, userHome,
 					System.getProperty("user.name", ""));
-				launch = Optional.of(new ClaudePolicyReader(processes).readLaunch(session));
+				launch = Optional.of(new ClaudePolicyReader(processes, Platform.current()).readLaunch(session));
 			}
 			catch (PolicyRefusal e)
 			{

@@ -123,29 +123,34 @@ public final class Commands
 	private final JsonMapper json;
 	private final ZoneId zone;
 	private final HarnessSandbox trialSandbox;
+	private final OwnerSandbox ownerSandbox;
 	private final Platform platform;
 
 	/**
 	 * Creates the commands.
 	 *
-	 * @param core     what the commands call
-	 * @param json     the mapper that renders the output
+	 * @param core         what the commands call
+	 * @param json         the mapper that renders the output
 	 * @param zone         the user's time zone, in which the human summary shows times
 	 * @param trialSandbox decides whether the harness of the campaign's trials sandboxes them on {@code platform}
+	 * @param ownerSandbox says why the session that runs the commands cannot start trials
 	 * @param platform     the platform that runs the commands
 	 * @throws NullPointerException if any argument is null
 	 */
-	public Commands(Core core, JsonMapper json, ZoneId zone, HarnessSandbox trialSandbox, Platform platform)
+	public Commands(Core core, JsonMapper json, ZoneId zone, HarnessSandbox trialSandbox, OwnerSandbox ownerSandbox,
+		Platform platform)
 	{
 		requireThat(core, "core").isNotNull();
 		requireThat(json, "json").isNotNull();
 		requireThat(zone, "zone").isNotNull();
 		requireThat(trialSandbox, "trialSandbox").isNotNull();
+		requireThat(ownerSandbox, "ownerSandbox").isNotNull();
 		requireThat(platform, "platform").isNotNull();
 		this.core = core;
 		this.json = json;
 		this.zone = zone;
 		this.trialSandbox = trialSandbox;
+		this.ownerSandbox = ownerSandbox;
 		this.platform = platform;
 	}
 
@@ -800,9 +805,10 @@ public final class Commands
 	 *
 	 * @param command the command
 	 * @return the core's result
-	 * @throws CommandRefusedException if the command can start a trial and the harness that runs the campaign's trials
-	 *                                 cannot sandbox them on the platform, or if the core refuses the command
-	 * @throws IOException             if the core fails
+	 * @throws CommandRefusedException if the command can start a trial and the session that runs the command has no
+	 *                                 sandbox, or the harness that runs the campaign's trials cannot sandbox them on
+	 *                                 the platform, or if the core refuses the command
+	 * @throws IOException             if the core fails, or the session's sandbox cannot be determined
 	 * @throws InterruptedException    if the thread is interrupted
 	 */
 	private CommandResult dispatch(Command command) throws CommandRefusedException, IOException, InterruptedException
@@ -810,7 +816,10 @@ public final class Commands
 		core.validate(command);
 		if (canStartTrial(command))
 		{
+			// The platform's refusal needs no request, so it comes first
 			Optional<String> refusal = trialSandbox.refusal(platform);
+			if (refusal.isEmpty())
+				refusal = ownerSandbox.refusal();
 			if (refusal.isPresent())
 				throw new CommandRefusedException(refusal.get());
 		}

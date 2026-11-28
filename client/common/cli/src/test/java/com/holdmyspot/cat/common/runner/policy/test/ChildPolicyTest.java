@@ -673,12 +673,12 @@ public final class ChildPolicyTest
 			{
 				requireThat(policy.leavingReadable(readable).sandboxed(), "leavingReadable").
 					isEqualTo(policy.sandboxed());
-				requireThat(policy.leavingReadable(readable).sandboxSelection(), "leavingReadable selection").
+				requireThat(policy.leavingReadable(readable).sandboxSelection(), "leavingReadableSelection").
 					isEqualTo(policy.sandboxSelection());
 				requireThat(policy.denyingWrites(List.of(session.resolve("x"))).sandboxed(), "denyingWrites").
 					isEqualTo(policy.sandboxed());
 				requireThat(policy.denyingWrites(List.of(session.resolve("x"))).sandboxSelection(),
-					"denyingWrites selection").isEqualTo(policy.sandboxSelection());
+					"denyingWritesSelection").isEqualTo(policy.sandboxSelection());
 			}
 		}
 	}

@@ -50,6 +50,10 @@ public final class CodexConnectionConfiguration
 	private static final int MAXIMUM_CONFIGURATION_BYTES = 1_048_576;
 	private static final String STARTUP_UPDATE_CHECK = "check_for_update_on_startup = false";
 	static final String RUNNER_PERMISSION_PROFILE = "cat-runner";
+	/**
+	 * The sandbox mode of a session whose parent has no sandbox, under which Codex runs its commands without one.
+	 */
+	static final String FULL_ACCESS_MODE = "danger-full-access";
 	private static final String VALIDATOR_PERMISSION_PROFILE = "cat-validator";
 	private static final String DENIED_READS_PERMISSION_PROFILE = "cat-denied-reads";
 	private static final String TEMPORARY_DIRECTORY = ":tmpdir";
@@ -555,7 +559,9 @@ public final class CodexConnectionConfiguration
 	 * that the policy keeps it from writing, and may not read a path that the policy denies it reading. The session's
 	 * commands may reach exactly the policy's hosts, through Codex's network proxy, and bind local addresses only if
 	 * the policy allows it; a policy without hosts turns their network off. No network setting of the host
-	 * configuration applies to the session.
+	 * configuration applies to the session. On Windows, the session runs in the Windows sandbox implementation that the
+	 * policy's sandbox selection names. A policy without a sandbox runs the session's commands without one, as its
+	 * parent's run.
 	 *
 	 * @param source               the host configuration file
 	 * @param destination          the isolated configuration file
@@ -656,13 +662,17 @@ public final class CodexConnectionConfiguration
 		requireThat(toolOutputTokenLimit, "toolOutputTokenLimit").isNotNegative();
 		requireThat(policy, "policy").isNotNull();
 		requireThat(extraPermissions, "extraPermissions").isNotNull();
+		StringBuilder copied = new StringBuilder(256).append(STARTUP_UPDATE_CHECK).append(System.lineSeparator());
+		// A session whose parent has no sandbox runs without one too
+		if (policy.sandboxed())
+			copied.append("default_permissions = \"").append(RUNNER_PERMISSION_PROFILE).append('"');
+		else
+			copied.append("sandbox_mode = \"").append(FULL_ACCESS_MODE).append('"');
 		// The session's working directory, the copied project, holds its own Git repository and is therefore its
 		// project root anyway. Looking for a root marker in each directory above it costs one sandboxed helper process
 		// per directory whenever a thread starts, and under concurrent sessions that delayed each thread's first
 		// command by many seconds.
-		StringBuilder copied = new StringBuilder(256).append(STARTUP_UPDATE_CHECK).append(System.lineSeparator()).
-			append("default_permissions = \"").append(RUNNER_PERMISSION_PROFILE).append('"').
-			append(System.lineSeparator()).append("project_root_markers = []").append(System.lineSeparator());
+		copied.append(System.lineSeparator()).append("project_root_markers = []").append(System.lineSeparator());
 		// A top-level key must precede every table
 		if (toolOutputTokenLimit > 0)
 			copied.append("tool_output_token_limit = ").append(toolOutputTokenLimit).append(System.lineSeparator());
@@ -715,7 +725,7 @@ public final class CodexConnectionConfiguration
 			if (policy.writeRoots().contains(RealPaths.resolve(write)) && !keptWrites.contains(write))
 				keptWrites.add(write);
 		}
-		if (!keptWrites.isEmpty())
+		if (policy.sandboxed() && !keptWrites.isEmpty())
 		{
 			StringJoiner roots = new StringJoiner(", ", "[", "]");
 			for (Path cache : keptWrites)
@@ -750,28 +760,59 @@ public final class CodexConnectionConfiguration
 		copied.append("TMPDIR = \"").append(toml(temporaryDirectory)).append('"').append(System.lineSeparator());
 		ObjectNode features = mapper.createObjectNode();
 		ObjectNode windows = mapper.createObjectNode();
-		// Without a Windows sandbox implementation, Codex runs the session read-only and rejects every command, so the
-		// session runs in the one that its parent selects, or in the machine-wide configuration's when the parent
-		// selects none
-		if (platform.isWindows() && parentConfiguration != null)
-		{
-			JsonNode implementation = parentConfiguration.path("windows").path("sandbox");
-			if (!implementation.isMissingNode())
-				windows.set("sandbox", implementation);
-		}
 		ObjectNode agents = mapper.createObjectNode();
 		if (parentConfiguration != null)
 			copyMultiAgentSettings(parentConfiguration, features, agents, sessionHome, project);
 		parentState.applyTo(features, agents);
-		// Without its network proxy, Codex ignores the profile's host list and lets the commands reach every host
-		if (!policy.hosts().isEmpty())
-			features.put(NETWORK_PROXY_FEATURE, true);
+		if (policy.sandboxed())
+		{
+			// The session runs in the Windows sandbox implementation that wins for its parent's launch, with the
+			// parent's settings that choose between implementations, and with none that the parent lacks, so that Codex
+			// takes the machine-wide configuration's value where the parent's launch sets none
+			if (platform.isWindows())
+				putSandboxSelection(policy.sandboxSelection(), windows, features);
+			// Without its network proxy, Codex ignores the profile's host list and lets the commands reach every host
+			if (!policy.hosts().isEmpty())
+				features.put(NETWORK_PROXY_FEATURE, true);
+		}
 		appendTable(copied, mapper, "features", features);
 		appendTable(copied, mapper, "agents", agents);
 		appendTable(copied, mapper, "windows", windows);
-		appendRunnerProfile(copied, sessionHome, codexFolder, writable, temporaryDirectory, project, platform, policy);
+		if (policy.sandboxed())
+		{
+			appendRunnerProfile(copied, sessionHome, codexFolder, writable, temporaryDirectory, project, platform,
+				policy);
+		}
 		Files.createDirectories(destination.getParent());
 		Files.writeString(destination, copied.toString());
+	}
+
+	/**
+	 * Adds a parent's Windows sandbox selection to a session's configuration tables.
+	 *
+	 * @param selection the selection, by dotted setting name, each value as TOML would spell a string or a boolean
+	 * @param windows   receives the {@code [windows]} entries
+	 * @param features  receives the {@code [features]} entries
+	 */
+	private static void putSandboxSelection(Map<String, String> selection, ObjectNode windows, ObjectNode features)
+	{
+		for (Entry<String, String> entry : selection.entrySet())
+		{
+			String key = entry.getKey();
+			int dot = key.indexOf('.');
+			ObjectNode table = switch (key.substring(0, Math.max(dot, 0)))
+			{
+				case "windows" -> windows;
+				case "features" -> features;
+				default -> throw new IllegalArgumentException("A sandbox selection names an unknown table: " + key);
+			};
+			String name = key.substring(dot + 1);
+			String value = entry.getValue();
+			if (value.equals("true") || value.equals("false"))
+				table.put(name, Boolean.parseBoolean(value));
+			else
+				table.put(name, value);
+		}
 	}
 
 	/**

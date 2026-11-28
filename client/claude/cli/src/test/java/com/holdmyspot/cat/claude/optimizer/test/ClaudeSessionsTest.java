@@ -2004,7 +2004,8 @@ public final class ClaudeSessionsTest
 			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-in-session-")).toRealPath();
 			Path source = Files.createDirectories(home.resolve("source"));
 			Path resultsFolder = home.resolve("results");
-			try (RequestingNestedSession parent = new RequestingNestedSession(home.resolve("parent"), jvm.fileLocks(), 1))
+			try (RequestingNestedSession parent = RequestingNestedSession.sandboxed(home.resolve("parent"), jvm.fileLocks(),
+				1))
 			{
 				ClaudeSessions sessions = inNestedSession(jvm, home, resultsFolder, parent);
 
@@ -2061,7 +2062,7 @@ public final class ClaudeSessionsTest
 			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-in-session-")).toRealPath();
 			Path source = Files.createDirectories(home.resolve("source"));
 			Path resultsFolder = home.resolve("results");
-			try (RequestingNestedSession parent = new RequestingNestedSession(home.resolve("parent"), jvm.fileLocks(),
+			try (RequestingNestedSession parent = RequestingNestedSession.sandboxed(home.resolve("parent"), jvm.fileLocks(),
 				sessionRequests))
 			{
 				ClaudeSessions sessions = inNestedSession(jvm, home, resultsFolder, parent);

@@ -183,6 +183,12 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 				index += 1;
 				continue;
 			}
+			if (option.equals(RunnerArguments.OPTIMIZER_SESSION_OPTION))
+			{
+				// Only a request server or a nested session's broker uses it, to refuse a requester without a sandbox
+				index += 1;
+				continue;
+			}
 			if (option.equals(RunnerArguments.HELD_OUT_OPTION))
 			{
 				// Only a request server or a nested session's broker uses the part, to pick the slot that the session runs in

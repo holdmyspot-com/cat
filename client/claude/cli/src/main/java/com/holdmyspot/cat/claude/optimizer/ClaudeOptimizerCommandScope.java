@@ -113,7 +113,7 @@ public final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 		requireThat(artifact, "artifact").isNotNull();
 		Path configurationDirectory = ClaudeConfiguration.resolveDirectory(home,
 			environment.get("CLAUDE_CONFIG_DIR"));
-		super(Harness.CLAUDE, ClaudeSessionSandbox::refusal, ClaudeSessionHarness.HARNESS, ClaudeRunnerCli.MARKERS,
+		super(Harness.CLAUDE, ClaudeSessionSandbox.TRIALS, ClaudeSessionHarness.HARNESS, ClaudeRunnerCli.MARKERS,
 			environment, configurationDirectory, directory, LOADER_CONFIGURATION, waiting, authentication);
 		this.environment = Map.copyOf(environment);
 		this.artifact = artifact;

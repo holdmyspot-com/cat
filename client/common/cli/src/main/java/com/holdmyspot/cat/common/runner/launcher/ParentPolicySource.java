@@ -5,6 +5,7 @@ import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -62,5 +63,48 @@ public interface ParentPolicySource
 	default List<ParentPolicy> readings(Optional<String> askingThread) throws IOException, PolicyRefusal
 	{
 		return List.of(read(askingThread));
+	}
+
+	/**
+	 * Reads the session's settings that select which of its harness's sandbox implementations runs its commands, so
+	 * that a child in the same harness runs in the same one. A harness that has a single sandbox on the platform
+	 * selects none.
+	 *
+	 * @param askingThread the identifier that the harness gives the thread that asks, or empty for the session's main
+	 *                     thread
+	 * @return the settings, by dotted setting name, as the harness applies them to the session; empty if none
+	 * @throws NullPointerException if {@code askingThread} is null
+	 * @throws IOException          if a source of the settings cannot be read
+	 * @throws PolicyRefusal        if the settings cannot be established safely
+	 */
+	default Map<String, String> sandboxSelection(Optional<String> askingThread) throws IOException, PolicyRefusal
+	{
+		return Map.of();
+	}
+
+	/**
+	 * Returns why prompt optimization cannot run from the session while its commands run without a sandbox: the cause,
+	 * the setting that turns the sandbox on and that a new session is needed.
+	 *
+	 * @return the message
+	 */
+	default String sandboxAbsence()
+	{
+		return "Prompt optimization needs a sandbox, and this " + harnessName() + " session runs its commands " +
+			"without one. Trials run in the same type of sandbox as the session that starts them, so that a trial " +
+			"cannot read the held-out test cases or change files outside its workspace. Turn on " + harnessName() +
+			"'s sandbox, then start a new session.";
+	}
+
+	/**
+	 * Returns the harness's report that the session's sandbox failed to start, which leaves its commands without one,
+	 * as a message that quotes the report and says how to fix it.
+	 *
+	 * @return the message, or empty if the harness reported no such failure
+	 * @throws IOException if the harness's record of the session cannot be read
+	 */
+	default Optional<String> sandboxFailure() throws IOException
+	{
+		return Optional.empty();
 	}
 }

@@ -367,6 +367,23 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
+	 * Recommends Codex's {@code mxc} Windows sandbox implementation on native Windows when the configuration files
+	 * that a session started without options applies select another one or none, or CAT cannot tell which one they
+	 * select.
+	 *
+	 * @throws IllegalArgumentException if {@code home} is relative
+	 */
+	@Override
+	public Optional<String> sandboxRecommendation(Platform platform, Path home)
+	{
+		requireThat(platform, "platform").isNotNull();
+		requireThat(home, "home").isAbsolute();
+		CodexWriteGrants.Launch plain = new CodexWriteGrants.Launch(List.of(), Optional.empty(), Optional.empty(),
+			false, List.of(), false);
+		return CodexWindowsSandbox.recommendation(platform, systemFolder, home, Optional.of(plain));
+	}
+
+	/**
 	 * Requires the marketplace source to hold {@code version}, writes the marketplace metadata from it, then runs
 	 * {@code codex plugin marketplace add} and {@code codex plugin add cat@cat}, and requires Codex to load
 	 * {@code version} from the cache folder that it names, with the same content as the marketplace source.

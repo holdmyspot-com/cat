@@ -2,9 +2,11 @@ package com.holdmyspot.cat.codex.policy;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.codex.installer.CodexWindowsSandbox;
 import com.holdmyspot.cat.codex.installer.CodexWriteGrants;
 import com.holdmyspot.cat.codex.layout.CodexInstallation;
 import com.holdmyspot.cat.codex.optimizer.RolloutInterruptSignal;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SandboxWrites;
 import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 import com.holdmyspot.cat.common.runner.policy.HostAccess;
@@ -15,8 +17,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.TreeMap;
 import java.util.regex.Pattern;
+import tools.jackson.databind.JsonNode;
 
 /**
  * Reads the sandbox policy of the Codex 0.160.0 session that runs a hook.
@@ -36,6 +41,11 @@ public final class CodexPolicyReader
 	 */
 	static final Pattern THREAD_ID = Pattern.compile(
 		"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
+	/**
+	 * The settings that choose Codex's Windows sandbox implementation, by dotted name.
+	 */
+	private static final List<String> SANDBOX_SELECTION = List.of("windows.sandbox", "windows.allow_mxc",
+		"features.prefer_mxc");
 	private final CodexSystemFiles systemFiles;
 
 	/**
@@ -88,6 +98,76 @@ public final class CodexPolicyReader
 		requireThat(session, "session").isNotNull();
 		requireThat(threadId, "threadId").isNotNull();
 		return readPolicy(session, threadId);
+	}
+
+	/**
+	 * Reads the Windows sandbox selection that wins for a session's launch: the values of the settings that choose
+	 * Codex's Windows sandbox implementation, {@code [windows] sandbox}, {@code [windows] allow_mxc} and
+	 * {@code [features] prefer_mxc}, in the session's merged configuration, its profile file and {@code -c} overrides
+	 * included. A session that Codex's shared background server runs, whose command line names neither, takes them
+	 * from the configuration files alone.
+	 *
+	 * @param session the session
+	 * @return each setting that the configuration sets, by dotted name, and its value as TOML spells a string or a
+	 *   boolean; empty if it sets none
+	 * @throws NullPointerException if {@code session} is null
+	 * @throws IOException          if a file cannot be read
+	 * @throws PolicyRefusal        if the configuration cannot be read safely
+	 */
+	public Map<String, String> readSandboxSelection(CodexSession session) throws IOException, PolicyRefusal
+	{
+		requireThat(session, "session").isNotNull();
+		List<String> arguments = codexArguments(session);
+		if (CodexCommandLine.runsSharedServer(arguments))
+			arguments = List.of();
+		CodexLaunch launch = CodexCommandLine.parse(arguments);
+		Path codexHome = CodexInstallation.resolveHome(session.environment(), session.accountHome(), session.cwd());
+		JsonNode merged = CodexConfiguration.load(systemFiles, codexHome, session.cwd(), launch).merged();
+		Map<String, String> selection = new TreeMap<>();
+		for (String key : SANDBOX_SELECTION)
+		{
+			int dot = key.indexOf('.');
+			JsonNode value = merged.path(key.substring(0, dot)).path(key.substring(dot + 1));
+			if (value.isString() || value.isBoolean())
+				selection.put(key, value.asString());
+		}
+		return selection;
+	}
+
+	/**
+	 * Returns the recommendation of Codex's {@code mxc} Windows sandbox implementation for a session, as
+	 * {@link CodexWindowsSandbox#recommendation} gives it for the session's command line. A session whose command line
+	 * CAT cannot read, or that Codex's shared background server runs, has an unknown command line.
+	 *
+	 * @param session  the session
+	 * @param platform the platform that the session runs on
+	 * @return the recommendation, or empty off native Windows or when Codex applies {@code mxc} to the session
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if Codex's home cannot be resolved
+	 */
+	public Optional<String> sandboxRecommendation(CodexSession session, Platform platform) throws IOException
+	{
+		requireThat(session, "session").isNotNull();
+		requireThat(platform, "platform").isNotNull();
+		if (!platform.isWindows())
+			return Optional.empty();
+		Optional<CodexWriteGrants.Launch> launch = Optional.empty();
+		try
+		{
+			List<String> arguments = codexArguments(session);
+			if (!CodexCommandLine.runsSharedServer(arguments))
+			{
+				CodexLaunch parsed = CodexCommandLine.parse(arguments);
+				launch = Optional.of(new CodexWriteGrants.Launch(parsed.overrides(), parsed.profile(),
+					parsed.sandboxMode(), parsed.bypassSandbox(), parsed.addDirs(), parsed.ignoreUserConfig()));
+			}
+		}
+		catch (PolicyRefusal _)
+		{
+			// The command line is then unknown, and so is the implementation that it selects
+		}
+		Path codexHome = CodexInstallation.resolveHome(session.environment(), session.accountHome(), session.cwd());
+		return CodexWindowsSandbox.recommendation(platform, systemFiles.system(), codexHome, launch);
 	}
 
 	/**

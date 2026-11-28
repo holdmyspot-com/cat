@@ -183,7 +183,8 @@ public final class PromptOptimizerCli
 		requireThat(zone, "zone").isNotNull();
 		requireThat(platform, "platform").isNotNull();
 		requireThat(out, "out").isNotNull();
-		Commands commands = new Commands(new OptimizerCore(scope), scope.json(), zone, scope.trialSandbox(), platform);
+		Commands commands = new Commands(new OptimizerCore(scope), scope.json(), zone, scope.trialSandbox(),
+			scope.ownerSandbox(), platform);
 		if (!Commands.isHelpRequest(args) && !Commands.isContractTool(args))
 		{
 			Optional<String> refusal = scope.noHarnessRefusal();

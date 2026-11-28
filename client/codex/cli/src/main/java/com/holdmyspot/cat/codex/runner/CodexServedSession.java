@@ -145,6 +145,35 @@ public final class CodexServedSession
 			public ParentPolicy read(Optional<String> askingThread) throws IOException, PolicyRefusal
 			{
 				requireThat(askingThread, "askingThread").isNotNull();
+				return reader.readForCommand(running(), askingThread);
+			}
+
+			@Override
+			public Map<String, String> sandboxSelection(Optional<String> askingThread)
+				throws IOException, PolicyRefusal
+			{
+				requireThat(askingThread, "askingThread").isNotNull();
+				return reader.readSandboxSelection(running());
+			}
+
+			@Override
+			public String sandboxAbsence()
+			{
+				return "Prompt optimization needs a sandbox, and this Codex session runs its commands without one. " +
+					"Trials run in the same type of sandbox as the session that starts them, so that a trial cannot " +
+					"read the held-out test cases or change files outside its workspace. Start a new Codex session " +
+					"with a sandbox mode other than danger-full-access, such as --sandbox workspace-write, or with a " +
+					"permission profile, and without --dangerously-bypass-approvals-and-sandbox.";
+			}
+
+			/**
+			 * Returns the session as its Codex process runs it now.
+			 *
+			 * @return the session
+			 * @throws PolicyRefusal if the session's Codex process has ended
+			 */
+			private CodexSession running() throws PolicyRefusal
+			{
 				Optional<ProcessDescription> running = processes.find(codex.pid()).
 					filter(process -> process.start().equals(Optional.of(codex.start())));
 				if (running.isEmpty())
@@ -152,8 +181,8 @@ public final class CodexServedSession
 					throw new PolicyRefusal("the Codex process " + codex.pid() + " that runs the session has ended",
 						"Start a new Codex session");
 				}
-				return reader.readForCommand(new CodexSession(List.of(running.get()), session.environment(),
-					session.accountHome(), session.cwd(), session.transcript(), session.sessionId()), askingThread);
+				return new CodexSession(List.of(running.get()), session.environment(), session.accountHome(),
+					session.cwd(), session.transcript(), session.sessionId());
 			}
 		};
 	}

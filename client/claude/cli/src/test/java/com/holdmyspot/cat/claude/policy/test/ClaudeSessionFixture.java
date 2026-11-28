@@ -175,13 +175,14 @@ final class ClaudeSessionFixture implements AutoCloseable
 	}
 
 	/**
-	 * Returns a reader whose processes are the fake process.
+	 * Returns a reader whose processes are the fake process, on Linux, so that a test reads the same policy on every
+	 * platform that runs it.
 	 *
 	 * @return the reader
 	 */
 	ClaudePolicyReader reader()
 	{
-		return reader(Platform.current());
+		return reader(Platform.LINUX_X64);
 	}
 
 	/**

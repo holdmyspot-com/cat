@@ -2498,7 +2498,8 @@ public final class CodexSessionsTest
 			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-in-session-")).toRealPath();
 			Path source = Files.createDirectories(home.resolve("source"));
 			Path resultsFolder = home.resolve("results");
-			try (RequestingNestedSession parent = new RequestingNestedSession(home.resolve("parent"), jvm.fileLocks(), 1))
+			try (RequestingNestedSession parent = RequestingNestedSession.sandboxed(home.resolve("parent"), jvm.fileLocks(),
+				1))
 			{
 				CodexSessions sessions = inNestedSession(jvm, home, resultsFolder, parent);
 
@@ -2587,7 +2588,8 @@ public final class CodexSessionsTest
 				TriagePrompt triage = new TriagePrompt(json, evaluatorDirectory);
 				request = triage.request(SESSION_PROFILE, testCase, evidence, List.of(), section, "The answer was late.");
 			}
-			try (RequestingNestedSession parent = new RequestingNestedSession(root.resolve("parent"), jvm.fileLocks(), 1))
+			try (RequestingNestedSession parent = RequestingNestedSession.sandboxed(root.resolve("parent"), jvm.fileLocks(),
+				1))
 			{
 				CodexSessions sessions = inNestedSession(jvm, root, root.resolve("results"), parent);
 				requireThat(await(sessions.start(request)), "result").isInstanceOf(SessionResult.Completed.class);
@@ -2656,7 +2658,7 @@ public final class CodexSessionsTest
 			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-in-session-")).toRealPath();
 			Path source = Files.createDirectories(home.resolve("source"));
 			Path resultsFolder = home.resolve("results");
-			try (RequestingNestedSession parent = new RequestingNestedSession(home.resolve("parent"), jvm.fileLocks(),
+			try (RequestingNestedSession parent = RequestingNestedSession.sandboxed(home.resolve("parent"), jvm.fileLocks(),
 				sessionRequests))
 			{
 				CodexSessions sessions = inNestedSession(jvm, home, resultsFolder, parent);

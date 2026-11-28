@@ -827,6 +827,7 @@ final class Session implements SessionHandle
 			arguments.addAll(List.of(RunnerArguments.RESULT_PROJECT_LINKS_OPTION, DraftDirectory.name(request.source())));
 		if (request.part() == Part.HELD_OUT)
 			arguments.add(RunnerArguments.HELD_OUT_OPTION);
+		arguments.add(RunnerArguments.OPTIMIZER_SESSION_OPTION);
 		TrialProfile profile = request.profile();
 		arguments.addAll(List.of("--model", profile.model(), "--effort", profile.effort()));
 		arguments.addAll(settings.authentication().arguments());
@@ -876,6 +877,7 @@ final class Session implements SessionHandle
 		options.addAll(settings.authentication().arguments());
 		if (request.part() == Part.HELD_OUT)
 			options.add(RunnerArguments.HELD_OUT_OPTION);
+		options.add(RunnerArguments.OPTIMIZER_SESSION_OPTION);
 		if (permissions != null)
 			options.addAll(List.of(ExtraPermissions.OPTION, permissions.toString()));
 		return options;

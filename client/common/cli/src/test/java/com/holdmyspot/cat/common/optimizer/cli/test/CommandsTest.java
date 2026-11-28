@@ -544,7 +544,7 @@ public final class CommandsTest
 	 * @throws IOException if fixture I/O fails
 	 */
 	@Test
-	public void runsStatusAndStopFromSessionWithoutSandbox() throws IOException
+	public void statusAndStopRunWithoutSandbox() throws IOException
 	{
 		// Requirement: R-I46
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
