@@ -7,6 +7,7 @@ import com.holdmyspot.cat.common.optimizer.execution.StartupHistory;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Optional;
+import java.util.UUID;
 
 import org.testng.annotations.Test;
 
@@ -75,12 +76,13 @@ public final class StartupHistoryTest
 	public void sharesOneHistoryPerSandboxAndJava()
 	{
 		// Requirement: R-L23
-		Path sandbox = Path.of("/shared-history-test/bwrap");
-		Path java = Path.of("/shared-history-test/bin/java");
+		String unique = "/shared-history-test-" + UUID.randomUUID();
+		Path sandbox = Path.of(unique, "bwrap");
+		Path java = Path.of(unique, "bin", "java");
 		StartupHistory.shared(sandbox, java).recordReady(Duration.ofSeconds(2));
 
 		Optional<StartupHistory.Summary> same = StartupHistory.shared(sandbox, java).summary();
-		Optional<StartupHistory.Summary> other = StartupHistory.shared(sandbox, Path.of("/shared-history-test/other")).
+		Optional<StartupHistory.Summary> other = StartupHistory.shared(sandbox, Path.of(unique, "other")).
 			summary();
 
 		requireThat(same.orElseThrow().runs(), "sameRuns").isEqualTo(1);
