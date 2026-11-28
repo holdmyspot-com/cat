@@ -111,6 +111,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -149,12 +150,14 @@ public final class StatusReportTest
 	@Test
 	public void explainsSymbolicLinkLimitation()
 	{
+		// Requirement: R-W6
 		StatusReport report = StatusReport.of(new Builder().confirmed().build(),
 			new ReportEvidence(List.of(), true, false, null));
 		StatusReport without = StatusReport.of(new Builder().confirmed().build(), ReportEvidence.NONE);
 
 		String limitations = String.join("\n", report.limitations());
 
+		requireThat(report.limitations().size(), "size").isEqualTo(without.limitations().size() + 1);
 		requireThat(limitations, "limitations").contains("regular copy of each symbolic link's target").
 			contains("A file that a prompt names in its text without a loader loading it is absent from trials").
 			contains("declares it as a referenced file");
@@ -228,20 +231,6 @@ public final class StatusReportTest
 		requireThat(plainList.path("spot_checked").asInt(), "spotChecked").isEqualTo(31);
 		requireThat(judges.get(2).path("rejected").get(0).path("reason").asString(), "spotReason").
 			isEqualTo("spot_check");
-	}
-
-	/**
-	 * The text and JSON concurrency reports show the configured campaign ceiling.
-	 */
-	// Requirement: R-E4
-	@Test
-	public void reportsConfiguredCampaignCeiling()
-	{
-		StatusReport report = StatusReport.of(new Builder().ceiling(16).build(), ReportEvidence.NONE);
-		JsonNode concurrency = report.toJson(JsonMapper.builder().build()).path("concurrency");
-
-		requireThat(concurrency.path("ceiling").asInt(), "ceiling").isEqualTo(16);
-		requireThat(report.summary(ZoneOffset.UTC), "summary").contains("Concurrency: window 1 of ceiling 16");
 	}
 
 	/**
@@ -438,17 +427,37 @@ public final class StatusReportTest
 	}
 
 	/**
-	 * The text and JSON concurrency reports show the default campaign ceiling.
+	 * Supplies the campaign ceiling that a campaign configures, or {@code null} when it keeps the default, with the
+	 * ceiling that its report shows.
+	 *
+	 * @return each configured ceiling and the ceiling reported
+	 */
+	@DataProvider
+	public static Object[][] campaignCeilings()
+	{
+		return new Object[][] {{16, 16}, {null, 8}};
+	}
+
+	/**
+	 * The text and JSON concurrency reports show the campaign ceiling, which is the default one unless the campaign
+	 * configures another.
+	 *
+	 * @param configured the ceiling that the campaign configures, or {@code null} for the default
+	 * @param expected   the ceiling that the reports show
 	 */
 	// Requirement: R-E4
-	@Test
-	public void reportsDefaultCampaignCeiling()
+	@Test(dataProvider = "campaignCeilings")
+	public void reportsCampaignCeiling(Integer configured, int expected)
 	{
-		StatusReport report = StatusReport.of(new Builder().build(), ReportEvidence.NONE);
+		Builder builder = new Builder();
+		if (configured != null)
+			builder.ceiling(configured);
+		StatusReport report = StatusReport.of(builder.build(), ReportEvidence.NONE);
 		JsonNode concurrency = report.toJson(JsonMapper.builder().build()).path("concurrency");
 
-		requireThat(concurrency.path("ceiling").asInt(), "ceiling").isEqualTo(8);
-		requireThat(report.summary(ZoneOffset.UTC), "summary").contains("Concurrency: window 1 of ceiling 8");
+		requireThat(concurrency.path("ceiling").asInt(), "ceiling").isEqualTo(expected);
+		requireThat(report.summary(ZoneOffset.UTC), "summary").
+			contains("Concurrency: window 1 of ceiling " + expected);
 	}
 
 	/**
@@ -1762,27 +1771,6 @@ public final class StatusReportTest
 		requireThat(report.limitations().size(), "limitationCount").isGreaterThan(1);
 		requireThat(report.summary(ZoneOffset.UTC), "summary").contains(ContractFixtures.judge().profile().label()).
 			contains("Only the English prompts are covered.");
-	}
-
-	/**
-	 * Verifies that the limitation about symbolic links appears when staging replaced links with copies.
-	 */
-	@Test
-	public void symbolicLinkLimitationIsRecorded()
-	{
-		// Requirement: R-W6
-		Campaign campaign = confirmed().readyDevelopment().build();
-		ReportEvidence links = new ReportEvidence(List.of(), true, false, null);
-		List<String> without = StatusReport.of(campaign, ReportEvidence.NONE).limitations();
-		List<String> with = StatusReport.of(campaign, links).limitations();
-		requireThat(with.size(), "size").isEqualTo(without.size() + 1);
-		boolean mentioned = false;
-		for (String limitation : with)
-		{
-			if (limitation.contains("symbolic link"))
-				mentioned = true;
-		}
-		requireThat(mentioned, "mentionsSymbolicLinks").isTrue();
 	}
 
 	/**
