@@ -260,7 +260,9 @@ public final class ContractCheckTest
 		return new Object[][]
 		{
 			{Platform.LINUX_X64, "Check programs require Bubblewrap (bwrap) at an absolute location on PATH."},
-			{Platform.WINDOWS_X64, "Check programs require WSL2 on Windows."}
+			{Platform.WINDOWS_X64, "CAT refuses check programs on native Windows because it has no sandbox for them " +
+				"there, one that denies the network and every write outside a scratch directory. Run the prompt " +
+				"optimizer inside WSL2."}
 		};
 	}
 

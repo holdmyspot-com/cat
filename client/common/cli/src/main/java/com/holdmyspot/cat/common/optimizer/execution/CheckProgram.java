@@ -42,6 +42,9 @@ public final class CheckProgram
 	public static final Duration TIME_LIMIT = Duration.ofSeconds(60);
 	/** The combined standard output and standard error limit, in bytes. */
 	public static final int OUTPUT_LIMIT = 16 * 1024;
+	private static final String WINDOWS_REFUSAL = "CAT refuses check programs on native Windows because it has no " +
+		"sandbox for them there, one that denies the network and every write outside a scratch directory. Run the " +
+		"prompt optimizer inside WSL2.";
 	private static final Path ENV = Path.of("/usr/bin/env");
 	private static final String SCRATCH = "scratch";
 	private static final String LAUNCHER = "CatCheckSource.java";
@@ -219,7 +222,7 @@ public final class CheckProgram
 		requireThat(policies, "policies").isNotNull();
 		requireThat(heldOut, "heldOut").isNotNull();
 		if (platform.isWindows())
-			throw new IOException("Check programs require WSL2 on Windows.");
+			throw new IOException(WINDOWS_REFUSAL);
 		if (!platform.isLinux() && !platform.isMacos())
 			throw new IOException("CAT has no check program sandbox on " + platform.id() + ".");
 		if (policies.isEmpty())
@@ -320,7 +323,7 @@ public final class CheckProgram
 		requireThat(timeout.isPositive(), "positiveTimeout").isTrue();
 		requireThat(outputLimit, "outputLimit").isPositive();
 		if (Platform.current().isWindows())
-			throw new IOException("Check programs require WSL2 on Windows");
+			throw new IOException(WINDOWS_REFUSAL);
 
 		Path evidence = input.toRealPath();
 		Path program = evidence.resolve(programPath);

@@ -102,7 +102,8 @@ public final class CheckProgramTest
 	}
 
 	/**
-	 * Reports the required Windows host arrangement before selecting a sandbox executable.
+	 * Refuses a check program on native Windows, saying that CAT refuses it, that the cause is the missing sandbox
+	 * and that the user can run the optimizer inside WSL2.
 	 */
 	@Test
 	public void refusesNativeWindowsLaunch()
@@ -111,7 +112,34 @@ public final class CheckProgramTest
 		IOException failure = expectThrows(IOException.class, () ->
 			CheckProgram.ownerLaunch(Platform.WINDOWS_X64, Map.of(), List.of(ParentPolicy.UNSANDBOXED), List.of()));
 
-		requireThat(failure.getMessage(), "message").contains("WSL2");
+		requireThat(failure.getMessage(), "message").isEqualTo("CAT refuses check programs on native Windows because " +
+			"it has no sandbox for them there, one that denies the network and every write outside a scratch " +
+			"directory. Run the prompt optimizer inside WSL2.");
+	}
+
+	/**
+	 * Gives the same refusal when a run starts on native Windows, which only a Windows host can exercise.
+	 *
+	 * @throws IOException if the staged directories cannot be created
+	 * @throws InterruptedException if the run is interrupted
+	 */
+	@Test
+	public void refusesNativeWindowsRun() throws IOException, InterruptedException
+	{
+		// Requirement: R-L21
+		if (!Platform.current().isWindows())
+			throw new SkipException("Only a native Windows host reaches the run's own refusal");
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("check-program-windows-"));
+			Launch launch = new Launch(directory, directory, ParentPolicy.UNSANDBOXED, List.of());
+
+			IOException failure = expectThrows(IOException.class, () ->
+				CheckProgram.run(launch, directory, directory, "Check.java", List.of(), Duration.ofSeconds(1), 1024));
+
+			requireThat(failure.getMessage(), "message").contains("CAT refuses check programs on native Windows").
+				contains("WSL2");
+		}
 	}
 
 	/**
