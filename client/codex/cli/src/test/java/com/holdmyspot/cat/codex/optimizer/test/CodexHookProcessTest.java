@@ -6,6 +6,7 @@ import static org.testng.Assert.expectThrows;
 import com.holdmyspot.cat.codex.layout.CodexSystemFolder;
 import com.holdmyspot.cat.codex.optimizer.CodexHookProcess;
 import com.holdmyspot.cat.codex.runner.TomlStrings;
+import com.holdmyspot.cat.common.CommandLineArguments;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.launcher.ProcessIdentity;
@@ -21,6 +22,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import org.testng.SkipException;
 import org.testng.annotations.DataProvider;
@@ -66,7 +68,8 @@ public final class CodexHookProcessTest
 	/**
 	 * Verifies that on native Windows the hook starts under the sandbox of the owner's own Codex executable, in the
 	 * Windows implementation that the owner's settings select, with its variables set and removed by Codex, instead of
-	 * being refused.
+	 * being refused. Each argument that CAT adds is quoted the way that Windows programs split their command line,
+	 * since Java would otherwise pass a double quote inside it unescaped and Codex would receive the argument without it.
 	 *
 	 * @throws IOException   if the fixture cannot be created
 	 * @throws PolicyRefusal if the owner could replace the executable
@@ -88,7 +91,9 @@ public final class CodexHookProcessTest
 
 			List<String> command = builder.command();
 			requireThat(command.getFirst(), "executable").isEqualTo(fixture.codex.toString());
-			requireThat(command.subList(1, 3), "sandbox").isEqualTo(List.of("sandbox", "--sandbox-state-json"));
+			requireThat(command.subList(1, 3), "sandbox").isEqualTo(
+				List.of(CommandLineArguments.quote("sandbox"), CommandLineArguments.quote("--sandbox-state-json")));
+			requireThat(JSON.readTree(received(Platform.WINDOWS_X64, command).get(3)).isObject(), "state").isTrue();
 			List<String> expected = new ArrayList<>(List.of(
 				"-c", "project_root_markers=[]",
 				"-c", "projects={\"" + TomlStrings.escape(fixture.workspace.toString()) +
@@ -100,7 +105,8 @@ public final class CodexHookProcessTest
 				"-c", "shell_environment_policy.set.HOME=\"C:\\\\Users\\\\owner\"",
 				"-c", "shell_environment_policy.set.PATH=\"C:\\\\Tools;C:\\\\Windows\\\\System32\"",
 				"-c", "shell_environment_policy.exclude=[\"CODEX_HOME\"]",
-				"--"));
+				"--")).stream().map(CommandLineArguments::quote).collect(Collectors.toList());
+			// The hook's own arguments are already as Java starts the hook, and Codex starts it with the same words
 			expected.addAll(HOOK);
 			requireThat(command.subList(4, command.size()), "command").isEqualTo(expected);
 			// Codex finds its Windows helpers beside its own executable, so the search path is left to the hook
@@ -134,7 +140,7 @@ public final class CodexHookProcessTest
 			CodexHookProcess.prepare(builder, fixture.scratch, Optional.empty(), fixture.sandbox(platform, Map.of()),
 				fixture.policy(List.of()), JSON);
 
-			List<String> command = builder.command();
+			List<String> command = received(platform, builder.command());
 			int separator = command.lastIndexOf("--");
 			requireThat(command.subList(separator + 1, command.size()), "hook").isEqualTo(HOOK);
 			requireThat(command.subList(4, separator), "options").containsAll(List.of(
@@ -286,6 +292,62 @@ public final class CodexHookProcessTest
 	}
 
 	/**
+	 * Returns the words that Codex receives from a prepared command line: on Windows, each argument that CAT adds,
+	 * up to and including the one that ends Codex's options, is split the way that Windows programs split their
+	 * command line; the hook's own arguments and every argument on other platforms are received as they are.
+	 *
+	 * @param platform the platform that the command starts on
+	 * @param command  the prepared command
+	 * @return the received words
+	 */
+	private static List<String> received(Platform platform, List<String> command)
+	{
+		if (!platform.isWindows())
+			return command;
+		int separator = command.indexOf(CommandLineArguments.quote("--"));
+		requireThat(separator, "separator").isNotNegative();
+		List<String> words = new ArrayList<>(command);
+		for (int i = 1; i <= separator; ++i)
+			words.set(i, unquoted(command.get(i)));
+		return words;
+	}
+
+	/**
+	 * Splits one quoted argument the way that Windows programs split their command line: the outer quotes group the
+	 * word, backslashes before a quote escape it in pairs, and other backslashes are plain characters.
+	 *
+	 * @param argument a quoted argument
+	 * @return the word that the program receives
+	 */
+	private static String unquoted(String argument)
+	{
+		requireThat(argument, "argument").startsWith("\"").endsWith("\"");
+		String inner = argument.substring(1, argument.length() - 1);
+		StringBuilder word = new StringBuilder();
+		int backslashes = 0;
+		for (int i = 0; i < inner.length(); ++i)
+		{
+			char c = inner.charAt(i);
+			if (c == '\\')
+			{
+				++backslashes;
+				continue;
+			}
+			if (c == '"')
+			{
+				requireThat(backslashes % 2, "unescapedQuote").isEqualTo(1);
+				word.repeat('\\', backslashes / 2);
+			}
+			else
+				word.repeat('\\', backslashes);
+			word.append(c);
+			backslashes = 0;
+		}
+		requireThat(backslashes % 2, "trailingBackslashes").isEqualTo(0);
+		return word.repeat('\\', backslashes / 2).toString();
+	}
+
+	/**
 	 * Returns the access mode of every filesystem entry of the hook's sandbox state.
 	 *
 	 * @param builder the prepared hook builder
@@ -293,7 +355,11 @@ public final class CodexHookProcessTest
 	 */
 	private static List<String> accesses(ProcessBuilder builder)
 	{
-		JsonNode state = JSON.readTree(builder.command().get(3));
+		List<String> command = builder.command();
+		Platform platform = Platform.LINUX_X64;
+		if (command.contains(CommandLineArguments.quote("--")))
+			platform = Platform.WINDOWS_X64;
+		JsonNode state = JSON.readTree(received(platform, command).get(3));
 		List<String> accesses = new ArrayList<>();
 		for (JsonNode entry : state.path("permissionProfile").path("file_system").path("entries"))
 			accesses.add(entry.path("access").asString());

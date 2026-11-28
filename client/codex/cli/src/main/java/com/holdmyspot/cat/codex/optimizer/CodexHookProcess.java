@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.codex.layout.CodexSystemFolder;
 import com.holdmyspot.cat.codex.runner.CodexSessionSandbox;
 import com.holdmyspot.cat.codex.runner.TomlStrings;
+import com.holdmyspot.cat.common.CommandLineArguments;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.runner.launcher.ProcessIdentity;
 import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
@@ -202,6 +203,11 @@ public final class CodexHookProcess
 		if (!absent.isEmpty())
 			command.addAll(List.of(OPTION, ENVIRONMENT_POLICY + "exclude=[" + String.join(",", absent) + "]"));
 		command.add("--");
+		// Java passes an argument's double quotes to a Windows program unescaped, so Codex would receive the argument
+		// without them; the hook's own arguments are already as Java starts the hook, and Codex starts it with them
+		if (platform.isWindows())
+			command.replaceAll(CommandLineArguments::quote);
+		command.set(0, nativeCodex.toString());
 		command.addAll(builder.command());
 		Path sandboxHome = Files.createTempDirectory(comparison, SANDBOX_HOME_PREFIX);
 		for (String key : HOME_VARIABLES)
