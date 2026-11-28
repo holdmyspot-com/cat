@@ -38,14 +38,17 @@ public final class SessionHistoryTest
 		{
 			Path transcript = cleanup.add(Files.createTempDirectory("cat-session-history-")).resolve("session.jsonl");
 			Files.writeString(transcript, """
+				{"type":"message","text":"distant-early"}
 				{"type":"message","text":"before"}
 				{"type":"message","text":"needle"}
 				{"type":"message","text":"after"}
+				{"type":"message","text":"distant-late"}
 				""");
 
 			String result = SessionHistorySecrets.getSessionHistoryAccess().search(scope, transcript, "needle", 1);
 
-			requireThat(result, "result").contains("before").contains("needle").contains("after");
+			requireThat(result, "result").contains("before").contains("needle").contains("after").
+				doesNotContain("distant-early").doesNotContain("distant-late");
 		}
 	}
 
