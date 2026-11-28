@@ -54,8 +54,9 @@ public final class CodexCheckProgramOwnerTest
 	public void nestedOwnerRunsProgramsOutsideSandbox() throws IOException, InterruptedException
 	{
 		// Requirement: R-L21
-		if (!Platform.current().isLinux() || Files.notExists(Path.of("/usr/bin/bwrap")))
-			throw new SkipException("The check-program sandbox needs Linux and a system Bubblewrap");
+		if (!Platform.current().isLinux())
+			throw new SkipException("The check-program sandbox is Linux's Bubblewrap");
+		requireThat(Files.exists(Path.of("/usr/bin/bwrap")), "systemBubblewrapInstalled").isTrue();
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
 			Path root = scope.add(Files.createTempDirectory("codex-owner-project")).toRealPath();

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Installs the Linux test tools (bats, jq and shellcheck) with apt. It uses the runner's configured Ubuntu sources
-# first. When the update or the install fails, for example because Canonical's servers are unreachable, it points the
+# Installs the Linux test tools (bats, bubblewrap, jq and shellcheck) with apt. It uses the runner's configured Ubuntu
+# sources first. When the update or the install fails, for example because Canonical's servers are unreachable, it points the
 # Ubuntu sources at a third-party mirror for the machine's architecture and retries, one mirror after another. Package
 # signatures stay verified: only the host in each source's URI changes.
 #
@@ -8,7 +8,7 @@
 
 set -euo pipefail
 
-PACKAGES=(bats jq shellcheck)
+PACKAGES=(bats bubblewrap jq shellcheck)
 
 # Prints the mirrors to try for an architecture, one per line, in order.
 # Arguments: the Debian architecture name, such as amd64 or arm64.
