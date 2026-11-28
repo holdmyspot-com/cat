@@ -8,7 +8,6 @@ import com.holdmyspot.cat.claude.credential.ClaudeCredentialFile;
 import com.holdmyspot.cat.claude.credential.CredentialRefusedException;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
-import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.runner.SecretFile;
@@ -17,6 +16,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
@@ -144,8 +146,9 @@ public final class ClaudeCredentialFileTest
 	}
 
 	/**
-	 * A save that cannot write its new file, here because the test makes the folder unwritable, fails with the path,
-	 * leaves the earlier file byte for byte unchanged, and leaves no new file behind.
+	 * A save whose replacement of the earlier file fails, after the new file was written, passes the failure on,
+	 * leaves the earlier file byte for byte unchanged, and leaves no new file behind. The failure comes from the
+	 * injected replacer, so it occurs the same way on every platform.
 	 *
 	 * @throws IOException                if the fixture cannot be written or read
 	 * @throws CredentialRefusedException if the file refuses the first token
@@ -160,25 +163,38 @@ public final class ClaudeCredentialFileTest
 			Path file = ClaudeCredentialFile.path(home);
 			byte[] earlier = Files.readAllBytes(file);
 			Path folder = file.getParent();
-			if (!PortableFiles.hasModes(folder))
+			IllegalStateException failure = new IllegalStateException("The replacement failed");
+			FileReplacer failing = new FileReplacer(Platform.current(), () ->
 			{
-				// Windows keeps creating files in a folder whose read-only attribute is set, so no folder state that a
-				// test can set there makes the save fail
-				return;
-			}
-			Files.setPosixFilePermissions(folder, PosixFilePermissions.fromString("r-x------"));
+			}, new Clock()
+			{
+				@Override
+				public ZoneId getZone()
+				{
+					return ZoneOffset.UTC;
+				}
+
+				@Override
+				public Clock withZone(ZoneId zone)
+				{
+					return this;
+				}
+
+				@Override
+				public Instant instant()
+				{
+					throw failure;
+				}
+			});
+
 			try
 			{
-				ClaudeCredentialFile.save(json, home, SETUP_TOKEN, replacer);
-				throw new AssertionError("The save succeeded in an unwritable folder");
+				ClaudeCredentialFile.save(json, home, SETUP_TOKEN, failing);
+				throw new AssertionError("The save succeeded although the replacement failed");
 			}
-			catch (IOException e)
+			catch (IllegalStateException e)
 			{
-				requireThat(String.valueOf(e.getMessage()), "message").contains(folder.toString());
-			}
-			finally
-			{
-				Files.setPosixFilePermissions(folder, PosixFilePermissions.fromString("rwx------"));
+				requireThat(e, "exception").isEqualTo(failure);
 			}
 
 			requireThat(Files.readAllBytes(file), "file").isEqualTo(earlier);
