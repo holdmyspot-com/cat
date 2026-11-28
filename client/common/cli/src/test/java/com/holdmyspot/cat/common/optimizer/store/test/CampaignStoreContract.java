@@ -108,6 +108,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -194,10 +195,12 @@ public abstract class CampaignStoreContract
 	 * The first verdict stored under a key is final: a later one, written in turn or at the same time, is dropped,
 	 * and every writer gets the first.
 	 *
-	 * @throws Exception if the store fails
+	 * @throws IOException          if the store fails
+	 * @throws InterruptedException if waiting for a writer is interrupted
+	 * @throws ExecutionException   if a writer fails
 	 */
 	@Test
-	public void firstVerdictIsFinal() throws Exception
+	public void firstVerdictIsFinal() throws IOException, InterruptedException, ExecutionException
 	{
 		// Requirement: R-L10
 		try (StoreFixture fixture = open())

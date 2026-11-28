@@ -140,10 +140,14 @@ public final class TestSessionsContractTest
 	/**
 	 * Runs the contract check that every turn's evidence is reported.
 	 *
-	 * @throws Exception if the check fails
+	 * @throws IOException          if the trial evidence cannot be prepared or read
+	 * @throws InterruptedException if waiting for completion is interrupted
+	 * @throws ExecutionException   if the session fails
+	 * @throws TimeoutException     if the session does not complete
 	 */
 	@Test(timeOut = 60_000)
-	public void completesWithEvidenceOfEveryTurn() throws Exception
+	public void completesWithEvidenceOfEveryTurn()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		try (TestJvmScope jvm = new TestJvmScope())
 		{
@@ -373,10 +377,14 @@ public final class TestSessionsContractTest
 	 * Runs the shared check that a scripted judge session completes and leaves
 	 * the local evidence fixture bytes unchanged.
 	 *
-	 * @throws Exception if the check fails
+	 * @throws IOException          if the trial evidence cannot be prepared or read
+	 * @throws InterruptedException if waiting for completion is interrupted
+	 * @throws ExecutionException   if the session fails
+	 * @throws TimeoutException     if the session does not complete
 	 */
 	@Test(timeOut = 60_000)
-	public void judgeKeepsLocalEvidence() throws Exception
+	public void judgeKeepsLocalEvidence()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		try (TestJvmScope jvm = new TestJvmScope())
 		{
@@ -387,10 +395,14 @@ public final class TestSessionsContractTest
 	/**
 	 * Runs the contract check that an interrupt ends a running turn as interrupted.
 	 *
-	 * @throws Exception if the check fails
+	 * @throws IOException          if the trial evidence cannot be prepared or read
+	 * @throws InterruptedException if waiting for completion is interrupted
+	 * @throws ExecutionException   if the session fails
+	 * @throws TimeoutException     if the session does not complete
 	 */
 	@Test(timeOut = 60_000)
-	public void interruptEndsARunningTurnAsInterrupted() throws Exception
+	public void interruptEndsARunningTurnAsInterrupted()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		try (TestJvmScope jvm = new TestJvmScope())
 		{
@@ -401,10 +413,14 @@ public final class TestSessionsContractTest
 	/**
 	 * Runs the contract check that an interrupt after the session ended changes nothing.
 	 *
-	 * @throws Exception if the check fails
+	 * @throws IOException          if the trial evidence cannot be prepared or read
+	 * @throws InterruptedException if waiting for completion is interrupted
+	 * @throws ExecutionException   if the session fails
+	 * @throws TimeoutException     if the session does not complete
 	 */
 	@Test(timeOut = 60_000)
-	public void interruptAfterTheEndChangesNothing() throws Exception
+	public void interruptAfterTheEndChangesNothing()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		try (TestJvmScope jvm = new TestJvmScope())
 		{
@@ -415,10 +431,10 @@ public final class TestSessionsContractTest
 	/**
 	 * Runs the contract check that the host login is reported without a session.
 	 *
-	 * @throws Exception if the check fails
+	 * @throws IOException if the trial evidence cannot be prepared or read
 	 */
 	@Test(timeOut = 60_000)
-	public void reportsTheHostLoginWithoutASession() throws Exception
+	public void reportsTheHostLoginWithoutASession() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope())
 		{
@@ -429,10 +445,10 @@ public final class TestSessionsContractTest
 	/**
 	 * Runs the contract check that the port reports exit status as its harness does.
 	 *
-	 * @throws Exception if the check fails
+	 * @throws IOException if the trial evidence cannot be prepared or read
 	 */
 	@Test(timeOut = 60_000)
-	public void reportsExitStatusAsTheHarnessDoes() throws Exception
+	public void reportsExitStatusAsTheHarnessDoes() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope())
 		{
@@ -443,10 +459,10 @@ public final class TestSessionsContractTest
 	/**
 	 * Runs the contract check that the port identifies its versions and results folders.
 	 *
-	 * @throws Exception if the check fails
+	 * @throws IOException if the trial evidence cannot be prepared or read
 	 */
 	@Test(timeOut = 60_000)
-	public void identifiesItsVersionsAndResultsFolders() throws Exception
+	public void identifiesItsVersionsAndResultsFolders() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope())
 		{
@@ -457,10 +473,10 @@ public final class TestSessionsContractTest
 	/**
 	 * Runs the contract check that an empty host reports nothing.
 	 *
-	 * @throws Exception if the check fails
+	 * @throws IOException if the trial evidence cannot be prepared or read
 	 */
 	@Test(timeOut = 60_000)
-	public void reportsNothingForAnEmptyHost() throws Exception
+	public void reportsNothingForAnEmptyHost() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope())
 		{
@@ -471,10 +487,14 @@ public final class TestSessionsContractTest
 	/**
 	 * Runs the contract check that a completed transcript's evidence reads the same each time.
 	 *
-	 * @throws Exception if the check fails
+	 * @throws IOException          if the trial evidence cannot be prepared or read
+	 * @throws InterruptedException if waiting for completion is interrupted
+	 * @throws ExecutionException   if the session fails
+	 * @throws TimeoutException     if the session does not complete
 	 */
 	@Test(timeOut = 60_000)
-	public void readsTheEvidenceOfACompletedTranscript() throws Exception
+	public void readsTheEvidenceOfACompletedTranscript()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		try (TestJvmScope jvm = new TestJvmScope())
 		{
@@ -485,10 +505,14 @@ public final class TestSessionsContractTest
 	/**
 	 * Runs the contract check that an interrupted session keeps the rate-limit windows reported before the interrupt.
 	 *
-	 * @throws Exception if the check fails
+	 * @throws IOException          if the trial evidence cannot be prepared or read
+	 * @throws InterruptedException if waiting for completion is interrupted
+	 * @throws ExecutionException   if the session fails
+	 * @throws TimeoutException     if the session does not complete
 	 */
 	@Test(timeOut = 60_000)
-	public void interruptKeepsTheWindowsReportedBeforeIt() throws Exception
+	public void interruptKeepsTheWindowsReportedBeforeIt()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		try (TestJvmScope jvm = new TestJvmScope())
 		{

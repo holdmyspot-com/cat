@@ -198,9 +198,13 @@ public final class SessionPortContract
 	 * Checks that a session that runs every turn reports a reply per turn, its transcript, its effects directory, the
 	 * observed model and the token usage.
 	 *
-	 * @throws Exception if the session fails
+	 * @throws IOException          if the subject cannot be set up or its evidence cannot be read
+	 * @throws InterruptedException if a wait is interrupted
+	 * @throws ExecutionException   if the session's completion failed
+	 * @throws TimeoutException     if the session did not end in time
 	 */
-	public void completesWithEvidenceOfEveryTurn() throws Exception
+	public void completesWithEvidenceOfEveryTurn()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		try (Subject subject = opener.open())
 		{
@@ -227,9 +231,13 @@ public final class SessionPortContract
 	/**
 	 * Checks that a scripted judge session completes and leaves the local evidence fixture bytes unchanged.
 	 *
-	 * @throws Exception if the session fails
+	 * @throws IOException          if the subject cannot be set up or its evidence cannot be read
+	 * @throws InterruptedException if a wait is interrupted
+	 * @throws ExecutionException   if the session's completion failed
+	 * @throws TimeoutException     if the session did not end in time
 	 */
-	public void judgeKeepsLocalEvidence() throws Exception
+	public void judgeKeepsLocalEvidence()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		try (Subject subject = opener.open())
 		{
@@ -252,9 +260,13 @@ public final class SessionPortContract
 	 * Checks that a session that CAT interrupts while a turn runs ends as interrupted, and does not report a
 	 * failure.
 	 *
-	 * @throws Exception if the session fails
+	 * @throws IOException          if the subject cannot be set up or its evidence cannot be read
+	 * @throws InterruptedException if a wait is interrupted
+	 * @throws ExecutionException   if the session's completion failed
+	 * @throws TimeoutException     if the session did not end in time
 	 */
-	public void interruptEndsARunningTurnAsInterrupted() throws Exception
+	public void interruptEndsARunningTurnAsInterrupted()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		try (Subject subject = opener.open())
 		{
@@ -273,9 +285,13 @@ public final class SessionPortContract
 	/**
 	 * Checks that an interrupt that arrives after the session ended neither fails nor changes the result.
 	 *
-	 * @throws Exception if the session fails
+	 * @throws IOException          if the subject cannot be set up or its evidence cannot be read
+	 * @throws InterruptedException if a wait is interrupted
+	 * @throws ExecutionException   if the session's completion failed
+	 * @throws TimeoutException     if the session did not end in time
 	 */
-	public void interruptAfterTheEndChangesNothing() throws Exception
+	public void interruptAfterTheEndChangesNothing()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		try (Subject subject = opener.open())
 		{
@@ -296,9 +312,9 @@ public final class SessionPortContract
 	 * Checks that the port classifies the host's login without a session, so that the confirmation step can warn
 	 * before it starts one.
 	 *
-	 * @throws Exception if the classification fails
+	 * @throws IOException if the subject cannot be set up or read
 	 */
-	public void reportsTheHostLoginWithoutASession() throws Exception
+	public void reportsTheHostLoginWithoutASession() throws IOException
 	{
 		try (Subject subject = opener.open())
 		{
@@ -311,9 +327,9 @@ public final class SessionPortContract
 	/**
 	 * Checks that the port reports whether the harness reports exit statuses as that harness does.
 	 *
-	 * @throws Exception if the check fails
+	 * @throws IOException if the subject cannot be set up or read
 	 */
-	public void reportsExitStatusAsTheHarnessDoes() throws Exception
+	public void reportsExitStatusAsTheHarnessDoes() throws IOException
 	{
 		try (Subject subject = opener.open())
 		{
@@ -325,9 +341,9 @@ public final class SessionPortContract
 	 * Checks that the port names a positive session environment version and judge version, the release that
 	 * introduced the environment version, and the absolute and distinct directories that hold its runs.
 	 *
-	 * @throws Exception if the check fails
+	 * @throws IOException if the subject cannot be set up or read
 	 */
-	public void identifiesItsVersionsAndResultsFolders() throws Exception
+	public void identifiesItsVersionsAndResultsFolders() throws IOException
 	{
 		try (Subject subject = opener.open())
 		{
@@ -349,9 +365,9 @@ public final class SessionPortContract
 	 * registers no hooks, finds no installed plugin and no held-out exposure, and that a plugin with no hooks has no
 	 * unapproved hook.
 	 *
-	 * @throws Exception if the check fails
+	 * @throws IOException if the subject cannot be set up or read
 	 */
-	public void reportsNothingForAnEmptyHost() throws Exception
+	public void reportsNothingForAnEmptyHost() throws IOException
 	{
 		try (Subject subject = opener.open())
 		{
@@ -378,9 +394,13 @@ public final class SessionPortContract
 	 * Checks that the activity that the port reads from a completed session's transcript is the same on every read
 	 * and leaves the transcript as it found it.
 	 *
-	 * @throws Exception if the session fails
+	 * @throws IOException          if the subject cannot be set up or its evidence cannot be read
+	 * @throws InterruptedException if a wait is interrupted
+	 * @throws ExecutionException   if the session's completion failed
+	 * @throws TimeoutException     if the session did not end in time
 	 */
-	public void readsTheEvidenceOfACompletedTranscript() throws Exception
+	public void readsTheEvidenceOfACompletedTranscript()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		try (Subject subject = opener.open())
 		{
@@ -404,9 +424,13 @@ public final class SessionPortContract
 	 * Checks that a session that CAT interrupts reports the rate-limit windows that the harness reported before the
 	 * interrupt.
 	 *
-	 * @throws Exception if the session fails
+	 * @throws IOException          if the subject cannot be set up or its evidence cannot be read
+	 * @throws InterruptedException if a wait is interrupted
+	 * @throws ExecutionException   if the session's completion failed
+	 * @throws TimeoutException     if the session did not end in time
 	 */
-	public void interruptKeepsTheWindowsReportedBeforeIt() throws Exception
+	public void interruptKeepsTheWindowsReportedBeforeIt()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		try (Subject subject = opener.open())
 		{
