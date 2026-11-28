@@ -195,14 +195,23 @@ public final class SecretFileTest
 	 * access list. The owner keeps the right to read and change the access list, so that the file can be restored.
 	 *
 	 * @param file the file
-	 * @throws IOException   if the file's access cannot be changed
-	 * @throws SkipException if the process can read the file despite its mode, as a process running as root can
+	 * @throws IOException    if the file's access cannot be changed
+	 * @throws AssertionError if the file's mode still grants its owner read access after it was changed
+	 * @throws SkipException  if the file's mode grants its owner no read access but the process can read the file anyway,
+	 *                        as a process that bypasses file permissions can
 	 */
 	private static void makeWriteOnly(Path file) throws IOException
 	{
 		if (hasPosixPermissions())
 		{
 			Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("-w-------"));
+			// A mode that still grants read access means that this setup step failed. Do not report it as a skip.
+			Set<PosixFilePermission> actual = Files.getPosixFilePermissions(file);
+			if (actual.contains(PosixFilePermission.OWNER_READ))
+			{
+				throw new AssertionError("Removing the owner's read permission from " + file + " did not take effect: its " +
+					"permissions are " + PosixFilePermissions.toString(actual));
+			}
 			try
 			{
 				Files.readAllBytes(file);
@@ -211,13 +220,30 @@ public final class SecretFileTest
 			{
 				return;
 			}
-			throw new SkipException("The process can read a file that its mode makes write-only, as root can");
+			throw new SkipException("The process can read " + file + " although its permissions (" +
+				PosixFilePermissions.toString(actual) + ") grant its owner no read access. The process bypasses file " +
+				"permissions, as a process with elevated privileges does. The process created the file, so its effective " +
+				"user is " + creator(file) + ".");
 		}
 		AclFileAttributeView view = Files.getFileAttributeView(file, AclFileAttributeView.class);
 		Set<AclEntryPermission> permissions = EnumSet.complementOf(EnumSet.of(AclEntryPermission.READ_DATA));
 		view.setAcl(List.of(ownerEntry(view, permissions)));
 		// The fixture is only a write-only file if the process is really kept from reading it
 		expectThrows(IOException.class, () -> Files.readAllBytes(file));
+	}
+
+	/**
+	 * Returns the user that created a file, which is the effective user of the process that created it.
+	 *
+	 * @param file the file
+	 * @return the user's ID where the file system reports one, otherwise the user's name
+	 * @throws IOException if the file's owner cannot be read
+	 */
+	private static String creator(Path file) throws IOException
+	{
+		if (FileSystems.getDefault().supportedFileAttributeViews().contains("unix"))
+			return "ID " + Files.getAttribute(file, "unix:uid");
+		return Files.getOwner(file).getName();
 	}
 
 	/**
