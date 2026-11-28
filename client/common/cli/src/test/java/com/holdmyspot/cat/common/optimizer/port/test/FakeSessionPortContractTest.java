@@ -21,6 +21,8 @@ import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 
 import org.testng.annotations.Test;
 
@@ -66,10 +68,14 @@ public final class FakeSessionPortContractTest
 	 * the request's turns, and delivers that result through the session's completion. The result's contents come from
 	 * the test's own {@code finish} step, so this checks the fake's delivery and not how a real port gathers evidence.
 	 *
-	 * @throws Exception if the check fails
+	 * @throws IOException          if the fixtures cannot be created or read
+	 * @throws InterruptedException if waiting for completion is interrupted
+	 * @throws ExecutionException   if the session fails
+	 * @throws TimeoutException     if the session does not complete
 	 */
 	@Test
-	public void completesWithEvidenceOfEveryTurn() throws Exception
+	public void completesWithEvidenceOfEveryTurn()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		contract().completesWithEvidenceOfEveryTurn();
 	}
@@ -78,10 +84,14 @@ public final class FakeSessionPortContractTest
 	 * Runs the shared check that a scripted judge session completes and leaves
 	 * the local evidence fixture bytes unchanged.
 	 *
-	 * @throws Exception if the check fails
+	 * @throws IOException          if the fixtures cannot be created or read
+	 * @throws InterruptedException if waiting for completion is interrupted
+	 * @throws ExecutionException   if the session fails
+	 * @throws TimeoutException     if the session does not complete
 	 */
 	@Test
-	public void judgeKeepsLocalEvidence() throws Exception
+	public void judgeKeepsLocalEvidence()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		// Requirement: R-E13
 		contract().judgeKeepsLocalEvidence();
@@ -90,10 +100,14 @@ public final class FakeSessionPortContractTest
 	/**
 	 * Verifies that the fake ends an interrupted session as interrupted.
 	 *
-	 * @throws Exception if the check fails
+	 * @throws IOException          if the fixtures cannot be created or read
+	 * @throws InterruptedException if waiting for completion is interrupted
+	 * @throws ExecutionException   if the session fails
+	 * @throws TimeoutException     if the session does not complete
 	 */
 	@Test
-	public void interruptEndsARunningTurnAsInterrupted() throws Exception
+	public void interruptEndsARunningTurnAsInterrupted()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		// Requirement: R-E15
 		contract().interruptEndsARunningTurnAsInterrupted();
@@ -102,10 +116,14 @@ public final class FakeSessionPortContractTest
 	/**
 	 * Verifies that an interrupt after the end changes nothing in the fake.
 	 *
-	 * @throws Exception if the check fails
+	 * @throws IOException          if the fixtures cannot be created or read
+	 * @throws InterruptedException if waiting for completion is interrupted
+	 * @throws ExecutionException   if the session fails
+	 * @throws TimeoutException     if the session does not complete
 	 */
 	@Test
-	public void interruptAfterTheEndChangesNothing() throws Exception
+	public void interruptAfterTheEndChangesNothing()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		// Requirement: R-E15
 		contract().interruptAfterTheEndChangesNothing();
@@ -114,10 +132,10 @@ public final class FakeSessionPortContractTest
 	/**
 	 * Verifies that the fake classifies the host login without a session.
 	 *
-	 * @throws Exception if the check fails
+	 * @throws IOException if the fixtures cannot be created or read
 	 */
 	@Test
-	public void reportsTheHostLoginWithoutASession() throws Exception
+	public void reportsTheHostLoginWithoutASession() throws IOException
 	{
 		// Requirement: R-E7
 		contract().reportsTheHostLoginWithoutASession();
@@ -126,10 +144,10 @@ public final class FakeSessionPortContractTest
 	/**
 	 * Verifies that the fake reports the exit status answer that the test chose.
 	 *
-	 * @throws Exception if the check fails
+	 * @throws IOException if the fixtures cannot be created or read
 	 */
 	@Test
-	public void reportsExitStatusAsTheHarnessDoes() throws Exception
+	public void reportsExitStatusAsTheHarnessDoes() throws IOException
 	{
 		// Requirement: R-E7
 		contract(true).reportsExitStatusAsTheHarnessDoes();
@@ -139,10 +157,10 @@ public final class FakeSessionPortContractTest
 	/**
 	 * Verifies that the fake identifies its versions and results folders.
 	 *
-	 * @throws Exception if the check fails
+	 * @throws IOException if the fixtures cannot be created or read
 	 */
 	@Test
-	public void identifiesItsVersionsAndResultsFolders() throws Exception
+	public void identifiesItsVersionsAndResultsFolders() throws IOException
 	{
 		// Requirement: R-E7
 		contract().identifiesItsVersionsAndResultsFolders();
@@ -151,10 +169,10 @@ public final class FakeSessionPortContractTest
 	/**
 	 * Verifies that the fake reports nothing for an empty host.
 	 *
-	 * @throws Exception if the check fails
+	 * @throws IOException if the fixtures cannot be created or read
 	 */
 	@Test
-	public void reportsNothingForAnEmptyHost() throws Exception
+	public void reportsNothingForAnEmptyHost() throws IOException
 	{
 		// Requirement: R-E7
 		contract().reportsNothingForAnEmptyHost();
@@ -163,10 +181,14 @@ public final class FakeSessionPortContractTest
 	/**
 	 * Verifies that the fake reads the evidence of a completed transcript repeatably.
 	 *
-	 * @throws Exception if the check fails
+	 * @throws IOException          if the fixtures cannot be created or read
+	 * @throws InterruptedException if waiting for completion is interrupted
+	 * @throws ExecutionException   if the session fails
+	 * @throws TimeoutException     if the session does not complete
 	 */
 	@Test
-	public void readsTheEvidenceOfACompletedTranscript() throws Exception
+	public void readsTheEvidenceOfACompletedTranscript()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		// Requirement: R-E13
 		contract().readsTheEvidenceOfACompletedTranscript();
@@ -175,10 +197,14 @@ public final class FakeSessionPortContractTest
 	/**
 	 * Verifies that the fake's interrupted session carries the windows reported before the interrupt.
 	 *
-	 * @throws Exception if the check fails
+	 * @throws IOException          if the fixtures cannot be created or read
+	 * @throws InterruptedException if waiting for completion is interrupted
+	 * @throws ExecutionException   if the session fails
+	 * @throws TimeoutException     if the session does not complete
 	 */
 	@Test
-	public void interruptKeepsTheWindowsReportedBeforeIt() throws Exception
+	public void interruptKeepsTheWindowsReportedBeforeIt()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		// Requirement: R-E15
 		contract().interruptKeepsTheWindowsReportedBeforeIt();
