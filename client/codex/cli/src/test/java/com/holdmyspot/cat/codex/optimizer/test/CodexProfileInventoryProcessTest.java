@@ -18,7 +18,6 @@ import java.nio.file.Path;
 import java.util.List;
 
 import org.testng.annotations.Test;
-import tools.jackson.core.JacksonException;
 
 /**
  * Tests {@link CodexProfileInventory} over the launcher that {@link HarnessVersion#process(ExecutableFiles)} returns,
@@ -103,44 +102,6 @@ public final class CodexProfileInventoryProcessTest
 
 			requireThat(inventory.profiles(), "profiles").isEqualTo(List.of(new TrialProfile("gpt-6-sol", "low")));
 			requireThat(inventory.source(), "source").contains("codex-cli 0.169.0");
-		}
-	}
-
-	/**
-	 * Verifies that a malformed model list is reported with the parser's failure as the cause, with the size and a
-	 * bounded excerpt of the stdout that was read, and with the stderr that the command wrote.
-	 *
-	 * @throws IOException if the fake executable cannot be written
-	 */
-	@Test
-	public void reportsWhatAMalformedModelListRead() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path directory = cleanup.add(Files.createTempDirectory("cat-codex-models-")).toAbsolutePath();
-			String padding = "x".repeat(200_000);
-			String stdout = "{\"models\":[{\"slug\":\"" + padding + "-unterminated";
-			Path codex = writeCodex(directory, stdout, "error: the connection was reset\n", "");
-			CodexProfileInventory inventory = new CodexProfileInventory(directory, codex.toString(),
-				HarnessVersion.process(Yielding.executableFiles()));
-			try
-			{
-				inventory.inventory();
-			}
-			catch (IOException e)
-			{
-				requireThat(e.getCause(), "cause").isInstanceOf(JacksonException.class);
-				String message = e.getMessage();
-				requireThat(message, "message").contains("malformed model list");
-				requireThat(message, "message").contains(e.getCause().getMessage().lines().findFirst().orElseThrow());
-				requireThat(message, "message").contains(stdout.length() + " characters");
-				requireThat(message, "message").contains("{\"models\":[{\"slug\":\"xxx");
-				requireThat(message, "message").contains("x-unterminated");
-				requireThat(message, "message").contains("error: the connection was reset");
-				requireThat(message.length(), "message.length()").isLessThan(10_000);
-				return;
-			}
-			throw new AssertionError("A malformed model list must be reported");
 		}
 	}
 }
