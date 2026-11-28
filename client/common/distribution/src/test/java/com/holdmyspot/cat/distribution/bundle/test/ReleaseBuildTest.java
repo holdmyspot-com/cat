@@ -2,6 +2,7 @@ package com.holdmyspot.cat.distribution.bundle.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.distribution.bundle.ReleaseBuild;
 import java.io.IOException;
@@ -124,7 +125,7 @@ public final class ReleaseBuildTest
 	}
 
 	/**
-	 * Runs Git in a directory.
+	 * Runs Git in a directory, with neither the system nor the user's Git configuration.
 	 *
 	 * @param directory the working directory
 	 * @param arguments Git's arguments
@@ -137,6 +138,10 @@ public final class ReleaseBuildTest
 		List<String> command = new ArrayList<>(List.of("git", "-C", directory.toString()));
 		command.addAll(List.of(arguments));
 		ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
+		// Ignore the machine's Git configuration, such as commit signing or hooks, so that every machine runs the same Git
+		String nullDevice = Platform.current().isWindows() ? "NUL" : "/dev/null";
+		builder.environment().put("GIT_CONFIG_NOSYSTEM", "1");
+		builder.environment().put("GIT_CONFIG_GLOBAL", nullDevice);
 		builder.environment().put("GIT_CEILING_DIRECTORIES", directory.toAbsolutePath().getParent().toString());
 		try (Process process = builder.start())
 		{
