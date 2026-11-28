@@ -722,284 +722,136 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	}
 
 	/**
-	 * Verifies that a version 15 snapshot inside the {@code held_out} directory is refused with a message that names
-	 * its version and asks for a new campaign.
+	 * Returns the format versions that a store refuses: one far below, the one just below, the one just above and the
+	 * largest.
 	 *
+	 * @return the versions
+	 */
+	@DataProvider(name = "refusedFormatVersions")
+	public Object[][] refusedFormatVersions()
+	{
+		return new Object[][]
+			{
+				{1},
+				{42},
+				{51},
+				{Integer.MAX_VALUE}
+			};
+	}
+
+	/**
+	 * Returns the oldest and the newest format version that a store accepts.
+	 *
+	 * @return the versions
+	 */
+	@DataProvider(name = "acceptedFormatVersions")
+	public Object[][] acceptedFormatVersions()
+	{
+		return new Object[][]
+			{
+				{43},
+				{50}
+			};
+	}
+
+	/**
+	 * Verifies that a campaign snapshot whose format version is outside the accepted range is refused with a message
+	 * that names its version and asks for a new campaign.
+	 *
+	 * @param version the snapshot's format version
 	 * @throws IOException if the store fails
 	 */
-	@Test(expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = "(?s).*version 15 campaign.*[Ss]tart a new campaign.*")
-	public void refusesVersionFifteenCampaign() throws IOException
+	@Test(dataProvider = "refusedFormatVersions")
+	public void refusesSnapshotOutsideAcceptedVersions(int version) throws IOException
 	{
-		// Requirement: R-E24
+		// Requirement: R-C9, R-C11, R-C15, R-C16, R-C19, R-D9, R-D10, R-D11, R-D12, R-D13, R-D15, R-E19, R-E22, R-E24, R-W4
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-15-"));
+			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-"));
 			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			store.replaceSnapshot(start());
 			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 15);
+			root.put("format_version", version);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
-			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);
+			try
+			{
+				new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);
+				throw new AssertionError("version " + version + " was accepted");
+			}
+			catch (IOException e)
+			{
+				requireThat(e.getMessage(), "message").contains("version " + version + " campaign").
+					contains("Start a new campaign");
+			}
 		}
 	}
 
 	/**
-	 * Verifies that a version 16 snapshot, which predates failure behaviors and reproduction rounds, is refused with a
-	 * message that names its version and asks for a new campaign.
-	 *
-	 * @throws IOException if the store fails
-	 */
-	@Test(expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = "(?s).*version 16 campaign.*[Ss]tart a new campaign.*")
-	public void refusesVersionSixteenCampaign() throws IOException
-	{
-		// Requirement: R-C19
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-16-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
-			store.replaceSnapshot(start());
-			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
-			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 16);
-			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
-
-			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);
-		}
-	}
-
-	/**
-	 * Verifies that a version 17 snapshot, which predates recorded certification parameters and the session
-	 * environment version, is refused with a message that names its version and asks for a new campaign.
-	 *
-	 * @throws IOException if the store fails
-	 */
-	@Test(expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = "(?s).*version 17 campaign.*[Ss]tart a new campaign.*")
-	public void refusesVersionSeventeenCampaign() throws IOException
-	{
-		// Requirement: R-C19
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-17-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
-			store.replaceSnapshot(start());
-			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
-			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 17);
-			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
-
-			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);
-		}
-	}
-
-	/**
-	 * Verifies that a version 18 snapshot, which has an {@code authorized_targets} array, is refused with a message that
+	 * Verifies that a trial record whose format version is outside the accepted range is refused with a message that
 	 * names its version and asks for a new campaign.
 	 *
+	 * @param version the record's format version
 	 * @throws IOException if the store fails
 	 */
-	@Test(expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = "(?s).*version 18 campaign.*[Ss]tart a new campaign.*")
-	public void refusesVersionEighteenCampaign() throws IOException
+	@Test(dataProvider = "refusedFormatVersions")
+	public void refusesRecordOutsideAcceptedVersions(int version) throws IOException
 	{
-		// Requirement: R-W4
+		// Requirement: R-E6
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-18-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
-			store.replaceSnapshot(start());
-			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
-			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 18);
-			root.putArray("authorized_targets").add("/external/shared.md");
-			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
-
-			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);
-		}
-	}
-
-	/**
-	 * Verifies that a version 19 snapshot, whose regression test cases do not record whether a failing outcome was
-	 * settled, is refused with a message that names its version and asks for a new campaign.
-	 *
-	 * @throws IOException if the store fails
-	 */
-	@Test(expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = "(?s).*version 19 campaign.*[Ss]tart a new campaign.*")
-	public void refusesVersionNineteenCampaign() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-19-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
-			store.replaceSnapshot(start());
-			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
-			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 19);
-			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
-
-			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);
-		}
-	}
-
-	/**
-	 * Verifies that a version 20 trial record, which holds only the token usage of each session, is refused with a
-	 * message that names its version and asks for a new campaign.
-	 *
-	 * @throws IOException if the store fails
-	 */
-	// Requirement: R-E6
-	@Test(expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = "(?s).*version 20 campaign.*[Ss]tart a new campaign.*")
-	public void refusesVersionTwentyTrialRecord() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-20-"));
+			Path campaigns = cleanup.add(Files.createTempDirectory("cat-trial-version-"));
 			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			store.replaceSnapshot(start());
 			LogicalTrial assigned = trial(1, TrialState.ASSIGNED);
 			store.writeAssignment(ID, assigned);
 			Path record = list(heldOutDirectory(campaigns).resolve("trials")).getFirst();
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(record, UTF_8));
-			root.put("format_version", 20);
-			root.remove("sessions");
-			root.putArray("token_usage").addObject().put("input", 100).put("cached_input", 20).put("output", 30).
-				put("reasoning_output", 10);
+			root.put("format_version", version);
 			Files.writeString(record, JSON.writeValueAsString(root), UTF_8);
 
-			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).readRecord(ID, assigned.key());
+			try
+			{
+				new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).readRecord(ID, assigned.key());
+				throw new AssertionError("version " + version + " was accepted");
+			}
+			catch (IOException e)
+			{
+				requireThat(e.getMessage(), "message").contains("version " + version + " campaign").
+					contains("Start a new campaign");
+			}
 		}
 	}
 
 	/**
-	 * Verifies that a version 21 snapshot, which does not record the warnings that the user answered by using an
-	 * authorized source, is refused with a message that names its version and asks for a new campaign.
+	 * Verifies that the oldest and the newest accepted format versions of a snapshot are not refused for their
+	 * version: each loads, or fails for another reason.
 	 *
+	 * @param version the snapshot's format version
 	 * @throws IOException if the store fails
 	 */
-	@Test(expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = "(?s).*version 21 campaign.*[Ss]tart a new campaign.*")
-	public void refusesVersionTwentyOneCampaign() throws IOException
+	@Test(dataProvider = "acceptedFormatVersions")
+	public void doesNotRefuseSnapshotInAcceptedVersions(int version) throws IOException
 	{
-		// Requirement: R-W4
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-21-"));
+			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-accepted-version-"));
 			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			store.replaceSnapshot(start());
 			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 21);
-			root.remove("answered_warnings");
+			root.put("format_version", version);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
-			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);
-		}
-	}
-
-	/**
-	 * Verifies that a version 22 snapshot, which can hold a paused development round that later versions no longer
-	 * pause on, is refused with a message that names its version and asks for a new campaign.
-	 *
-	 * @throws IOException if the store fails
-	 */
-	@Test(expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = "(?s).*version 22 campaign.*[Ss]tart a new campaign.*")
-	public void refusesVersionTwentyTwoCampaign() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-22-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
-			store.replaceSnapshot(start());
-			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
-			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 22);
-			root.putArray("pending_decisions").addObject().put("type", "plateau_reached");
-			root.put("outcome", "PLATEAU");
-			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
-
-			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);
-		}
-	}
-
-	/**
-	 * Verifies that a version 23 snapshot, whose development failures do not record where their trial's transcript and
-	 * effects are, is refused with a message that names its version and asks for a new campaign.
-	 *
-	 * @throws IOException if the store fails
-	 */
-	@Test(expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = "(?s).*version 23 campaign.*[Ss]tart a new campaign.*")
-	public void refusesVersionTwentyThreeCampaign() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-23-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
-			store.replaceSnapshot(start());
-			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
-			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 23);
-			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
-
-			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);
-		}
-	}
-
-	/**
-	 * Verifies that a version 24 snapshot, whose prompt author diagnoses classify each failure rather than group the
-	 * failures into kinds, is refused with a message that names its version and asks for a new campaign.
-	 *
-	 * @throws IOException if the store fails
-	 */
-	@Test(expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = "(?s).*version 24 campaign.*[Ss]tart a new campaign.*")
-	public void refusesVersionTwentyFourCampaign() throws IOException
-	{
-		// Requirement: R-D10
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-24-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
-			store.replaceSnapshot(start());
-			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
-			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 24);
-			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
-
-			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);
-		}
-	}
-
-	/**
-	 * Verifies that a version 23 trial record, whose outcome does not record where the trial's transcript and effects
-	 * are, is refused with a message that names its version and asks for a new campaign.
-	 *
-	 * @throws IOException if the store fails
-	 */
-	@Test(expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = "(?s).*version 23 campaign.*[Ss]tart a new campaign.*")
-	public void refusesVersionTwentyThreeTrialRecord() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-23-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
-			store.replaceSnapshot(start());
-			LogicalTrial assigned = trial(1, TrialState.ASSIGNED);
-			store.writeAssignment(ID, assigned);
-			Path record = list(heldOutDirectory(campaigns).resolve("trials")).getFirst();
-			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(record, UTF_8));
-			root.put("format_version", 23);
-			Files.writeString(record, JSON.writeValueAsString(root), UTF_8);
-
-			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).readRecord(ID, assigned.key());
+			try
+			{
+				new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);
+			}
+			catch (IOException e)
+			{
+				requireThat(e.getMessage(), "message").doesNotContain("Start a new campaign");
+			}
 		}
 	}
 
@@ -2408,29 +2260,6 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	}
 
 	/**
-	 * Verifies that an older campaign without concurrent attempt progress is refused.
-	 *
-	 * @throws IOException if the store fails
-	 */
-	@Test(expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = "(?s).*version 4 campaign.*[Ss]tart a new campaign.*")
-	public void refusesSequentialCampaignFormat() throws IOException
-	{
-		// Requirement: R-D12
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path campaigns = cleanup.add(Files.createTempDirectory("campaign-old-format"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
-			store.replaceSnapshot(start());
-			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
-			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 4);
-			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
-			store.load(ID);
-		}
-	}
-
-	/**
 	 * Verifies that a campaign without measurement identities for comparison evidence is refused.
 	 *
 	 * @throws IOException if the store fails
@@ -2933,186 +2762,6 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			Files.writeString(file, content, UTF_8);
 
 			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).readAssertionCheck(ID, key);
-		}
-	}
-
-	/**
-	 * A snapshot written in a different format version is detected instead of being misread.
-	 *
-	 * @throws IOException if the store fails
-	 */
-	// Requirement: R-D15
-	@Test(expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = "(?s).*format_version.*")
-	public void rejectsUnknownFormatVersion() throws IOException
-	{
-		// Requirement: R-D13
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
-			store.replaceSnapshot(start());
-			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
-			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", Integer.MAX_VALUE);
-			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
-
-			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);
-		}
-	}
-
-	/**
-	 * A campaign of format version 1, whose files are keyed by test rather than by cell, is refused with a message
-	 * that names its version and asks for a new campaign.
-	 *
-	 * @throws IOException if the store fails
-	 */
-	@Test(expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = "(?s).*version 1 campaign.*[Ss]tart a new campaign.*")
-	public void refusesVersionOneCampaign() throws IOException
-	{
-		// Requirement: R-C11
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-1-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
-			store.replaceSnapshot(start());
-			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
-			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 1);
-			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
-
-			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);
-		}
-	}
-
-	/**
-	 * A campaign of format version 2, which lacks the development cell tier, deterministic checks and the core-task
-	 * requirement, is refused with a message that names its version and asks for a new campaign.
-	 *
-	 * @throws IOException if the store fails
-	 */
-	@Test(expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = "(?s).*version 2 campaign.*[Ss]tart a new campaign.*")
-	public void refusesVersionTwoCampaign() throws IOException
-	{
-		// Requirement: R-E19
-		// Requirement: R-C9
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-2-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
-			store.replaceSnapshot(start());
-			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
-			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 2);
-			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
-
-			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);
-		}
-	}
-
-	/**
-	 * A campaign of format version 3, which lacks prompt author manifests and resumable minimality progress, is refused
-	 * with a message that names its version and asks for a new campaign.
-	 *
-	 * @throws IOException if the store fails
-	 */
-	@Test(expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = "(?s).*version 3 campaign.*[Ss]tart a new campaign.*")
-	public void refusesVersionThreeCampaign() throws IOException
-	{
-		// Requirement: R-D11
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-3-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
-			store.replaceSnapshot(start());
-			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
-			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 3);
-			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
-
-			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);
-		}
-	}
-
-	/**
-	 * A campaign of format version 13, whose contract holds no capability ranking or certification scope and whose
-	 * development state records the replaced cell tier, is refused with a message that names its version and asks for
-	 * a new campaign.
-	 *
-	 * @throws IOException if the store fails
-	 */
-	@Test(expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = "(?s).*version 13 campaign.*[Ss]tart a new campaign.*")
-	public void refusesVersionThirteenCampaign() throws IOException
-	{
-		// Requirement: R-E22
-		// Requirement: R-C15
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-13-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
-			store.replaceSnapshot(start());
-			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
-			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 13);
-			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
-
-			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);
-		}
-	}
-
-	/**
-	 * A campaign of format version 14, whose contract holds no split salt or outcome-changing variables and whose
-	 * failures hold no failed requirements, is refused with a message that names its version and asks for a new campaign.
-	 *
-	 * @throws IOException if the store fails
-	 */
-	@Test(expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = "(?s).*version 14 campaign.*[Ss]tart a new campaign.*")
-	public void refusesVersionFourteenCampaign() throws IOException
-	{
-		// Requirement: R-C16
-		// Requirement: R-D9
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-14-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
-			store.replaceSnapshot(start());
-			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
-			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 14);
-			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
-
-			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);
-		}
-	}
-
-	/**
-	 * A campaign of format version 33, whose contract groups its prompt tests into categories, is refused with a
-	 * message that names its version and asks for a new campaign.
-	 *
-	 * @throws IOException if the store fails
-	 */
-	@Test(expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = "(?s).*version 33 campaign.*[Ss]tart a new campaign.*")
-	public void refusesVersionThirtyThreeCampaign() throws IOException
-	{
-		// Requirement: R-C11
-		// Requirement: R-D9
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-33-"));
-			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
-			store.replaceSnapshot(start());
-			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
-			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 33);
-			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
-
-			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);
 		}
 	}
 
