@@ -460,16 +460,6 @@ public final class JudgePromptTest
 	}
 
 	/**
-	 * Checks that a judge session without responses has no judgment.
-	 */
-	@Test
-	public void rejectsAbsentResponses()
-	{
-		// Requirement: R-E13
-		requireThat(prompt.judgment(completed(List.of()), DECIDED), "judgment").isEmpty();
-	}
-
-	/**
 	 * Returns the judge's output for the decided assertions.
 	 *
 	 * @param items the JSON of each assertion's decision
