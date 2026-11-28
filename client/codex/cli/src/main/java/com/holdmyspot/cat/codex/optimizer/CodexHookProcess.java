@@ -274,7 +274,11 @@ public final class CodexHookProcess
 		ObjectNode filesystem = profile.putObject("file_system");
 		filesystem.put("type", "restricted");
 		ArrayNode entries = filesystem.putArray("entries");
-		for (Map.Entry<Path, String> permission : filesystem(workspace, writable, policy, deniesReads).entrySet())
+		// Codex's unelevated Windows implementation runs a command only when it may read every filesystem root
+		ObjectNode root = entries.addObject();
+		root.putObject("path").put("type", "special").putObject("value").put("kind", "root");
+		root.put("access", "read");
+		for (Map.Entry<Path, String> permission : filesystem(writable, policy, deniesReads).entrySet())
 		{
 			ObjectNode entry = entries.addObject();
 			entry.putObject("path").put("type", "path").put("path", permission.getKey().toString());
@@ -288,18 +292,16 @@ public final class CodexHookProcess
 	/**
 	 * Applies the owner's protected paths to the comparison-only write grants.
 	 *
-	 * @param workspace the hook's working directory
 	 * @param writable the comparison paths permitted to accept writes
 	 * @param policy the owner's command policy
 	 * @param deniesReads {@code false} to leave out the owner's denied reads and the exceptions inside them
 	 * @return the ordered paths and their access modes
 	 * @throws IOException if a policy path cannot be resolved
 	 */
-	private static Map<Path, String> filesystem(Path workspace, List<Path> writable, ParentPolicy policy,
-		boolean deniesReads) throws IOException
+	private static Map<Path, String> filesystem(List<Path> writable, ParentPolicy policy, boolean deniesReads)
+		throws IOException
 	{
 		Map<Path, String> entries = new LinkedHashMap<>();
-		entries.put(workspace.getRoot(), "read");
 		List<Path> denials = List.of();
 		List<Path> reallowances = List.of();
 		if (deniesReads)

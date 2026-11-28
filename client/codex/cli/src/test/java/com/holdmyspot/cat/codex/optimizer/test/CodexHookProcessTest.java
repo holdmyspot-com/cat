@@ -152,6 +152,33 @@ public final class CodexHookProcessTest
 	}
 
 	/**
+	 * Verifies that the hook may read every filesystem root, which Codex's unelevated Windows implementation requires
+	 * and which lets a hook read a project on another Windows drive.
+	 *
+	 * @param platform the host platform
+	 * @throws IOException   if the fixture cannot be created
+	 * @throws PolicyRefusal if the owner could replace the executable
+	 */
+	@Test(dataProvider = "platforms")
+	public void hookReadsEveryRoot(Platform platform) throws IOException, PolicyRefusal
+	{
+		requireSearchPathOnHost(platform);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup);
+			ProcessBuilder builder = fixture.builder();
+
+			CodexHookProcess.prepare(builder, fixture.scratch, Optional.empty(), fixture.sandbox(platform, Map.of()),
+				fixture.policy(List.of()), JSON);
+
+			JsonNode entry = entries(builder).getFirst();
+			requireThat(entry.path("path").path("type").asString(), "type").isEqualTo("special");
+			requireThat(entry.path("path").path("value").path("kind").asString(), "kind").isEqualTo("root");
+			requireThat(entry.path("access").asString(), "access").isEqualTo("read");
+		}
+	}
+
+	/**
 	 * Verifies that on Linux and macOS the Codex launcher keeps the search path from which it takes {@code bwrap},
 	 * which the owner cannot replace.
 	 *
@@ -355,15 +382,26 @@ public final class CodexHookProcessTest
 	 */
 	private static List<String> accesses(ProcessBuilder builder)
 	{
+		return entries(builder).stream().map(entry -> entry.path("access").asString()).toList();
+	}
+
+	/**
+	 * Returns every filesystem entry of the hook's sandbox state.
+	 *
+	 * @param builder the prepared hook builder
+	 * @return the entries
+	 */
+	private static List<JsonNode> entries(ProcessBuilder builder)
+	{
 		List<String> command = builder.command();
 		Platform platform = Platform.LINUX_X64;
 		if (command.contains(CommandLineArguments.quote("--")))
 			platform = Platform.WINDOWS_X64;
 		JsonNode state = JSON.readTree(received(platform, command).get(3));
-		List<String> accesses = new ArrayList<>();
+		List<JsonNode> entries = new ArrayList<>();
 		for (JsonNode entry : state.path("permissionProfile").path("file_system").path("entries"))
-			accesses.add(entry.path("access").asString());
-		return accesses;
+			entries.add(entry);
+		return entries;
 	}
 
 	/**
