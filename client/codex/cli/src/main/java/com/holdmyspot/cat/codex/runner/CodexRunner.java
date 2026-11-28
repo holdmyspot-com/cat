@@ -256,6 +256,13 @@ public final class CodexRunner
 				policy = policy.withSandboxSelection(bound.sandboxSelection());
 			else
 				policy = policy.unsandboxed();
+			// Codex's unelevated Windows implementation cannot deny a read and refuses a configuration that denies one
+			CodexSystemFolder system = CodexSystemFolder.ofThisMachine();
+			boolean deniesReads = true;
+			if (policy.sandboxed())
+				deniesReads = CodexSessionSandbox.deniesReads(Platform.current(), policy.sandboxSelection(), system);
+			if (!deniesReads)
+				policy = policy.withoutReadDenials();
 			boolean pluginsInstalled = installCat || !trialPlugins.isEmpty();
 			List<String> appServer = appServerCommand(executable, pluginsInstalled);
 			Path worktree = nestedSession.directory().resolve("project");
@@ -273,13 +280,12 @@ public final class CodexRunner
 					requestAccess, Platform.current(), parentState, policy, extraPermissions, retainedConfiguration);
 				if (policy.sandboxed())
 				{
-					CodexSystemFolder system = CodexSystemFolder.ofThisMachine();
 					CodexConnectionConfiguration.requireNarrowingLayers(system, policy);
 					if (Platform.current().isWindows())
 						CodexSessionSandbox.requireSelectedImplementation(stagedConfiguration, system);
 					policyListener.accept(policy);
 					sandbox = sessionSandbox(stagedConfiguration, manager, nestedSession, readOnlyEvidence, deniedReads,
-						Platform.current(), environment, requestAccess, appServer, policy);
+						Platform.current(), environment, requestAccess, appServer, policy, deniesReads);
 				}
 				else
 				{
@@ -1028,11 +1034,50 @@ public final class CodexRunner
 		List<Path> readOnlyEvidence, List<Path> deniedReads, Platform platform, Map<String, String> environment,
 		SessionRequestAccess requestAccess, List<String> appServer, ChildPolicy policy) throws IOException
 	{
+		return sessionSandbox(configuration, manager, nestedSession, readOnlyEvidence, deniedReads, platform,
+			environment, requestAccess, appServer, policy, true);
+	}
+
+	/**
+	 * Prepares an app-server command and its thread profile together, as
+	 * {@link #sessionSandbox(Path, NestedSessionManager, NestedSession, List, List, Platform, Map, SessionRequestAccess,
+	 * List, ChildPolicy)} does, for a session whose Codex implementation may not deny reads.
+	 *
+	 * @param configuration    the isolated Codex configuration that contains the runner profile
+	 * @param manager          the nested-session manager
+	 * @param nestedSession    the session's nested session
+	 * @param readOnlyEvidence the caller's permitted read-only evidence
+	 * @param deniedReads      the paths that the caller denies the session reading
+	 * @param platform         the session's platform
+	 * @param environment      the caller's environment
+	 * @param requestAccess    the session's request access, or {@code null} if it may request none
+	 * @param appServer        the command that starts the app-server
+	 * @param policy           the policy used to generate the runner profile, or {@code null} to use that profile as
+	 *                         written
+	 * @param deniesReads      {@code false} if Codex runs the session in an implementation that refuses a
+	 *                         configuration that denies a read, in which case the thread's profile denies none, neither
+	 *                         the caller's {@code deniedReads} nor the runner's own
+	 * @return the sandbox command and its matching thread profile
+	 * @throws IOException if the sandbox cannot be prepared
+	 */
+	public static SessionSandbox sessionSandbox(Path configuration, NestedSessionManager manager,
+		NestedSession nestedSession, List<Path> readOnlyEvidence, List<Path> deniedReads, Platform platform,
+		Map<String, String> environment, SessionRequestAccess requestAccess, List<String> appServer,
+		ChildPolicy policy, boolean deniesReads) throws IOException
+	{
 		requireThat(appServer, "appServer").isNotEmpty();
-		requireBubblewrapForEvidence(manager, readOnlyEvidence, deniedReads, platform, environment);
+		requireThat(deniedReads, "deniedReads").isNotNull();
+		List<Path> callerDenials = deniedReads;
+		if (!deniesReads)
+			callerDenials = List.of();
+		requireBubblewrapForEvidence(manager, readOnlyEvidence, callerDenials, platform, environment);
 		List<Path> readOnly = sessionReadOnly(nestedSession, readOnlyEvidence, requestAccess);
-		List<Path> denied = sessionDeniedReads(manager, nestedSession, readOnly, deniedReads, platform, environment,
-			requestAccess);
+		List<Path> denied = List.of();
+		if (deniesReads)
+		{
+			denied = sessionDeniedReads(manager, nestedSession, readOnly, deniedReads, platform, environment,
+				requestAccess);
+		}
 		Optional<Path> bubblewrap = bubblewrap(environment);
 		if (bubblewrap.isEmpty())
 			return new SessionSandbox(CodexConnectionConfiguration.addSessionProfile(configuration, readOnly, denied),
@@ -1042,7 +1087,7 @@ public final class CodexRunner
 		if (requestAccess != null)
 			writable.add(requestAccess.requests());
 		OuterSandbox outer = outerSandbox(appServer, bubblewrap.get(),
-			hiddenDirectories(manager, readOnly, deniedReads, platform, environment), writable, readOnly);
+			hiddenDirectories(manager, readOnly, callerDenials, platform, environment), writable, readOnly);
 		String runner = CodexConnectionConfiguration.addMountedRunnerProfile(configuration, outer.masked(),
 			outer.reopened(), policy);
 		String profile = CodexConnectionConfiguration.addSessionProfile(configuration, readOnly, denied, runner);

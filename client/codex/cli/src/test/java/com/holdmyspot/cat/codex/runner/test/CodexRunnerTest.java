@@ -6,6 +6,7 @@ import static org.testng.Assert.expectThrows;
 
 import com.holdmyspot.cat.codex.installer.CodexIntegration;
 import com.holdmyspot.cat.codex.layout.CodexInstallation;
+import com.holdmyspot.cat.codex.layout.CodexSystemFolder;
 import com.holdmyspot.cat.codex.optimizer.RolloutInterruptSignal;
 import com.holdmyspot.cat.codex.runner.CodexAuthentication;
 import com.holdmyspot.cat.codex.runner.CodexConnectionConfiguration;
@@ -14,6 +15,7 @@ import com.holdmyspot.cat.codex.runner.CodexProcess;
 import com.holdmyspot.cat.codex.runner.CodexRunner.SessionSandbox;
 import com.holdmyspot.cat.codex.runner.CodexRunner;
 import com.holdmyspot.cat.codex.runner.CodexRunnerCli;
+import com.holdmyspot.cat.codex.runner.CodexSessionSandbox;
 import com.holdmyspot.cat.codex.runner.CodexSessionLogin;
 import com.holdmyspot.cat.codex.runner.CodexTokenCommand;
 import com.holdmyspot.cat.codex.runner.TomlStrings;
@@ -46,6 +48,7 @@ import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
+import com.holdmyspot.cat.common.runner.policy.HostAccess;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.ByteArrayOutputStream;
@@ -1053,6 +1056,172 @@ public final class CodexRunnerTest
 			{
 				requireThat(denied.path(path.toRealPath().toString()).stringValue(""), "access(" + path + ")").
 					isEqualTo("deny");
+			}
+		}
+	}
+
+	/**
+	 * Returns Codex's Windows sandbox implementations that a parent may select, each with whether a child under it
+	 * keeps its denied reads.
+	 *
+	 * @return each implementation
+	 */
+	@DataProvider
+	public Object[][] windowsImplementations()
+	{
+		return new Object[][]
+			{
+				{"unelevated", false},
+				{"elevated", true},
+				{"mxc", true}
+			};
+	}
+
+	/**
+	 * Verifies that a Windows child that Codex runs in its {@code unelevated} implementation, which refuses a
+	 * configuration that denies any read, gets no denied read in any permission profile of its configuration, neither
+	 * its policy's nor the runner's own for the session, and that its policy reports none; and that a child under
+	 * another implementation keeps them.
+	 *
+	 * @param implementation the implementation that the parent selects
+	 * @param keepsDenials   {@code true} if the child keeps its denied reads
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test(dataProvider = "windowsImplementations")
+	public void unelevatedChildDeniesNoReads(String implementation, boolean keepsDenials) throws IOException
+	{
+		// Requirement: R-I49
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = jvm.temporaryDirectory();
+			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-results-"));
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
+				Clock.systemUTC(), Yielding.fileReplacer());
+			NestedSession nestedSession = manager.create("codex");
+			manager.snapshotProject(nestedSession);
+			manager.create("codex");
+			Path heldOut = cleanup.add(Files.createTempDirectory(temporary, "cat-held-out-"));
+			Path parentDenial = cleanup.add(Files.createTempDirectory(temporary, "cat-parent-denial-"));
+			CodexSystemFolder system = CodexSystemFolder.at(Files.createDirectories(root.resolve("system")));
+			ChildPolicy bound = ChildPolicy.intersect(new ParentPolicy(true, List.of(root), List.of(),
+				List.of(parentDenial), List.of(), HostAccess.ALL, false, List.of()),
+				new ChildNeeds(nestedSession.directory(), List.of(), List.of(root), Set.of())).
+				withSandboxSelection(Map.of("windows.sandbox", implementation));
+			Path configuration = nestedSession.directory().resolve("home/.codex/config.toml");
+			Path temporaryDirectory = Files.createDirectories(nestedSession.directory().resolve("home/tmp"));
+			List<String> appServer = CodexRunner.appServerCommand("codex", false);
+
+			boolean deniesReads = CodexSessionSandbox.deniesReads(Platform.WINDOWS_X64, bound.sandboxSelection(),
+				system);
+			ChildPolicy policy = bound;
+			if (!deniesReads)
+				policy = bound.withoutReadDenials();
+			CodexConnectionConfiguration.copy(nestedSession.directory().resolve("missing.toml"), configuration,
+				nestedSession.directory().resolve("project"), HarnessDependencyCaches.NONE, temporaryDirectory, 0, null,
+				Platform.WINDOWS_X64, CodexParentMultiAgentState.NONE, policy);
+			SessionSandbox sandbox = CodexRunner.sessionSandbox(configuration, manager, nestedSession, List.of(),
+				List.of(heldOut), Platform.WINDOWS_X64, Map.of(), null, appServer, policy, deniesReads);
+
+			requireThat(deniesReads, "deniesReads").isEqualTo(keepsDenials);
+			requireThat(policy.readDenials().isEmpty(), "noReadDenials").isEqualTo(!keepsDenials);
+			JsonNode permissions = TomlMapper.builder().build().readTree(Files.readString(configuration)).
+				path("permissions");
+			List<String> denied = new ArrayList<>();
+			for (String profile : permissions.propertyNames())
+			{
+				for (Map.Entry<String, JsonNode> entry : permissions.path(profile).path("filesystem").properties())
+				{
+					if (entry.getValue().asString("").equals("deny"))
+						denied.add(entry.getKey());
+				}
+			}
+			if (keepsDenials)
+			{
+				JsonNode session = permissions.path(sandbox.profile()).path("filesystem");
+				for (Path path : List.of(root, heldOut))
+				{
+					requireThat(session.path(path.toRealPath().toString()).stringValue(""), "access(" + path + ")").
+						isEqualTo("deny");
+				}
+				requireThat(denied, "denied").contains(parentDenial.toRealPath().toString());
+			}
+			else
+				requireThat(denied, "denied").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that a Windows session that Codex runs in its {@code unelevated} implementation, which refuses a
+	 * configuration that denies any read, gets no {@code deny} entry in any permission profile, neither its policy's nor
+	 * the runner's own for the results folder and the paths that the caller denies, and that a session under
+	 * {@code elevated} keeps both.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void unelevatedSessionDeniesNoReads() throws IOException
+	{
+		// Requirement: R-I49
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = jvm.temporaryDirectory();
+			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-results-"));
+			Path heldOut = cleanup.add(Files.createTempDirectory(temporary, "cat-held-out-"));
+			Path parentDenial = cleanup.add(Files.createTempDirectory(temporary, "cat-parent-denial-"));
+			CodexSystemFolder system = CodexSystemFolder.at(cleanup.add(Files.createTempDirectory(temporary,
+				"cat-codex-system-")));
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
+				Clock.systemUTC(), Yielding.fileReplacer());
+			List<String> appServer = CodexRunner.appServerCommand("codex", false);
+			ParentPolicy parent = new ParentPolicy(true, List.of(temporary), List.of(), List.of(parentDenial),
+				List.of(), HostAccess.ALL, false, List.of());
+			for (String implementation : List.of("unelevated", "elevated"))
+			{
+				NestedSession nestedSession = manager.create("codex");
+				manager.snapshotProject(nestedSession);
+				Path home = nestedSession.directory().resolve("home");
+				Path configuration = home.resolve(".codex/config.toml");
+				Map<String, String> selection = Map.of("windows.sandbox", implementation);
+				boolean deniesReads = CodexSessionSandbox.deniesReads(Platform.WINDOWS_X64, selection, system);
+				ChildPolicy policy = CodexRunner.sessionPolicy(parent, new ChildNeeds(nestedSession.directory(),
+					List.of(), List.of(), Set.of()), null).withSandboxSelection(selection);
+				if (!deniesReads)
+					policy = policy.withoutReadDenials();
+
+				CodexConnectionConfiguration.copy(nestedSession.directory().resolve("missing.toml"), configuration,
+					home, "", nestedSession.directory().resolve("project"), HarnessDependencyCaches.NONE,
+					Files.createDirectories(home.resolve("tmp")), 0, null, Platform.WINDOWS_X64,
+					CodexParentMultiAgentState.NONE, policy, ExtraPermissions.NONE, null);
+				SessionSandbox sandbox = CodexRunner.sessionSandbox(configuration, manager, nestedSession, List.of(),
+					List.of(heldOut), Platform.WINDOWS_X64, Map.of(), null, appServer, policy, deniesReads);
+
+				JsonNode permissions = TomlMapper.builder().build().readTree(Files.readString(configuration)).
+					path("permissions");
+				List<String> denied = new ArrayList<>();
+				for (Map.Entry<String, JsonNode> profile : permissions.properties())
+				{
+					for (Map.Entry<String, JsonNode> entry : profile.getValue().path("filesystem").properties())
+					{
+						if (entry.getValue().asString("").equals("deny"))
+							denied.add(profile.getKey() + ": " + entry.getKey());
+					}
+				}
+				if (implementation.equals("unelevated"))
+				{
+					requireThat(denied, "denied").isEmpty();
+					requireThat(policy.readDenials(), "policy.readDenials()").isEmpty();
+					continue;
+				}
+				JsonNode session = permissions.path(sandbox.profile()).path("filesystem");
+				for (Path path : List.of(root, heldOut))
+				{
+					requireThat(session.path(path.toRealPath().toString()).stringValue(""), "access(" + path + ")").
+						isEqualTo("deny");
+				}
+				requireThat(policy.readDenials(), "policy.readDenials()").contains(parentDenial.toRealPath());
+				requireThat(denied.toString(), "denied").contains(parentDenial.toRealPath().toString());
 			}
 		}
 	}

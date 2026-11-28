@@ -2,14 +2,19 @@ package com.holdmyspot.cat.codex.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.codex.installer.CodexWindowsSandbox;
+import com.holdmyspot.cat.codex.installer.CodexWriteGrants;
 import com.holdmyspot.cat.codex.layout.CodexSystemFolder;
 import com.holdmyspot.cat.common.BoundedInput;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.MissingNode;
@@ -27,6 +32,10 @@ public final class CodexSessionSandbox
 	 * The most bytes of a Codex configuration or requirements file that CAT reads.
 	 */
 	private static final int MAXIMUM_FILE_BYTES = 1_048_576;
+	/**
+	 * The Windows implementation that cannot deny a read.
+	 */
+	private static final String UNELEVATED = "unelevated";
 
 	/**
 	 * Refuses a Codex session on native Windows whose effective configuration selects no Windows sandbox
@@ -70,6 +79,39 @@ public final class CodexSessionSandbox
 			"sandbox implementation, so Codex would run the session read-only and reject every command. Add " +
 			"[windows] sandbox = \"mxc\", which CAT recommends, \"elevated\" or \"unelevated\" to " + configuration +
 			", then start the session again.");
+	}
+
+	/**
+	 * Returns whether the configuration of a session may deny its commands reads. Codex's {@code unelevated} Windows
+	 * implementation cannot deny a read and refuses a configuration that denies one, so a session that Codex runs in
+	 * it is denied none. A session in another implementation, one whose implementation CAT cannot tell, and every
+	 * session off native Windows keep their denied reads.
+	 * <p>
+	 * The implementation is the one that {@link CodexWindowsSandbox#implementation} reads from the session's selection,
+	 * which the session's configuration carries as its own settings, under the machine-wide configuration, managed
+	 * configuration and requirements.
+	 *
+	 * @param platform  the platform that the session runs on
+	 * @param selection the parent's settings that select the Windows sandbox implementation, by dotted setting name
+	 * @param system    the machine-wide folder
+	 * @return {@code false} if Codex runs the session in its {@code unelevated} implementation
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public static boolean deniesReads(Platform platform, Map<String, String> selection, CodexSystemFolder system)
+	{
+		requireThat(platform, "platform").isNotNull();
+		requireThat(selection, "selection").isNotNull();
+		requireThat(system, "system").isNotNull();
+		if (!platform.isWindows() || system.fallbackCause().isPresent())
+			return true;
+		List<String> overrides = new ArrayList<>();
+		for (Map.Entry<String, String> setting : selection.entrySet())
+			overrides.add(setting.getKey() + "=" + setting.getValue());
+		// The session's own configuration holds only the selection, so no other user configuration applies
+		CodexWriteGrants.Launch launch = new CodexWriteGrants.Launch(overrides, Optional.empty(), Optional.empty(),
+			false, List.of(), true);
+		Optional<String> implementation = CodexWindowsSandbox.implementation(system, system.config(), launch);
+		return !implementation.equals(Optional.of(UNELEVATED));
 	}
 
 	/**

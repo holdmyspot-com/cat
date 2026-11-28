@@ -122,6 +122,19 @@ public record ChildPolicy(boolean sandboxed, List<Path> writeRoots, List<Path> w
 	}
 
 	/**
+	 * Returns this policy for a child whose harness's sandbox implementation cannot deny reads, so the commands may
+	 * read every path that this policy denies.
+	 *
+	 * @return a policy without read denials and read reallowances, which are only meaningful inside a denial, that is
+	 *   otherwise the same as this one
+	 */
+	public ChildPolicy withoutReadDenials()
+	{
+		return new ChildPolicy(sandboxed, writeRoots, writeDenials, List.of(), List.of(), hosts, allowLocalBinding,
+			sandboxSelection);
+	}
+
+	/**
 	 * Returns the policy of a child: its needs, which its parent's policy must allow. The child's session folder is
 	 * always allowed. Read denials only narrow the child's reads, so the parent's are added to the child's.
 	 *

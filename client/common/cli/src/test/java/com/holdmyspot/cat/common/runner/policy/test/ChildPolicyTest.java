@@ -682,4 +682,43 @@ public final class ChildPolicyTest
 			}
 		}
 	}
+
+	/**
+	 * Verifies that a policy without read denials lets the commands read every path that the policy denied, keeps
+	 * every other component, and bounds a child that is denied no read either.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void dropsReadDenials() throws IOException
+	{
+		// Requirement: R-I49
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
+			Path session = Files.createDirectory(root.resolve("session"));
+			Path denied = Files.createDirectory(root.resolve("denied"));
+			Path inside = Files.createDirectory(denied.resolve("inside"));
+			Path cache = Files.createDirectory(root.resolve("cache"));
+			ChildPolicy policy = ChildPolicy.intersect(new ParentPolicy(true, List.of(root), List.of(),
+				List.of(denied), List.of(inside), HostAccess.ALL, true, List.of()),
+				new ChildNeeds(session, List.of(cache), List.of(), Set.of("example.com"))).
+				denyingWrites(List.of(session.resolve("x"))).
+				withSandboxSelection(Map.of("windows.sandbox", "unelevated"));
+			requireThat(policy.readDenials(), "readDenials").isNotEmpty();
+			requireThat(policy.readReallowances(), "readReallowances").isNotEmpty();
+
+			ChildPolicy readable = policy.withoutReadDenials();
+
+			requireThat(readable.readDenials(), "readable.readDenials()").isEmpty();
+			requireThat(readable.readReallowances(), "readable.readReallowances()").isEmpty();
+			requireThat(readable.asParentPolicy().readDenials(), "asParentPolicy.readDenials()").isEmpty();
+			requireThat(readable.sandboxed(), "sandboxed").isEqualTo(policy.sandboxed());
+			requireThat(readable.writeRoots(), "writeRoots").isEqualTo(policy.writeRoots());
+			requireThat(readable.writeDenials(), "writeDenials").isEqualTo(policy.writeDenials());
+			requireThat(readable.hosts(), "hosts").isEqualTo(policy.hosts());
+			requireThat(readable.allowLocalBinding(), "allowLocalBinding").isEqualTo(policy.allowLocalBinding());
+			requireThat(readable.sandboxSelection(), "sandboxSelection").isEqualTo(policy.sandboxSelection());
+		}
+	}
 }

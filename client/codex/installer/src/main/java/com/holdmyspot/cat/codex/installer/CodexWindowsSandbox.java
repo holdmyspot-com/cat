@@ -84,6 +84,24 @@ public final class CodexWindowsSandbox
 	}
 
 	/**
+	 * Returns the implementation that Codex applies, read as {@link #recommendation recommendation} reads it.
+	 *
+	 * @param system    the machine-wide folder, which holds the machine-wide configuration and the requirements
+	 * @param codexHome Codex's home, which holds the user's configuration and the profile files
+	 * @param launch    the session's command line
+	 * @return the implementation, or empty if no layer selects one or CAT cannot tell which one Codex applies
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public static Optional<String> implementation(CodexSystemFolder system, Path codexHome,
+		CodexWriteGrants.Launch launch)
+	{
+		requireThat(system, "system").isNotNull();
+		requireThat(codexHome, "codexHome").isNotNull();
+		requireThat(launch, "launch").isNotNull();
+		return resolve(system, codexHome, Optional.of(launch)).implementation();
+	}
+
+	/**
 	 * Returns why Codex may apply an implementation other than {@code mxc}.
 	 *
 	 * @param system    the machine-wide folder
@@ -94,31 +112,51 @@ public final class CodexWindowsSandbox
 	private static Optional<String> cause(CodexSystemFolder system, Path codexHome,
 		Optional<CodexWriteGrants.Launch> launch)
 	{
+		Resolution resolution = resolve(system, codexHome, launch);
+		if (resolution.implementation().isEmpty())
+			return Optional.of(resolution.cause());
+		if (resolution.implementation().get().equals(MXC))
+			return Optional.empty();
+		return Optional.of("Codex applies its \"" + resolution.implementation().get() + "\" implementation here");
+	}
+
+	/**
+	 * Reads the implementation that Codex applies from its configuration.
+	 *
+	 * @param system    the machine-wide folder
+	 * @param codexHome Codex's home
+	 * @param launch    the session's command line, or empty if it is not known
+	 * @return the implementation, or why there is none
+	 */
+	private static Resolution resolve(CodexSystemFolder system, Path codexHome,
+		Optional<CodexWriteGrants.Launch> launch)
+	{
 		String unsure = "CAT cannot tell which one Codex applies here, because ";
 		JsonNode requirements;
 		try
 		{
 			Optional<JsonNode> read = read(system.requirements());
 			if (read.isEmpty())
-				return Optional.of(unsure + "it cannot read " + system.requirements());
+				return Resolution.unknown(unsure + "it cannot read " + system.requirements());
 			requirements = read.get();
 		}
 		catch (IOException e)
 		{
-			return Optional.of(unsure + "it cannot tell where Codex reads its requirements from: " + e.getMessage());
+			return Resolution.unknown(unsure + "it cannot tell where Codex reads its requirements from: " +
+				e.getMessage());
 		}
 		JsonNode windowsRequirements = requirements.path("windows");
 		if (windowsRequirements.path("require_mxc").asBoolean(false))
-			return Optional.empty();
+			return Resolution.known(MXC);
 		if (windowsRequirements.has("allow_mxc"))
-			return Optional.of(unsure + "the requirements set [windows] allow_mxc");
+			return Resolution.unknown(unsure + "the requirements set [windows] allow_mxc");
 		if (windowsRequirements.has("allowed_sandbox_implementations") ||
 			requirements.has("allowed_sandbox_implementations"))
 		{
-			return Optional.of(unsure + "the requirements list allowed_sandbox_implementations");
+			return Resolution.unknown(unsure + "the requirements list allowed_sandbox_implementations");
 		}
 		if (launch.isEmpty())
-			return Optional.of(unsure + "it cannot read the session's command line");
+			return Resolution.unknown(unsure + "it cannot read the session's command line");
 
 		List<Path> files = new ArrayList<>();
 		files.add(system.config());
@@ -128,7 +166,7 @@ public final class CodexWindowsSandbox
 		if (profile.isPresent())
 		{
 			if (!PROFILE_NAME.matcher(profile.get()).matches())
-				return Optional.of(unsure + "it cannot find the file of the profile \"" + profile.get() + "\"");
+				return Resolution.unknown(unsure + "it cannot find the file of the profile \"" + profile.get() + "\"");
 			files.add(codexHome.resolve(profile.get() + ".config.toml"));
 		}
 		List<JsonNode> layers = new ArrayList<>();
@@ -138,14 +176,14 @@ public final class CodexWindowsSandbox
 				continue;
 			Optional<JsonNode> layer = read(file);
 			if (layer.isEmpty())
-				return Optional.of(unsure + "it cannot read " + file);
+				return Resolution.unknown(unsure + "it cannot read " + file);
 			layers.add(layer.get());
 		}
 		for (String override : launch.get().overrides())
 		{
 			Optional<JsonNode> layer = override(override);
 			if (layer.isEmpty())
-				return Optional.of(unsure + "it cannot parse the -c override \"" + override + "\"");
+				return Resolution.unknown(unsure + "it cannot parse the -c override \"" + override + "\"");
 			layers.add(layer.get());
 		}
 		Optional<Path> managed = system.managedConfig();
@@ -153,7 +191,7 @@ public final class CodexWindowsSandbox
 		{
 			Optional<JsonNode> layer = read(managed.get());
 			if (layer.isEmpty())
-				return Optional.of(unsure + "it cannot read " + managed.get());
+				return Resolution.unknown(unsure + "it cannot read " + managed.get());
 			layers.add(layer.get());
 		}
 
@@ -161,18 +199,48 @@ public final class CodexWindowsSandbox
 		for (JsonNode layer : layers)
 		{
 			if (layer.path("windows").has("allow_mxc"))
-				return Optional.of(unsure + "the configuration sets [windows] allow_mxc");
+				return Resolution.unknown(unsure + "the configuration sets [windows] allow_mxc");
 			if (layer.path("features").has("prefer_mxc"))
-				return Optional.of(unsure + "the configuration sets [features] prefer_mxc");
+				return Resolution.unknown(unsure + "the configuration sets [features] prefer_mxc");
 			JsonNode sandbox = layer.path("windows").path("sandbox");
 			if (sandbox.isString())
 				implementation = sandbox.asString();
 		}
-		if (implementation.equals(MXC))
-			return Optional.empty();
 		if (implementation.isEmpty())
-			return Optional.of("Codex's configuration selects no Windows sandbox implementation");
-		return Optional.of("Codex applies its \"" + implementation + "\" implementation here");
+			return Resolution.unknown("Codex's configuration selects no Windows sandbox implementation");
+		return Resolution.known(implementation);
+	}
+
+	/**
+	 * The implementation that Codex applies, or why CAT has none to name.
+	 *
+	 * @param implementation the implementation, or empty if no layer selects one or CAT cannot tell
+	 * @param cause          why there is no implementation, which completes a sentence, or an empty string if there
+	 *                       is one
+	 */
+	private record Resolution(Optional<String> implementation, String cause)
+	{
+		/**
+		 * Returns the resolution of a known implementation.
+		 *
+		 * @param implementation the implementation that Codex applies
+		 * @return the resolution
+		 */
+		static Resolution known(String implementation)
+		{
+			return new Resolution(Optional.of(implementation), "");
+		}
+
+		/**
+		 * Returns the resolution when CAT has no implementation to name.
+		 *
+		 * @param cause why CAT has no implementation to name
+		 * @return the resolution
+		 */
+		static Resolution unknown(String cause)
+		{
+			return new Resolution(Optional.empty(), cause);
+		}
 	}
 
 	/**

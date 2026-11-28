@@ -212,6 +212,114 @@ public final class CodexWindowsSandboxTest
 	}
 
 	/**
+	 * Returns the configurations under which CAT can tell the implementation that Codex applies, in the order that
+	 * {@link #recommending()} gives them, each followed by that implementation.
+	 *
+	 * @return each configuration
+	 */
+	@DataProvider
+	public Object[][] implementations()
+	{
+		String elevated = "[windows]\nsandbox = \"elevated\"\n";
+		String unelevated = "[windows]\nsandbox = \"unelevated\"\n";
+		String mxc = "[windows]\nsandbox = \"mxc\"\n";
+		return new Object[][]
+			{
+				{"", unelevated, "", List.of(), "", "unelevated"},
+				{unelevated, "", "", List.of(), "", "unelevated"},
+				{"", elevated, "", List.of(), "", "elevated"},
+				// The user's configuration wins over the machine's
+				{unelevated, elevated, "", List.of(), "", "elevated"},
+				{elevated, unelevated, "", List.of(), "", "unelevated"},
+				// The profile file wins over the user's configuration
+				{"", unelevated, elevated, List.of(), "", "elevated"},
+				// An override wins over every file, and a bare value is a string
+				{"", elevated, "", List.of("windows.sandbox=unelevated"), "", "unelevated"},
+				{"", unelevated, "", List.of("windows.sandbox=\"mxc\""), "", "mxc"},
+				// The requirements make Codex run mxc whatever the layers select
+				{"", unelevated, "", List.of(), "[windows]\nrequire_mxc = true\n", "mxc"},
+				{"", mxc, "", List.of(), "", "mxc"}
+			};
+	}
+
+	/**
+	 * Verifies that CAT reads the implementation that Codex applies from the winning layer, or {@code mxc} when the
+	 * requirements require it.
+	 *
+	 * @param machine        the machine-wide configuration
+	 * @param user           the user's configuration
+	 * @param profile        the profile file that the launch names, or empty if the launch names none
+	 * @param overrides      the launch's {@code -c} overrides
+	 * @param requirements   the machine-wide requirements
+	 * @param implementation the implementation that Codex applies
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test(dataProvider = "implementations")
+	public void readsImplementation(String machine, String user, String profile, List<String> overrides,
+		String requirements, String implementation) throws IOException
+	{
+		// Requirement: R-I49
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup, machine, user, profile, requirements);
+
+			Optional<String> applied = fixture.implementation(fixture.launch(profile, overrides));
+
+			requireThat(applied, "applied").isEqualTo(Optional.of(implementation));
+		}
+	}
+
+	/**
+	 * Returns the configurations under which no layer selects an implementation or CAT cannot tell which one Codex
+	 * applies, in the order that {@link #recommending()} gives them.
+	 *
+	 * @return each configuration
+	 */
+	@DataProvider
+	public Object[][] unknownImplementations()
+	{
+		String unelevated = "[windows]\nsandbox = \"unelevated\"\n";
+		return new Object[][]
+			{
+				{"", "", "", List.of(), ""},
+				{"", unelevated + "allow_mxc = true\n", "", List.of(), ""},
+				{"", unelevated + "[features]\nprefer_mxc = false\n", "", List.of(), ""},
+				{"", unelevated, "", List.of("features.prefer_mxc=true"), ""},
+				{"", unelevated, "", List.of(), "[windows]\nallow_mxc = false\n"},
+				{"", unelevated, "", List.of(), "[windows]\nallowed_sandbox_implementations = [\"unelevated\"]\n"},
+				{"", unelevated, "", List.of(), "allowed_sandbox_implementations = [\"unelevated\"]\n"},
+				{"", "[windows\nsandbox = \"unelevated\"\n", "", List.of(), ""},
+				{"", unelevated, "", List.of("windows.sandbox"), ""}
+			};
+	}
+
+	/**
+	 * Verifies that CAT reports no implementation when no layer selects one or when Codex chooses among
+	 * implementations by rules that CAT does not model.
+	 *
+	 * @param machine      the machine-wide configuration
+	 * @param user         the user's configuration
+	 * @param profile      the profile file that the launch names, or empty if the launch names none
+	 * @param overrides    the launch's {@code -c} overrides
+	 * @param requirements the machine-wide requirements
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test(dataProvider = "unknownImplementations")
+	public void readsNoImplementation(String machine, String user, String profile, List<String> overrides,
+		String requirements) throws IOException
+	{
+		// Requirement: R-I49
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup, machine, user, profile, requirements);
+
+			Optional<String> applied = fixture.implementation(fixture.launch(profile, overrides));
+
+			requireThat(applied, "applied").isEmpty();
+		}
+	}
+
+	/**
 	 * The machine-wide folder, Codex's home and their files.
 	 */
 	private static final class Fixture
@@ -279,6 +387,17 @@ public final class CodexWindowsSandboxTest
 		private Optional<String> recommendation(Platform platform, Optional<Launch> launch)
 		{
 			return CodexWindowsSandbox.recommendation(platform, CodexSystemFolder.at(system), codexHome, launch);
+		}
+
+		/**
+		 * Returns the implementation that Codex applies under this fixture's files.
+		 *
+		 * @param launch the session's command line
+		 * @return the implementation, or empty if no layer selects one or CAT cannot tell
+		 */
+		private Optional<String> implementation(Launch launch)
+		{
+			return CodexWindowsSandbox.implementation(CodexSystemFolder.at(system), codexHome, launch);
 		}
 	}
 }
