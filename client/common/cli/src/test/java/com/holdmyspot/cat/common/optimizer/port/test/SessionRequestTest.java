@@ -61,6 +61,7 @@ public final class SessionRequestTest
 			{SessionRole.JUDGE, Part.HELD_OUT},
 			{SessionRole.TRIAGE, Part.DEVELOPMENT},
 			{SessionRole.PROMPT_AUTHOR, Part.DEVELOPMENT},
+			{SessionRole.APPROACH_RANKER, Part.DEVELOPMENT},
 			{SessionRole.CONTRACT_AUTHOR, Part.DEVELOPMENT}
 		};
 	}
@@ -78,13 +79,32 @@ public final class SessionRequestTest
 			{SessionRole.JUDGE, Part.DEVELOPMENT},
 			{SessionRole.TRIAGE, Part.HELD_OUT},
 			{SessionRole.PROMPT_AUTHOR, Part.HELD_OUT},
+			{SessionRole.APPROACH_RANKER, Part.HELD_OUT},
 			{SessionRole.CONTRACT_AUTHOR, Part.HELD_OUT}
 		};
 	}
 
 	/**
+	 * Returns the roles, other than a trial and the contract author, that a request refuses fixture files, each with
+	 * the part that it may read.
+	 *
+	 * @return each role that receives no files with its part
+	 */
+	@DataProvider
+	public static Object[][] rolesWithoutFiles()
+	{
+		return new Object[][]
+		{
+			{SessionRole.JUDGE, Part.HELD_OUT},
+			{SessionRole.TRIAGE, Part.DEVELOPMENT},
+			{SessionRole.APPROACH_RANKER, Part.DEVELOPMENT},
+			{SessionRole.PROMPT_AUTHOR, Part.DEVELOPMENT}
+		};
+	}
+
+	/**
 	 * Verifies that a trial may request either part, that a judge requests the held-out part, and that triage,
-	 * prompt authors and the contract author request the development part.
+	 * prompt authors, approach rankers and the contract author request the development part.
 	 *
 	 * @param role the session's role
 	 * @param part the part that the session may read
@@ -97,8 +117,8 @@ public final class SessionRequestTest
 	}
 
 	/**
-	 * Verifies that a judge cannot request the development part, and that triage, prompt authors and the contract
-	 * author cannot request the held-out part.
+	 * Verifies that a judge cannot request the development part, and that triage, prompt authors, approach rankers and
+	 * the contract author cannot request the held-out part.
 	 *
 	 * @param role the session's role
 	 * @param part the part that the session may not read
@@ -111,10 +131,14 @@ public final class SessionRequestTest
 	}
 
 	/**
-	 * Verifies that only a trial's workspace may receive fixture files.
+	 * Verifies that a trial's workspace may receive fixture files and that a judge, triage, an approach ranker and a
+	 * prompt author refuse them. The contract author is the one other role that receives files.
+	 *
+	 * @param role the session's role, other than a trial and the contract author
+	 * @param part the part that the role reads
 	 */
-	@Test
-	public void refusesFixturesOutsideTrial()
+	@Test(dataProvider = "rolesWithoutFiles")
+	public void refusesFixturesForOtherRoles(SessionRole role, Part part)
 	{
 		// Requirement: R-C21
 		TestWorkspace files = new TestWorkspace(Map.of("notes.md", new WorkspaceFile("notes.md", "notes")),
@@ -124,13 +148,13 @@ public final class SessionRequestTest
 		requireThat(trial.files(), "files").isEqualTo(files);
 		try
 		{
-			new SessionRequest(SessionRole.JUDGE, Part.HELD_OUT, Path.of("/staged").toAbsolutePath(), List.of("turn"),
+			new SessionRequest(role, part, Path.of("/staged").toAbsolutePath(), List.of("turn"),
 				List.of(), Duration.ofMinutes(1), SESSION_PROFILE, files);
-			throw new AssertionError("A judge received fixture files");
+			throw new AssertionError("A " + role + " received fixture files");
 		}
 		catch (IllegalArgumentException e)
 		{
-			requireThat(e.getMessage(), "message").contains("JUDGE");
+			requireThat(e.getMessage(), "message").contains(role.toString());
 		}
 	}
 
