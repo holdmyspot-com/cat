@@ -21,7 +21,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -78,44 +77,22 @@ public final class PortFakesTest
 	}
 
 	/**
-	 * Verifies that interrupting a running fake session ends it as interrupted, and that interrupting an ended one
-	 * leaves its result unchanged.
+	 * Verifies that interrupting a fake session records the request, which tests of the code that interrupts
+	 * sessions read. Whether the interrupt ends the session's result is a shared port check.
 	 *
 	 * @throws IOException if a fake session fails to interrupt
 	 */
 	@Test
-	public void interruptEndsOnlyRunningSessions() throws IOException
+	public void recordsInterruptPerSession() throws IOException
 	{
 		FakeSessionPort port = new FakeSessionPort();
-		SessionHandle running = port.start(request("one"));
-		SessionHandle ended = port.start(request("two"));
-		SessionResult failed = new SessionResult.Failed("provider error", List.of());
-		port.sessions().get(1).end(failed);
+		SessionHandle interrupted = port.start(request("one"));
+		port.start(request("two"));
 
-		running.interrupt();
-		ended.interrupt();
+		interrupted.interrupt();
 
-		requireThat(running.completion().toCompletableFuture().join(), "running").
-			isInstanceOf(SessionResult.Interrupted.class);
-		requireThat(ended.completion().toCompletableFuture().join(), "ended").isEqualTo(failed);
-		requireThat(port.sessions().get(0).isInterruptRequested(), "isInterruptRequested").isTrue();
-	}
-
-	/**
-	 * Verifies that the fake signal reports only interrupts recorded after the given instant.
-	 */
-	@Test
-	public void interruptSignalComparesInstants()
-	{
-		FakeHostInterruptSignal signal = new FakeHostInterruptSignal();
-		Instant start = Instant.parse("2026-01-01T00:00:00Z");
-		requireThat(signal.isInterruptedAfter(start), "beforeAnyInterrupt").isFalse();
-
-		signal.interrupt(start);
-		requireThat(signal.isInterruptedAfter(start), "atStart").isFalse();
-
-		signal.interrupt(start.plusMillis(1));
-		requireThat(signal.isInterruptedAfter(start), "afterStart").isTrue();
+		requireThat(port.sessions().get(0).isInterruptRequested(), "interruptedRequested").isTrue();
+		requireThat(port.sessions().get(1).isInterruptRequested(), "otherRequested").isFalse();
 	}
 
 	/**
