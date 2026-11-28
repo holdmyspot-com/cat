@@ -12,6 +12,7 @@ import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -638,6 +639,47 @@ public final class ChildPolicyTest
 			requireThat(denied.writeRoots(), "writeRoots").isEqualTo(policy.writeRoots());
 			requireThat(denied.denyingWrites(List.of(plugins)), "again").isEqualTo(denied);
 			requireThat(policy.denyingWrites(List.of(elsewhere)), "outsideOnly").isEqualTo(policy);
+		}
+	}
+
+	/**
+	 * Verifies that a policy without a sandbox says so through every derived policy, and that a session it bounds
+	 * in turn gets no sandbox either, while a sandboxed policy keeps its harness's sandbox selection.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void keepsSandboxType() throws IOException
+	{
+		// Requirement: R-I42
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
+			Path session = Files.createDirectory(root.resolve("session"));
+			Path denied = Files.createDirectory(root.resolve("denied"));
+			Files.createDirectory(denied.resolve("inside"));
+			ChildPolicy sandboxed = ChildPolicy.intersect(new ParentPolicy(true, List.of(root), List.of(),
+				List.of(), List.of(), HostAccess.ALL, false, List.of()),
+				new ChildNeeds(session, List.of(), List.of(denied), Set.of())).
+				withSandboxSelection(Map.of("windows.sandbox", "unelevated"));
+			ChildPolicy unsandboxed = sandboxed.unsandboxed();
+
+			requireThat(sandboxed.sandboxed(), "sandboxed").isTrue();
+			requireThat(unsandboxed.sandboxed(), "unsandboxed").isFalse();
+			requireThat(unsandboxed.sandboxSelection(), "unsandboxed.sandboxSelection()").isEmpty();
+			requireThat(unsandboxed.asParentPolicy(), "asParentPolicy").isEqualTo(ParentPolicy.UNSANDBOXED);
+			List<Path> readable = List.of(denied.resolve("inside"));
+			for (ChildPolicy policy : List.of(sandboxed, unsandboxed))
+			{
+				requireThat(policy.leavingReadable(readable).sandboxed(), "leavingReadable").
+					isEqualTo(policy.sandboxed());
+				requireThat(policy.leavingReadable(readable).sandboxSelection(), "leavingReadable selection").
+					isEqualTo(policy.sandboxSelection());
+				requireThat(policy.denyingWrites(List.of(session.resolve("x"))).sandboxed(), "denyingWrites").
+					isEqualTo(policy.sandboxed());
+				requireThat(policy.denyingWrites(List.of(session.resolve("x"))).sandboxSelection(),
+					"denyingWrites selection").isEqualTo(policy.sandboxSelection());
+			}
 		}
 	}
 }

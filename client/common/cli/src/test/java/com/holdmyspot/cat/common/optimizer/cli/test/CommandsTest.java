@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessSandbox;
+import com.holdmyspot.cat.common.optimizer.cli.OwnerSandbox;
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.optimizer.campaign.Applicability;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationParameters;
@@ -71,6 +72,10 @@ public final class CommandsTest
 	 * The reason that {@link #WINDOWS_REFUSAL} gives.
 	 */
 	private static final String WINDOWS_REFUSAL_REASON = "harness-a has no sandbox on native Windows";
+	/**
+	 * The reason that a session without a sandbox gives.
+	 */
+	private static final String NO_SANDBOX_REASON = "harness-a runs this session without a sandbox";
 	/**
 	 * A trial harness that sandboxes its trials everywhere except on native Windows.
 	 */
@@ -150,13 +155,29 @@ public final class CommandsTest
 		 */
 		int run(HarnessSandbox trialSandbox, Platform platform, List<String> args, StringBuilder output)
 		{
+			return run(trialSandbox, Optional::empty, platform, args, output);
+		}
+
+		/**
+		 * Runs a command on a platform from a session.
+		 *
+		 * @param trialSandbox decides whether the harness of the campaign's trials sandboxes them on {@code platform}
+		 * @param ownerSandbox says why the session that runs the command has no sandbox in effect
+		 * @param platform     the platform that runs the command
+		 * @param args         the arguments
+		 * @param output       receives the printed JSON
+		 * @return the exit code
+		 */
+		int run(HarnessSandbox trialSandbox, OwnerSandbox ownerSandbox, Platform platform, List<String> args,
+			StringBuilder output)
+		{
 			ByteArrayOutputStream bytes = new ByteArrayOutputStream();
 			int exit;
 			try (TestOptimizerCommandScope<FakeSessionPort> scope = TestOptimizerCommandScope.of(Harness.CLAUDE, root);
 				PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
 			{
 				exit = new Commands(new RecordingCore(new OptimizerCore(scope)), JSON, ZoneOffset.UTC, trialSandbox,
-					platform).execute(args, out);
+					ownerSandbox, platform).execute(args, out);
 			}
 			output.append(bytes.toString(StandardCharsets.UTF_8));
 			return exit;
@@ -174,7 +195,7 @@ public final class CommandsTest
 			try (TestOptimizerCommandScope<FakeSessionPort> scope = TestOptimizerCommandScope.of(Harness.CLAUDE, root))
 			{
 				return new Commands(new RecordingCore(new OptimizerCore(scope)), JSON, ZoneOffset.UTC,
-					_ -> Optional.empty(), Platform.LINUX_X64).parse(args);
+					_ -> Optional.empty(), Optional::empty, Platform.LINUX_X64).parse(args);
 			}
 		}
 
@@ -190,7 +211,7 @@ public final class CommandsTest
 			try (TestOptimizerCommandScope<FakeSessionPort> scope = TestOptimizerCommandScope.of(Harness.CLAUDE, root))
 			{
 				Commands commands = new Commands(new OptimizerCore(scope), JSON, zone, _ -> Optional.empty(),
-					Platform.LINUX_X64);
+					Optional::empty, Platform.LINUX_X64);
 				return CommandsSecrets.getCommandsAccess().render(commands, result);
 			}
 		}
@@ -486,6 +507,54 @@ public final class CommandsTest
 					withContext(platform, "platform").isEqualTo(1);
 				requireThat(project.calls, "calls").withContext(platform, "platform").size().isEqualTo(1);
 			}
+		}
+	}
+
+	/**
+	 * Verifies that a command that starts or continues a campaign from a session without a sandbox in effect, on every
+	 * platform, is refused with the reason before it reaches the core, so that nothing changes.
+	 *
+	 * @param args the arguments
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test(dataProvider = "campaignCommands")
+	public void refusesCampaignFromSessionWithoutSandbox(List<String> args) throws IOException
+	{
+		// Requirement: R-I46
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			for (Platform platform : List.of(Platform.WINDOWS_X64, Platform.LINUX_X64, Platform.MACOS_ARM64))
+			{
+				Project project = Project.create(cleanup);
+				StringBuilder output = new StringBuilder();
+				requireThat(project.run(_ -> Optional.empty(), () -> Optional.of(NO_SANDBOX_REASON), platform, args,
+					output), "exit").withContext(platform, "platform").isEqualTo(1);
+				requireThat(project.calls, "calls").withContext(platform, "platform").isEmpty();
+				JsonNode result = JSON.readTree(output.toString());
+				requireThat(result.get("status").asString(), "status").isEqualTo("refused");
+				requireThat(result.get("message").asString(), "message").isEqualTo(NO_SANDBOX_REASON);
+			}
+		}
+	}
+
+	/**
+	 * Verifies that {@code status} and {@code stop}, which start no trial, reach the core from a session without a
+	 * sandbox.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void runsStatusAndStopFromSessionWithoutSandbox() throws IOException
+	{
+		// Requirement: R-I46
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Project project = Project.create(cleanup);
+			StringBuilder output = new StringBuilder();
+			OwnerSandbox none = () -> Optional.of(NO_SANDBOX_REASON);
+			project.run(_ -> Optional.empty(), none, Platform.LINUX_X64, List.of("status", "c1"), output);
+			project.run(_ -> Optional.empty(), none, Platform.LINUX_X64, List.of("stop", "c1"), output);
+			requireThat(project.calls, "calls").isEqualTo(List.of("status c1", "stop c1"));
 		}
 	}
 

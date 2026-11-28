@@ -444,55 +444,33 @@ public final class ClaudeRunnerCliTest
 	}
 
 	/**
-	 * Verifies that on native Windows, where Claude Code has no sandbox, the launcher refuses every launch that starts
-	 * a Claude session, forwarded or not, with a reason that names what is missing and directs the user to WSL2.
+	 * Verifies that on native Windows, where Claude Code has no sandbox, the launcher refuses no launch for the platform
+	 * alone, forwarded or not, whatever the session's role: a session takes its parent's type of sandbox, which is none
+	 * for a Claude Code parent there.
 	 *
 	 * @param platform the native Windows platform
 	 */
 	@Test(dataProvider = "nativeWindows")
-	public void refusesSessionOnNativeWindows(Platform platform)
+	public void startsSessionOnNativeWindows(Platform platform)
 	{
+		// Requirement: R-I44
 		for (Map<String, String> environment : List.of(Map.<String, String>of(),
 			Map.of(SessionRequestAccess.REQUESTS_VARIABLE, "requests")))
 		{
-			StringWriter errors = new StringWriter();
+			for (List<String> role : List.of(List.<String>of(), List.of("--session-role", "trial"),
+				List.of("--session-role", "judge")))
+			{
+				StringWriter errors = new StringWriter();
+				List<String> args = new ArrayList<>(List.of("--project", "project", "--model", "sonnet", "--effort",
+					"low"));
+				args.addAll(role);
 
-			boolean refused = ClaudeRunnerCli.refusesLaunch(new String[]{"--project", "project", "--model", "sonnet",
-				"--effort", "low"}, WORKING_DIRECTORY, environment, platform, new PrintWriter(errors, true));
+				boolean refused = ClaudeRunnerCli.refusesLaunch(args.toArray(String[]::new), WORKING_DIRECTORY,
+					environment, platform, new PrintWriter(errors, true));
 
-			requireThat(refused, "refused").isTrue();
-			requireThat(errors.toString(), "errors").contains("Claude Code has no sandbox on native Windows").
-				contains("WSL2").contains("wsl --install");
-		}
-	}
-
-	/**
-	 * Verifies that on native Windows, where Claude Code has no sandbox, the launcher starts a judge, which runs without
-	 * one, and still refuses a trial and a session with no role, which need one.
-	 *
-	 * @param platform the native Windows platform
-	 */
-	@Test(dataProvider = "nativeWindows")
-	public void startsJudgeOnNativeWindows(Platform platform)
-	{
-		StringWriter judgeErrors = new StringWriter();
-
-		boolean judgeRefused = ClaudeRunnerCli.refusesLaunch(new String[]{"--project", "project", "--model", "sonnet",
-			"--effort", "low", "--session-role", "judge"}, WORKING_DIRECTORY, Map.of(), platform,
-			new PrintWriter(judgeErrors, true));
-
-		requireThat(judgeRefused, "judgeRefused").isFalse();
-		requireThat(judgeErrors.toString(), "judgeErrors").isEmpty();
-		for (String role : List.of("trial", "unknown"))
-		{
-			StringWriter errors = new StringWriter();
-
-			boolean refused = ClaudeRunnerCli.refusesLaunch(new String[]{"--project", "project", "--model", "sonnet",
-				"--effort", "low", "--session-role", role}, WORKING_DIRECTORY, Map.of(), platform,
-				new PrintWriter(errors, true));
-
-			requireThat(refused, "refused" + role).isTrue();
-			requireThat(errors.toString(), "errors" + role).contains("Claude Code has no sandbox on native Windows");
+				requireThat(refused, "refused" + role).isFalse();
+				requireThat(errors.toString(), "errors" + role).isEmpty();
+			}
 		}
 	}
 
@@ -705,8 +683,9 @@ public final class ClaudeRunnerCliTest
 	private static Path policyBound(Path root) throws IOException
 	{
 		return Files.writeString(root.resolve("policy-bound.json"), """
-			{"format_version": 1, "write_roots": [%s], "write_denials": [], "read_denials": [],
-			 "read_reallowances": [], "hosts": ["api.anthropic.com"], "allow_local_binding": false}
+			{"format_version": 2, "sandboxed": true, "write_roots": [%s], "write_denials": [], "read_denials": [],
+			 "read_reallowances": [], "hosts": ["api.anthropic.com"], "allow_local_binding": false,
+			 "sandbox_selection": {}}
 			""".formatted(JsonMapper.builder().build().writeValueAsString(root.toAbsolutePath().toString())));
 	}
 
@@ -1620,7 +1599,8 @@ public final class ClaudeRunnerCliTest
 	/**
 	 * Requires that a launch passes the checks of its source home and goes on to start its session. On Linux and
 	 * macOS it fails only because the test runs no CAT artifact. On native Windows, where Claude Code has no sandbox,
-	 * the runner refuses the session for that alone, after the checks of the source home.
+	 * the runner refuses the session, after the checks of the source home, because its bound says that its parent has
+	 * one and a session without one would reach further than its parent.
 	 *
 	 * @param launch the launch
 	 * @param errors what the launch printed
@@ -1713,8 +1693,9 @@ public final class ClaudeRunnerCliTest
 		for (Path denial : readDenials)
 			denials.add(json.writeValueAsString(denial.toString()));
 		Path bound = Files.writeString(root.resolve("authentication-bound.json"), """
-			{"format_version": 1, "write_roots": [%s], "write_denials": [], "read_denials": [%s],
-			 "read_reallowances": [], "hosts": ["api.anthropic.com", "gateway.example"], "allow_local_binding": false}
+			{"format_version": 2, "sandboxed": true, "write_roots": [%s], "write_denials": [], "read_denials": [%s],
+			 "read_reallowances": [], "hosts": ["api.anthropic.com", "gateway.example"], "allow_local_binding": false,
+			 "sandbox_selection": {}}
 			""".formatted(json.writeValueAsString(root.toString()), String.join(", ", denials)));
 		List<String> args = new ArrayList<>(List.of("--project", project.toString(), "--results",
 			root.resolve("results").toString(), "--model", "sonnet", "--effort", "low",

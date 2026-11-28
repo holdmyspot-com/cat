@@ -404,23 +404,46 @@ public final class ClaudeSessionSandboxTest
 	}
 
 	/**
-	 * Verifies that native Windows is refused whatever else holds, as it was before the checks.
+	 * Verifies that on native Windows, where Claude Code has no sandbox, a session whose parent has one is refused
+	 * whatever else holds, because a session without one would reach further than its parent, and that the reason
+	 * says so and names where Claude Code has a sandbox.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
 	@Test
-	public void refusesNativeWindows() throws IOException
+	public void refusesSandboxedChildOnNativeWindows() throws IOException
 	{
-		// Requirement: R-I16
+		// Requirement: R-I42
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Programs programs = new Programs(cleanup);
 			for (Platform platform : List.of(Platform.WINDOWS_X64, Platform.WINDOWS_ARM64))
 			{
-				requireThat(programs.refusal(platform), platform.name()).
-					isEqualTo(ClaudeSessionSandbox.refusal(platform));
-				requireThat(programs.refusal(platform).orElseThrow(), platform.name()).contains("native Windows");
+				requireThat(programs.refusal(platform).orElseThrow(), platform.name()).
+					contains("Claude Code has no sandbox on native Windows").contains("parent").contains("Codex").
+					contains("WSL2");
 			}
+		}
+	}
+
+	/**
+	 * Verifies that the prompt optimizer's check of its trial harness refuses Claude Code trials on native Windows only,
+	 * naming WSL2 and Codex, since a trial must run in a sandbox and Claude Code has none there.
+	 */
+	@Test
+	public void refusesTrialsOnNativeWindowsOnly()
+	{
+		// Requirement: R-I46
+		for (Platform platform : Platform.values())
+		{
+			Optional<String> refusal = ClaudeSessionSandbox.TRIALS.refusal(platform);
+			if (platform.isWindows())
+			{
+				requireThat(refusal.orElseThrow(), "refusal").withContext(platform, "platform").
+					contains("Claude Code has no sandbox on native Windows").contains("WSL2").contains("Codex");
+			}
+			else
+				requireThat(refusal, "refusal").withContext(platform, "platform").isEmpty();
 		}
 	}
 

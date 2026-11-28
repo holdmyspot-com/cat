@@ -1103,6 +1103,101 @@ public final class CodexSessionStartHookTest
 	}
 
 	/**
+	 * Returns the user's configurations and machine-wide requirements under which Codex on native Windows runs the
+	 * session in an implementation other than {@code mxc}, in none, or in one that CAT cannot tell.
+	 *
+	 * @return each configuration and requirements, empty if absent
+	 */
+	@DataProvider
+	public static Object[][] recommendingMxc()
+	{
+		String mxc = "[windows]\nsandbox = \"mxc\"\n";
+		return new Object[][]{{"[windows]\nsandbox = \"elevated\"\n", ""},
+			{"[windows]\nsandbox = \"unelevated\"\n", ""}, {"", ""},
+			{mxc + "[features]\nprefer_mxc = true\n", ""}, {mxc + "allow_mxc = true\n", ""},
+			{mxc, "[windows]\nallow_mxc = true\n"},
+			{mxc, "[windows]\nallowed_sandbox_implementations = [\"elevated\"]\n"}};
+	}
+
+	/**
+	 * Verifies that a SessionStart on native Windows recommends Codex's {@code mxc} implementation to the user when the
+	 * session runs in another one, in none, or in one that CAT cannot tell, and still injects the rules.
+	 *
+	 * @param configuration the user's configuration
+	 * @param requirements  the machine-wide requirements
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test(dataProvider = "recommendingMxc")
+	public void recommendsMxcOnWindows(String configuration, String requirements) throws IOException
+	{
+		// Requirement: R-I47
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			writeReadingGuidance(plugin);
+			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-hook")));
+			Path bin = Files.createDirectories(session.folder("other/tools").resolve("bin"));
+			session.onWindows((key, name) -> Optional.empty());
+			session.write("home/.codex/config.toml", configuration);
+			if (!requirements.isEmpty())
+				session.writeSystem("requirements.toml", requirements);
+
+			HookResult result = invokeInSandbox(event(session.project()), session, plugin, bin);
+
+			requireThat(readResponse(result).path("systemMessage").asString(), "systemMessage").
+				contains("[windows] sandbox = \"mxc\"").contains("26100.9278").contains("26200.9278").
+				contains("Windows Server");
+			requireThat(sessionRules(result), "rules").isNotEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that a SessionStart recommends nothing about the Windows sandbox when Codex runs the session in
+	 * {@code mxc}, by the user's configuration, the launch's override or the requirements, or off Windows.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void recommendsNothingUnderMxcOrOffWindows() throws IOException
+	{
+		// Requirement: R-I47
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			writeReadingGuidance(plugin);
+			CodexParentSession offWindows = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-hook")));
+			Path bin = Files.createDirectories(offWindows.folder("other/tools").resolve("bin"));
+			offWindows.write("home/.codex/config.toml", "[windows]\nsandbox = \"elevated\"\n");
+			requireThat(readResponse(invokeInSandbox(event(offWindows.project()), offWindows, plugin, bin)).
+				path("systemMessage").asString(""), "offWindows").doesNotContain("mxc");
+
+			CodexParentSession selected = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-hook")));
+			bin = Files.createDirectories(selected.folder("other/tools").resolve("bin"));
+			selected.onWindows((key, name) -> Optional.empty());
+			selected.write("home/.codex/config.toml", "[windows]\nsandbox = \"mxc\"\n");
+			requireThat(readResponse(invokeInSandbox(event(selected.project()), selected, plugin, bin)).
+				path("systemMessage").asString(""), "selected").doesNotContain("mxc");
+
+			CodexParentSession overridden = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-hook")));
+			bin = Files.createDirectories(overridden.folder("other/tools").resolve("bin"));
+			overridden.onWindows((key, name) -> Optional.empty());
+			overridden.write("home/.codex/config.toml", "[windows]\nsandbox = \"elevated\"\n");
+			CodexHookSandbox sandbox = overridden.sandbox("-c", "windows.sandbox=\"mxc\"", "exec",
+				"--skip-git-repo-check", "summarize");
+			requireThat(readResponse(invokeInSandbox(event(overridden.project()), overridden, plugin, bin, sandbox)).
+				path("systemMessage").asString(""), "overridden").doesNotContain("mxc");
+
+			CodexParentSession required = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-hook")));
+			bin = Files.createDirectories(required.folder("other/tools").resolve("bin"));
+			required.onWindows((key, name) -> Optional.empty());
+			required.write("home/.codex/config.toml", "[windows]\nsandbox = \"elevated\"\n");
+			required.writeSystem("requirements.toml", "[windows]\nrequire_mxc = true\n");
+			requireThat(readResponse(invokeInSandbox(event(required.project()), required, plugin, bin)).
+				path("systemMessage").asString(""), "required").doesNotContain("mxc");
+		}
+	}
+
+	/**
 	 * Verifies that a SessionStart adds nothing for the user when no folder on {@code PATH} is writable by the
 	 * sandbox, and when the session has no sandbox, including a session that no layer gives a sandbox mode.
 	 *

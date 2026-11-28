@@ -796,6 +796,32 @@ public final class InstallCommandTest
 	}
 
 	/**
+	 * The install's message carries the harness's recommendation on its sandbox for the install's platform, and the
+	 * install continues.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if install refuses
+	 */
+	@Test
+	public void messageCarriesSandboxRecommendation() throws IOException, TrustException
+	{
+		// Requirement: R-I47
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("install-recommendation-")));
+			String recommendation = "Select the sandbox implementation with the fewest known weaknesses.";
+			fixture.integration.recommendingSandbox(recommendation);
+
+			Install.Outcome outcome = fixture.install();
+
+			requireThat(String.join(" ", outcome.entries().notices()), "notices").contains(recommendation);
+			requireThat(fixture.integration.recommendationPlatforms(), "platforms").
+				isEqualTo(List.of(Platform.current()));
+			requireThat(Files.isDirectory(fixture.versionFolder()), "installed").isTrue();
+		}
+	}
+
+	/**
 	 * Install without a harness home installs at the home that the user's environment selects.
 	 * <p>
 	 * The time goes to generating the release's signing key pair, writing a signed archive to disk, and installing

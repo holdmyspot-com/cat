@@ -1626,6 +1626,33 @@ public final class IntegrationTest
 	}
 
 	/**
+	 * On native Windows the install recommends Codex's {@code mxc} sandbox implementation when the user's configuration
+	 * selects another one, and recommends nothing when it selects {@code mxc} or off Windows.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void recommendsMxcOnWindows() throws IOException
+	{
+		// Requirement: R-I47
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path userHome = cleanup.add(Files.createTempDirectory(testRoot(), "integration-")).toRealPath();
+			Path home = Files.createDirectories(userHome.resolve(".codex"));
+			Path system = Files.createDirectories(userHome.resolve("etc-codex"));
+			CodexIntegration integration = new CodexIntegration(CodexSystemFolder.at(system));
+			Files.writeString(home.resolve("config.toml"), "[windows]\nsandbox = \"elevated\"\n");
+
+			requireThat(integration.sandboxRecommendation(Platform.WINDOWS_X64, home).orElse(""), "elevated").
+				contains("[windows] sandbox = \"mxc\"");
+			requireThat(integration.sandboxRecommendation(Platform.LINUX_X64, home), "linux").isEmpty();
+
+			Files.writeString(home.resolve("config.toml"), "[windows]\nsandbox = \"mxc\"\n");
+			requireThat(integration.sandboxRecommendation(Platform.WINDOWS_X64, home), "mxc").isEmpty();
+		}
+	}
+
+	/**
 	 * On Windows the installer reads the machine-wide configuration from the folder that Windows names, so that the
 	 * check of {@code PATH} runs there, and reads no machine-wide managed configuration, which Codex does not read.
 	 *

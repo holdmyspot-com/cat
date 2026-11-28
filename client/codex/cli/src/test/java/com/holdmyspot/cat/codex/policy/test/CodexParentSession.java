@@ -38,6 +38,11 @@ public final class CodexParentSession
 	private CodexSystemFolder systemFolder;
 	private Path system;
 	private Path slashTmp;
+	/**
+	 * The platform of the session's machine, which is not Windows unless {@link #onWindows} or
+	 * {@link #onWindowsWithoutProgramData} makes it so, whatever machine runs the test.
+	 */
+	private Platform platform = Platform.LINUX_X64;
 	private Optional<Path> transcript = Optional.empty();
 
 	/**
@@ -131,6 +136,7 @@ public final class CodexParentSession
 		Path programData = root.resolve("ProgramData");
 		systemFolder = CodexSystemFolder.of(Platform.WINDOWS_X64, () -> programData, registry);
 		system = Files.createDirectories(systemFolder.folder());
+		platform = Platform.WINDOWS_X64;
 	}
 
 	/**
@@ -145,6 +151,7 @@ public final class CodexParentSession
 		{
 			throw new IOException(failure);
 		}, (key, name) -> Optional.empty());
+		platform = Platform.WINDOWS_X64;
 	}
 
 	/**
@@ -189,6 +196,19 @@ public final class CodexParentSession
 	public ParentPolicy read(String... arguments) throws IOException, PolicyRefusal
 	{
 		return readThread(Optional.empty(), arguments);
+	}
+
+	/**
+	 * Reads the Windows sandbox selection that wins for the session's launch.
+	 *
+	 * @param arguments the arguments of the Codex process after its executable
+	 * @return each selecting key, such as {@code windows.sandbox}, and its value
+	 * @throws IOException   if a file cannot be read
+	 * @throws PolicyRefusal if the reader refuses
+	 */
+	public Map<String, String> readSandboxSelection(String... arguments) throws IOException, PolicyRefusal
+	{
+		return reader().readSandboxSelection(session(arguments));
 	}
 
 	/**
@@ -264,7 +284,7 @@ public final class CodexParentSession
 	 */
 	public CodexHookSandbox sandbox(String... arguments)
 	{
-		return new CodexHookSandbox(session(arguments).ancestors(), reader(), home);
+		return new CodexHookSandbox(session(arguments).ancestors(), reader(), home, platform);
 	}
 
 	/**
@@ -277,7 +297,7 @@ public final class CodexParentSession
 		List<ProcessDescription> ancestors = List.of(
 			new ProcessDescription(101, Optional.empty(), Optional.of("/bin/sh"), Optional.empty(),
 				Optional.of(List.of("-c", "hook"))));
-		return new CodexHookSandbox(ancestors, reader(), home);
+		return new CodexHookSandbox(ancestors, reader(), home, platform);
 	}
 
 	/**

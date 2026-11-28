@@ -4,12 +4,15 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.claude.policy.ClaudePolicyReader;
 import com.holdmyspot.cat.claude.runner.ClaudeRequestServerCli;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.runner.contract.test.ParentPolicySourceContract;
 import com.holdmyspot.cat.common.runner.launcher.ParentPolicySource;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import com.holdmyspot.cat.common.runner.policy.RealPaths;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -60,6 +63,77 @@ public final class ClaudeServerPolicyTest extends ParentPolicySourceContract
 	}
 
 	/**
+	 * Verifies that the server reads, from its session's transcript, that Claude Code reported in the session's first
+	 * Bash result that its sandbox failed to start, under settings that allow commands outside it and under settings
+	 * that require it, and that the reason quotes the report, says that the sandbox stays off for the rest of the
+	 * session and says to start a new session. A transcript without the report, or none, gives no reason.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void readsSandboxThatFailedToStart() throws IOException
+	{
+		// Requirement: R-I46
+		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
+		{
+			for (String recording : List.of("bridge-sockets-report-stopped.jsonl", "required-report-stopped.jsonl"))
+			{
+				Path transcript = Files.write(fixture.root.resolve(recording), recorded(recording));
+
+				Optional<String> failure = ClaudeRequestServerCli.policySource(fixture.reader(), fixture::session,
+					transcript).sandboxFailure();
+
+				requireThat(failure.orElseThrow(), "failure").withContext(recording, "recording").
+					contains("failed to initialize").contains("rest of that session").contains("new session");
+			}
+			Path started = Files.write(fixture.root.resolve("started.jsonl"), recorded("sandbox-started.jsonl"));
+			requireThat(ClaudeRequestServerCli.policySource(fixture.reader(), fixture::session, started).
+				sandboxFailure(), "started").isEmpty();
+			requireThat(ClaudeRequestServerCli.policySource(fixture.reader(), fixture::session,
+				fixture.root.resolve("missing.jsonl")).sandboxFailure(), "missing").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that the reason that a session without a sandbox gives names the setting that turns Claude Code's
+	 * sandbox on and says to start a new session with it, and that on native Windows, where Claude Code has no
+	 * sandbox, it directs the user to WSL2 or Codex instead.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void namesFixForMissingSandbox() throws IOException
+	{
+		// Requirement: R-I46
+		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
+		{
+			Path transcript = fixture.root.resolve("transcript.jsonl");
+			requireThat(ClaudeRequestServerCli.policySource(fixture.reader(Platform.LINUX_X64), fixture::session,
+				transcript).sandboxAbsence(), "linux").contains("sandbox.enabled").contains("new session").
+				contains("held-out");
+			requireThat(ClaudeRequestServerCli.policySource(fixture.reader(Platform.WINDOWS_X64), fixture::session,
+				transcript).sandboxAbsence(), "windows").contains("Claude Code has no sandbox on native Windows").
+				contains("WSL2").contains("Codex");
+		}
+	}
+
+	/**
+	 * Reads a recording of Claude's output from a session whose sandbox did or did not start.
+	 *
+	 * @param name the recording's file name
+	 * @return its lines
+	 * @throws IOException if the resource cannot be read
+	 */
+	private static List<String> recorded(String name) throws IOException
+	{
+		try (InputStream stream = ClaudeServerPolicyTest.class.getResourceAsStream("/runner/sandbox-start/" + name))
+		{
+			requireThat(stream, "resource").isNotNull();
+			return new String(stream.readAllBytes(), StandardCharsets.UTF_8).lines().toList();
+		}
+	}
+
+	/**
 	 * Verifies that the server reads its session's policy from the session's settings, and refuses a later
 	 * reading once another process has taken the Claude Code process's identifier.
 	 *
@@ -74,7 +148,8 @@ public final class ClaudeServerPolicyTest extends ParentPolicySourceContract
 		{
 			fixture.userSettings("""
 				{"sandbox": {"enabled": true, "network": {"allowedDomains": ["api.example.com"]}}}""");
-			ParentPolicySource source = ClaudeRequestServerCli.policySource(fixture.reader(), fixture::session);
+			ParentPolicySource source = ClaudeRequestServerCli.policySource(fixture.reader(), fixture::session,
+				fixture.root.resolve("transcript.jsonl"));
 
 			ParentPolicy first = source.read(Optional.empty());
 			requireThat(source.harnessName(), "harnessName").isEqualTo(ClaudePolicyReader.HARNESS_NAME);
@@ -139,7 +214,8 @@ public final class ClaudeServerPolicyTest extends ParentPolicySourceContract
 		// Requirement: R-I11
 		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
 		{
-			ParentPolicySource source = ClaudeRequestServerCli.policySource(fixture.reader(), fixture::session);
+			ParentPolicySource source = ClaudeRequestServerCli.policySource(fixture.reader(), fixture::session,
+				fixture.root.resolve("transcript.jsonl"));
 
 			requireThat(source.permissionEntries(writes, hosts), "entries").isEqualTo(expected);
 		}
@@ -161,7 +237,8 @@ public final class ClaudeServerPolicyTest extends ParentPolicySourceContract
 			fixture.userSettings("""
 				{"sandbox": {"enabled": true,
 				 "network": {"allowedDomains": ["gateway.example:2455", "db.example.com:5432"]}}}""");
-			ParentPolicySource source = ClaudeRequestServerCli.policySource(fixture.reader(), fixture::session);
+			ParentPolicySource source = ClaudeRequestServerCli.policySource(fixture.reader(), fixture::session,
+				fixture.root.resolve("transcript.jsonl"));
 			source.read(Optional.empty());
 
 			requireThat(source.permissionEntries(List.of(), Set.of("gateway.example")), "entries").isEqualTo(
@@ -192,7 +269,8 @@ public final class ClaudeServerPolicyTest extends ParentPolicySourceContract
 		{
 			this.folder = Files.createDirectory(fixture.root.resolve("outside"));
 			allowWrites(List.of());
-			this.source = ClaudeRequestServerCli.policySource(fixture.reader(), fixture::session);
+			this.source = ClaudeRequestServerCli.policySource(fixture.reader(), fixture::session,
+				fixture.root.resolve("transcript.jsonl"));
 		}
 
 		@Override

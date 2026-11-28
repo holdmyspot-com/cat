@@ -313,28 +313,32 @@ public final class CodexPromptOptimizerTest
 	}
 
 	/**
-	 * Verifies that on native Windows, where CAT does not start Codex trials, {@code start} is refused with the reason,
-	 * which names the checks of Codex's Windows sandbox that failed and each sandbox implementation, and directs the
-	 * user to WSL2.
+	 * Verifies that on native Windows, where every Codex sandbox implementation counts as a sandbox, {@code start} is
+	 * not refused for the platform: it ends with the same exit status and result status as on Linux, and its message
+	 * names neither native Windows nor WSL2.
 	 *
 	 * @throws IOException if a file cannot be written
 	 */
 	@Test
-	public void startRefusedOnNativeWindows() throws IOException
+	public void startNotRefusedForNativeWindows() throws IOException
 	{
-		try (TemporaryDirectories scope = new TemporaryDirectories())
+		// Requirement: R-I44
+		List<String> results = new ArrayList<>();
+		for (Platform platform : List.of(Platform.WINDOWS_X64, Platform.LINUX_X64))
 		{
-			Setup setup = setup(scope);
-			StringBuilder output = new StringBuilder();
-			int exit = run(setup, Map.of("CODEX_THREAD_ID", SESSION_ID), Platform.WINDOWS_X64,
-				List.of("start", "prompts/a.md"), output);
-			requireThat(exit, "exit").isEqualTo(1);
-			JsonNode json = JsonMapper.builder().build().readTree(output.toString());
-			requireThat(json.get("status").asString(), "status").isEqualTo("refused");
-			requireThat(json.get("message").asString(), "message").
-				contains("writes, reads and network access").contains("unelevated").contains("elevated").
-				contains("WSL2");
+			try (TemporaryDirectories scope = new TemporaryDirectories())
+			{
+				Setup setup = setup(scope);
+				StringBuilder output = new StringBuilder();
+				int exit = run(setup, Map.of("CODEX_THREAD_ID", SESSION_ID), platform, List.of("start", "prompts/a.md"),
+					output);
+				JsonNode json = JsonMapper.builder().build().readTree(output.toString());
+				requireThat(json.path("message").asString(""), "message").withContext(platform, "platform").
+					doesNotContain("native Windows").doesNotContain("WSL2");
+				results.add(exit + " " + json.path("status").asString(""));
+			}
 		}
+		requireThat(results.get(0), "windows").isEqualTo(results.get(1));
 	}
 
 	/**

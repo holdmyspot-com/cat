@@ -133,6 +133,14 @@ public final class RecordingIntegration implements HarnessIntegration
 	 */
 	private final List<Path> askedWorkingDirectories = new ArrayList<>();
 	/**
+	 * The recommendation on the harness's sandbox that this harness gives at install, or empty for none.
+	 */
+	private Optional<String> sandboxRecommendation = Optional.empty();
+	/**
+	 * The platforms that the installer passed each time it asked for a recommendation on the harness's sandbox.
+	 */
+	private final List<Platform> recommendationPlatforms = new ArrayList<>();
+	/**
 	 * The {@code keepData} argument of each {@code unregister} call, in call order.
 	 */
 	private final List<Boolean> keptData = new ArrayList<>();
@@ -340,6 +348,29 @@ public final class RecordingIntegration implements HarnessIntegration
 	{
 		this.writes = writes;
 		return this;
+	}
+
+	/**
+	 * Makes {@link #sandboxRecommendation} return a recommendation.
+	 *
+	 * @param recommendation the recommendation
+	 * @return this integration
+	 */
+	public RecordingIntegration recommendingSandbox(String recommendation)
+	{
+		this.sandboxRecommendation = Optional.of(recommendation);
+		return this;
+	}
+
+	/**
+	 * Returns the platforms that the installer passed each time it asked for a recommendation on the harness's
+	 * sandbox.
+	 *
+	 * @return the platforms
+	 */
+	public List<Platform> recommendationPlatforms()
+	{
+		return List.copyOf(recommendationPlatforms);
 	}
 
 	/**
@@ -567,6 +598,13 @@ public final class RecordingIntegration implements HarnessIntegration
 	{
 		askedWorkingDirectories.add(workingDirectory);
 		return writes;
+	}
+
+	@Override
+	public Optional<String> sandboxRecommendation(Platform platform, Path home)
+	{
+		recommendationPlatforms.add(platform);
+		return sandboxRecommendation;
 	}
 
 	/**

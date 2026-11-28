@@ -88,6 +88,36 @@ public final class FakeParentPolicySource implements ParentPolicySource
 	 * @param refusal the refusal
 	 * @throws NullPointerException if {@code refusal} is null
 	 */
+	/**
+	 * Sets the parent's selection of its harness's sandbox.
+	 *
+	 * @param selection the settings that select the sandbox
+	 * @throws NullPointerException if {@code selection} is null
+	 */
+	public void select(Map<String, String> selection)
+	{
+		requireThat(selection, "selection").isNotNull();
+		synchronized (this)
+		{
+			this.selection = Map.copyOf(selection);
+		}
+	}
+
+	/**
+	 * Has the parent's harness report that its sandbox failed to start.
+	 *
+	 * @param report the harness's report
+	 * @throws NullPointerException if {@code report} is null
+	 */
+	public void failSandbox(String report)
+	{
+		requireThat(report, "report").isNotNull();
+		synchronized (this)
+		{
+			sandboxFailure = Optional.of(report);
+		}
+	}
+
 	public void refuse(PolicyRefusal refusal)
 	{
 		requireThat(refusal, "refusal").isNotNull();
@@ -158,6 +188,25 @@ public final class FakeParentPolicySource implements ParentPolicySource
 			if (failure instanceof IOException e)
 				throw e;
 			return askingThread.map(threads::get).orElse(session);
+		}
+	}
+
+	@Override
+	public Map<String, String> sandboxSelection(Optional<String> askingThread)
+	{
+		requireThat(askingThread, "askingThread").isNotNull();
+		synchronized (this)
+		{
+			return selection;
+		}
+	}
+
+	@Override
+	public Optional<String> sandboxFailure()
+	{
+		synchronized (this)
+		{
+			return sandboxFailure;
 		}
 	}
 }

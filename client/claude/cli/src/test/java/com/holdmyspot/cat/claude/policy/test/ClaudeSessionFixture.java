@@ -4,6 +4,7 @@ import com.holdmyspot.cat.claude.policy.ClaudePolicyReader;
 import com.holdmyspot.cat.claude.policy.ClaudePolicyReading;
 import com.holdmyspot.cat.claude.policy.ClaudeSession;
 import com.holdmyspot.cat.claude.runner.ClaudeConnectionSettings;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
@@ -180,13 +181,24 @@ final class ClaudeSessionFixture implements AutoCloseable
 	 */
 	ClaudePolicyReader reader()
 	{
+		return reader(Platform.current());
+	}
+
+	/**
+	 * Returns a reader that finds the session's process while it runs, on a platform.
+	 *
+	 * @param platform the platform that the session runs on
+	 * @return the reader
+	 */
+	ClaudePolicyReader reader(Platform platform)
+	{
 		return new ClaudePolicyReader(processId ->
 		{
 			if (processId != PROCESS_ID || !running)
 				return Optional.empty();
 			return Optional.of(new ProcessDescription(processId, Optional.of(reportedStart),
 				Optional.of("/usr/local/bin/claude"), Optional.empty(), Optional.of(arguments)));
-		});
+		}, platform);
 	}
 
 	/**

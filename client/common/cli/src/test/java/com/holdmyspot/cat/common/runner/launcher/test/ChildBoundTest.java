@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
@@ -433,5 +434,83 @@ public final class ChildBoundTest
 				"write " + state + ", so they could change what CAT reads there. Remove " + state + " from the paths " +
 				"that the session's sandbox lets its commands write, then start a new session.");
 		}
+	}
+
+	/**
+	 * Verifies that the child of a parent without a sandbox gets none, and is not refused a write or host that no
+	 * parent policy allows, since its commands reach no more than the parent's already do.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void givesUnsandboxedParentsChildNoSandbox() throws IOException
+	{
+		// Requirement: R-I43
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-bound-")).toRealPath();
+			Path sessionFolder = Files.createDirectory(root.resolve("session"));
+			Path outside = Files.createDirectory(root.resolve("outside"));
+			FakeParentPolicySource parent = parent(ParentPolicy.UNSANDBOXED);
+			parent.select(Map.of("windows.sandbox", "elevated"));
+			ChildBound bound = new ChildBound(parent);
+
+			ChildPolicy child = bound.bound("codex", sessionFolder, List.of(),
+				new ExtraPermissions(List.of(outside), Set.of("other.example")), Optional.empty(), needing(List.of()));
+
+			requireThat(child.sandboxed(), "sandboxed").isFalse();
+			requireThat(child.sandboxSelection(), "sandboxSelection").isEmpty();
+			requireThat(child.asParentPolicy().sandboxed(), "asParentPolicy().sandboxed()").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that the child of a sandboxed parent is sandboxed, bounded by the parent's policy as before, and takes
+	 * the parent's selection of its harness's sandbox.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void givesSandboxedParentsChildParentsSandbox() throws IOException
+	{
+		// Requirement: R-I42
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-bound-")).toRealPath();
+			Path sessionFolder = Files.createDirectory(root.resolve("session"));
+			FakeParentPolicySource parent = parent(sandboxed(List.of(root), List.of(), Set.of()));
+			Map<String, String> selection = Map.of("windows.sandbox", "mxc", "windows.allow_mxc", "true");
+			parent.select(selection);
+			ChildBound bound = new ChildBound(parent);
+
+			ChildPolicy child = bound.bound("codex", sessionFolder, List.of(), ExtraPermissions.NONE, Optional.empty(),
+				needing(List.of()));
+
+			requireThat(child.sandboxed(), "sandboxed").isTrue();
+			requireThat(child.writeRoots(), "writeRoots").isEqualTo(List.of(sessionFolder));
+			requireThat(child.sandboxSelection(), "sandboxSelection").isEqualTo(selection);
+		}
+	}
+
+	/**
+	 * Verifies that the bound says why prompt optimization cannot run from a parent: none for a sandboxed parent, the
+	 * harness's message for a parent without a sandbox, and the harness's report for a parent whose sandbox failed to
+	 * start.
+	 */
+	@Test
+	public void saysWhetherParentHasSandbox() throws SessionRefusedException
+	{
+		// Requirement: R-I46
+		FakeParentPolicySource sandboxedParent = parent(sandboxed(List.of(Path.of("/project").toAbsolutePath()),
+			List.of(), Set.of()));
+		requireThat(new ChildBound(sandboxedParent).sandboxRefusal(Optional.empty()), "sandboxed").isEmpty();
+
+		FakeParentPolicySource unsandboxedParent = parent(ParentPolicy.UNSANDBOXED);
+		requireThat(new ChildBound(unsandboxedParent).sandboxRefusal(Optional.empty()), "unsandboxed").
+			isEqualTo(Optional.of(unsandboxedParent.sandboxAbsence()));
+
+		sandboxedParent.failSandbox("Sandbox is enabled but failed to initialize: no socket.");
+		requireThat(new ChildBound(sandboxedParent).sandboxRefusal(Optional.empty()).orElseThrow(), "failed").
+			contains("Sandbox is enabled but failed to initialize: no socket.");
 	}
 }

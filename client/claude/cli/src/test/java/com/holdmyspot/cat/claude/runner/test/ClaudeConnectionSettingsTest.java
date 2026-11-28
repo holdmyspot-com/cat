@@ -924,6 +924,42 @@ public final class ClaudeConnectionSettingsTest
 	}
 
 	/**
+	 * Verifies that a session whose parent has no sandbox runs without one: its settings turn Claude Code's sandbox
+	 * off, allow Bash by a permission rule, since no one answers an approval prompt, and keep every tool, and its
+	 * policy, which bounds the sessions that it requests, says that it has no sandbox. A write or host that its parent's
+	 * policy lacks is not refused.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void unsandboxedParentsChildRunsWithoutSandbox() throws IOException
+	{
+		// Requirement: R-I43
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-unsandboxed-child-")).toRealPath();
+			Path sessionFolder = Files.createDirectories(root.resolve("session"));
+			Path outside = Files.createDirectories(root.resolve("outside"));
+			Path source = Files.writeString(root.resolve("settings.json"), "{}");
+			Path destination = root.resolve("isolated/settings.json");
+			ChildPolicy bound = new ChildPolicy(List.of(sessionFolder), List.of(), List.of(), List.of(),
+				Set.of("api.example"), false).unsandboxed();
+
+			ChildPolicy effective = ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination,
+				sessionFolder.resolve("claude"), sessionFolder.resolve("home"), List.of(outside), sessionFolder, List.of(),
+				"", null, null, sessionFolder, bound, ExtraPermissions.NONE, "unlisted.example");
+
+			JsonNode settings = scope.json().readTree(Files.readString(destination));
+			requireThat(settings.path("sandbox").path("enabled").isBoolean(), "enabledIsBoolean").isTrue();
+			requireThat(settings.path("sandbox").path("enabled").asBoolean(), "enabled").isFalse();
+			requireThat(strings(settings.path("permissions").path("allow")), "allow").contains("Bash");
+			requireThat(settings.path("permissions").path("deny").toString(), "deny").doesNotContain("mcp__");
+			requireThat(effective.sandboxed(), "sandboxed").isFalse();
+		}
+	}
+
+	/**
 	 * Verifies that when the bound denies reading a folder that holds the session's own write root, such as the
 	 * project that holds the session folder of a session, the Read rules deny the rest of that folder
 	 * but not the write root, so the session's file tools can write there. A read that the session's own needs deny

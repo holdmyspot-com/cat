@@ -781,16 +781,15 @@ public final class CodexRunnerCliTest
 	}
 
 	/**
-	 * Verifies that on native Windows, where Codex's sandbox failed CAT's checks, the launcher refuses every launch
-	 * that starts a Codex session, forwarded or not, with a reason that names the checks that failed, each sandbox
-	 * implementation and what happened under it, and directs the user to WSL2.
+	 * Verifies that on native Windows the launcher refuses no launch that starts a Codex session for the platform
+	 * alone, forwarded or not: every Codex sandbox implementation there counts as a sandbox.
 	 *
 	 * @param platform the native Windows platform
 	 */
 	@Test(dataProvider = "nativeWindows")
-	public void refusesSessionOnNativeWindows(Platform platform)
+	public void startsSessionOnNativeWindows(Platform platform)
 	{
-		// Requirement: R-I32
+		// Requirement: R-I44
 		for (Map<String, String> environment : List.of(Map.<String, String>of(),
 			Map.of(SessionRequestAccess.REQUESTS_VARIABLE, "requests")))
 		{
@@ -799,12 +798,8 @@ public final class CodexRunnerCliTest
 			boolean refused = CodexRunnerCli.refusesLaunch(new String[]{"serve", "--project", "project", "--model",
 				"gpt-6-luna", "--effort", "low"}, WORKING_DIRECTORY, environment, platform, new PrintWriter(errors, true));
 
-			requireThat(refused, "refused").isTrue();
-			requireThat(errors.toString(), "errors").contains("Codex").
-				contains("writes, reads and network access").contains("unelevated").
-				contains("refuses to start a session whose policy denies reads").contains("elevated").
-				contains("rejected every command").contains("hard link").contains("public hosts").contains("WSL2").
-				contains("wsl --install");
+			requireThat(refused, "refused").isFalse();
+			requireThat(errors.toString(), "errors").isEmpty();
 		}
 	}
 
@@ -1347,8 +1342,9 @@ public final class CodexRunnerCliTest
 	private static Path policyBound(Path root) throws IOException
 	{
 		return Files.writeString(root.resolve("policy-bound.json"), """
-			{"format_version": 1, "write_roots": [%s], "write_denials": [], "read_denials": [],
-			 "read_reallowances": [], "hosts": ["api.openai.com"], "allow_local_binding": false}
+			{"format_version": 2, "sandboxed": true, "write_roots": [%s], "write_denials": [], "read_denials": [],
+			 "read_reallowances": [], "hosts": ["api.openai.com"], "allow_local_binding": false,
+			 "sandbox_selection": {}}
 			""".formatted(JsonMapper.builder().build().writeValueAsString(root.toAbsolutePath().toString())));
 	}
 
@@ -1921,9 +1917,10 @@ public final class CodexRunnerCliTest
 		for (Path denial : readDenials)
 			denials.add(json.writeValueAsString(denial.toString()));
 		Path bound = Files.writeString(root.resolve("authentication-bound.json"), """
-			{"format_version": 1, "write_roots": [%s], "write_denials": [], "read_denials": [%s],
+			{"format_version": 2, "sandboxed": true, "write_roots": [%s], "write_denials": [], "read_denials": [%s],
 			 "read_reallowances": [], "hosts": ["api.openai.com", "chatgpt.com", "gateway.example"],
-			 "allow_local_binding": false}
+			 "allow_local_binding": false,
+			 "sandbox_selection": {}}
 			""".formatted(json.writeValueAsString(root.toString()), String.join(", ", denials)));
 		List<String> args = new ArrayList<>(List.of("serve", "--project", project.toString(), "--results",
 			root.resolve("results").toString(), "--model", "gpt-6-luna", "--effort", "low",

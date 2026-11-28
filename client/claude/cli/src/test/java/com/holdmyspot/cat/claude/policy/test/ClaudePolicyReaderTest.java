@@ -84,6 +84,34 @@ public final class ClaudePolicyReaderTest
 	}
 
 	/**
+	 * Verifies that a session on native Windows, where Claude Code has no sandbox, is an unsandboxed parent even when
+	 * its settings turn the sandbox on, and the same settings on Linux and macOS give a sandboxed one.
+	 *
+	 * @throws IOException   if the fixture cannot be created
+	 * @throws PolicyRefusal if the policy is refused
+	 */
+	@Test
+	public void nativeWindowsSessionIsUnsandboxed() throws IOException, PolicyRefusal
+	{
+		// Requirement: R-I42
+		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
+		{
+			fixture.userSettings(ENABLED);
+			for (Platform platform : Platform.values())
+			{
+				ParentPolicy policy = fixture.reader(platform).read(fixture.session()).policy();
+				if (platform.isWindows())
+				{
+					requireThat(policy, "policy").withContext(platform, "platform").
+						isEqualTo(ParentPolicy.UNSANDBOXED);
+				}
+				else
+					requireThat(policy.sandboxed(), "sandboxed").withContext(platform, "platform").isTrue();
+			}
+		}
+	}
+
+	/**
 	 * Verifies that a setting that more than one layer gives takes the value of the layer that Claude Code ranks
 	 * highest: managed settings, whose later drop-in files override earlier ones, then {@code --settings}, then
 	 * local, project and user settings.
@@ -645,7 +673,8 @@ public final class ClaudePolicyReaderTest
 			String settings = """
 				{"sandbox": {"enabled": true, "filesystem": {"allowWrite": ["%s"]}}}""";
 			fixture.userSettings(settings.formatted(json(startupOnly)));
-			ChildBound bound = new ChildBound(ClaudeRequestServerCli.policySource(fixture.reader(), fixture::session));
+			ChildBound bound = new ChildBound(ClaudeRequestServerCli.policySource(fixture.reader(), fixture::session,
+				fixture.root.resolve("transcript.jsonl")));
 			requireThat(bound.parentPolicy(Optional.empty()).mayWrite(startupOnly), "startup").isTrue();
 			fixture.userSettings(settings.formatted(json(currentOnly)));
 

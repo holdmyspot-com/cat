@@ -262,6 +262,69 @@ public final class CodexPolicyReaderTest
 	}
 
 	/**
+	 * Verifies that a Codex session that selects any Windows sandbox implementation, {@code elevated},
+	 * {@code unelevated} or {@code mxc}, is read as sandboxed with the policy that its configuration gives, as on
+	 * Linux.
+	 */
+	@Test
+	public void everyWindowsImplementationIsSandboxed() throws IOException, PolicyRefusal
+	{
+		// Requirement: R-I45
+		for (String implementation : List.of("elevated", "unelevated", "mxc"))
+		{
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory(
+					"codex-policy")));
+				session.write("home/.codex/config.toml", LEGACY_WITH_NETWORK + """
+					[windows]
+					sandbox = "%s"
+					""".formatted(implementation));
+
+				ParentPolicy policy = session.read("exec", "summarize");
+
+				requireThat(policy.sandboxed(), "sandboxed").withContext(implementation, "implementation").isTrue();
+				requireThat(policy.writeRoots(), "writeRoots").withContext(implementation, "implementation").
+					contains(session.project());
+			}
+		}
+	}
+
+	/**
+	 * Verifies that the Windows sandbox selection of a session is the {@code [windows] sandbox},
+	 * {@code [windows] allow_mxc} and {@code features.prefer_mxc} that win for its launch, from its user configuration,
+	 * the profile that {@code -p} selects and its {@code -c} overrides, and holds no key that none of them sets.
+	 */
+	@Test
+	public void readsWinningSandboxSelection() throws IOException, PolicyRefusal
+	{
+		// Requirement: R-I42
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
+			requireThat(session.readSandboxSelection("exec", "summarize"), "none").isEmpty();
+			session.write("home/.codex/config.toml", LEGACY_WITH_NETWORK + """
+				[windows]
+				sandbox = "elevated"
+				allow_mxc = true
+				sandbox_private_desktop = false
+				""");
+			session.write("home/.codex/work.config.toml", """
+				[windows]
+				sandbox = "unelevated"
+				""");
+
+			requireThat(session.readSandboxSelection("exec", "summarize"), "home").
+				isEqualTo(Map.of("windows.sandbox", "elevated", "windows.allow_mxc", "true"));
+			requireThat(session.readSandboxSelection("-p", "work"), "profile").
+				isEqualTo(Map.of("windows.sandbox", "unelevated", "windows.allow_mxc", "true"));
+			requireThat(session.readSandboxSelection("-p", "work", "-c", "windows.sandbox=\"mxc\"", "-c",
+				"features.prefer_mxc=false"), "overrides").isEqualTo(Map.of("windows.sandbox", "mxc",
+				"windows.allow_mxc", "true", "features.prefer_mxc", "false"));
+		}
+	}
+
+	/**
 	 * Verifies that {@code -p} layers the named profile file over the user's configuration.
 	 */
 	@Test

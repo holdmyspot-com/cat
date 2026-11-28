@@ -31,6 +31,7 @@ import com.holdmyspot.cat.common.runner.CheckProgramClient;
 import com.holdmyspot.cat.common.runner.RequestServer;
 import com.holdmyspot.cat.common.runner.RequestedRunner;
 import com.holdmyspot.cat.common.runner.RuntimeBinding;
+import com.holdmyspot.cat.common.runner.SandboxCheckClient;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
 import com.holdmyspot.cat.common.runner.WorktreeRequest;
 import com.holdmyspot.cat.common.runner.WorktreeRequestClient;
@@ -1486,6 +1487,131 @@ public final class RequestServerTest
 				requireThat(response.path("reason").asString(), "reason").isEqualTo("ended");
 				requireThat(server.end(), "exit").isEqualTo(0);
 				requireThat(child.get().isAlive(), "childAlive").isFalse();
+			}
+		}
+	}
+
+	/**
+	 * Verifies that the server tells a prompt optimizer whether its session has a sandbox in effect: no refusal for a
+	 * sandboxed session, the harness's message for a session without one, and the harness's report for a session whose
+	 * sandbox failed to start; it leaves nothing in the session's responses.
+	 *
+	 * @throws IOException          if the fixture cannot be created or a request cannot be served
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = 60_000)
+	public void answersSandboxCheck() throws IOException, InterruptedException
+	{
+		// Requirement: R-I46
+		try (Fixture fixture = new Fixture())
+		{
+			try (Fixture.Running server = fixture.start())
+			{
+				SandboxCheckClient client = new SandboxCheckClient(
+					() -> Optional.of(new ServerChannel(server.requests(), server.exit())), fixture.json, Thread::yield);
+
+				requireThat(client.refusal(), "sandboxed").isEmpty();
+
+				fixture.policy.failSandbox("Sandbox is required but failed to initialize: no socket.");
+				requireThat(client.refusal().orElseThrow(), "failed").
+					contains("Sandbox is required but failed to initialize: no socket.");
+
+				fixture.policy.allow(ParentPolicy.UNSANDBOXED);
+				requireThat(client.refusal(), "unsandboxed").isEqualTo(Optional.of(fixture.policy.sandboxAbsence()));
+				try (Stream<Path> responses = Files.list(fixture.sessionDirectory().resolve("responses")))
+				{
+					requireThat(responses.toList(), "responses").isEmpty();
+				}
+				fixture.processes.end(fixture.harness);
+				requireThat(server.end(), "exit").isEqualTo(0);
+			}
+		}
+	}
+
+	/**
+	 * Verifies that the server refuses each launch that a prompt optimizer requests while its session has no sandbox,
+	 * with the harness's message, and starts no session for it.
+	 *
+	 * @throws IOException          if the fixture cannot be created or a request cannot be served
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = 60_000)
+	public void refusesOptimizerLaunchWithoutSandbox() throws IOException, InterruptedException
+	{
+		// Requirement: R-I46
+		try (Fixture fixture = new Fixture())
+		{
+			fixture.policy.allow(ParentPolicy.UNSANDBOXED);
+			try (Fixture.Running server = fixture.start())
+			{
+				ByteArrayOutputStream output = new ByteArrayOutputStream();
+				StringWriter errors = new StringWriter();
+				int status = SessionRequestForwarder.forward("claude", new String[]{"--project",
+						fixture.project.toString(), "--model", "haiku", "--effort", "low",
+						RunnerArguments.OPTIMIZER_SESSION_OPTION},
+					new StringReader("{\"type\":\"turn\",\"prompt\":\"hello\"}\n{\"type\":\"complete\"}\n"),
+					server.requests(), server.pause(), output, new PrintWriter(errors, true));
+
+				requireThat(status, "status").isNotEqualTo(0);
+				requireThat(errors.toString(), "errors").contains(fixture.policy.sandboxAbsence());
+				fixture.processes.end(fixture.harness);
+				requireThat(server.end(), "exit").isEqualTo(0);
+			}
+		}
+	}
+
+	/**
+	 * Verifies, through the server, that the child of a session without a sandbox starts without one even when it
+	 * needs a write outside every folder of the session's policy, and that the child of a sandboxed session is bounded
+	 * by the intersection of the session's policy and its needs.
+	 *
+	 * @throws IOException          if the fixture cannot be created or a request cannot be served
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = 60_000)
+	public void givesChildParentsSandboxType() throws IOException, InterruptedException
+	{
+		// Requirement: R-I42, R-I43
+		try (Fixture fixture = new Fixture())
+		{
+			Path outside = Files.createDirectory(fixture.root.resolve("outside"));
+			Path permissions = Files.writeString(fixture.root.resolve("permissions.json"),
+				"{\"format_version\":1,\"writes\":[\"" + outside.toString().replace("\\", "\\\\") + "\"],\"hosts\":[]}");
+			AtomicReference<ChildPolicy> bounds = new AtomicReference<>();
+			AtomicReference<FakeHarnessCli> child = new AtomicReference<>();
+			fixture.child = arguments ->
+			{
+				bounds.set(PolicyBoundFile.read(fixture.json, Path.of(option(arguments, PolicyBoundFile.OPTION))));
+				Files.writeString(Path.of(option(arguments, "--output")), "{\"type\":\"turn_completed\"}\n");
+				Files.writeString(Path.of(option(arguments, "--receipt")), "{}");
+				FakeHarnessCli process = new FakeHarnessCli(exitOnCompleteRecord(fixture.json, child));
+				child.set(process);
+				return process;
+			};
+			fixture.policy.allow(ParentPolicy.UNSANDBOXED);
+			try (Fixture.Running server = fixture.start())
+			{
+				StringWriter errors = new StringWriter();
+				int status = SessionRequestForwarder.forward("claude", new String[]{"--project",
+						fixture.project.toString(), "--model", "haiku", "--effort", "low", "--extra-permissions",
+						permissions.toString()},
+					new StringReader("{\"type\":\"turn\",\"prompt\":\"hello\"}\n{\"type\":\"complete\"}\n"),
+					server.requests(), server.pause(), new ByteArrayOutputStream(), new PrintWriter(errors, true));
+				requireThat(status, "unsandboxedStatus").withContext(errors, "errors").isEqualTo(0);
+				requireThat(bounds.get().sandboxed(), "unsandboxed").isFalse();
+
+				fixture.policy.allow(fixture.policy(List.of(fixture.project)));
+				errors = new StringWriter();
+				status = SessionRequestForwarder.forward("claude", new String[]{"--project",
+						fixture.project.toString(), "--model", "haiku", "--effort", "low"},
+					new StringReader("{\"type\":\"turn\",\"prompt\":\"hello\"}\n{\"type\":\"complete\"}\n"),
+					server.requests(), server.pause(), new ByteArrayOutputStream(), new PrintWriter(errors, true));
+				requireThat(status, "sandboxedStatus").withContext(errors, "errors").isEqualTo(0);
+				ChildPolicy bound = bounds.get();
+				requireThat(bound.sandboxed(), "sandboxed").isTrue();
+				requireThat(bound.hosts(), "hosts").isEqualTo(Set.of(MODEL_HOST));
+				fixture.processes.end(fixture.harness);
+				requireThat(server.end(), "exit").isEqualTo(0);
 			}
 		}
 	}

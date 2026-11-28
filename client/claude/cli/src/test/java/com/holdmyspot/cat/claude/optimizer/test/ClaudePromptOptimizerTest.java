@@ -167,14 +167,15 @@ public final class ClaudePromptOptimizerTest
 	}
 
 	/**
-	 * Verifies that on native Windows, where CAT does not start Claude trials, {@code start} is refused with the reason,
-	 * which names what is missing and directs the user to WSL2.
+	 * Verifies that on native Windows, where Claude Code has no sandbox for the session or its trials, {@code start} is
+	 * refused with the reason, which names what is missing and directs the user to WSL2 or Codex.
 	 *
 	 * @throws IOException if a file cannot be written
 	 */
 	@Test
 	public void startRefusedOnNativeWindows() throws IOException
 	{
+		// Requirement: R-I46
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
 			Setup setup = setup(scope);
@@ -186,7 +187,7 @@ public final class ClaudePromptOptimizerTest
 			JsonNode json = JsonMapper.builder().build().readTree(output.toString());
 			requireThat(json.get("status").asString(), "status").isEqualTo("refused");
 			requireThat(json.get("message").asString(), "message").contains("Claude Code has no sandbox on native Windows").
-				contains("WSL2");
+				contains("WSL2").contains("Codex");
 		}
 	}
 

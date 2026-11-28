@@ -663,59 +663,131 @@ public final class CodexConnectionConfigurationTest
 	}
 
 	/**
-	 * Verifies that a Windows session runs in the Windows sandbox implementation that its parent's configuration
-	 * selects, and that its configuration no longer asks Codex to prefer the MXC sandbox, which CAT has not verified.
+	 * Verifies that a Windows session gets the Windows sandbox selection that its bound carries from its parent, the
+	 * {@code [windows] sandbox}, {@code [windows] allow_mxc} and {@code features.prefer_mxc} that win for the parent's
+	 * launch, and none that the parent lacks, whatever the runner's own configuration selects.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
 	@Test
-	public void windowsCarriesParentSandbox() throws IOException
+	public void windowsCarriesParentSelection() throws IOException
 	{
+		// Requirement: R-I42
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-windows-sandbox-"));
-			for (String implementation : List.of("elevated", "unelevated"))
+			Path source = Files.writeString(root.resolve("runner.toml"), """
+				model = "parent-model"
+				[windows]
+				sandbox = "elevated"
+				sandbox_private_desktop = false
+				""");
+			ChildPolicy needs = ChildPolicy.intersect(ParentPolicy.UNSANDBOXED, new ChildNeeds(root, List.of(),
+				List.of(), Set.of()));
+			List<Map<String, String>> selections = List.of(
+				Map.of("windows.sandbox", "mxc"),
+				Map.of("windows.sandbox", "unelevated", "windows.allow_mxc", "true", "features.prefer_mxc", "false"),
+				Map.of("features.prefer_mxc", "true"));
+			for (int index = 0; index < selections.size(); ++index)
 			{
-				Path source = Files.writeString(root.resolve(implementation + ".toml"), """
-					model = "parent-model"
-					[windows]
-					sandbox = "%s"
-					sandbox_private_desktop = false
-					""".formatted(implementation));
-				Path destination = root.resolve(implementation + "/config.toml");
+				Map<String, String> selection = selections.get(index);
+				Path destination = root.resolve(index + "/config.toml");
 
 				CodexConnectionConfiguration.copy(source, destination, root.resolve("project"),
-					HarnessDependencyCaches.NONE, root.resolve("tmp"), 0, Platform.WINDOWS_X64);
+					HarnessDependencyCaches.NONE, root.resolve("tmp"), 0, null, Platform.WINDOWS_X64,
+					CodexParentMultiAgentState.NONE, needs.withSandboxSelection(selection));
 
-				String configuration = Files.readString(destination);
-				JsonNode windows = TomlMapper.builder().build().readTree(configuration).path("windows");
-				requireThat(windows.path("sandbox").asString(""), "sandbox").isEqualTo(implementation);
-				requireThat(windows.size(), "windowsEntries").isEqualTo(1);
-				requireThat(configuration, "configuration").doesNotContain("prefer_mxc");
+				JsonNode configuration = TomlMapper.builder().build().readTree(Files.readString(destination));
+				JsonNode windows = configuration.path("windows");
+				requireThat(windows.path("sandbox").isMissingNode(), "noSandbox").withContext(selection, "selection").
+					isEqualTo(!selection.containsKey("windows.sandbox"));
+				if (selection.containsKey("windows.sandbox"))
+				{
+					requireThat(windows.path("sandbox").asString(), "sandbox").
+						isEqualTo(selection.get("windows.sandbox"));
+				}
+				requireThat(windows.has("sandbox_private_desktop"), "privateDesktop").isFalse();
+				requireThat(windows.path("allow_mxc").isBoolean(), "allowMxc").withContext(selection, "selection").
+					isEqualTo(selection.containsKey("windows.allow_mxc"));
+				requireThat(configuration.path("features").path("prefer_mxc").isBoolean(), "preferMxc").
+					withContext(selection, "selection").isEqualTo(selection.containsKey("features.prefer_mxc"));
+				if (selection.containsKey("features.prefer_mxc"))
+				{
+					requireThat(configuration.path("features").path("prefer_mxc").asBoolean(), "preferMxcValue").
+						isEqualTo(Boolean.parseBoolean(selection.get("features.prefer_mxc")));
+				}
 			}
 		}
 	}
 
 	/**
-	 * Verifies that a Windows session whose parent's configuration selects no Windows sandbox implementation sets none
-	 * either, so that Codex takes the machine-wide configuration's value for it, as it does for the parent.
+	 * Verifies that a Windows session whose parent selects no Windows sandbox implementation sets none either, even
+	 * when the runner's own configuration selects one, so that Codex takes the machine-wide configuration's value for
+	 * it, as it does for the parent.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
 	@Test
-	public void windowsWithoutParentSandboxSetsNone() throws IOException
+	public void windowsWithoutParentSelectionSetsNone() throws IOException
 	{
+		// Requirement: R-I42
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-windows-sandbox-"));
+			Path source = Files.writeString(root.resolve("runner.toml"), """
+				[windows]
+				sandbox = "elevated"
+				""");
 			Path destination = root.resolve("isolated/config.toml");
 
-			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, root.resolve("project"),
+			CodexConnectionConfiguration.copy(source, destination, root.resolve("project"),
 				HarnessDependencyCaches.NONE, root.resolve("tmp"), 0, Platform.WINDOWS_X64);
 
 			String configuration = Files.readString(destination);
 			requireThat(TomlMapper.builder().build().readTree(configuration).has("windows"), "windows").isFalse();
 			requireThat(configuration, "configuration").doesNotContain("prefer_mxc");
+		}
+	}
+
+	/**
+	 * Verifies that a session whose parent has no sandbox runs with Codex's sandbox off, on every platform: its
+	 * configuration selects {@code danger-full-access} and names no permission profile, no network proxy and no
+	 * Windows sandbox implementation.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void unsandboxedParentsChildRunsWithoutSandbox() throws IOException
+	{
+		// Requirement: R-I43
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-unsandboxed-child-"));
+			Path source = Files.writeString(root.resolve("runner.toml"), """
+				[windows]
+				sandbox = "elevated"
+				""");
+			ChildPolicy policy = ChildPolicy.intersect(ParentPolicy.UNSANDBOXED, new ChildNeeds(root, List.of(),
+				List.of(), Set.of("api.openai.com"))).withSandboxSelection(Map.of("windows.sandbox", "mxc")).unsandboxed();
+			for (Platform platform : Platform.values())
+			{
+				Path destination = root.resolve(platform.name() + "/config.toml");
+
+				CodexConnectionConfiguration.copy(source, destination, root.resolve("project"),
+					HarnessDependencyCaches.NONE, root.resolve("tmp"), 0, null, platform, CodexParentMultiAgentState.NONE,
+					policy);
+
+				JsonNode configuration = TomlMapper.builder().build().readTree(Files.readString(destination));
+				requireThat(configuration.path("sandbox_mode").asString(""), "sandboxMode").
+					withContext(platform, "platform").isEqualTo("danger-full-access");
+				requireThat(configuration.has("default_permissions"), "defaultPermissions").
+					withContext(platform, "platform").isFalse();
+				requireThat(configuration.path("permissions").has("cat-runner"), "runnerProfile").
+					withContext(platform, "platform").isFalse();
+				requireThat(configuration.path("features").has("network_proxy"), "networkProxy").
+					withContext(platform, "platform").isFalse();
+				requireThat(configuration.has("windows"), "windows").withContext(platform, "platform").isFalse();
+			}
 		}
 	}
 
