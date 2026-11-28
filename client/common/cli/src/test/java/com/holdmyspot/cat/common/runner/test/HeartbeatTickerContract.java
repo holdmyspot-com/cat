@@ -72,13 +72,16 @@ public final class HeartbeatTickerContract
 				awaitPeriod("period before close", closedRuns, openRuns);
 			}
 
+			// A ticker whose periods pass on their own has accrued runs that a fresh period must not be credited with
+			openRuns.drainPermits();
 			// A run of the closed action that had begun when its handle closed ends within these periods
 			awaitPeriod("first period after close", openRuns);
 			awaitPeriod("second period after close", openRuns);
-			int runsAfterClose = closedRuns.availablePermits();
+			closedRuns.drainPermits();
+			openRuns.drainPermits();
 			awaitPeriod("third period after close", openRuns);
 			awaitPeriod("fourth period after close", openRuns);
-			requireThat(closedRuns.availablePermits(), "closedRuns").isEqualTo(runsAfterClose);
+			requireThat(closedRuns.availablePermits(), "closedRuns").isEqualTo(0);
 		}
 	}
 
@@ -105,12 +108,15 @@ public final class HeartbeatTickerContract
 				awaitPeriod("first period after one handle closes", actionRuns, periodSignals);
 				awaitPeriod("second period after one handle closes", actionRuns, periodSignals);
 			}
+			// A ticker whose periods pass on their own has accrued signals that a fresh period must not be credited with
+			periodSignals.drainPermits();
 			awaitPeriod("settling after the final handle closes", periodSignals);
+			actionRuns.drainPermits();
+			periodSignals.drainPermits();
 			awaitPeriod("first period after the final handle closes", periodSignals);
-			int runsAfterClose = actionRuns.availablePermits();
 			awaitPeriod("second period after the final handle closes", periodSignals);
 			awaitPeriod("third period after the final handle closes", periodSignals);
-			requireThat(actionRuns.availablePermits(), "actionRuns").isEqualTo(runsAfterClose);
+			requireThat(actionRuns.availablePermits(), "actionRuns").isEqualTo(0);
 		}
 	}
 
