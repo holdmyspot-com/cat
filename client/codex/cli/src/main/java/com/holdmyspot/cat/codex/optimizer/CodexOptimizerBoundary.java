@@ -2,6 +2,7 @@ package com.holdmyspot.cat.codex.optimizer;
 
 import com.holdmyspot.cat.common.optimizer.cli.Command;
 import com.holdmyspot.cat.common.runner.RequestServer;
+import com.holdmyspot.cat.common.runner.launcher.ProcessIdentity;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import java.io.IOException;
@@ -262,6 +263,19 @@ public final class CodexOptimizerBoundary
 	 */
 	ParentPolicy hookPolicy() throws IOException, PolicyRefusal
 	{
+		return hookOwner().policy();
+	}
+
+	/**
+	 * Reads the authenticated session's current protected policy, the settings that select its Windows sandbox
+	 * implementation and its harness process before starting a hook.
+	 *
+	 * @return the owning session's hook settings
+	 * @throws IOException if the owner or its policy cannot be read or validated
+	 * @throws PolicyRefusal if the current thread's policy inputs are not trusted
+	 */
+	HookOwner hookOwner() throws IOException, PolicyRefusal
+	{
 		RequestServer.Session owner = session;
 		if (owner == null)
 			owner = sessions.find();
@@ -269,6 +283,18 @@ public final class CodexOptimizerBoundary
 		if (validatedPolicy != null)
 			result = validatedPolicy.intersect(result);
 		validateOwner(owner, result);
-		return result;
+		return new HookOwner(result, owner.policy().sandboxSelection(owner.askingThread()), owner.harness());
+	}
+
+	/**
+	 * The owning session's settings for a hook's sandbox.
+	 *
+	 * @param policy           the owner's command policy
+	 * @param sandboxSelection the owner's settings that select its Windows sandbox implementation, by dotted setting
+	 *                         name
+	 * @param harness          the owner's harness process
+	 */
+	record HookOwner(ParentPolicy policy, Map<String, String> sandboxSelection, ProcessIdentity harness)
+	{
 	}
 }

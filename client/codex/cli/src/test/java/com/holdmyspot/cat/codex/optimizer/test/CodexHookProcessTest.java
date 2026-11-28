@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import org.testng.SkipException;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
@@ -33,6 +34,10 @@ import tools.jackson.databind.json.JsonMapper;
 public final class CodexHookProcessTest
 {
 	private static final JsonMapper JSON = JsonMapper.builder().build();
+	/**
+	 * The variable that names a POSIX hook's home folder, which Codex hooks also receive on Windows.
+	 */
+	private static final String HOME = Platform.LINUX_X64.homeVariable();
 	private static final List<String> HOOK = List.of("hook-program", "--flag", "a \"quoted\" value");
 
 	/**
@@ -67,14 +72,14 @@ public final class CodexHookProcessTest
 	 * @throws PolicyRefusal if the owner could replace the executable
 	 */
 	@Test
-	public void windowsHookRunsUnderTheOwnersSandboxSelection() throws IOException, PolicyRefusal
+	public void windowsHookRunsUnderOwnersSelection() throws IOException, PolicyRefusal
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = new Fixture(cleanup);
 			ProcessBuilder builder = fixture.builder();
 			builder.environment().put("PATH", "C:\\Tools;C:\\Windows\\System32");
-			builder.environment().put("HOME", "C:\\Users\\owner");
+			builder.environment().put(HOME, "C:\\Users\\owner");
 			builder.environment().remove("CODEX_HOME");
 			Map<String, String> selection = Map.of("windows.sandbox", "elevated", "windows.allow_mxc", "true");
 
@@ -102,7 +107,7 @@ public final class CodexHookProcessTest
 			requireThat(builder.environment().get("PATH"), "PATH").isEqualTo("C:\\Tools;C:\\Windows\\System32");
 			Path sandboxHome = Path.of(builder.environment().get("CODEX_HOME"));
 			requireThat(sandboxHome.getParent(), "sandboxHome").isEqualTo(fixture.scratch);
-			requireThat(builder.environment().get("HOME"), "HOME").isEqualTo(sandboxHome.toString());
+			requireThat(builder.environment().get(HOME), HOME).isEqualTo(sandboxHome.toString());
 		}
 	}
 
@@ -117,11 +122,12 @@ public final class CodexHookProcessTest
 	@Test(dataProvider = "platforms")
 	public void hookGetsItsVariablesFromCodex(Platform platform) throws IOException, PolicyRefusal
 	{
+		requireSearchPathOnHost(platform);
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = new Fixture(cleanup);
 			ProcessBuilder builder = fixture.builder();
-			builder.environment().put("HOME", "/home/owner");
+			builder.environment().put(HOME, "/home/owner");
 			builder.environment().put("CODEX_HOME", "/home/owner/.codex");
 			builder.environment().remove("PATH");
 
@@ -147,8 +153,9 @@ public final class CodexHookProcessTest
 	 * @throws PolicyRefusal if the owner could replace the executable
 	 */
 	@Test
-	public void linuxLauncherSearchesOnlyTheSystemFolders() throws IOException, PolicyRefusal
+	public void linuxLauncherSearchesSystemFolders() throws IOException, PolicyRefusal
 	{
+		requireSearchPathOnHost(Platform.LINUX_X64);
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = new Fixture(cleanup);
@@ -200,9 +207,12 @@ public final class CodexHookProcessTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = new Fixture(cleanup);
-			for (CodexHookProcess.Sandbox sandbox : List.of(
-				fixture.sandbox(Platform.WINDOWS_X64, Map.of("windows.sandbox", "elevated")),
-				fixture.sandbox(Platform.LINUX_X64, Map.of("windows.sandbox", "unelevated"))))
+			List<CodexHookProcess.Sandbox> sandboxes = new ArrayList<>();
+			sandboxes.add(fixture.sandbox(Platform.WINDOWS_X64, Map.of("windows.sandbox", "elevated")));
+			// The Linux launcher's search path exists only on a POSIX host
+			if (!Platform.current().isWindows())
+				sandboxes.add(fixture.sandbox(Platform.LINUX_X64, Map.of("windows.sandbox", "unelevated")));
+			for (CodexHookProcess.Sandbox sandbox : sandboxes)
 			{
 				ProcessBuilder builder = fixture.builder();
 				CodexHookProcess.prepare(builder, fixture.scratch, Optional.empty(), sandbox,
@@ -220,7 +230,7 @@ public final class CodexHookProcessTest
 	 * @throws IOException if the fixture cannot be created
 	 */
 	@Test
-	public void refusesAWindowsExecutableFolderTheOwnerCanWrite() throws IOException
+	public void refusesWritableWindowsCodexFolder() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -253,7 +263,7 @@ public final class CodexHookProcessTest
 	 * Verifies that a process that took the owner's identifier after the owner ended does not supply the executable.
 	 */
 	@Test
-	public void refusesAnotherProcessWithTheOwnersIdentifier()
+	public void refusesReusedOwnerProcessId()
 	{
 		ProcessIdentity owner = new ProcessIdentity(42, "started");
 		IOException failure = expectThrows(IOException.class, () -> CodexHookProcess.ownerExecutable(
@@ -261,6 +271,18 @@ public final class CodexHookProcessTest
 				Optional.of("C:\\other.exe"), Optional.empty(), Optional.empty())), owner));
 
 		requireThat(failure.getMessage(), "message").contains("Codex");
+	}
+
+	/**
+	 * Skips a case whose platform searches {@code /usr/bin:/bin}, which a Windows host lacks.
+	 *
+	 * @param platform the platform that the case confines a hook on
+	 */
+	private static void requireSearchPathOnHost(Platform platform)
+	{
+		if (!platform.isWindows() && Platform.current().isWindows())
+			throw new SkipException("The Linux and macOS launcher's search path /usr/bin:/bin exists only on a " +
+				"POSIX host");
 	}
 
 	/**

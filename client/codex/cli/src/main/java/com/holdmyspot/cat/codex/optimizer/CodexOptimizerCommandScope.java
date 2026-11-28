@@ -194,8 +194,10 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	{
 		try
 		{
-			ParentPolicy policy = boundary.hookPolicy();
-			CodexHookProcess.prepare(builder, scratch, trialHome, environment, policy, json());
+			CodexOptimizerBoundary.HookOwner owner = boundary.hookOwner();
+			CodexHookProcess.Sandbox sandbox = CodexHookProcess.ownerSandbox(Platform.current(), environment,
+				owner.policy(), owner.sandboxSelection(), owner.harness());
+			CodexHookProcess.prepare(builder, scratch, trialHome, sandbox, owner.policy(), json());
 			return executableFiles().run(builder);
 		}
 		catch (PolicyRefusal e)

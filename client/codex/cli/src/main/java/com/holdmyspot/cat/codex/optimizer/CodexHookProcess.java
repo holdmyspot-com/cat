@@ -1,10 +1,17 @@
 package com.holdmyspot.cat.codex.optimizer;
 
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
+import com.holdmyspot.cat.codex.layout.CodexSystemFolder;
+import com.holdmyspot.cat.codex.runner.CodexSessionSandbox;
 import com.holdmyspot.cat.codex.runner.TomlStrings;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.runner.launcher.ProcessIdentity;
+import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
 import com.holdmyspot.cat.common.runner.policy.HostAccess;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
+import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 import com.holdmyspot.cat.common.runner.policy.RealPaths;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -14,12 +21,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.TreeMap;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * Starts optimizer hooks under an explicit Codex sandbox when the optimizer itself is exempt.
+ * Starts optimizer hooks under an explicit Codex sandbox when the optimizer itself is exempt. Codex gives the hook its
+ * own home and search path, so that no other program runs inside the sandbox before the hook.
  */
 public final class CodexHookProcess
 {
@@ -30,6 +39,8 @@ public final class CodexHookProcess
 		List.of(CodexOptimizerCommandScope.HOME_VARIABLE, CODEX_HOME, PATH);
 	private static final String NATIVE_PATH = "/usr/bin:/bin";
 	private static final String SANDBOX_HOME_PREFIX = "codex-hook-home-";
+	private static final String OPTION = "-c";
+	private static final String ENVIRONMENT_POLICY = "shell_environment_policy.";
 
 	/**
 	 * Prevents instantiation.
@@ -39,58 +50,103 @@ public final class CodexHookProcess
 	}
 
 	/**
-	 * Refuses a host on which CAT cannot confine a startup hook.
+	 * The native Codex executable that starts a hook's sandbox and the settings that choose its Windows
+	 * implementation.
 	 *
-	 * @param platform the host platform
-	 * @throws NullPointerException if {@code platform} is null
-	 * @throws IOException if {@code platform} is native Windows
+	 * @param platform   the platform that the hook runs on
+	 * @param executable the native Codex executable
+	 * @param selection  the owner's settings that select the Windows sandbox implementation, by dotted setting name,
+	 *                   each value as TOML would spell a string or a boolean
+	 * @param system     Codex's machine-wide folder, whose layers apply under the selection
 	 */
-	public static void requireConfinableHost(Platform platform) throws IOException
+	public record Sandbox(Platform platform, Path executable, Map<String, String> selection, CodexSystemFolder system)
 	{
-		if (platform.isWindows())
+		/**
+		 * Creates a sandbox.
+		 *
+		 * @param platform   the platform that the hook runs on
+		 * @param executable the native Codex executable
+		 * @param selection  the owner's settings that select the Windows sandbox implementation, by dotted setting
+		 *                   name, each value as TOML would spell a string or a boolean
+		 * @param system     Codex's machine-wide folder, whose layers apply under the selection
+		 * @throws NullPointerException if any of the arguments are null
+		 */
+		public Sandbox
 		{
-			throw new IOException("CAT refuses to run a startup hook of the Codex optimizer on native Windows because " +
-				"it confines the hook through /usr/bin/env under the search path /usr/bin:/bin, which Windows lacks, " +
-				"and has no Windows way to confine it. Run the prompt optimizer inside WSL2.");
+			requireThat(platform, "platform").isNotNull();
+			requireThat(executable, "executable").isNotNull();
+			requireThat(selection, "selection").isNotNull();
+			selection = Map.copyOf(selection);
+			requireThat(system, "system").isNotNull();
 		}
+	}
+
+	/**
+	 * Returns the sandbox that the owner's Codex launches for a hook. On native Windows it starts from the owner
+	 * session's own Codex executable, because an npm install puts only {@code codex.cmd} on {@code PATH}, and Java
+	 * refuses a batch-file argument that holds a quote, which the sandbox state does; elsewhere from {@code codex} on
+	 * the owner's {@code PATH}.
+	 *
+	 * @param platform         the platform that the hook runs on
+	 * @param ownerEnvironment the validated launcher's environment used to find the native executable
+	 * @param policy           the validated owner's command policy
+	 * @param selection        the owner's settings that select the Windows sandbox implementation
+	 * @param owner            the owner session's harness process
+	 * @return the sandbox
+	 * @throws IOException   if the executable cannot be found
+	 * @throws PolicyRefusal if the owner could replace the executable
+	 */
+	static Sandbox ownerSandbox(Platform platform, Map<String, String> ownerEnvironment, ParentPolicy policy,
+		Map<String, String> selection, ProcessIdentity owner) throws IOException, PolicyRefusal
+	{
+		Path selected;
+		if (platform.isWindows())
+			selected = ownerExecutable(HarnessProcesses.system(), owner);
+		else
+			selected = executable(platform, ownerEnvironment, policy, "codex");
+		return new Sandbox(platform, selected, selection, CodexSystemFolder.ofThisMachine());
+	}
+
+	/**
+	 * Returns the program of the owner session's harness process.
+	 *
+	 * @param processes the system's processes
+	 * @param owner     the owner session's harness process
+	 * @return the owner's executable
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if the owner's process has ended or its program cannot be read
+	 */
+	public static Path ownerExecutable(HarnessProcesses processes, ProcessIdentity owner) throws IOException
+	{
+		requireThat(processes, "processes").isNotNull();
+		requireThat(owner, "owner").isNotNull();
+		Optional<ProcessDescription> description = processes.find(owner.pid());
+		if (description.isEmpty() || !description.orElseThrow().start().equals(Optional.of(owner.start())))
+			throw new IOException("The startup-hook comparison cannot start Codex's sandbox: the Codex process of " +
+				"the session that runs the optimizer has ended.");
+		Optional<String> command = description.orElseThrow().command();
+		if (command.isEmpty())
+			throw new IOException("The startup-hook comparison cannot start Codex's sandbox: the system does not " +
+				"report the program of the Codex process that runs the optimizer.");
+		return Path.of(command.orElseThrow());
 	}
 
 	/**
 	 * Configures the hook builder to start the native sandbox before the hook, leaving its stream redirects intact.
 	 *
-	 * @param builder the original hook's command, environment, working directory and redirects
-	 * @param scratch the optimizer-owned directory that holds the comparison's copies and temporary configuration
-	 * @param trialHome the isolated hook home to grant writes to, or empty for the production comparison
-	 * @param ownerEnvironment the validated launcher's environment used to find the native executables
-	 * @param policy the validated owner's command policy
-	 * @param json the optimizer's mapper
-	 * @throws IOException if the paths or network permissions cannot be confined by the native sandbox
-	 * @throws PolicyRefusal if the owner could replace a native executable
-	 */
-	static void prepare(ProcessBuilder builder, Path scratch, Optional<Path> trialHome,
-		Map<String, String> ownerEnvironment, ParentPolicy policy, JsonMapper json) throws IOException, PolicyRefusal
-	{
-		Path selected = executable(Platform.current(), ownerEnvironment, policy, "codex");
-		prepare(builder, scratch, trialHome, selected, policy, json);
-	}
-
-	/**
-	 * Configures a hook builder with the native Codex executable selected for a brokered comparison.
-	 *
-	 * @param builder the original hook's command, environment, working directory and redirects
-	 * @param scratch the directory holding both comparison workspaces
+	 * @param builder   the original hook's command, environment, working directory and redirects
+	 * @param scratch   the directory holding both comparison workspaces
 	 * @param trialHome the isolated hook home to grant writes to, or empty for production
-	 * @param selected the broker-selected native Codex executable
-	 * @param policy the authenticated owner's command policy
-	 * @param json the sandbox state mapper
-	 * @throws IOException if the paths or network permissions cannot be confined by the native sandbox
-	 * @throws PolicyRefusal if the owner could replace a native executable
+	 * @param sandbox   the native Codex executable and the settings that choose its Windows implementation
+	 * @param policy    the authenticated owner's command policy
+	 * @param json      the sandbox state mapper
+	 * @throws IOException   if the paths or network permissions cannot be confined by the native sandbox
+	 * @throws PolicyRefusal if the owner could replace a native executable or the helpers that it starts
 	 */
-	public static void prepare(ProcessBuilder builder, Path scratch, Optional<Path> trialHome, Path selected,
+	public static void prepare(ProcessBuilder builder, Path scratch, Optional<Path> trialHome, Sandbox sandbox,
 		ParentPolicy policy, JsonMapper json) throws IOException, PolicyRefusal
 	{
-		Platform platform = Platform.current();
-		requireConfinableHost(platform);
+		Platform platform = sandbox.platform();
 
 		Path workspace = builder.directory().toPath().toRealPath();
 		Path comparison = scratch.toRealPath();
@@ -104,40 +160,70 @@ public final class CodexHookProcess
 				throw new IOException("The Codex startup-hook comparison path must be writable by the owner and inside " +
 					"the comparison directory: " + path);
 		}
-		Path nativeCodex = selected.toRealPath();
+		Path nativeCodex = sandbox.executable().toRealPath();
 		policy.requireTrusted(nativeCodex);
 		if (!policy.mayRead(nativeCodex))
 			throw new IOException("The owner cannot read the Codex sandbox executable: " + nativeCodex);
-		for (String directory : NATIVE_PATH.split(":"))
-			policy.requireTrustedTree(Path.of(directory));
-		Path env = executable(platform, Map.of(PATH, NATIVE_PATH), policy, "env");
-		String state = state(json, workspace, writable, policy).toString();
+		// Codex takes its Windows sandbox helpers from its own folder, and its Linux helper from the search path
+		if (platform.isWindows())
+			policy.requireTrustedTree(nativeCodex.getParent());
+		else
+		{
+			for (String directory : NATIVE_PATH.split(":"))
+				policy.requireTrustedTree(Path.of(directory));
+		}
+		// Codex's unelevated Windows implementation cannot deny a read and refuses a profile that denies one
+		boolean deniesReads = CodexSessionSandbox.deniesReads(platform, sandbox.selection(), sandbox.system());
+		String state = state(json, workspace, writable, policy, deniesReads).toString();
 
 		String projectTrust = "projects={\"" + TomlStrings.escape(workspace.toString()) +
 			"\"={trust_level=\"untrusted\"}}";
 		List<String> command = new ArrayList<>(List.of(nativeCodex.toString(), "sandbox", "--sandbox-state-json",
-			state, "-c", "project_root_markers=[]", "-c", projectTrust, "-c", "features.network_proxy=false",
-			"-c", "shell_environment_policy.inherit=\"all\"", "--", env.toString()));
-		Map<String, String> environment = builder.environment();
-		for (String key : HOOK_VARIABLES)
+			state, OPTION, "project_root_markers=[]", OPTION, projectTrust, OPTION, "features.network_proxy=false",
+			OPTION, ENVIRONMENT_POLICY + "inherit=\"all\""));
+		// The hook runs in the Windows implementation that wins for the owner's launch, as a child session does
+		if (platform.isWindows())
 		{
-			if (!environment.containsKey(key))
-				command.addAll(List.of("-u", key));
+			for (Map.Entry<String, String> setting : new TreeMap<>(sandbox.selection()).entrySet())
+				command.addAll(List.of(OPTION, setting.getKey() + "=" + tomlValue(setting.getValue())));
 		}
-		command.add("--");
+		Map<String, String> environment = builder.environment();
+		List<String> absent = new ArrayList<>();
 		for (String key : HOOK_VARIABLES)
 		{
 			if (environment.containsKey(key))
-				command.add(key + "=" + environment.get(key));
+			{
+				command.addAll(List.of(OPTION, ENVIRONMENT_POLICY + "set." + key + "=\"" +
+					TomlStrings.escape(environment.get(key)) + "\""));
+			}
+			else
+				absent.add("\"" + key + "\"");
 		}
+		if (!absent.isEmpty())
+			command.addAll(List.of(OPTION, ENVIRONMENT_POLICY + "exclude=[" + String.join(",", absent) + "]"));
+		command.add("--");
 		command.addAll(builder.command());
 		Path sandboxHome = Files.createTempDirectory(comparison, SANDBOX_HOME_PREFIX);
 		for (String key : HOME_VARIABLES)
 			environment.put(key, sandboxHome.toString());
-		// The native launcher resolves Linux sandbox helpers before enforcing the permission profile.
-		environment.put(PATH, NATIVE_PATH);
+		// The native launcher resolves Linux sandbox helpers before enforcing the permission profile
+		if (!platform.isWindows())
+			environment.put(PATH, NATIVE_PATH);
 		builder.directory(workspace.toFile());
 		builder.command(command);
+	}
+
+	/**
+	 * Spells a setting's value as TOML.
+	 *
+	 * @param value the value, {@code true} or {@code false} for a boolean
+	 * @return the TOML boolean or string
+	 */
+	private static String tomlValue(String value)
+	{
+		if (value.equals("true") || value.equals("false"))
+			return value;
+		return "\"" + TomlStrings.escape(value) + "\"";
 	}
 
 	/**
@@ -169,11 +255,12 @@ public final class CodexHookProcess
 	 * @param workspace the hook's working directory
 	 * @param writable the comparison paths permitted to accept writes
 	 * @param policy the owner's command policy
+	 * @param deniesReads {@code false} to leave out the owner's denied reads
 	 * @return the native sandbox state
 	 * @throws IOException if the native sandbox cannot express the required permissions
 	 */
-	private static ObjectNode state(JsonMapper json, Path workspace, List<Path> writable, ParentPolicy policy)
-		throws IOException
+	private static ObjectNode state(JsonMapper json, Path workspace, List<Path> writable, ParentPolicy policy,
+		boolean deniesReads) throws IOException
 	{
 		ObjectNode state = json.createObjectNode();
 		ObjectNode profile = state.putObject("permissionProfile");
@@ -181,7 +268,7 @@ public final class CodexHookProcess
 		ObjectNode filesystem = profile.putObject("file_system");
 		filesystem.put("type", "restricted");
 		ArrayNode entries = filesystem.putArray("entries");
-		for (Map.Entry<Path, String> permission : filesystem(workspace, writable, policy).entrySet())
+		for (Map.Entry<Path, String> permission : filesystem(workspace, writable, policy, deniesReads).entrySet())
 		{
 			ObjectNode entry = entries.addObject();
 			entry.putObject("path").put("type", "path").put("path", permission.getKey().toString());
@@ -198,16 +285,22 @@ public final class CodexHookProcess
 	 * @param workspace the hook's working directory
 	 * @param writable the comparison paths permitted to accept writes
 	 * @param policy the owner's command policy
+	 * @param deniesReads {@code false} to leave out the owner's denied reads and the exceptions inside them
 	 * @return the ordered paths and their access modes
 	 * @throws IOException if a policy path cannot be resolved
 	 */
-	private static Map<Path, String> filesystem(Path workspace, List<Path> writable, ParentPolicy policy)
-		throws IOException
+	private static Map<Path, String> filesystem(Path workspace, List<Path> writable, ParentPolicy policy,
+		boolean deniesReads) throws IOException
 	{
 		Map<Path, String> entries = new LinkedHashMap<>();
 		entries.put(workspace.getRoot(), "read");
-		List<Path> denials = RealPaths.resolveAll(policy.readDenials());
-		List<Path> reallowances = RealPaths.resolveAll(policy.readReallowances());
+		List<Path> denials = List.of();
+		List<Path> reallowances = List.of();
+		if (deniesReads)
+		{
+			denials = RealPaths.resolveAll(policy.readDenials());
+			reallowances = RealPaths.resolveAll(policy.readReallowances());
+		}
 		for (Path reallowance : reallowances)
 			entries.put(reallowance, "read");
 		for (Path path : writable)

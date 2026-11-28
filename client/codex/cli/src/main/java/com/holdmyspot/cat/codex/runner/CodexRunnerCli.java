@@ -7,6 +7,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.codex.CodexSessionHarness;
 import com.holdmyspot.cat.codex.layout.CodexInstallation;
+import com.holdmyspot.cat.codex.layout.CodexSystemFolder;
 import com.holdmyspot.cat.codex.optimizer.CodexInstalledCopies;
 import com.holdmyspot.cat.codex.optimizer.CodexHookProcess;
 import com.holdmyspot.cat.codex.secrets.CodexRunnerCliSecrets;
@@ -210,7 +211,10 @@ public final class CodexRunnerCli
 			{
 				try
 				{
-					CodexHookProcess.prepare(builder, scratch, isolatedHome, launch.executable(), policy, json);
+					// Only a Linux owner brokers the comparison, so no Windows implementation is selected
+					CodexHookProcess.Sandbox sandbox = new CodexHookProcess.Sandbox(Platform.current(),
+						launch.executable(), Map.of(), CodexSystemFolder.ofThisMachine());
+					CodexHookProcess.prepare(builder, scratch, isolatedHome, sandbox, policy, json);
 					return scope.executableFiles().run(builder);
 				}
 				catch (PolicyRefusal e)
