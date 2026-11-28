@@ -609,6 +609,47 @@ public final class BundledRuleAudienceTest
 	}
 
 	/**
+	 * Verifies an agent that decides whether a failure comes from its change or was already there, such as a regression
+	 * in a fork of an upstream project, can reach the packaged guidance: the testing and build area index routes to the
+	 * flaky-test rule, and that rule has the agent compare the failing run with a reference that differs only in the
+	 * suspected change, prefer a reference that someone else ran in their own environment, such as the upstream
+	 * project's CI logs for a fork, because it excludes the agent's environment as the cause, and otherwise run the
+	 * reference and the changed version in its own environment, which isolates the change but does not exclude the
+	 * environment.
+	 *
+	 * @throws IOException        if the bundled rules cannot be copied, routed, or read
+	 * @throws URISyntaxException if the class path returns a malformed resource location
+	 */
+	@Test
+	public void changeCauseGuidanceIsReachable() throws IOException, URISyntaxException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-bundled-rules-"));
+			BundledRules.copy(plugin.resolve("rules"));
+			RuleArtifactRouter.route(plugin, scope.yaml());
+			Path include = plugin.resolve("rules/include/common");
+
+			requireThat(oneLine(Files.readString(include.resolve("rule-routing/testing-and-builds.md"))),
+				"testingIndex").
+				contains("`${CAT_PLUGIN_ROOT}/rules/include/common/flaky-tests.md`");
+			requireThat(oneLine(Files.readString(include.resolve("flaky-tests.md"))), "flakyTests").
+				contains("whether a failure comes from your change or was already there").
+				contains("compare the failing run with a reference that differs from it only in the suspected change").
+				contains("Prefer a reference that someone else already ran in their own environment").
+				contains("excludes the possibility that your environment causes the failure").
+				contains("For a fork, use the same test or job in the upstream project's own CI logs").
+				contains("run the reference and the changed version in your environment").
+				contains("does not exclude your environment as the cause").
+				contains("If only the changed version fails, the change is the likely cause").
+				contains("confirm it with repeated runs when the failure is intermittent").
+				contains("If both fail, the change is not the cause").
+				contains("If neither fails on rerun, the failure did not reproduce").
+				contains("treat it as possibly flaky");
+		}
+	}
+
+	/**
 	 * Verifies an agent that is about to rerun a failed operation that is expensive to run in full, or to count a
 	 * conclusion that compares separate runs, can reach the packaged rule for that decision: the failure area index
 	 * routes to the diagnostic-run rule, and the rule routing that every agent of either harness receives at startup
