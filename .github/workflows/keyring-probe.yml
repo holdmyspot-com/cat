@@ -1,0 +1,77 @@
+name: Keyring probe
+
+on:
+  push:
+    branches:
+      - probe/keyring-ci-p32
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-x64
+            runner: windows-2025
+          - platform: macos-arm64
+            runner: macos-26
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: zulu
+          java-version: '27'
+          cache: maven
+          cache-dependency-path: client/pom.xml
+      - name: Build CAT's classes and their class path
+        run: >-
+          client/mvnw -q -f client/pom.xml -pl codex/cli -am compile dependency:build-classpath
+          "-Dmdep.outputFile=${RUNNER_TEMP}/cp.txt"
+      - name: Install Codex 0.172.0
+        run: npm install --global --no-audit --no-fund @openai/codex@0.172.0
+      - name: Install the sandbox runtime and the Claude Code binary on macOS
+        if: runner.os == 'macOS'
+        run: |
+          npm install --global --no-audit --no-fund @anthropic-ai/sandbox-runtime@0.0.83
+          directory="${RUNNER_TEMP}/claude-code"
+          mkdir -p "${directory}"
+          (cd "${directory}" && npm pack --silent @anthropic-ai/claude-code-darwin-arm64@2.1.332 &&
+            tar -xzf ./*.tgz)
+          binary="$(find "${directory}/package" -type f -perm -u+x | head -1)"
+          echo "Claude Code 2.1.332 binary: ${binary}"
+          echo "Seatbelt rules for the Keychain's service in it:"
+          grep -a -o '(allow mach-lookup (global-name \\\?"com.apple.SecurityServer\\\?"))' "${binary}" | sort | uniq -c ||
+            echo "none found"
+          grep -a -o '(allow mach-lookup (global-name \\\?"com.apple.securityd.xpc\\\?")' "${binary}" | sort | uniq -c ||
+            echo "none found"
+      - name: Create and unlock a disposable keychain on macOS
+        if: runner.os == 'macOS'
+        run: |
+          keychain="${RUNNER_TEMP}/keyring-probe.keychain-db"
+          security create-keychain -p probe "${keychain}"
+          security set-keychain-settings "${keychain}"
+          security unlock-keychain -p probe "${keychain}"
+          existing=()
+          while IFS= read -r line; do
+            existing+=("$(printf '%s' "${line}" | sed -E 's/^[[:space:]]*"(.*)"[[:space:]]*$/\1/')")
+          done < <(security list-keychains -d user)
+          security list-keychains -d user -s "${keychain}" "${existing[@]}"
+          security default-keychain -d user -s "${keychain}"
+          security default-keychain -d user
+          security list-keychains -d user
+          echo "KEYCHAIN=${keychain}" >> "${GITHUB_ENV}"
+      - name: Probe the keyring
+        run: .github/keyring-probe/probe.sh
+      - name: Remove the disposable keychain on macOS
+        if: always() && runner.os == 'macOS'
+        run: security delete-keychain "${RUNNER_TEMP}/keyring-probe.keychain-db" || true
