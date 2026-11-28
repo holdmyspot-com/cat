@@ -448,7 +448,8 @@ it bills with `--gateway-login-class`, as for a Claude gateway. The secret files
 that the session's login uses, a `config.toml` that holds an inline secret, and a file that a token command or a
 `credential_export` command names by an absolute path or a `~/` path, and they pass the same checks as those of a
 Claude source. The commands and file tools of the session, and of every session that it requests, cannot read them,
-the session's key file or the folder of the login service's socket.
+the session's key file or the folder of the login service's socket, except under Codex's `unelevated` Windows sandbox,
+which cannot deny reads (see [Sandboxes on native Windows](#sandboxes-on-native-windows)).
 
 Before it starts the session, and with status 2, `codex-runner` refuses a source home that holds no login that CAT can
 serve, with a message that names the files that it read, the keyring item and the variables; a `model_provider`
@@ -580,6 +581,11 @@ one can answer an approval prompt, and Codex with `danger-full-access`. Its comm
 parent's already do, and the limits that only a sandbox enforces do not hold for them: they can read the session's own
 login copy and key file. Claude Code's permission rules still govern its file tools.
 
+A Codex session on native Windows that runs in Codex's `unelevated` sandbox is the one other exception to those limits:
+that sandbox cannot deny reads, so CAT starts the session without denied reads and its commands can read the session's
+own login copies and key file, and every other file that CAT otherwise denies, as its parent's commands can read your
+files (see [Sandboxes on native Windows](#sandboxes-on-native-windows)).
+
 **Prompt optimization needs a sandbox.** Each trial runs in the same type of sandbox as the session that runs the prompt
 optimizer, and the sandbox is what keeps a trial from reading the held-out test cases or changing files outside its
 workspace. So, on every platform, `start` and every command that continues a campaign are refused, and change nothing,
@@ -664,9 +670,20 @@ runner with `CreateProcessWithLogonW`
 	`codex sandbox` started Codex's managed network proxy there is not established.
 - On the hosted runner, every command of a session that CAT started failed with `CreateProcessWithLogonW failed: 267`,
 	Windows' "The directory name is invalid"
-	([system error codes](https://learn.microsoft.com/windows/win32/debug/system-error-codes--0-499-)).
-	Its cause is not known yet, and it is an open issue, not a refusal by CAT. Because of it, the reading of denied files,
-	the network and the nested launches of such a session's own commands are untested.
+	([system error codes](https://learn.microsoft.com/windows/win32/debug/system-error-codes--0-499-)). It is an open
+	issue, not a refusal by CAT. It happens when the session that starts the new one has used a folder that holds the new
+	session's folder, such as the project that holds `.cat\sessions\<uuid>\slots\<slot>`, and the new session's
+	policy denies reading an ancestor of its working folder. Codex then gave its sandbox group `CodexSandboxUsers` an
+	inheriting write permission on the first folder and an inheriting denial of reads on the ancestor. It skips its own
+	write permission on the new session's project, because the inherited one counts, so the nearer inherited denial
+	keeps the sandbox user out of the working folder that Codex passes to `CreateProcessWithLogonW`
+	([Codex's source](https://github.com/openai/codex/blob/rust-v0.172.0/codex-rs/windows-sandbox-rs/src/acl.rs)).
+	The commands ran without the first permission, without the denial of the ancestor, with only the entries beside the
+	chain denied, and with the project outside the denied folder. Commands under `mxc` and `unelevated` and on Linux and
+	macOS do not fail this way. CAT keeps every denial, because denying only the entries beside the chain would leave
+	files that CAT creates later in the denied folder readable, so a session that starts under that condition fails
+	until `mxc` is used or the choice of a fix is made. Because of it, the reading of denied files, the network and the
+	nested launches of such a session's own commands are untested.
 - Two sessions that ran their first `elevated` command at the same time failed in Codex's setup with
 	`orchestrator_helper_incomplete`.
 
@@ -676,10 +693,16 @@ isolation than `elevated` ([Codex on Windows](https://developers.openai.com/code
 
 - It cannot deny reading a file, so Codex refuses a session or a command whose policy denies any read: "windows
 	unelevated restricted-token sandbox cannot enforce deny-read restrictions directly; refusing to run unsandboxed"
-	([Codex's test](https://github.com/openai/codex/blob/rust-v0.172.0/codex-rs/core/tests/windows_sandbox.rs)). Every
-	session that CAT starts denies reading its own login copy and key file, so no session that CAT starts runs under
-	`unelevated`, and no prompt optimizer trial either.
-- Because no session that CAT starts runs, its writes, reads and network under CAT's policies are untested.
+	([Codex's test](https://github.com/openai/codex/blob/rust-v0.172.0/codex-rs/core/tests/windows_sandbox.rs)). So CAT
+	starts a session that Codex runs under `unelevated` without any denied read, whether from its policy or from the
+	denials that CAT adds on every platform. Its commands can read the session's own login copies and key file, the
+	results folder and the session log, as the commands of the session that started it can read your files, and a
+	prompt optimizer trial under `unelevated` can read the held-out test cases. A session that Codex runs in another
+	implementation, one whose implementation CAT cannot tell, and every session off native Windows keep every denied
+	read. CAT reads the implementation as it does for the recommendation of `mxc`, from the settings that the session
+	takes from the session that started it, under the machine-wide configuration, managed configuration and
+	requirements.
+- Writes, network and the nested launches of a session under `unelevated` are untested under CAT's policies.
 
 **No sandbox.** A Claude Code session on native Windows, and a Codex session under `danger-full-access` or the bypass
 flag, run their commands with your permissions, unconfined
