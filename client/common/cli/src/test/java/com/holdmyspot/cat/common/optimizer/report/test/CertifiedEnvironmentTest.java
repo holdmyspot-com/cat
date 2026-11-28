@@ -148,8 +148,8 @@ public final class CertifiedEnvironmentTest
 
 	/**
 	 * A Claude Code certification without trial plugins or project settings files gives a model line for each cell,
-	 * reads {@code defaults} for the settings, says which conditions the record lacks, and marks each line whose
-	 * condition the reporting session could not check.
+	 * reads {@code defaults} for the settings, and marks each line whose condition the reporting session could not
+	 * check.
 	 */
 	@Test
 	public void readsDefaultsWithoutSettingsFiles()
