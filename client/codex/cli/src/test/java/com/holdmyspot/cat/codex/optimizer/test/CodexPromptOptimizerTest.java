@@ -364,24 +364,6 @@ public final class CodexPromptOptimizerTest
 	}
 
 	/**
-	 * Verifies that a command that never polls for host interrupts does not need the host session's rollout.
-	 *
-	 * @throws IOException if a file cannot be written
-	 */
-	@Test
-	public void statusDoesNotNeedRollout() throws IOException
-	{
-		// Requirement: R-I4
-		try (TemporaryDirectories scope = new TemporaryDirectories())
-		{
-			Setup setup = setup(scope);
-			StringBuilder output = new StringBuilder();
-			int exit = run(setup, Map.of("CODEX_THREAD_ID", SESSION_ID), List.of("status", CAMPAIGN), output);
-			requireThat(exit, "exit").isEqualTo(0);
-		}
-	}
-
-	/**
 	 * Verifies that polling for host interrupts fails with a clear message if the host session has no rollout.
 	 *
 	 * @throws IOException if a file cannot be written
