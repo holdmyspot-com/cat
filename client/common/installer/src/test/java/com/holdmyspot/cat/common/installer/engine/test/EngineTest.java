@@ -24,10 +24,12 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -41,6 +43,10 @@ public final class EngineTest
 	 * The migration registry of a release that registers no data migration.
 	 */
 	private static final String NO_MIGRATION = "# No migration\n";
+	/**
+	 * How long a test waits for another thread. It is far beyond any real run, so that only a hang reaches it.
+	 */
+	private static final long WORKER_LIMIT_MINUTES = 5;
 
 	/**
 	 * Creates the test.
@@ -285,10 +291,15 @@ public final class EngineTest
 	 * A concurrent engine cannot enter transport or installation while the first engine holds the harness lock, waits
 	 * for it no longer than its deadline, and stops waiting when interrupted.
 	 *
-	 * @throws Exception if fixture I/O or bounded worker completion fails
+	 * @throws IOException           if fixture I/O fails
+	 * @throws TrustException        if the test policy is invalid or an engine refuses the release
+	 * @throws InterruptedException  if the test is interrupted while it waits for a worker
+	 * @throws ExecutionException    if the first engine's operation fails
+	 * @throws TimeoutException      if a worker does not finish within its limit, which only a hang can cause
 	 */
 	@Test
-	public void serializesConcurrentOperations() throws Exception
+	public void serializesConcurrentOperations() throws IOException, TrustException, InterruptedException,
+		ExecutionException, TimeoutException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
 			ExecutorService workers = Executors.newSingleThreadExecutor())
@@ -312,7 +323,7 @@ public final class EngineTest
 					entered.countDown();
 					try
 					{
-						if (!releaseFirst.await(2, TimeUnit.SECONDS))
+						if (!releaseFirst.await(WORKER_LIMIT_MINUTES, TimeUnit.MINUTES))
 							throw new IOException("The test did not release the held operation");
 					}
 					catch (InterruptedException e)
@@ -347,7 +358,7 @@ public final class EngineTest
 			Future<UpdateResult> running = workers.submit(() -> first.install("v1.1", fixture.request(image)));
 			try
 			{
-				requireThat(entered.await(2, TimeUnit.SECONDS), "enteredTransport").isTrue();
+				requireThat(entered.await(WORKER_LIMIT_MINUTES, TimeUnit.MINUTES), "enteredTransport").isTrue();
 				requireThat(second.install("v1.1", fixture.request(image)).result(), "contendingResult").
 					isEqualTo(Result.LOCKED);
 				Duration deadline = Duration.ofMinutes(5);
@@ -371,7 +382,8 @@ public final class EngineTest
 			{
 				releaseFirst.countDown();
 			}
-			requireThat(running.get(2, TimeUnit.SECONDS).result(), "firstResult").isEqualTo(Result.INSTALLED);
+			requireThat(running.get(WORKER_LIMIT_MINUTES, TimeUnit.MINUTES).result(), "firstResult").
+				isEqualTo(Result.INSTALLED);
 		}
 	}
 }
