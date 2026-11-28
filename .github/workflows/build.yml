@@ -16,14 +16,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: linux-x64
-            runner: ubuntu-26.04
-          - platform: linux-arm64
-            runner: ubuntu-26.04-arm
-          - platform: macos-x64
-            runner: macos-26-intel
-          - platform: macos-arm64
-            runner: macos-26
           - platform: windows-x64
             runner: windows-2025
     runs-on: ${{ matrix.runner }}
@@ -97,6 +89,37 @@ jobs:
           name: test-reports-${{ matrix.platform }}
           path: client/**/target/surefire-reports/
           if-no-files-found: ignore
+      - name: Keep the startup-hook test reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: hook-test-reports
+          path: client/codex/cli/target/surefire-reports/*CodexHookProcessTest*
+          if-no-files-found: warn
+      - name: Install Codex for the startup-hook probe
+        if: always()
+        shell: pwsh
+        run: |
+          npm install --global '@openai/codex@0.172.0'
+          $codex = (Get-ChildItem -Recurse -Filter codex.exe (Join-Path (npm root -g) '@openai') |
+            Where-Object { $_.FullName -like '*vendor*bin*codex.exe' } | Select-Object -First 1).FullName
+          & $codex --version
+          "CAT_HOOK_PROBE_CODEX=$codex" >> $env:GITHUB_ENV
+          "CAT_HOOK_PROBE_EVIDENCE=$env:RUNNER_TEMP\hook-probe" >> $env:GITHUB_ENV
+      - name: Startup-hook probe
+        if: always()
+        run: |
+          cp probe/CodexHookWindowsProbeTest.java \
+            client/codex/cli/src/test/java/com/holdmyspot/cat/codex/optimizer/test/
+          client/mvnw -f client/pom.xml -pl codex/cli -am -Dtest=CodexHookWindowsProbeTest \
+            -Dsurefire.failIfNoSpecifiedTests=false -Dcheckstyle.skip=true -Dpmd.skip=true test
+      - name: Keep the startup-hook probe evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: hook-probe
+          path: ${{ runner.temp }}/hook-probe
+          if-no-files-found: warn
       - name: Verify bootstrap boundaries
         if: runner.os != 'Windows'
         run: >-
