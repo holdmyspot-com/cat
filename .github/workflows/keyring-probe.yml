@@ -33,9 +33,9 @@ jobs:
           java-version: '27'
           cache: maven
           cache-dependency-path: client/pom.xml
-      - name: Build CAT's classes and their class path
+      - name: Build CAT's classes and their class path (package, so that the reactor holds the test jars)
         run: >-
-          client/mvnw -q -f client/pom.xml -pl codex/cli -am compile dependency:build-classpath
+          client/mvnw -q -f client/pom.xml -pl codex/cli -am package -DskipTests dependency:build-classpath
           "-Dmdep.outputFile=${RUNNER_TEMP}/cp.txt"
       - name: Install Codex 0.172.0
         run: npm install --global --no-audit --no-fund @openai/codex@0.172.0
