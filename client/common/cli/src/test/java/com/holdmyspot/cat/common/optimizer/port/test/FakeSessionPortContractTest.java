@@ -62,16 +62,15 @@ public final class FakeSessionPortContractTest
 	}
 
 	/**
-	 * Verifies that the fake completes a session with evidence of every turn.
+	 * Verifies that the fake runs the shared completion check: it starts a session, ends it with a result built from
+	 * the request's turns, and delivers that result through the session's completion. The result's contents come from
+	 * the test's own {@code finish} step, so this checks the fake's delivery and not how a real port gathers evidence.
 	 *
 	 * @throws Exception if the check fails
 	 */
 	@Test
 	public void completesWithEvidenceOfEveryTurn() throws Exception
 	{
-		// Requirement: R-E13
-		// Requirement: R-E16
-		// Requirement: R-E6
 		contract().completesWithEvidenceOfEveryTurn();
 	}
 
