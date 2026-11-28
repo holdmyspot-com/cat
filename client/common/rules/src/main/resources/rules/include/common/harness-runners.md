@@ -47,11 +47,12 @@ delegation rules.
 
 ### Supported environments
 
-Nested sessions of both harnesses require Linux or macOS, because CAT starts each session only inside its own
-harness's sandbox. On native Windows, both runner launchers refuse to start a session, exit with status `2` and print
-the reason, which tells the user to run their harness and CAT inside WSL2. Report that reason and do not start the
-session any other way, such as by running the launcher through `wsl`. Inside WSL2, Java reports Linux, so nested
-sessions are supported there.
+Both runner launchers start sessions on Linux, macOS and native Windows. Each session that CAT starts gets the same
+type of sandbox as the session that starts it: the child of a session that runs its commands in a sandbox runs in one,
+and the child of a session without a sandbox runs without one. Claude Code has no sandbox on native Windows, so there a
+Claude Code session's children run without one, and a Claude Code child of a Codex session that runs in a sandbox is
+refused, because its commands would reach further than its parent's. When a launcher refuses a session, it exits with
+status `2` and prints the reason. Report that reason and do not start the session any other way.
 
 ### Launcher
 

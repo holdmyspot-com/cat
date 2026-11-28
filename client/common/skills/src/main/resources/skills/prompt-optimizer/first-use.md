@@ -34,12 +34,12 @@ Proceed to request-server setup and `start` only after receiving the user's choi
 
 ## Supported environments
 
-Prompt optimization requires Linux or macOS, in both harnesses: each trial's session needs a sandbox of its own, which
-native Windows cannot reliably provide. On native Windows, the launcher refuses `start` and every command that
+Prompt optimization needs a sandbox, in both harnesses and on every platform: each trial runs in the same type of
+sandbox as this session, so that it cannot read the held-out test cases or change files outside its workspace. When
+this session runs its commands without a sandbox, when its Claude Code sandbox failed to start, or when it is a Claude
+Code session on native Windows, where Claude Code has no sandbox, the launcher refuses `start` and every command that
 continues a campaign, and changes nothing. There, run step 1's `start` as usual, show its `message` to the user, which
-tells them to run their harness and CAT inside WSL2 and how to install WSL2, and stop. Do not start a campaign any other
-way, such as by running the launcher through `wsl`. Inside WSL2, Java reports Linux, so prompt optimization is
-supported there.
+names the cause and the fix, and stop. Do not start a campaign any other way.
 
 Trials also need CAT's request server, `bin/request-server` beside the launcher, which starts every trial's session
 outside this session's sandbox, inside that harness's own sandbox. After settling the evaluation harnesses and before
