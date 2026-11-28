@@ -872,6 +872,33 @@ public abstract class CampaignStoreContract
 	}
 
 	/**
+	 * Verifies that a session whose end time precedes its start time, as when the wall clock steps backwards during
+	 * the session, is stored and read back with both times as observed.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	// Requirement: R-E6
+	@Test
+	public void sessionKeepsTimesAfterClockStepsBack() throws IOException
+	{
+		try (StoreFixture fixture = open())
+		{
+			CampaignStore store = fixture.store();
+			LogicalTrial assigned = trial(1, TrialState.ASSIGNED);
+			store.writeAssignment("campaign-1", assigned);
+			TrialSession session = new TrialSession(Instant.parse("2026-10-05T12:00:05Z"),
+				Instant.parse("2026-10-05T12:00:00Z"), 1, Throttle.NONE, List.of(), HostLogin.API_KEY, null,
+				CommandSummary.UNKNOWN, null);
+			store.writeTrialSession("campaign-1", assigned.key(), session);
+			store.writeOutcome("campaign-1", complete(assigned.key(), Verdict.PASS));
+
+			AbstractCampaignStore reopened = (AbstractCampaignStore) fixture.reopen();
+			requireThat(reopened.readRecord("campaign-1", assigned.key()).orElseThrow().sessions(), "sessions").
+				isEqualTo(List.of(session));
+		}
+	}
+
+	/**
 	 * The record of each finished trial session, one with reported usage, rate-limit windows and command timings and
 	 * one with none of them, survives assignment retries, outcome writes and store reopening, in completion order.
 	 *
