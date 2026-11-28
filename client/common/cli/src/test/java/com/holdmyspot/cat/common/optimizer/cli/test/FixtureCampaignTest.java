@@ -63,9 +63,6 @@ public final class FixtureCampaignTest
 			Campaign campaign = store.load(ID).orElseThrow();
 			store.replaceSnapshot(campaign);
 			String fresh = Files.readString(written, StandardCharsets.UTF_8);
-			Path copy = Path.of("target/fixture-campaign/campaign.json");
-			Files.createDirectories(copy.getParent());
-			Files.writeString(copy, fresh, StandardCharsets.UTF_8);
 			requireThat(fresh, "written").isEqualTo(platformForm(stored));
 		}
 	}
