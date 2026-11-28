@@ -291,7 +291,8 @@ public final class ActivationTest
 	}
 
 	/**
-	 * Uninstall keeps CAT's data in the plugin data directory that Claude Code assigns to CAT.
+	 * The data directory of CAT is the plugin data directory that Claude Code assigns to the {@code cat} plugin of the
+	 * {@code cat} marketplace, {@code plugins/data/cat-cat} in the configuration directory.
 	 *
 	 * @throws IOException if the fake configuration cannot be created
 	 */
