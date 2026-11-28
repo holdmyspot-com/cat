@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 /**
@@ -194,14 +195,23 @@ public final class SecretFileTest
 	 * access list. The owner keeps the right to read and change the access list, so that the file can be restored.
 	 *
 	 * @param file the file
-	 * @throws IOException if the file's access cannot be changed
+	 * @throws IOException   if the file's access cannot be changed
+	 * @throws SkipException if the process can read the file despite its mode, as a process running as root can
 	 */
 	private static void makeWriteOnly(Path file) throws IOException
 	{
 		if (hasPosixPermissions())
 		{
 			Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("-w-------"));
-			return;
+			try
+			{
+				Files.readAllBytes(file);
+			}
+			catch (IOException _)
+			{
+				return;
+			}
+			throw new SkipException("The process can read a file that its mode makes write-only, as root can");
 		}
 		AclFileAttributeView view = Files.getFileAttributeView(file, AclFileAttributeView.class);
 		Set<AclEntryPermission> permissions = EnumSet.complementOf(EnumSet.of(AclEntryPermission.READ_DATA));
