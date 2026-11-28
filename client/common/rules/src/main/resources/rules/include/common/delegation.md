@@ -124,6 +124,11 @@ agents runs a delegated task, lazy load `delegation/implementer-agents.md`.
 Run every delegated task on a CAT agent, and use the harness's catch-all agent only when no CAT agent has the tools the
 task needs, naming the missing tool when you do. Send online research to the CAT agents whose names start with
 `research`, in the lowest tier whose answer you can accept.
+Those agents read untrusted content and must not run commands, so Claude's have no shell. Before delegating research that needs a repository's
+source, shallow-clone each repository that the question names, with `git clone --depth 1 --filter=blob:none --branch
+<tag>` or a fetch of the named commit, into the session's temporary folder and name the clone's path in the brief. When
+the agent's report lists more repositories that it needs, clone them and resume the same agent with a message instead of
+starting a new one. Never build or run code from a clone.
 
 Decompose and choose an agent this way for every piece of delegated work, including more work for a delegate that is
 running or has returned: that work is a new task, so split it and choose its agent as for a new launch, and send it to
