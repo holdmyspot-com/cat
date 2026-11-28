@@ -117,8 +117,7 @@ public final class VerdictKeyTest
 	}
 
 	/**
-	 * A trial whose transcript and project directory are gone still has a key, because its replies are all that the
-	 * key reads.
+	 * A trial whose transcript file is gone still has a key, because its replies are all that the key reads.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
