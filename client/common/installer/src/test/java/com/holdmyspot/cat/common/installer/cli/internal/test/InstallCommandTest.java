@@ -325,13 +325,22 @@ public final class InstallCommandTest
 	/**
 	 * Returns install conditions that must be refused before anything changes.
 	 *
-	 * @return each condition's name
+	 * @return each condition's name, the type of the refusal and a fragment of its message
 	 */
 	@DataProvider
 	public static Object[][] refusals()
 	{
-		return new Object[][]{{"configuration"}, {"discovery"}, {"identity"}, {"otherHarness"}, {"otherPlugin"},
-			{"version"}, {"relativeHome"}, {"missingHome"}};
+		return new Object[][]
+		{
+			{"configuration", IOException.class, "refused validateConfiguration"},
+			{"discovery", TrustException.class, "was not found on PATH"},
+			{"identity", IOException.class, "is not the harness-a program"},
+			{"otherHarness", TrustException.class, "records the harness harness-b"},
+			{"otherPlugin", TrustException.class, "holds no harness-a plugin"},
+			{"version", TrustException.class, "does not name its plugin version"},
+			{"relativeHome", TrustException.class, "must be an existing absolute directory"},
+			{"missingHome", TrustException.class, "must be an existing absolute directory"}
+		};
 	}
 
 	/**
@@ -341,11 +350,14 @@ public final class InstallCommandTest
 	 * home is relative or missing.
 	 *
 	 * @param condition the refused condition
+	 * @param refusal   the type of the exception that refuses it
+	 * @param reason    a fragment of the refusal's message that names the condition
 	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if the fixture's policies are invalid
 	 */
 	@Test(dataProvider = "refusals")
-	public void refusesWithoutChange(String condition) throws IOException, TrustException
+	public void refusesWithoutChange(String condition, Class<? extends Exception> refusal, String reason)
+		throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -379,7 +391,8 @@ public final class InstallCommandTest
 			}
 			catch (TrustException | IOException e)
 			{
-				requireThat(e.getMessage(), "message").isNotBlank();
+				requireThat(e.getClass().getName(), "refusal").isEqualTo(refusal.getName());
+				requireThat(e.getMessage(), "message").contains(reason);
 			}
 			requireThat(Files.exists(fixture.home.resolve("plugins/cat-marketplace"), NOFOLLOW_LINKS),
 				"marketplace").isFalse();
