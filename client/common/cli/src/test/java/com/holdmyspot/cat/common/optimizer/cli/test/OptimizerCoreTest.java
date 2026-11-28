@@ -3945,7 +3945,7 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Returns an absolute path below a {@code cache} folder at the root of the working directory's file store, which
+	 * Returns an absolute path below a {@code cache} folder at the root of the temporary directory's file store, which
 	 * is {@code /cache/<name>} on Linux and macOS and {@code C:\cache\<name>} on Windows, where a path that starts with
 	 * a separator is not absolute.
 	 *
@@ -3954,7 +3954,7 @@ public final class OptimizerCoreTest
 	 */
 	private static Path cachePath(String name)
 	{
-		return Path.of("").toAbsolutePath().getRoot().resolve("cache").resolve(name);
+		return Path.of(System.getProperty("java.io.tmpdir")).toAbsolutePath().getRoot().resolve("cache").resolve(name);
 	}
 
 	/**

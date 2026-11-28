@@ -169,8 +169,6 @@ public final class TestabilityAuditTest
 		// A link to the directory that holds it
 		"common/cli/src/test/java/com/holdmyspot/cat/common/optimizer/workspace/test/LinkReportTest.java|.",
 		"common/cli/src/test/java/com/holdmyspot/cat/common/optimizer/workspace/test/StagedSourceTest.java|.",
-		// The plugin directory that a fake reports before a test sets one; only its text reaches the hooks
-		"common/cli/src/test/java/com/holdmyspot/cat/common/optimizer/cli/test/OptimizerCoreTest.java|",
 		// A fake harness program that reports the working directory its caller started it in
 		"common/installer/src/test/java/com/holdmyspot/cat/common/installer/cli/internal/test/FakeHarnessProgram.java|");
 
