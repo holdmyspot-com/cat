@@ -7,6 +7,8 @@
 - Confirm the fix of a problem that a test triggers on only some runs with before-and-after evidence whose pass the
 	reader can explain, without leaving that test in the suite.
 - Leave no claim silently unproven when a flaky test is removed.
+- Tell a failure that a change causes from one that was already there by comparing against a reference that differs
+	only in that change, and prefer a reference that excludes the agent's own environment as the cause.
 <!-- An agent asked for the root cause of an intermittent CI failure reran the old check about 281 times on 21 runners
      after the first few dozen runs showed that it did not fail on demand: 151 tool calls in about 58 minutes. -->
 - Bound the runs spent trying to reproduce a failure that occurs on only some runs, and when the bound passes without a
@@ -38,6 +40,20 @@ a scratch location outside the repository. Then:
 	probability of about 0.000003.
 3. Remove the temporary test before committing or handing off the work.
 4. Report the runs, failures, and conditions, such as load, thread count, and machine, before and after the fix.
+
+When you decide whether a failure comes from your change or was already there, such as a regression in a fork of an
+upstream project, compare the failing run with a reference that differs from it only in the suspected change. Prefer a
+reference that someone else already ran in their own environment: reading it costs nothing, and it excludes the
+possibility that your environment causes the failure. For a fork, use the same test or job in the upstream project's own
+CI logs for the same base commit, or the nearest one. For a branch or pull request, use the base branch's CI history for
+the same test. For a dependency, tool, or runner-image upgrade, use that project's own CI or issue tracker for the
+version. For a configuration or infrastructure change, use runs from before the change. When no such reference exists
+or it does not cover the test, run the reference and the changed version in your environment, such as the unpatched base
+commit and the patched version, the old and the new version, or the old and the new configuration. That comparison
+isolates the change but does not exclude your environment as the cause. If only the changed version fails, the change is
+the likely cause; confirm it with repeated runs when the failure is intermittent. If both fail, the change is not the
+cause; look at the environment or at flakiness, as the rest of this rule describes. If neither fails on rerun, the
+failure did not reproduce; treat it as possibly flaky, as the rest of this rule describes.
 
 When you decide whether a failure is a flake, rerun the smallest scope that can show it, not the whole workflow: only
 the failed jobs, or only the named tests through a stress or repeat input. Before you call the failure a flake, read
