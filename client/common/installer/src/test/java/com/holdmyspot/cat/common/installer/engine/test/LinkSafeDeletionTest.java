@@ -18,6 +18,7 @@ import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 /**
@@ -172,7 +173,7 @@ public final class LinkSafeDeletionTest
 			try (HeldFile held = HeldFile.open(folder))
 			{
 				if (!held.blocksDeletion())
-					return;
+					throw new SkipException("The OS does not block deletion here (running as a superuser)");
 				FileSystemException original = null;
 				try
 				{
