@@ -10,6 +10,9 @@
 
 When adding, catching, translating, or reporting a failure, lazy load `../error-handling.md`.
 
+When diagnosing the cause of a failure or unexpected result, or choosing which cause to report, lazy load
+`../distinguishing-causes.md`.
+
 Before classifying a failure or other behavior as an external or upstream defect, when considering a workaround for an
 external defect, and when adopting an upstream fix for a defect that a `WORKAROUND:` marker names, lazy load
 `../external-workarounds.md`.

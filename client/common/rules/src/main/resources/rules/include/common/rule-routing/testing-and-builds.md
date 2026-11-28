@@ -31,6 +31,8 @@ Before changing testable production behavior, lazy load `../tdd.md`.
 
 When designing, changing, running to verify a change, or reviewing tests, lazy load `../testing.md`.
 
+When designing, changing, or reviewing a test or other check, lazy load `../distinguishing-causes.md`.
+
 Before preparing, starting, dispatching or requesting a build, test suite, workflow run or probe whose setup or
 execution takes many minutes or draws on shared capacity, such as the runners of a hosted workflow, before publishing
 a new build while such a run uses the current one, when a change lands while such a run that you started is in
