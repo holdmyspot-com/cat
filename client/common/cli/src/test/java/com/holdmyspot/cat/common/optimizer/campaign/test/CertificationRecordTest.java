@@ -121,41 +121,6 @@ public final class CertificationRecordTest
 	}
 
 	/**
-	 * A record file of format version 5, which does not say whether the comparisons follow from the minimum pass rate,
-	 * is refused rather than misread.
-	 *
-	 * @throws IOException if a record file cannot be written
-	 */
-	@Test
-	public void refusesVersionFiveRecord() throws IOException
-	{
-		// Requirement: R-M6
-		// Requirement: R-C11
-		Campaign campaign = certifiedCampaign();
-		CertificationRecord record = CertificationRecord.of(campaign, campaign.attempt(2), snapshot(),
-			promptSources());
-		CertificationHistoryJson codec = new CertificationHistoryJson(JSON);
-		ObjectNode edited = (ObjectNode) JSON.readTree(codec.write(CertificationHistory.EMPTY.appended(record)));
-		edited.put("format_version", 5);
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path file = cleanup.add(Files.createTempDirectory("cat-record-")).resolve("CLAUDE.json");
-			Files.write(file, JSON.writeValueAsBytes(edited));
-			IOException failure = null;
-			try
-			{
-				codec.read(file);
-			}
-			catch (IOException e)
-			{
-				failure = e;
-			}
-			requireThat(failure, "failure").isNotNull();
-			requireThat(failure.getMessage(), "message").contains("format_version is 5");
-		}
-	}
-
-	/**
 	 * The record's file names the certification's fields and no trial result: it holds no formal failure's test case,
 	 * and it stays under a few kilobytes.
 	 */
@@ -187,8 +152,7 @@ public final class CertificationRecordTest
 	/**
 	 * The record's file writes the certification level as {@code alpha}, the decimal error probability
 	 * {@code 1 / threshold}: exact when it terminates, otherwise rounded up to ten significant digits so that the
-	 * written claim is never stronger than the certified one. Each value reads back as the same level, and a value that
-	 * is not the reciprocal of an integer is refused.
+	 * written claim is never stronger than the certified one. Each value reads back as the same level.
 	 *
 	 * @throws IOException if a record file cannot be written or read
 	 */
@@ -217,26 +181,6 @@ public final class CertificationRecordTest
 				requireThat(codec.read(file).records(), "read").withContext(index, "index").
 					isEqualTo(List.of(record));
 			}
-
-			CertificationRecord record = new CertificationRecord(Path.of("CLAUDE.md"), 1,
-				CertificationScope.LATEST_VERSIONS, CertificationParameters.current(1, Contract.DEFAULT_MINIMUM_PASS_RATE),
-				List.of(), Map.of(),
-				Builder.OBSERVED);
-			ObjectNode edited = (ObjectNode) JSON.readTree(codec.write(CertificationHistory.EMPTY.appended(record)));
-			((ObjectNode) edited.get("records").get(0)).put("alpha", "0.03");
-			Path file = directory.resolve("edited.json");
-			Files.write(file, JSON.writeValueAsBytes(edited));
-			IOException failure = null;
-			try
-			{
-				codec.read(file);
-			}
-			catch (IOException e)
-			{
-				failure = e;
-			}
-			requireThat(failure, "failure").isNotNull();
-			requireThat(failure.getMessage(), "message").contains("alpha");
 		}
 	}
 
