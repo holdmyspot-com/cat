@@ -192,7 +192,8 @@ public final class ClaudePromptOptimizerTest
 	}
 
 	/**
-	 * Verifies that {@code status} prints the campaign's status JSON.
+	 * Verifies that {@code status} prints the campaign's status JSON, in a session whose host has no transcript, since
+	 * the command never polls for host interrupts.
 	 *
 	 * @throws IOException if a file cannot be written
 	 */
@@ -211,25 +212,6 @@ public final class ClaudePromptOptimizerTest
 			requireThat(json.get("campaign").asString(), "campaign").isEqualTo(CAMPAIGN);
 			requireThat(json.get("harness").asString(), "harness").isEqualTo("claude");
 			requireThat(json.has("choices"), "hasChoices").isTrue();
-		}
-	}
-
-	/**
-	 * Verifies that a command that never polls for host interrupts does not need the host session's transcript.
-	 *
-	 * @throws IOException if a file cannot be written
-	 */
-	@Test
-	public void statusDoesNotNeedTranscript() throws IOException
-	{
-		// Requirement: R-I4
-		try (TemporaryDirectories scope = new TemporaryDirectories())
-		{
-			Setup setup = setup(scope);
-			StringBuilder output = new StringBuilder();
-			int exit = run(setup, Map.of("CLAUDE_CODE_SESSION_ID", SESSION_ID, "CLAUDECODE", "1"),
-				List.of("status", CAMPAIGN), output);
-			requireThat(exit, "exit").isEqualTo(0);
 		}
 	}
 

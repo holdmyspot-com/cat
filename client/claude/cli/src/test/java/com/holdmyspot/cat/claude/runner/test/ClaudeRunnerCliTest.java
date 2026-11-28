@@ -438,20 +438,24 @@ public final class ClaudeRunnerCliTest
 	 * @return the platform
 	 */
 	@DataProvider
-	public Object[][] nativeWindows()
+	public Object[][] platforms()
 	{
-		return new Object[][]{{Platform.WINDOWS_X64}, {Platform.WINDOWS_ARM64}};
+		Platform[] platforms = Platform.values();
+		Object[][] rows = new Object[platforms.length][];
+		for (int i = 0; i < platforms.length; ++i)
+			rows[i] = new Object[]{platforms[i]};
+		return rows;
 	}
 
 	/**
-	 * Verifies that on native Windows, where Claude Code has no sandbox, the launcher refuses no launch for the platform
-	 * alone, forwarded or not, whatever the session's role: a session takes its parent's type of sandbox, which is none
-	 * for a Claude Code parent there.
+	 * Verifies that on every platform, including native Windows where Claude Code has no sandbox, the launcher
+	 * refuses no launch for the platform alone, forwarded or not, whatever the session's role: a session takes its
+	 * parent's type of sandbox, which is none for a Claude Code parent on native Windows.
 	 *
-	 * @param platform the native Windows platform
+	 * @param platform the platform that the launcher runs on
 	 */
-	@Test(dataProvider = "nativeWindows")
-	public void startsSessionOnNativeWindows(Platform platform)
+	@Test(dataProvider = "platforms")
+	public void startsSession(Platform platform)
 	{
 		// Requirement: R-I44
 		for (Map<String, String> environment : List.of(Map.<String, String>of(),
@@ -475,43 +479,31 @@ public final class ClaudeRunnerCliTest
 	}
 
 	/**
-	 * Verifies that on native Windows the launcher still answers {@code --help} and verifies an artifact, since
-	 * neither starts a session.
+	 * Verifies that the launcher answers {@code --help} and verifies an artifact even when it runs in the user's
+	 * home folder, where a launch that starts a session is refused, since neither starts a session.
 	 *
-	 * @param platform the native Windows platform
+	 * @param platform the platform that the launcher runs on
+	 * @throws IOException if the test filesystem cannot be used
 	 */
-	@Test(dataProvider = "nativeWindows")
-	public void answersHelpOnNativeWindows(Platform platform)
+	@Test(dataProvider = "platforms")
+	public void answersHelpAndVerifyInHomeFolder(Platform platform) throws IOException
 	{
-		StringWriter errors = new StringWriter();
-
-		boolean helpRefused = ClaudeRunnerCli.refusesLaunch(new String[]{"--help"}, WORKING_DIRECTORY, Map.of(), platform,
-			new PrintWriter(errors, true));
-		boolean verifyRefused = ClaudeRunnerCli.refusesLaunch(new String[]{"--verify-artifact", "artifact"},
-			WORKING_DIRECTORY, Map.of(), platform, new PrintWriter(errors, true));
-
-		requireThat(helpRefused, "helpRefused").isFalse();
-		requireThat(verifyRefused, "verifyRefused").isFalse();
-		requireThat(errors.toString(), "errors").isEmpty();
-	}
-
-	/**
-	 * Verifies that on Linux and macOS, where Claude Code sandboxes a session, the launcher does not refuse a launch
-	 * that starts one.
-	 */
-	@Test
-	public void startsSessionOnLinuxAndMacOs()
-	{
-		for (Platform platform : List.of(Platform.LINUX_X64, Platform.LINUX_ARM64, Platform.MACOS_X64,
-			Platform.MACOS_ARM64))
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
+			Path home = cleanup.add(Files.createTempDirectory("runner-home-"));
+			Map<String, String> environment = Map.of(platform.homeVariable(), home.toString());
 			StringWriter errors = new StringWriter();
 
-			boolean refused = ClaudeRunnerCli.refusesLaunch(new String[]{"--project", "project", "--model", "sonnet",
-				"--effort", "low"}, WORKING_DIRECTORY, Map.of(), platform, new PrintWriter(errors, true));
+			boolean helpRefused = ClaudeRunnerCli.refusesLaunch(new String[]{"--help"}, home, environment, platform,
+				new PrintWriter(errors, true));
+			boolean verifyRefused = ClaudeRunnerCli.refusesLaunch(new String[]{"--verify-artifact", "artifact"}, home,
+				environment, platform, new PrintWriter(errors, true));
+			boolean sessionRefused = ClaudeRunnerCli.refusesLaunch(new String[]{"--model", "sonnet", "--effort", "low"},
+				home, environment, platform, new PrintWriter(errors, true));
 
-			requireThat(refused, "refused").withContext(platform, "platform").isFalse();
-			requireThat(errors.toString(), "errors").withContext(platform, "platform").isEmpty();
+			requireThat(helpRefused, "helpRefused").isFalse();
+			requireThat(verifyRefused, "verifyRefused").isFalse();
+			requireThat(sessionRefused, "sessionRefused").isTrue();
 		}
 	}
 
