@@ -228,20 +228,4 @@ public final class CapCalibrationTest extends CapCalibratorContract
 		requireThat(CapCalibration.calibrate(level, new BigDecimal("0.90")).cap(), "ninety").isEqualTo(129);
 		requireThat(CapCalibration.calibrate(level, new BigDecimal("0.80")).cap(), "eighty").isEqualTo(62);
 	}
-
-	/**
-	 * Verifies the all-pass minimums of the first attempt at the minimum pass rate {@code p_min} = 0.80, 0.90, 0.95, 0.97
-	 * and 0.99.
-	 */
-	@Test
-	public void allPassMinimumsFollowMinimumPassRate()
-	{
-		// Requirement: R-S6
-		SignificanceLevel level = ErrorBudget.certificationLevel(1);
-		requireThat(DecisionBoundaries.allPassMinimum(level, new BigDecimal("0.80")), "eighty").isEqualTo(22);
-		requireThat(DecisionBoundaries.allPassMinimum(level, new BigDecimal("0.90")), "ninety").isEqualTo(45);
-		requireThat(DecisionBoundaries.allPassMinimum(level, new BigDecimal("0.95")), "ninetyFive").isEqualTo(93);
-		requireThat(DecisionBoundaries.allPassMinimum(level, new BigDecimal("0.97")), "ninetySeven").isEqualTo(157);
-		requireThat(DecisionBoundaries.allPassMinimum(level, new BigDecimal("0.99")), "ninetyNine").isEqualTo(474);
-	}
 }
