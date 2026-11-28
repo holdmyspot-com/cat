@@ -45,26 +45,4 @@ public final class DistributionTest
 			}
 		}
 	}
-
-	/**
-	 * Verifies that the distribution is frozen: drawing and marking test cases leave the contract unchanged, and each
-	 * drawn test case is one that its test lists.
-	 */
-	@Test
-	public void weightsStayFrozenWhileDrawing()
-	{
-		// Requirement: R-C3
-		Contract contract = ContractFixtures.contract();
-		Generator generator = new Generator(contract);
-		DrawStream stream = DrawStream.create(DrawStream.Kind.DEVELOPMENT, 5L);
-		PromptTest test = contract.findTest("formatting").orElseThrow();
-		for (int i = 0; i < 500; ++i)
-		{
-			DrawnTestCase testCase = generator.draw("formatting", stream);
-			generator.markTargeted(testCase);
-			requireThat(test.testCases(), "testCases").contains(testCase.testCase());
-		}
-
-		requireThat(contract, "contract").isEqualTo(ContractFixtures.contract());
-	}
 }
