@@ -117,19 +117,23 @@ public final class ProcessElevationTest
 		{
 			Path directory = cleanup.add(testDirectory("process-elevation-tree-"));
 			Path childIdFile = directory.resolve("child-id.txt");
-			Path id = fakeId(directory, "sleep 60 &\necho $! > '" + childIdFile + "'\nwait",
-				"@ping -n 60 127.0.0.1 >nul");
+			Path published = directory.resolve("child-id.tmp");
+			// The child's ID is published before the check's limit passes (the limit is long enough for a slow runner
+			// to start the child), and moved into place so that the test never reads a partial file
+			Path id = fakeId(directory, "sleep 60 &\necho $! > '" + published + "'\nmv '" + published + "' '" +
+				childIdFile + "'\nwait",
+				"@powershell -NoProfile -Command \"$p = Start-Process ping -ArgumentList '-n','60','127.0.0.1' " +
+					"-PassThru -WindowStyle Hidden; Set-Content -Path '" + published + "' -Value $p.Id; " +
+					"Move-Item -Path '" + published + "' -Destination '" + childIdFile + "'; $p.WaitForExit()\"");
 
 			boolean elevated = ProcessElevationSecrets.getProcessElevationAccess().runsAsRoot(id,
-				Duration.ofMillis(500));
+				Duration.ofSeconds(5));
 
 			requireThat(elevated, "elevated").isTrue();
-			if (!Platform.current().isWindows())
-			{
-				long childId = Long.parseLong(Files.readString(childIdFile).strip());
-				boolean childRuns = ProcessHandle.of(childId).map(ProcessHandle::isAlive).orElse(false);
-				requireThat(childRuns, "childRuns").isFalse();
-			}
+			requireThat(Files.exists(childIdFile), "childIdPublished").isTrue();
+			long childId = Long.parseLong(Files.readString(childIdFile).strip());
+			boolean childRuns = ProcessHandle.of(childId).map(ProcessHandle::isAlive).orElse(false);
+			requireThat(childRuns, "childRuns").isFalse();
 		}
 	}
 
