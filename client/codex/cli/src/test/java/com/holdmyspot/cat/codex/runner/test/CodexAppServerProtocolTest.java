@@ -89,4 +89,28 @@ public final class CodexAppServerProtocolTest
 		requireThat(sandboxed.path("params").path("sandbox").asString(), "sandbox").isEqualTo("workspace-write");
 		requireThat(sandboxed.path("params").has("model"), "model").isFalse();
 	}
+
+	/**
+	 * Verifies that a thread started or resumed with {@link CodexAppServerProtocol#FULL_ACCESS} runs without a sandbox
+	 * and names no permission profile, and that it never asks for approval.
+	 */
+	@Test
+	public void framesFullAccessThreads()
+	{
+		Path directory = Path.of("/").toAbsolutePath();
+		JsonMapper json = JsonMapper.builder().build();
+
+		JsonNode started = json.readTree(CodexAppServerProtocol.threadStart(directory, "", "",
+			CodexAppServerProtocol.FULL_ACCESS)).path("params");
+		JsonNode resumed = json.readTree(CodexAppServerProtocol.threadResume(directory, "thread-1", "", "",
+			CodexAppServerProtocol.FULL_ACCESS)).path("params");
+
+		for (JsonNode params : new JsonNode[]{started, resumed})
+		{
+			requireThat(params.path("sandbox").asString(), "sandbox").isEqualTo("danger-full-access");
+			requireThat(params.has("permissions"), "hasPermissions").isFalse();
+			requireThat(params.has("runtimeWorkspaceRoots"), "hasRuntimeWorkspaceRoots").isFalse();
+			requireThat(params.path("approvalPolicy").asString(), "approvalPolicy").isEqualTo("never");
+		}
+	}
 }
