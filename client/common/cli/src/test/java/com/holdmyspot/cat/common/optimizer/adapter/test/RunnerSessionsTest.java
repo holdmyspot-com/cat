@@ -8,6 +8,7 @@ import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static com.holdmyspot.cat.common.optimizer.adapter.fakes.test.SessionRequestFixtures.partOf;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
@@ -235,6 +236,8 @@ public final class RunnerSessionsTest
 	@Test
 	public void readsNullDeviceAsAbsentConfiguration() throws IOException
 	{
+		if (Platform.current().isWindows())
+			throw new SkipException("Windows has no /dev/null, so the path is absent and the null device is not reached");
 		JsonMapper json = JsonMapper.builder().build();
 		requireThat(RunnerSessions.readConfigurationFile(Path.of("/dev/null"), json).isEmpty(), "nullDevice").
 			isTrue();
