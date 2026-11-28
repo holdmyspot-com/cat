@@ -62,8 +62,8 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 	 * @param profile the model and reasoning effort that the session starts under
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code turns} is empty, if {@code timeLimit} is not positive, if a judge's
-	 *   {@code part} is not {@link Part#HELD_OUT}, or if the {@code part} of triage, a prompt author or the contract
-	 *   author is not {@link Part#DEVELOPMENT}
+	 *   {@code part} is not {@link Part#HELD_OUT}, or if the {@code part} of triage, an approach ranker,
+	 *   a prompt author or the contract author is not {@link Part#DEVELOPMENT}
 	 */
 	public SessionRequest(SessionRole role, Part part, Path source, List<String> turns, List<Path> readOnly,
 		Duration timeLimit, TrialProfile profile)
@@ -84,9 +84,9 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 	 * @param files the files that the workspace receives on top of {@code source} before the first turn
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code turns} is empty, if {@code timeLimit} is not positive, if a judge's
-	 *   {@code part} is not {@link Part#HELD_OUT}, if the {@code part} of triage, a prompt author or the contract
-	 *   author is not {@link Part#DEVELOPMENT}, or if a session other than a trial or the contract author
-	 *   receives files
+	 *   {@code part} is not {@link Part#HELD_OUT}, if the {@code part} of triage, an approach ranker,
+	 *   a prompt author or the contract author is not {@link Part#DEVELOPMENT},
+	 *   or if a session other than a trial or the contract author receives files
 	 */
 	public SessionRequest(SessionRole role, Part part, Path source, List<String> turns, List<Path> readOnly,
 		Duration timeLimit, TrialProfile profile, WorkspaceFiles files)
@@ -108,8 +108,9 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 	 * @param plugins the plugin directories that a trial installs, and no other plugin
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code turns} is empty, if {@code timeLimit} is not positive, if a judge's
-	 *   {@code part} is not {@link Part#HELD_OUT}, if the {@code part} of triage, a prompt author or the contract
-	 *   author is not {@link Part#DEVELOPMENT}, if a session other than a trial or the contract author receives files,
+	 *   {@code part} is not {@link Part#HELD_OUT}, if the {@code part} of triage, an approach ranker,
+	 *   a prompt author or the contract author is not {@link Part#DEVELOPMENT},
+	 *   if a session other than a trial or the contract author receives files,
 	 *   or if a session other than a trial installs plugins
 	 */
 	public SessionRequest(SessionRole role, Part part, Path source, List<String> turns, List<Path> readOnly,
@@ -133,8 +134,9 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 	 * @param followUp chooses at most one turn to send after the last of {@code turns}
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code turns} is empty, if {@code timeLimit} is not positive, if a judge's
-	 *   {@code part} is not {@link Part#HELD_OUT}, if the {@code part} of triage, a prompt author or the contract
-	 *   author is not {@link Part#DEVELOPMENT}, if a session other than a trial or the contract author receives files,
+	 *   {@code part} is not {@link Part#HELD_OUT}, if the {@code part} of triage, an approach ranker,
+	 *   a prompt author or the contract author is not {@link Part#DEVELOPMENT},
+	 *   if a session other than a trial or the contract author receives files,
 	 *   or if a session other than a trial installs plugins
 	 */
 	public SessionRequest(SessionRole role, Part part, Path source, List<String> turns, List<Path> readOnly,
@@ -188,8 +190,9 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 	 * @param pluginInputs the ordered trial plugin inputs
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code turns} is empty, if {@code timeLimit} is not positive, if a judge's
-	 *   {@code part} is not {@link Part#HELD_OUT}, if the {@code part} of triage, a prompt author or the contract
-	 *   author is not {@link Part#DEVELOPMENT}, if a session other than a trial or the contract author receives files,
+	 *   {@code part} is not {@link Part#HELD_OUT}, if the {@code part} of triage, an approach ranker,
+	 *   a prompt author or the contract author is not {@link Part#DEVELOPMENT},
+	 *   if a session other than a trial or the contract author receives files,
 	 *   if a session other than a trial installs plugins, if a session other than a trial runs on the control
 	 *   source, or if {@code profile} does not name both a model and an effort
 	 */
