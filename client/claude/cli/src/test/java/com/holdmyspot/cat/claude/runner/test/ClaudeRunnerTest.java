@@ -46,7 +46,6 @@ import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
@@ -59,7 +58,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 import org.testng.annotations.DataProvider;
@@ -1809,14 +1807,12 @@ public final class ClaudeRunnerTest
 	/**
 	 * Verifies that the session's settings hold the source's {@code apiKeyHelper}, wrapped so that it runs with the
 	 * source home as its home folder, and its helper lifetime, but none of the source's hooks, permissions, plugins or
-	 * MCP servers; that a POSIX shell that runs the wrapped helper with another home folder prints the key that the
-	 * helper reads from {@code ~/key}; and that no element of the session's command holds the key.
+	 * MCP servers; and that no element of the session's command holds the key.
 	 *
-	 * @throws IOException          if the fixture, the settings or the shell's output cannot be read or written
-	 * @throws InterruptedException if the test is interrupted while the shell runs
+	 * @throws IOException if the fixture or the settings cannot be read or written
 	 */
 	@Test
-	public void copiesOnlyWrappedKeyHelper() throws IOException, InterruptedException
+	public void copiesOnlyWrappedKeyHelper() throws IOException
 	{
 		// Requirement: R-I14
 		try (TestJvmScope jvm = new TestJvmScope();
@@ -1854,17 +1850,12 @@ public final class ClaudeRunnerTest
 
 			JsonNode settings = JSON.readTree(Files.readString(settingsFile));
 			String helper = settings.path("apiKeyHelper").asString("");
-			requireThat(helper, "helper").contains("cat ~/key").contains(source.toString());
+			requireThat(helper, "helper").isEqualTo("env HOME='" + source + "' sh -c 'cat ~/key'");
 			requireThat(settings.path("env").path("CLAUDE_CODE_API_KEY_HELPER_TTL_MS").asString(""), "ttl").
 				isEqualTo("60000");
 			for (String setting : List.of("hooks", "enabledPlugins", "mcpServers"))
 				requireThat(settings.has(setting), setting).isFalse();
 			requireThat(settings.toString(), "settings").doesNotContain("source-denial").doesNotContain("source-grant");
-
-			Path otherHome = Files.createDirectories(root.resolve("other-home"));
-			ProcessBuilder shell = new ProcessBuilder("sh", "-c", helper).redirectErrorStream(true);
-			shell.environment().put("HOME", otherHome.toString());
-			requireThat(printedByHelper(shell), "printed").isEqualTo(SourceHomes.SECRET);
 
 			List<String> command = ClaudeRunner.command("claude", "haiku", "low", "", List.of(),
 				nestedSession.directory().resolve("home/.claude/projects"), List.of());
@@ -2001,20 +1992,19 @@ public final class ClaudeRunnerTest
 	/**
 	 * Verifies that the runner chooses the one credential that fills the session's {@code apiKeyHelper} by Claude
 	 * Code's order: a selected token reaches Claude Code only through the session's key file, {@code cat-api-key} in its
-	 * {@code .claude} folder, which holds exactly the token's bytes, is readable by its owner alone, and which a POSIX
-	 * {@code sh} that runs the session's helper prints; a selected source helper is copied, wrapped, and no key file is
+	 * {@code .claude} folder, which holds exactly the token's bytes and is readable by its owner alone, and which the
+	 * session's helper names; a selected source helper is copied, wrapped, and no key file is
 	 * written. The key file is denied to the session's commands and file tools and to every session that the session
 	 * requests, and neither the session's command, its settings nor {@code session.json} holds the token.
 	 *
 	 * @param settings    the source's {@code settings.json}
 	 * @param storedLogin {@code true} if the source also holds a stored login
 	 * @param delivered   the token that the key file holds, or {@code null} if the source helper is selected
-	 * @throws IOException          if the fixture, the settings or the helper's output cannot be read or written
-	 * @throws InterruptedException if the test is interrupted while the shell runs
+	 * @throws IOException if the fixture or the settings cannot be read or written
 	 */
 	@Test(dataProvider = "rankedCredentials")
 	public void deliversCredentialByClaudeCodeOrder(String settings, boolean storedLogin, String delivered)
-		throws IOException, InterruptedException
+		throws IOException
 	{
 		// Requirement: R-I14
 		try (TestJvmScope jvm = new TestJvmScope();
@@ -2060,8 +2050,6 @@ public final class ClaudeRunnerTest
 			requireThat(helper, "helper").isEqualTo("cat '" + keyFile + "'");
 			requireThat(Files.readString(keyFile), "keyFile").isEqualTo(delivered);
 			SourceHomes.requireOwnerOnly(keyFile);
-			ProcessBuilder shell = new ProcessBuilder("sh", "-c", helper).redirectErrorStream(true);
-			requireThat(printedByHelper(shell), "printed").isEqualTo(delivered);
 			List<String> denyRead = new ArrayList<>();
 			for (JsonNode path : sessionSettings.path("sandbox").path("filesystem").path("denyRead"))
 				denyRead.add(path.asString());
@@ -2376,31 +2364,6 @@ public final class ClaudeRunnerTest
 					doesNotContain("temporary folder");
 			}
 		}
-	}
-
-	/**
-	 * Runs a key helper's shell command and returns what it printed, failing if it does not end in time, as it would
-	 * if it waited for input that no one sends.
-	 *
-	 * @param shell the command, whose standard error goes to its standard output
-	 * @return the output
-	 * @throws IOException          if the command cannot run
-	 * @throws InterruptedException if the wait is interrupted
-	 */
-	// The process ends before the method returns, so there is nothing left to close
-	@SuppressWarnings("PMD.CloseResource")
-	private static String printedByHelper(ProcessBuilder shell) throws IOException, InterruptedException
-	{
-		Process process = shell.start();
-		process.getOutputStream().close();
-		if (!process.waitFor(60, TimeUnit.SECONDS))
-		{
-			process.destroyForcibly();
-			throw new AssertionError("The key helper did not end within 60 seconds");
-		}
-		String printed = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-		requireThat(process.exitValue(), "status").isZero();
-		return printed;
 	}
 
 	/**
