@@ -198,12 +198,16 @@ public final class AdmissionTest
 		// Requirement: R-D7
 		Campaign met = new Builder().confirmed().working(1).development("formatting", 10, 0).
 			development("safety", 10, 0).readyBaseline().build();
-		for (Admission admission : Scheduler.plan(met, NOW, 8))
-			requireThat(admission.purpose(), "met.purpose").isNotEqualTo(Purpose.BASELINE);
+		List<Admission> metPlan = Scheduler.plan(met, NOW, 8);
+		requireThat(metPlan.isEmpty(), "metPlan.isEmpty()").isFalse();
+		for (Admission admission : metPlan)
+			requireThat(admission.purpose(), "met.purpose").isEqualTo(Purpose.DEVELOPMENT);
 
 		Campaign incumbent = new Builder().confirmed().development("formatting", 10, 0).
 			development("safety", 10, 0).build();
-		for (Admission admission : Scheduler.plan(incumbent, NOW, 8))
+		List<Admission> incumbentPlan = Scheduler.plan(incumbent, NOW, 8);
+		requireThat(incumbentPlan.isEmpty(), "incumbentPlan.isEmpty()").isFalse();
+		for (Admission admission : incumbentPlan)
 			requireThat(admission.purpose(), "incumbent.purpose").isEqualTo(Purpose.DEVELOPMENT);
 	}
 
