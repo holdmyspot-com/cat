@@ -244,6 +244,40 @@ public final class BundledRuleAudienceTest
 	}
 
 	/**
+	 * Verifies Claude agents receive, at startup in a session's rules and in a subagent's, the guidance to write,
+	 * update and delete auto-memory files and the memory index with the file-editing tools and never through the shell,
+	 * and to report a failed memory write instead of working around the sandbox, while Codex agents, whose sandbox does
+	 * not govern Claude's memory folder, do not receive it.
+	 *
+	 * @throws IOException if the bundled rules cannot be copied, routed, or loaded
+	 * @throws URISyntaxException if the class path returns a malformed resource location
+	 */
+	@Test
+	public void claudeAgentsGetMemoryWriteGuidance() throws IOException, URISyntaxException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-bundled-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-bundled-rules-project-"));
+			BundledRules.copy(plugin.resolve("rules"));
+			RuleArtifactRouter.route(plugin, scope.yaml());
+			ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml());
+
+			for (String claude : List.of(loader.loadSessionForMainAgent(plugin, null, project, "claude").rules(),
+				loader.loadForSubagent(plugin, project, "claude", "cat:reviewer")))
+			{
+				requireThat(oneLine(claude), "claude").contains("# Auto-Memory Writes").
+					contains("When you save, update or delete a memory file or the memory index, use the Write or Edit " +
+						"tool").
+					contains("never shell redirection, `tee`, `sed -i` or any other shell command").
+					contains("shell sandbox treats the memory folder as read-only").
+					contains("If a memory write fails, report the failure instead of working around the sandbox");
+			}
+			requireThat(loader.loadForMainAgent(plugin, project, "codex"), "codex").doesNotContain("# Auto-Memory Writes");
+		}
+	}
+
+	/**
 	 * Verifies a session receives the bundled Java and Bash routes only through instructions to load their routing
 	 * files when it reads or edits a matching file, so a session that never touches such a file does not carry them,
 	 * while the route for choosing a Java API, which arises while designing before any Java file exists, stays
