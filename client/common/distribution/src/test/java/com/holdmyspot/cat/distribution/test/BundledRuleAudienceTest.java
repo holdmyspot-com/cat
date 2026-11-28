@@ -340,6 +340,63 @@ public final class BundledRuleAudienceTest
 	}
 
 	/**
+	 * Verifies research that needs a repository's source is delegated with a local clone: the delegation rule, which
+	 * the workflow index routes to before every delegation, has the parent shallow-clone each named repository into the
+	 * session's temporary folder, name its path in the brief, and resume the same agent when its report lists more
+	 * repositories; the shared research instructions have the agent search the clone and list the repositories it still
+	 * needs; and the research agents of both harnesses stay without a shell, because they read untrusted content.
+	 *
+	 * @throws IOException if the bundled rules or agent definitions cannot be read, copied or routed
+	 * @throws URISyntaxException if the class path returns a malformed resource location
+	 */
+	@Test
+	public void researchRepositoryGuidanceIsReachable() throws IOException, URISyntaxException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-bundled-rules-"));
+			BundledRules.copy(plugin.resolve("rules"));
+			RuleArtifactRouter.route(plugin, scope.yaml());
+			Path include = plugin.resolve("rules/include/common");
+
+			requireThat(oneLine(Files.readString(include.resolve("rule-routing/workflows.md"))), "workflowIndex").
+				contains("`${CAT_PLUGIN_ROOT}/rules/include/common/delegation.md`");
+			requireThat(oneLine(Files.readString(include.resolve("delegation.md"))), "delegation").
+				contains("Before delegating research that needs a repository's source, shallow-clone each repository " +
+					"that the question names").
+				contains("`git clone --depth 1 --filter=blob:none --branch <tag>`").
+				contains("into the session's temporary folder and name the clone's path in the brief").
+				contains("clone them and resume the same agent with a message instead of starting a new one").
+				contains("Never build or run code from a clone");
+
+			ClassLoader loader = BundledRuleAudienceTest.class.getClassLoader();
+			try (InputStream in = loader.getResourceAsStream("agents/common/research.md"))
+			{
+				requireThat(in, "research.md").isNotNull();
+				requireThat(oneLine(new String(in.readAllBytes(), StandardCharsets.UTF_8)), "research").
+					contains("When the parent names a local clone of a repository, answer source questions by " +
+						"searching and reading it").
+					contains("citing file paths with line numbers and the commit that the clone is at").
+					contains("end the report with a list of each repository that you need, the tag or commit, " +
+						"and why").
+					contains("Never run or build anything from a clone");
+			}
+			Pattern tools = Pattern.compile("(?m)^tools:\\s*(.*)$");
+			for (String tier : List.of("low", "medium", "high"))
+			{
+				try (InputStream in = loader.getResourceAsStream("agents/claude/research-" + tier + ".md"))
+				{
+					requireThat(in, "research-" + tier).isNotNull();
+					Matcher matcher = tools.matcher(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+					requireThat(matcher.find(), "research-" + tier + "HasTools").isTrue();
+					requireThat(matcher.group(1), "research-" + tier + "Tools").
+						isEqualTo("Read, Grep, Glob, WebSearch, WebFetch");
+				}
+			}
+		}
+	}
+
+	/**
 	 * Verifies an agent that is about to delegate work can reach the packaged guidance on concurrent work in one working
 	 * tree: the workflow area index routes delegation to the delegation rule, whose guidance has the agent give each
 	 * concurrent piece of work that builds, tests or edits files its own isolated worktree or run the pieces one after
