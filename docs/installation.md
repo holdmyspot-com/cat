@@ -11,8 +11,12 @@ your own terminal, or at a Claude Code prompt after `! `. An AI agent follows th
 - Linux x64 or ARM64, macOS x64 or ARM64, or Windows x64 (not Windows ARM64).
 - The harness's program on your `PATH`: check with `claude --version` or `codex --version`.
 - Linux and macOS: `curl`, `tar`, and `sha256sum` or `shasum`. Windows: PowerShell 5.1 or later.
-- To use CAT's runners and prompt optimization on Windows, install your harness and CAT inside WSL2 and follow the
-  Linux steps there. CAT cannot rely on the harness's sandbox in native Windows.
+- On native Windows, CAT's runners start sessions in both harnesses, each in the same type of sandbox as the session
+  that starts it. Claude Code has no sandbox there, so the sessions that a Claude Code session starts run without one,
+  and prompt optimization, which needs a sandbox, runs only from Claude Code inside WSL2 (install your harness and CAT
+  there and follow the Linux steps) or from Codex. Codex runs its sessions, and those that CAT starts for it, in the
+  Windows sandbox that its configuration selects, and CAT recommends `mxc`. See
+  [Sandboxes on native Windows](security-model.md#sandboxes-on-native-windows) for what each one leaves open.
 
 ## 1. Install
 

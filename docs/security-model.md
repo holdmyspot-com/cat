@@ -503,9 +503,11 @@ The request server treats every request as the session's and checks it before it
 	`--verify-artifact` with an artifact that the session may not read.
 - It removes the variables that make a program load other code, such as `LD_PRELOAD`, `LD_LIBRARY_PATH`, `DYLD_*`,
 	`BASH_ENV` and the Java option variables.
-- It starts the new session inside that harness's own sandbox, so that the new session can read, write and reach no
-	more than the session that asked for it, and stops the new session's processes when the new session ends, or when
-	the session that it serves ends.
+- It starts the new session in the same type of sandbox as the session that asked for it, as
+	[Which sandbox a session gets](#which-sandbox-a-session-gets) describes: inside that harness's own sandbox, so that
+	the new session can read, write and reach no more than the session that asked for it, when the session that asked
+	has a sandbox, and without one when it has none. It stops the new session's processes when the new session ends, or
+	when the session that it serves ends.
 - A launch that names an option that only CAT itself passes, such as `--policy-bound` or
 	`--child-needs`, exits with status 2 and starts nothing. A launcher always runs its
 	own CAT artifact and the `claude` or `codex` command that your `PATH` finds: a launch that names `--artifact` exits
@@ -553,6 +555,137 @@ A Codex session whose sandbox has network access off cannot start runner session
 could not reach its model either. CAT then starts no session for it. On Linux, `codex-runner` needs bubblewrap
 (`bwrap`) on `PATH` to start a session that reads earlier sessions' results, such as a prompt optimizer's judge: it
 lets that session read those results while it hides the rest of the project.
+
+### Which sandbox a session gets
+
+Every session that CAT starts gets the same type of sandbox as the session that starts it, on Linux, macOS and native
+Windows:
+
+- A Claude Code session has a sandbox when its settings enable `sandbox.enabled`, except on native Windows, where Claude
+	Code runs commands without one whatever its settings say
+	([Claude Code sandboxing](https://code.claude.com/docs/en/sandboxing)).
+- A Codex session has a sandbox when its sandbox mode or permission profile confines its commands, and none under
+	`danger-full-access` or `--dangerously-bypass-approvals-and-sandbox`. Each of Codex's Windows sandboxes counts as a
+	sandbox (see [Sandboxes on native Windows](#sandboxes-on-native-windows)). On native Windows the configuration of a
+	Codex session that CAT starts holds the `[windows] sandbox`, `[windows] allow_mxc` and `[features] prefer_mxc` that
+	apply to the session that started it, from its configuration files, its profile and its `-c` overrides, so that Codex
+	picks the new session's implementation from the same settings. CAT never sets `mxc` itself.
+- A session in the other harness gets that harness's sandbox when the session that starts it has one, and none when it
+	has none. Claude Code has no sandbox on native Windows, so there CAT refuses to start a Claude Code session for a
+	Codex session that has a sandbox, because the new session's commands would reach further than its parent's.
+
+Within that type, the new session's policy is the part of its parent's policy that it needs. A session whose parent has
+no sandbox runs without one: Claude Code with `sandbox.enabled` false and Bash allowed by a permission rule, because no
+one can answer an approval prompt, and Codex with `danger-full-access`. Its commands run with your permissions, as its
+parent's already do, and the limits that only a sandbox enforces do not hold for them: they can read the session's own
+login copy and key file. Claude Code's permission rules still govern its file tools.
+
+**Prompt optimization needs a sandbox.** Each trial runs in the same type of sandbox as the session that runs the prompt
+optimizer, and the sandbox is what keeps a trial from reading the held-out test cases or changing files outside its
+workspace. So, on every platform, `start` and every command that continues a campaign are refused, and change nothing,
+when the request server reads the session as having no sandbox, when the session is a Claude Code session on native
+Windows, or when the transcript of a Claude Code session holds Claude Code's report that its sandbox failed to start
+(see [A Claude session whose sandbox does not start](#a-claude-session-whose-sandbox-does-not-start)). The request
+server also refuses each trial that the prompt optimizer requests from a session without a sandbox. On Windows, run
+prompt optimization from Claude Code inside WSL2 ([install WSL](https://learn.microsoft.com/windows/wsl/install)) or
+from Codex.
+
+### Sandboxes on native Windows
+
+Codex has three Windows sandboxes, `mxc`, `elevated` and `unelevated`, which `[windows] sandbox` selects
+([Codex on Windows](https://developers.openai.com/codex/windows#windows-sandbox)). CAT recommends `mxc`, which has the
+fewest known weaknesses of the three. To use it, add this to Codex's `config.toml`:
+
+```toml
+[windows]
+sandbox = "mxc"
+```
+
+It runs on Windows 11 24H2 build 26100.9278 or later and 25H2 build 26200.9278 or later
+([MXC compatibility](https://developers.openai.com/codex/windows#mxc-compatibility)); Microsoft's
+[support table](https://github.com/microsoft/mxc/blob/main/docs/backends/process-container/os-version-support.md)
+lists those Windows 11 releases and later ones, and no Windows Server release. Codex's documentation gives the command
+that checks whether a machine runs it: `codex -c windows.sandbox=mxc sandbox --include-managed-config
+--permission-profile :workspace -- cmd.exe /d /c echo MXC_OK`.
+
+On native Windows, when the sandbox that Codex applies is not `mxc`, or CAT cannot tell which it is, the install's
+message and the message at the start of each Codex session recommend `mxc`, and CAT continues with the sandbox that
+Codex applies. CAT reads the sandbox from the configuration that Codex applies and does not probe the machine: the
+requirements' `[windows] require_mxc` gives `mxc`; otherwise the last `[windows] sandbox` among the machine-wide
+`config.toml`, your `config.toml`, the file of the profile that the session names
+([profiles](https://developers.openai.com/codex/config-advanced#profiles)), the session's `-c` overrides and the
+machine-wide managed configuration. CAT cannot tell when any of them or the requirements set `[windows] allow_mxc`, when
+one sets `[features] prefer_mxc`, when the requirements list `allowed_sandbox_implementations`, or when it cannot read
+one, because Codex then chooses by rules that CAT does not model.
+
+CAT counts each of the three as a sandbox and refuses none of them. When Codex refuses a session or a command under one,
+CAT shows Codex's reason and changes no policy to suit it. Their known weaknesses come from CAT's own checks, on
+GitHub-hosted runners with Codex 0.172.0 and no Codex credential: `mxc` on Windows 11 Enterprise 25H2 build 26200.9974
+(ARM64), `elevated` and `unelevated` on Windows Server 2025 build 26100. CAT adds no protection of its own against them.
+
+**`mxc`** runs commands in Microsoft's process isolation, at low integrity, without setup by an administrator.
+
+- A hard link that already exists in a folder that the session may write lets its commands write and read the file
+	that the link names, even one outside the folders that they may write or one that they may not read. In CAT's checks
+	`cmd`, PowerShell and `node` wrote a file outside the session's folders through such a link, and read and copied a
+	file whose reading the policy denies. Codex accepts this limitation: "Hard-link names retain independent path
+	permissions"
+	([Codex's `mxc` notes](https://github.com/openai/codex/blob/rust-v0.172.0/codex-rs/mxc-sandbox/README.md)), because
+	a hard link is another path to the same file
+	([hard links](https://learn.microsoft.com/windows/win32/fileio/hard-links-and-junctions)). A command inside `mxc`
+	could not create such a link: `mklink /H`, `fsutil hardlink create` and PowerShell's `New-Item -ItemType HardLink`
+	were each refused with "Access is denied", for a file inside the session's folders, outside them and one that it may
+	not read. So the gap needs a link that a process outside the sandbox made. Untested: creating a link with `node`'s
+	`fs.linkSync` or a direct `CreateHardLinkW` call, and a link to a file in the folder that CAT protects for the
+	session's requests.
+- Name lookups reach real DNS servers. Under a policy whose network allowed only `127.0.0.1`, .NET and `node` resolved
+	public names, because a lookup goes to Windows' DNS Client service
+	([DNS queries](https://learn.microsoft.com/windows-server/networking/dns/queries-lookups)), which runs outside the
+	sandbox. Direct DNS queries and connections to public addresses were refused, as
+	[Codex's `mxc` notes](https://github.com/openai/codex/blob/rust-v0.172.0/codex-rs/mxc-sandbox/README.md) say, and
+	connections to loopback addresses worked, which those notes also allow.
+- Listing a folder shows the names of the files in it that the commands may not read; their content stays unreadable.
+- Untested under `mxc`: CAT's launchers, request server and Java runtime running inside it; which sandbox Codex applies
+	for each combination of the settings above, and whether CAT's reading names the same one; the other forms of writing
+	outside the session's folders (`..`, a different letter case, an 8.3 short name, the `\\?\` form, an alternate data
+	stream) and of reaching the paths that CAT protects; the network with access off; and the machine-wide configuration
+	and requirements narrowing a session as on Linux.
+
+**`elevated`** runs commands as separate sandbox users that Codex creates in a setup that an administrator approves
+([Codex on Windows](https://developers.openai.com/codex/windows#configure-a-legacy-fallback)). It starts each command
+runner with `CreateProcessWithLogonW`
+([Codex's source](https://github.com/openai/codex/blob/rust-v0.172.0/codex-rs/windows-sandbox-rs/src/elevated/runner_client.rs),
+[`CreateProcessWithLogonW`](https://learn.microsoft.com/windows/win32/api/winbase/nf-winbase-createprocesswithlogonw)).
+
+- A hard link in a folder that the session may write let `cmd`, PowerShell and `node` write the file outside that folder
+	that it names. Reading a denied file through a hard link was refused.
+- Under a policy whose network allowed only `127.0.0.1`, a name lookup, a connection to a public address and a
+	connection to a loopback port all worked, for .NET and `node`, in a command that `codex sandbox` ran. Whether
+	`codex sandbox` started Codex's managed network proxy there is not established.
+- On the hosted runner, every command of a session that CAT started failed with `CreateProcessWithLogonW failed: 267`,
+	Windows' "The directory name is invalid"
+	([system error codes](https://learn.microsoft.com/windows/win32/debug/system-error-codes--0-499-)).
+	Its cause is not known yet, and it is an open issue, not a refusal by CAT. Because of it, the reading of denied files,
+	the network and the nested launches of such a session's own commands are untested.
+- Two sessions that ran their first `elevated` command at the same time failed in Codex's setup with
+	`orchestrator_helper_incomplete`.
+
+**`unelevated`** runs commands with a restricted token derived from your own user
+([restricted tokens](https://learn.microsoft.com/windows/win32/secauthz/restricted-tokens)), and has weaker network
+isolation than `elevated` ([Codex on Windows](https://developers.openai.com/codex/windows#configure-a-legacy-fallback)).
+
+- It cannot deny reading a file, so Codex refuses a session or a command whose policy denies any read: "windows
+	unelevated restricted-token sandbox cannot enforce deny-read restrictions directly; refusing to run unsandboxed"
+	([Codex's test](https://github.com/openai/codex/blob/rust-v0.172.0/codex-rs/core/tests/windows_sandbox.rs)). Every
+	session that CAT starts denies reading its own login copy and key file, so no session that CAT starts runs under
+	`unelevated`, and no prompt optimizer trial either.
+- Because no session that CAT starts runs, its writes, reads and network under CAT's policies are untested.
+
+**No sandbox.** A Claude Code session on native Windows, and a Codex session under `danger-full-access` or the bypass
+flag, run their commands with your permissions, unconfined
+([Codex sandbox permissions](https://developers.openai.com/codex/windows#sandbox-permissions)). The sessions that CAT
+starts for them run without a sandbox too, as [Which sandbox a session gets](#which-sandbox-a-session-gets) describes,
+and prompt optimization refuses to run there.
 
 ### A Claude session whose sandbox does not start
 
