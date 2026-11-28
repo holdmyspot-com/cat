@@ -122,7 +122,7 @@ public final class VerdictKeyTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void missingFilesKeepTheKey() throws IOException
+	public void missingTranscriptKeepsTheKey() throws IOException
 	{
 		// Requirement: R-L10
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
